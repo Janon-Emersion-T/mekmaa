@@ -1,0 +1,60 @@
+{{define "verify-email"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/80 bg-white/75 shadow-float backdrop-blur">
+  <div class="grid lg:grid-cols-[0.92fr_1.08fr]">
+    <div class="relative overflow-hidden bg-gradient-to-br from-obsidian via-slate to-obsidian px-8 py-10 text-cloud sm:px-10 lg:min-h-[42rem] lg:px-12 lg:py-14">
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(98,242,193,0.18),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(255,255,255,0.06),_transparent_30%)]"></div>
+      <div class="relative">
+        <a href="/" class="inline-flex items-center rounded-full border border-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-cloud/75 transition hover:border-aqua/60 hover:text-cloud">mekmaa3</a>
+        <p class="mt-12 text-sm font-semibold uppercase tracking-[0.35em] text-aqua/80">Email verification</p>
+        <h1 class="mt-4 max-w-sm text-4xl font-semibold leading-tight sm:text-5xl">Enter the 6-digit code we sent.</h1>
+        <p class="mt-5 max-w-md text-base leading-8 text-cloud/72">This extra step confirms mailbox ownership before the account becomes active. Codes expire in 10 minutes and can be resent from this screen.</p>
+
+        <div class="mt-12 grid gap-4">
+          <div class="rounded-3xl border border-white/10 bg-white/8 p-5">
+            <p class="text-sm uppercase tracking-[0.25em] text-aqua/75">Format</p>
+            <p class="mt-2 text-lg text-cloud/90">{{.OTPCodeLength}} numeric digits only.</p>
+          </div>
+          <div class="rounded-3xl border border-white/10 bg-white/8 p-5">
+            <p class="text-sm uppercase tracking-[0.25em] text-aqua/75">Delivery</p>
+            <p class="mt-2 text-lg text-cloud/90">If the code does not arrive, use resend after checking your spam folder.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="px-6 py-8 sm:px-10 sm:py-10 lg:px-12 lg:py-14">
+      <div class="mx-auto max-w-md">
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Verify email</p>
+        <h2 class="mt-3 text-3xl font-semibold sm:text-4xl">Activate your account</h2>
+        <p class="mt-3 text-sm leading-7 text-slate/72">Enter the email address used during signup and the one-time password.</p>
+
+        <form action="/verify-email" method="post" class="mt-8 space-y-5">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <label class="block">
+            <span class="mb-2 block text-sm font-medium text-slate/80">Email</span>
+            <input type="email" name="email" value="{{.PendingEmail}}" required autocomplete="email" class="w-full rounded-2xl border border-slate/10 bg-slate-50 px-4 py-3.5 text-[15px] outline-none transition placeholder:text-slate/35 focus:border-aqua focus:bg-white focus:ring-4 focus:ring-aqua/15" placeholder="jane@example.com" />
+          </label>
+          <label class="block">
+            <span class="mb-2 block text-sm font-medium text-slate/80">Verification code</span>
+            <input type="text" name="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required class="w-full rounded-2xl border border-slate/10 bg-slate-50 px-4 py-3.5 text-center text-2xl tracking-[0.45em] outline-none transition placeholder:text-slate/25 focus:border-aqua focus:bg-white focus:ring-4 focus:ring-aqua/15" placeholder="000000" />
+          </label>
+          <button type="submit" class="w-full rounded-2xl bg-obsidian px-6 py-3.5 text-sm font-medium text-cloud transition hover:bg-slate">Verify email</button>
+        </form>
+
+        <form action="{{.ResendAction}}" method="post" class="mt-4">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <input type="hidden" name="email" value="{{.PendingEmail}}" />
+          <button type="submit" class="w-full rounded-2xl border border-slate/10 bg-white px-6 py-3.5 text-sm font-medium text-slate transition hover:border-aqua hover:text-obsidian">Resend code</button>
+        </form>
+
+        <p class="mt-6 text-center text-sm text-slate/70">
+          Already verified?
+          <a href="/login" class="font-semibold text-obsidian transition hover:text-slate">Return to sign in</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+{{end}}

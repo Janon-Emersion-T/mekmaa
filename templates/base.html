@@ -1,0 +1,129 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{.Title}}</title>
+    <meta name="description" content="{{.Description}}" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              obsidian: "#0b1215",
+              slate: "#233238",
+              mint: "#d7fbe8",
+              aqua: "#62f2c1",
+              cloud: "#eef7f4",
+              amber: "#f3b43f",
+              blush: "#ffddd2"
+            },
+            boxShadow: {
+              float: "0 32px 80px rgba(11, 18, 21, 0.16)"
+            },
+            fontFamily: {
+              sans: ["Trebuchet MS", "Verdana", "sans-serif"]
+            }
+          }
+        }
+      };
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const openButtons = document.querySelectorAll("[data-sidebar-open]");
+        const closeButtons = document.querySelectorAll("[data-sidebar-close]");
+        const overlay = document.querySelector("[data-sidebar-overlay]");
+        const sidebar = document.querySelector("[data-sidebar]");
+
+        function openSidebar() {
+          if (overlay) {
+            overlay.classList.remove("hidden");
+          }
+          if (sidebar) {
+            sidebar.classList.remove("-translate-x-full");
+          }
+        }
+
+        function closeSidebar() {
+          if (overlay) {
+            overlay.classList.add("hidden");
+          }
+          if (sidebar) {
+            sidebar.classList.add("-translate-x-full");
+          }
+        }
+
+        openButtons.forEach((button) => button.addEventListener("click", openSidebar));
+        closeButtons.forEach((button) => button.addEventListener("click", closeSidebar));
+        if (overlay) {
+          overlay.addEventListener("click", closeSidebar);
+        }
+
+        window.addEventListener("resize", function () {
+          if (window.innerWidth >= 1024) {
+            closeSidebar();
+          }
+        });
+      });
+    </script>
+  </head>
+  <body class="min-h-screen bg-cloud text-obsidian antialiased">
+    <div class="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top_left,_rgba(98,242,193,0.2),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(11,18,21,0.12),_transparent_30%),linear-gradient(135deg,_#f8fffc_0%,_#eef7f4_45%,_#deefe8_100%)]"></div>
+    <div class="absolute inset-x-0 top-0 -z-10 h-[28rem] bg-gradient-to-br from-aqua/30 via-mint/60 to-cloud"></div>
+    {{if .HideChrome}}
+    <main class="flex min-h-screen items-center justify-center px-4 py-10 sm:px-6 lg:px-8">
+      {{if .Flash}}
+      <div class="absolute left-1/2 top-6 z-20 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-aqua/30 bg-white/85 px-5 py-4 text-sm shadow-sm">{{.Flash}}</div>
+      {{end}}
+      {{if .Error}}
+      <div class="mb-6 rounded-2xl border border-amber/50 bg-blush/70 px-5 py-4 text-sm text-slate shadow-sm">{{.Error}}</div>
+      {{end}}
+      {{template "content" .}}
+    </main>
+    {{else if .User}}
+    <div class="relative h-screen overflow-hidden lg:flex">
+      <div data-sidebar-overlay class="fixed inset-0 z-30 hidden bg-obsidian/45 backdrop-blur-sm lg:hidden"></div>
+
+      {{template "dashboard-sidebar" .}}
+
+      <div class="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+        {{template "dashboard-header" .}}
+
+        <main class="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+          {{if .Flash}}
+          <div class="mb-6 rounded-2xl border border-aqua/30 bg-white/85 px-5 py-4 text-sm shadow-sm">{{.Flash}}</div>
+          {{end}}
+          {{if .Error}}
+          <div class="mb-6 rounded-2xl border border-amber/50 bg-blush/70 px-5 py-4 text-sm text-slate shadow-sm">{{.Error}}</div>
+          {{end}}
+          {{template "content" .}}
+        </main>
+
+        {{template "dashboard-footer" .}}
+      </div>
+    </div>
+    {{else}}
+    <header class="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 lg:px-8">
+      <a href="/" class="text-lg font-semibold tracking-[0.2em] uppercase">mekmaa3</a>
+      <nav class="flex items-center gap-3 text-sm">
+        <a href="/" class="rounded-full px-4 py-2 transition hover:bg-white/70">Home</a>
+        <a href="/login" class="rounded-full px-4 py-2 transition hover:bg-white/70">Sign in</a>
+        <a href="/register" class="rounded-full bg-obsidian px-4 py-2 text-cloud transition hover:bg-slate">Create account</a>
+      </nav>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-6 pb-16 lg:px-8">
+      {{if .Flash}}
+      <div class="mb-6 rounded-2xl border border-aqua/30 bg-white/85 px-5 py-4 text-sm shadow-sm">{{.Flash}}</div>
+      {{end}}
+      {{if .Error}}
+      <div class="mb-6 rounded-2xl border border-amber/50 bg-blush/70 px-5 py-4 text-sm text-slate shadow-sm">{{.Error}}</div>
+      {{end}}
+      {{template "content" .}}
+    </main>
+    {{end}}
+  </body>
+</html>
+{{end}}

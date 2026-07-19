@@ -1,0 +1,11 @@
+{{define "forbidden"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="py-8 lg:py-16">
+  <div class="rounded-[2rem] border border-amber/30 bg-white/85 p-8 shadow-float">
+    <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/70">Access denied</p>
+    <h1 class="mt-3 text-4xl font-semibold">Permission required</h1>
+    <p class="mt-4 max-w-2xl text-slate/75">{{.Error}}</p>
+  </div>
+</section>
+{{end}}

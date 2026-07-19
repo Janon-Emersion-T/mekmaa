@@ -1,0 +1,58 @@
+{{define "role-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <h1 class="text-2xl font-semibold sm:text-3xl">Role management</h1>
+    <form action="/admin/roles/create" method="post" class="mt-6 grid gap-3 sm:gap-4 lg:grid-cols-[1fr_auto]">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="text" name="name" placeholder="Role name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create role</button>
+      <div class="lg:col-span-2 flex flex-wrap gap-2">
+        {{range .Permissions}}
+        <label class="inline-flex items-center gap-2 rounded-full border border-obsidian/10 bg-white px-4 py-2 text-sm">
+          <input type="checkbox" name="permissions" value="{{.}}" />
+          <span>{{.}}</span>
+        </label>
+        {{end}}
+      </div>
+    </form>
+  </div>
+
+  <div id="role-management" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <h2 class="text-xl font-semibold sm:text-2xl">Roles</h2>
+    <div class="mt-6 space-y-4">
+      {{range .Roles}}
+      {{$role := .}}
+      <div class="rounded-3xl border border-slate/8 bg-cloud p-4 sm:p-5">
+        <form action="/admin/roles/update" method="post" class="space-y-4">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+          <input type="hidden" name="role_id" value="{{.ID}}" />
+          <div class="flex flex-col gap-4">
+            <input type="text" name="name" value="{{.Name}}" {{if isSystemRole .Name}}readonly{{end}} class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua {{if isSystemRole .Name}}text-slate/60{{end}}" />
+            <div class="flex flex-wrap gap-2">
+              {{range $.Permissions}}
+              <label class="inline-flex items-center gap-2 rounded-full border border-obsidian/10 bg-white px-4 py-2 text-sm">
+                <input type="checkbox" name="permissions" value="{{.}}" {{if containsPermission $role.Permissions .}}checked{{end}} />
+                <span>{{.}}</span>
+              </label>
+              {{end}}
+            </div>
+          </div>
+          <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save</button>
+          </div>
+        </form>
+        {{if not (isSystemRole .Name)}}
+        <form action="/admin/roles/delete" method="post" class="mt-3 flex justify-start sm:justify-end">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+          <input type="hidden" name="role_id" value="{{.ID}}" />
+          <button type="submit" class="rounded-2xl border border-red-200 bg-white px-5 py-3 text-sm font-medium text-red-700 transition hover:bg-red-50">Delete</button>
+        </form>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+  </div>
+</section>
+{{end}}

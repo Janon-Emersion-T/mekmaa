@@ -1,0 +1,181 @@
+{{define "admission-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold sm:text-3xl">Admissions management</h1>
+        <p class="mt-2 text-sm text-slate/70">Current admissions</p>
+      </div>
+      <a href="/admin/admissions?action=new#admission-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add new admission</a>
+    </div>
+  </div>
+
+  {{if eq .AdmissionMode "new"}}
+  <div id="admission-form" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold sm:text-2xl">Add admission</h2>
+      <a href="/admin/admissions" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+    </div>
+    <form action="/admin/admissions/create" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="text" name="full_name" placeholder="Full Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="date" name="date_of_birth" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <select name="gender" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+        <option value="">Gender</option>
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+      </select>
+      <textarea name="address" placeholder="Address" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua"></textarea>
+      <input type="text" name="passport_number" placeholder="P.P. No" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="school" placeholder="School" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="guardian_name" placeholder="Parent / Guardian Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="guardian_relationship" placeholder="Relationship" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="guardian_contact_number" placeholder="Contact No" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="guardian_alternative_contact_number" placeholder="Alternative Contact Number" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <textarea name="medical_information" placeholder="Any Medical Condition or Allergies" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua"></textarea>
+      <div class="md:col-span-2 xl:col-span-3 flex justify-end">
+        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create admission</button>
+      </div>
+    </form>
+  </div>
+  {{end}}
+
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-5 py-4 font-medium sm:px-6">Student</th>
+            <th class="px-5 py-4 font-medium">DOB</th>
+            <th class="px-5 py-4 font-medium">Gender</th>
+            <th class="px-5 py-4 font-medium">School</th>
+            <th class="px-5 py-4 font-medium">Guardian</th>
+            <th class="px-5 py-4 font-medium">Contact</th>
+            <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .Admissions}}
+          <tr class="bg-white/70 align-top">
+            <td class="px-5 py-4 sm:px-6">
+              <p class="font-medium text-obsidian">{{.FullName}}</p>
+              <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.PassportNumber}}</p>
+            </td>
+            <td class="px-5 py-4 text-slate/75">{{.DateOfBirth}}</td>
+            <td class="px-5 py-4 text-slate/75">{{.Gender}}</td>
+            <td class="px-5 py-4 text-slate/75">{{.School}}</td>
+            <td class="px-5 py-4 text-slate/75">
+              <p>{{.GuardianName}}</p>
+              <p class="mt-1 text-xs text-slate/55">{{.GuardianRelationship}}</p>
+            </td>
+            <td class="px-5 py-4 text-slate/75">
+              <p>{{.GuardianContactNumber}}</p>
+              <p class="mt-1 text-xs text-slate/55">{{.GuardianAlternativePhone}}</p>
+            </td>
+            <td class="px-5 py-4 sm:px-6">
+              <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
+                <a href="/admin/admissions?action=view&id={{.ID}}#admission-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                <a href="/admin/admissions?action=edit&id={{.ID}}#admission-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+                <form action="/admin/admissions/delete" method="post">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="admission_id" value="{{.ID}}" />
+                  <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="7" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No admissions found.</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {{if and (eq .AdmissionMode "view") .SelectedAdmission}}
+  <div id="admission-view" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold sm:text-2xl">Admission details</h2>
+      <a href="/admin/admissions" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+    </div>
+    <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Full Name</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.FullName}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Date of Birth</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.DateOfBirth}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Gender</p>
+        <p class="mt-2 text-sm font-medium capitalize text-obsidian">{{.SelectedAdmission.Gender}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">P.P. No</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.PassportNumber}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">School</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.School}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Guardian</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.GuardianName}}</p>
+        <p class="mt-1 text-sm text-slate/65">{{.SelectedAdmission.GuardianRelationship}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Contact No</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.GuardianContactNumber}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Alternative Contact</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.GuardianAlternativePhone}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4 md:col-span-2 xl:col-span-3">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Address</p>
+        <p class="mt-2 text-sm leading-7 text-obsidian">{{.SelectedAdmission.Address}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4 md:col-span-2 xl:col-span-3">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Medical Information</p>
+        <p class="mt-2 text-sm leading-7 text-obsidian">{{.SelectedAdmission.MedicalInformation}}</p>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  {{if and (eq .AdmissionMode "edit") .SelectedAdmission}}
+  <div id="admission-edit" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold sm:text-2xl">Edit admission</h2>
+      <a href="/admin/admissions" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+    </div>
+    <form action="/admin/admissions/update" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="hidden" name="admission_id" value="{{.SelectedAdmission.ID}}" />
+      <input type="text" name="full_name" value="{{.SelectedAdmission.FullName}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="date" name="date_of_birth" value="{{.SelectedAdmission.DateOfBirth}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <select name="gender" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+        <option value="male" {{if eq .SelectedAdmission.Gender "male"}}selected{{end}}>Male</option>
+        <option value="female" {{if eq .SelectedAdmission.Gender "female"}}selected{{end}}>Female</option>
+      </select>
+      <textarea name="address" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{.SelectedAdmission.Address}}</textarea>
+      <input type="text" name="passport_number" value="{{.SelectedAdmission.PassportNumber}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="school" value="{{.SelectedAdmission.School}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="guardian_name" value="{{.SelectedAdmission.GuardianName}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="guardian_relationship" value="{{.SelectedAdmission.GuardianRelationship}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="guardian_contact_number" value="{{.SelectedAdmission.GuardianContactNumber}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="guardian_alternative_contact_number" value="{{.SelectedAdmission.GuardianAlternativePhone}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <textarea name="medical_information" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{.SelectedAdmission.MedicalInformation}}</textarea>
+      <div class="md:col-span-2 xl:col-span-3 flex justify-end">
+        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save changes</button>
+      </div>
+    </form>
+  </div>
+  {{end}}
+</section>
+{{end}}

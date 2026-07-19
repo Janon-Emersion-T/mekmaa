@@ -1,0 +1,65 @@
+{{define "dashboard-sidebar"}}
+<aside data-sidebar class="fixed inset-y-0 left-0 z-40 flex h-screen w-[88vw] max-w-[18rem] -translate-x-full flex-col overflow-y-auto border-r border-white/60 bg-white/90 px-4 py-4 shadow-[0_30px_70px_rgba(11,18,21,0.18)] backdrop-blur-xl transition-transform duration-300 sm:px-5 sm:py-5 lg:static lg:z-auto lg:w-[18rem] lg:max-w-none lg:translate-x-0 lg:shadow-none">
+  <div class="flex items-center justify-between">
+    <a href="/dashboard" class="text-lg font-semibold tracking-[0.2em] uppercase">mekmaa3</a>
+    <button type="button" data-sidebar-close class="rounded-full border border-slate/10 p-2 text-slate/70 transition hover:bg-cloud lg:hidden">
+      <svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="mt-6 rounded-3xl bg-gradient-to-br from-obsidian via-slate to-obsidian px-4 py-4 text-cloud sm:mt-8 sm:px-5 sm:py-5">
+    <p class="text-xs font-semibold uppercase tracking-[0.28em] text-aqua/75">Signed in</p>
+    <p class="mt-3 text-xl font-semibold">{{.User.Name}}</p>
+    <p class="mt-2 break-all text-sm leading-6 text-cloud/72">{{.User.Email}}</p>
+    <div class="mt-4 flex flex-wrap gap-2">
+      {{range .User.Roles}}
+      <span class="rounded-full border border-white/12 bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-cloud/85">{{.}}</span>
+      {{end}}
+    </div>
+  </div>
+
+  <nav class="mt-6 space-y-2 text-sm sm:mt-8">
+    <a href="/dashboard" class="{{if isCurrentPath .CurrentPath "/dashboard"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Dashboard</span>
+      <span class="text-xs uppercase tracking-[0.2em]">Home</span>
+    </a>
+    <!-- {{if hasAnyRole .User "editor" "admin" "superadmin"}}
+    <a href="/editor" class="{{if isCurrentPath .CurrentPath "/editor"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Editor</span>
+      <span class="text-xs uppercase tracking-[0.2em]">Write</span>
+    </a>
+    {{end}} -->
+    {{if hasAnyRole .User "admin" "superadmin"}}
+    <!-- <a href="/admin/users" class="{{if isCurrentPath .CurrentPath "/admin" "/admin/users" "/admin/roles"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Admin</span>
+      <span class="text-xs uppercase tracking-[0.2em]">RBAC</span>
+    </a> -->
+    <a href="/admin/users" class="{{if isCurrentPath .CurrentPath "/admin/users"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>User Manager</span>
+      <span class="text-xs uppercase tracking-[0.2em]">Users</span>
+    </a>
+    <a href="/admin/roles" class="{{if isCurrentPath .CurrentPath "/admin/roles"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Role Manager</span>
+      <span class="text-xs uppercase tracking-[0.2em]">Roles</span>
+    </a>
+    {{end}}
+    {{if hasPermission .User "admissions.manage"}}
+    <a href="/admin/admissions" class="{{if isCurrentPath .CurrentPath "/admin/admissions"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Admissions</span>
+      <span class="text-xs uppercase tracking-[0.2em]">CRUD</span>
+    </a>
+    {{end}}
+    <!-- <a href="/" class="{{if isCurrentPath .CurrentPath "/"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Public Site</span>
+      <span class="text-xs uppercase tracking-[0.2em]">View</span>
+    </a> -->
+  </nav>
+
+  <div class="mt-6 rounded-3xl border border-slate/10 bg-cloud px-4 py-4 lg:mt-auto">
+    <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate/55">Security</p>
+    <p class="mt-3 text-sm leading-7 text-slate/74">Verified identity, server sessions, and role-based route enforcement are active.</p>
+  </div>
+</aside>
+{{end}}

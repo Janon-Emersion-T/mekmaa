@@ -1,0 +1,68 @@
+{{define "user-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <h1 class="text-2xl font-semibold sm:text-3xl">User management</h1>
+    <form action="/admin/users/create" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="text" name="name" placeholder="Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="email" name="email" placeholder="Email" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="password" name="password" placeholder="Password" required minlength="10" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <label class="flex items-center gap-2 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
+        <input type="checkbox" name="verified" value="true" />
+        <span>Verified</span>
+      </label>
+      <div class="md:col-span-2 xl:col-span-3 flex flex-wrap gap-2 sm:gap-3">
+        {{range .Available}}
+        <label class="inline-flex items-center gap-2 rounded-full border border-obsidian/10 bg-white px-4 py-2 text-sm">
+          <input type="checkbox" name="roles" value="{{.}}" {{if eq . "customer"}}checked{{end}} />
+          <span>{{.}}</span>
+        </label>
+        {{end}}
+      </div>
+      <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create user</button>
+    </form>
+  </div>
+
+  <div id="user-management" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <h2 class="text-xl font-semibold sm:text-2xl">Users</h2>
+    <div class="mt-6 space-y-4">
+      {{range .Users}}
+      {{$user := .}}
+      <form action="/admin/users/roles" method="post" class="rounded-3xl border border-slate/8 bg-cloud p-4 sm:p-5">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+        <input type="hidden" name="user_id" value="{{.ID}}" />
+        <input type="hidden" name="return_to" value="/admin/users" />
+
+        <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="text-xl font-semibold">{{.Name}}</h3>
+              <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] {{if .Verified}}bg-emerald-100 text-emerald-700{{else}}bg-amber-100 text-amber-700{{end}}">
+                {{if .Verified}}Verified{{else}}Pending{{end}}
+              </span>
+            </div>
+            <p class="mt-2 break-all text-sm text-slate/70">{{.Email}}</p>
+            <p class="mt-1 text-sm text-slate/70">ID {{.ID}}</p>
+          </div>
+
+          <div class="flex flex-wrap gap-2 2xl:max-w-xl">
+            {{range $role := $.Available}}
+            <label class="inline-flex items-center gap-2 rounded-full border border-obsidian/10 bg-white px-4 py-2 text-sm">
+              <input type="checkbox" name="roles" value="{{$role}}" {{if contains $user.Roles $role}}checked{{end}} />
+              <span>{{$role}}</span>
+            </label>
+            {{end}}
+          </div>
+        </div>
+
+        <div class="mt-4 flex justify-end">
+          <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Update roles</button>
+        </div>
+      </form>
+      {{end}}
+    </div>
+  </div>
+</section>
+{{end}}

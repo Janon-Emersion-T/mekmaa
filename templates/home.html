@@ -1,0 +1,41 @@
+{{define "home"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="grid gap-10 py-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center lg:py-16">
+  <div>
+    <p class="text-sm font-semibold uppercase tracking-[0.35em] text-slate/70">Auth starter</p>
+    <h1 class="mt-4 max-w-3xl text-5xl font-semibold leading-tight sm:text-6xl">Secure authentication and RBAC without pretending the backend is optional.</h1>
+    <p class="mt-6 max-w-2xl text-lg leading-8 text-slate/80">This Go starter gives you registration, login, session handling, role checks, email verification, and an admin panel to assign access levels. It is intentionally server-first and easy to audit.</p>
+    <div class="mt-10 flex flex-col gap-4 sm:flex-row">
+      {{if .User}}
+      <a href="/dashboard" class="rounded-full bg-obsidian px-7 py-3 text-center text-sm font-medium text-cloud transition hover:bg-slate">Open dashboard</a>
+      {{else}}
+      <a href="/register" class="rounded-full bg-obsidian px-7 py-3 text-center text-sm font-medium text-cloud transition hover:bg-slate">Create account</a>
+      <a href="/login" class="rounded-full border border-obsidian/10 bg-white/80 px-7 py-3 text-center text-sm font-medium transition hover:border-aqua hover:text-slate">Sign in</a>
+      {{end}}
+    </div>
+    <div class="mt-12 grid gap-5 sm:grid-cols-3">
+      {{range .Stats}}
+      <div class="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-sm">
+        <p class="text-3xl font-semibold">{{.Value}}</p>
+        <p class="mt-2 text-sm text-slate/75">{{.Label}}</p>
+      </div>
+      {{end}}
+    </div>
+  </div>
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/80 p-6 shadow-float backdrop-blur">
+    <div class="rounded-[1.5rem] bg-obsidian p-6 text-cloud">
+      <p class="text-sm uppercase tracking-[0.3em] text-aqua/80">Included</p>
+      <div class="mt-6 space-y-4">
+        {{range .Features}}
+        <div class="rounded-2xl bg-white/10 p-4">
+          <h2 class="text-lg font-semibold">{{.Title}}</h2>
+          <p class="mt-2 text-sm leading-7 text-cloud/80">{{.Body}}</p>
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+</section>
+{{end}}
