@@ -80,6 +80,7 @@ type Role struct {
 
 type Admission struct {
 	ID                       int64
+	StudentID                string
 	FullName                 string
 	DateOfBirth              string
 	Gender                   string
@@ -1568,7 +1569,7 @@ func (a *App) deleteSessionsForUser(userID int64) error {
 
 func (a *App) listAdmissions() ([]Admission, error) {
 	rows, err := a.db.Query(`
-		SELECT id, full_name, date_of_birth, gender, address, passport_number, school,
+		SELECT id, student_id, full_name, date_of_birth, gender, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 		       medical_information, created_at
 		FROM admissions
@@ -1584,6 +1585,7 @@ func (a *App) listAdmissions() ([]Admission, error) {
 		var admission Admission
 		if err := rows.Scan(
 			&admission.ID,
+			&admission.StudentID,
 			&admission.FullName,
 			&admission.DateOfBirth,
 			&admission.Gender,
@@ -1607,11 +1609,12 @@ func (a *App) listAdmissions() ([]Admission, error) {
 func (a *App) createAdmission(admission Admission) error {
 	_, err := a.db.Exec(`
 		INSERT INTO admissions (
-			full_name, date_of_birth, gender, address, passport_number, school,
+			student_id, full_name, date_of_birth, gender, address, passport_number, school,
 			guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 			medical_information, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
+		admission.StudentID,
 		admission.FullName,
 		admission.DateOfBirth,
 		admission.Gender,
@@ -1632,11 +1635,12 @@ func (a *App) createAdmission(admission Admission) error {
 func (a *App) updateAdmission(admission Admission) error {
 	_, err := a.db.Exec(`
 		UPDATE admissions
-		SET full_name = ?, date_of_birth = ?, gender = ?, address = ?, passport_number = ?, school = ?,
+		SET student_id = ?, full_name = ?, date_of_birth = ?, gender = ?, address = ?, passport_number = ?, school = ?,
 		    guardian_name = ?, guardian_relationship = ?, guardian_contact_number = ?, guardian_alternative_contact_number = ?,
 		    medical_information = ?, updated_at = ?
 		WHERE id = ?
 	`,
+		admission.StudentID,
 		admission.FullName,
 		admission.DateOfBirth,
 		admission.Gender,
@@ -1661,7 +1665,7 @@ func (a *App) deleteAdmission(admissionID int64) error {
 
 func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 	row := a.db.QueryRow(`
-		SELECT id, full_name, date_of_birth, gender, address, passport_number, school,
+		SELECT id, student_id, full_name, date_of_birth, gender, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 		       medical_information, created_at
 		FROM admissions
@@ -1671,6 +1675,7 @@ func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 	var admission Admission
 	if err := row.Scan(
 		&admission.ID,
+		&admission.StudentID,
 		&admission.FullName,
 		&admission.DateOfBirth,
 		&admission.Gender,
@@ -1781,6 +1786,7 @@ func runMigrations(db *sql.DB) error {
 		)`,
 		`CREATE TABLE IF NOT EXISTS admissions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			student_id TEXT NOT NULL UNIQUE,
 			full_name TEXT NOT NULL,
 			date_of_birth TEXT NOT NULL,
 			gender TEXT NOT NULL,
@@ -1800,12 +1806,19 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_admissions_created_at ON admissions(created_at)`,
+		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
 	}
 
 	for _, stmt := range statements {
 		if _, err := db.Exec(stmt); err != nil && !isIgnorableMigrationError(err, stmt) {
 			return err
 		}
+	}
+	if _, err := db.Exec(`UPDATE admissions SET student_id = 'STD-' || printf('%05d', id) WHERE student_id IS NULL OR TRIM(student_id) = ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_admissions_student_id ON admissions(student_id)`); err != nil {
+		return err
 	}
 
 	if _, err := db.Exec(`DELETE FROM sessions WHERE expires_at <= ?`, time.Now().UTC()); err != nil {
@@ -2088,6 +2101,7 @@ func normalizePermissions(permissions []string) []string {
 
 func admissionFromRequest(r *http.Request) Admission {
 	return Admission{
+		StudentID:                strings.ToUpper(strings.TrimSpace(r.FormValue("student_id"))),
 		FullName:                 strings.TrimSpace(r.FormValue("full_name")),
 		DateOfBirth:              strings.TrimSpace(r.FormValue("date_of_birth")),
 		Gender:                   strings.ToLower(strings.TrimSpace(r.FormValue("gender"))),
@@ -2104,6 +2118,8 @@ func admissionFromRequest(r *http.Request) Admission {
 
 func validateAdmission(admission Admission) error {
 	switch {
+	case admission.StudentID == "":
+		return errors.New("student id is required")
 	case admission.FullName == "":
 		return errors.New("full name is required")
 	case admission.DateOfBirth == "":
@@ -2154,8 +2170,10 @@ func isSystemRole(name string) bool {
 }
 
 func isIgnorableMigrationError(err error, stmt string) bool {
-	return strings.Contains(stmt, "ALTER TABLE users ADD COLUMN email_verified_at") &&
-		strings.Contains(strings.ToLower(err.Error()), "duplicate column name")
+	lowerErr := strings.ToLower(err.Error())
+	return (strings.Contains(stmt, "ALTER TABLE users ADD COLUMN email_verified_at") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN student_id")) &&
+		strings.Contains(lowerErr, "duplicate column name")
 }
 
 func envOrDefault(key, fallback string) string {

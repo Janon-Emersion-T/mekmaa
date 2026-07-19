@@ -20,6 +20,7 @@
     </div>
     <form action="/admin/admissions/create" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="text" name="student_id" placeholder="Student ID" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
       <input type="text" name="full_name" placeholder="Full Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
       <input type="date" name="date_of_birth" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
       <select name="gender" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
@@ -47,7 +48,8 @@
       <table class="min-w-full text-left text-sm">
         <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
           <tr>
-            <th class="px-5 py-4 font-medium sm:px-6">Student</th>
+            <th class="px-5 py-4 font-medium sm:px-6">Student ID</th>
+            <th class="px-5 py-4 font-medium">Student</th>
             <th class="px-5 py-4 font-medium">DOB</th>
             <th class="px-5 py-4 font-medium">Gender</th>
             <th class="px-5 py-4 font-medium">School</th>
@@ -59,6 +61,9 @@
         <tbody class="divide-y divide-slate/10">
           {{range .Admissions}}
           <tr class="bg-white/70 align-top">
+            <td class="px-5 py-4 sm:px-6">
+              <p class="font-medium text-obsidian">{{.StudentID}}</p>
+            </td>
             <td class="px-5 py-4 sm:px-6">
               <p class="font-medium text-obsidian">{{.FullName}}</p>
               <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.PassportNumber}}</p>
@@ -88,7 +93,7 @@
           </tr>
           {{else}}
           <tr>
-            <td colspan="7" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No admissions found.</td>
+            <td colspan="8" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No admissions found.</td>
           </tr>
           {{end}}
         </tbody>
@@ -103,6 +108,10 @@
       <a href="/admin/admissions" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
     </div>
     <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Student ID</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.StudentID}}</p>
+      </div>
       <div class="rounded-2xl bg-cloud px-4 py-4">
         <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Full Name</p>
         <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.FullName}}</p>
@@ -157,6 +166,7 @@
     <form action="/admin/admissions/update" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
       <input type="hidden" name="admission_id" value="{{.SelectedAdmission.ID}}" />
+      <input type="text" name="student_id" value="{{.SelectedAdmission.StudentID}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
       <input type="text" name="full_name" value="{{.SelectedAdmission.FullName}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
       <input type="date" name="date_of_birth" value="{{.SelectedAdmission.DateOfBirth}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
       <select name="gender" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
