@@ -89,6 +89,12 @@
               <p class="mt-2 text-sm leading-7 text-slate/72">Manage one-hour bookings and training blocks.</p>
             </a>
             {{end}}
+            {{if hasPermission .User "pricing.manage"}}
+            <a href="/admin/pricing" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
+              <p class="text-lg font-semibold">Pricing</p>
+              <p class="mt-2 text-sm leading-7 text-slate/72">Manage weekday, weekend, peak, and off-peak booking rates.</p>
+            </a>
+            {{end}}
             {{if hasPermission .User "booking_requests.manage"}}
             <a href="/admin/booking-requests" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">Booking Requests</p>

@@ -118,8 +118,14 @@
               <div class="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
                 {{range .Options}}
                 <a href="/book?date={{$.CalendarDate}}&hour={{$slot.Hour}}&activity={{.Activity}}&quantity={{.Quantity}}#booking-request-form" class="{{if bookingOptionSelected $.DraftSchedule $slot.Hour .Activity .Quantity}}border-obsidian bg-obsidian text-cloud shadow-lg shadow-obsidian/10{{else}}border-slate/10 bg-white text-obsidian hover:border-aqua hover:bg-mint/35{{end}} rounded-2xl border px-4 py-4 text-left transition">
-                  <p class="text-sm font-semibold">{{optionSummary .}}</p>
-                  <p class="mt-1 text-xs {{if bookingOptionSelected $.DraftSchedule $slot.Hour .Activity .Quantity}}text-cloud/60{{else}}text-slate/55{{end}}">Tap to request this combination</p>
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold">{{optionSummary .}}</p>
+                      <p class="mt-1 text-xs {{if bookingOptionSelected $.DraftSchedule $slot.Hour .Activity .Quantity}}text-cloud/60{{else}}text-slate/55{{end}}">{{pricingTierLabel $.PricingSettings $.CalendarDate $slot.Hour}}</p>
+                    </div>
+                    <span class="text-sm font-semibold {{if bookingOptionSelected $.DraftSchedule $slot.Hour .Activity .Quantity}}text-aqua{{else}}text-emerald-700{{end}}">{{pricingForOption $.Pricings $.PricingSettings $.CalendarDate $slot.Hour .Activity .Quantity}}</span>
+                  </div>
+                  <p class="mt-3 text-xs {{if bookingOptionSelected $.DraftSchedule $slot.Hour .Activity .Quantity}}text-cloud/60{{else}}text-slate/55{{end}}">Tap to request this combination</p>
                 </a>
                 {{end}}
               </div>

@@ -38,7 +38,7 @@ var (
 	passwordPattern = regexp.MustCompile(`^.{10,}$`)
 	otpPattern      = regexp.MustCompile(`^\d{6}$`)
 	allRoles        = []string{"superadmin", "admin", "editor", "customer"}
-	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage"}
+	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"}
 )
 
 type contextKey string
@@ -130,6 +130,26 @@ type BookingOption struct {
 	Label    string
 }
 
+type PricingRule struct {
+	ID             int64
+	Activity       string
+	Quantity       int
+	WeekdayOffPeak float64
+	WeekdayPeak    float64
+	WeekendOffPeak float64
+	WeekendPeak    float64
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type PricingSettings struct {
+	ID            int64
+	PeakStartHour string
+	PeakEndHour   string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type BookingSlotAvailability struct {
 	Hour          string
 	Schedules     []SpaceSchedule
@@ -176,6 +196,10 @@ type TemplateData struct {
 	SelectedSchedule  *SpaceSchedule
 	DraftSchedule     *SpaceSchedule
 	ScheduleMode      string
+	Pricings          []PricingRule
+	PricingSettings   *PricingSettings
+	SelectedPricing   *PricingRule
+	PricingMode       string
 	BookingSlots      []BookingSlotAvailability
 	WeekDays          []CalendarDay
 	BookingOptions    []BookingOption
@@ -292,6 +316,11 @@ func main() {
 	mux.Handle("/admin/booking-requests", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingRequestsHandler), "booking_requests.manage")))
 	mux.Handle("/admin/booking-requests/confirm", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.confirmBookingRequestHandler), "booking_requests.manage")))
 	mux.Handle("/admin/booking-requests/reject", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.rejectBookingRequestHandler), "booking_requests.manage")))
+	mux.Handle("/admin/pricing", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.pricingManagementHandler), "pricing.manage")))
+	mux.Handle("/admin/pricing/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createPricingHandler), "pricing.manage")))
+	mux.Handle("/admin/pricing/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePricingHandler), "pricing.manage")))
+	mux.Handle("/admin/pricing/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deletePricingHandler), "pricing.manage")))
+	mux.Handle("/admin/pricing/settings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePricingSettingsHandler), "pricing.manage")))
 
 	log.Printf("server listening on %s", addr)
 	if err := http.ListenAndServe(addr, app.securityHeaders(mux)); err != nil {
@@ -833,6 +862,75 @@ func (a *App) bookingRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "booking-requests", data, http.StatusOK)
 }
 
+func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		log.Printf("list pricing rules: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		log.Printf("get pricing settings: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Pricing"
+	data.Description = "Manage booking pricing."
+	data.Pricings = pricings
+	data.PricingSettings = settings
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "view", "edit":
+		data.PricingMode = mode
+	}
+	if data.PricingMode == "view" || data.PricingMode == "edit" {
+		pricingID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && pricingID > 0 {
+			selectedPricing, err := a.findPricingRuleByID(pricingID)
+			if err == nil {
+				data.SelectedPricing = selectedPricing
+			}
+		}
+	}
+	a.render(w, "pricing-management", data, http.StatusOK)
+}
+
+func (a *App) updatePricingSettingsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	settings := PricingSettings{
+		PeakStartHour: strings.TrimSpace(r.FormValue("peak_start_hour")),
+		PeakEndHour:   strings.TrimSpace(r.FormValue("peak_end_hour")),
+	}
+	if err := validatePricingSettings(settings); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updatePricingSettings(settings); err != nil {
+		log.Printf("update pricing settings: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Pricing settings updated.")
+	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
 func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -886,6 +984,115 @@ func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request
 	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 }
 
+func (a *App) createPricingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	pricing, err := pricingRuleFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validatePricingRule(pricing); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createPricingRule(pricing); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "pricing already exists for that option", http.StatusConflict)
+			return
+		}
+		log.Printf("create pricing rule: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Pricing created.")
+	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
+func (a *App) updatePricingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	pricingID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("pricing_id")), 10, 64)
+	if err != nil || pricingID <= 0 {
+		http.Error(w, "invalid pricing id", http.StatusBadRequest)
+		return
+	}
+	pricing, err := pricingRuleFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	pricing.ID = pricingID
+	if err := validatePricingRule(pricing); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updatePricingRule(pricing); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "pricing already exists for that option", http.StatusConflict)
+			return
+		}
+		log.Printf("update pricing rule: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Pricing updated.")
+	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
+func (a *App) deletePricingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	pricingID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("pricing_id")), 10, 64)
+	if err != nil || pricingID <= 0 {
+		http.Error(w, "invalid pricing id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deletePricingRule(pricingID); err != nil {
+		log.Printf("delete pricing rule: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Pricing deleted.")
+	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
 func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, user *User) (TemplateData, error) {
 	schedules, err := a.listSpaceSchedules()
 	if err != nil {
@@ -895,12 +1102,22 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	if err != nil {
 		return TemplateData{}, err
 	}
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		return TemplateData{}, err
+	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		return TemplateData{}, err
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Booking Manager"
 	data.Description = "Manage bookings and training sessions."
 	data.Schedules = schedules
 	data.PendingSchedules = pending
+	data.Pricings = pricings
+	data.PricingSettings = settings
 	data.Activities = bookingActivities()
 	data.Hours = bookingHours()
 	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
@@ -924,11 +1141,21 @@ func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, vie
 	if err != nil {
 		return TemplateData{}, err
 	}
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		return TemplateData{}, err
+	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		return TemplateData{}, err
+	}
 	data := a.newTemplateData(w, r, nil)
 	data.Viewer = viewer
 	data.Title = "Book a Slot"
 	data.Description = "Check availability and request a booking."
 	data.Schedules = schedules
+	data.Pricings = pricings
+	data.PricingSettings = settings
 	data.Activities = bookingActivities()
 	data.Hours = bookingHours()
 	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
@@ -2259,6 +2486,60 @@ func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 	return schedules, rows.Err()
 }
 
+func (a *App) listPricingRules() ([]PricingRule, error) {
+	rows, err := a.db.Query(`
+		SELECT id, activity, quantity, weekday_offpeak_price, weekday_peak_price,
+		       weekend_offpeak_price, weekend_peak_price, created_at, updated_at
+		FROM pricing_rules
+		ORDER BY activity ASC, quantity ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var rules []PricingRule
+	for rows.Next() {
+		var rule PricingRule
+		if err := rows.Scan(
+			&rule.ID,
+			&rule.Activity,
+			&rule.Quantity,
+			&rule.WeekdayOffPeak,
+			&rule.WeekdayPeak,
+			&rule.WeekendOffPeak,
+			&rule.WeekendPeak,
+			&rule.CreatedAt,
+			&rule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		rules = append(rules, rule)
+	}
+	return rules, rows.Err()
+}
+
+func (a *App) getPricingSettings() (*PricingSettings, error) {
+	row := a.db.QueryRow(`
+		SELECT id, peak_start_hour, peak_end_hour, created_at, updated_at
+		FROM pricing_settings
+		ORDER BY id ASC
+		LIMIT 1
+	`)
+
+	var settings PricingSettings
+	if err := row.Scan(
+		&settings.ID,
+		&settings.PeakStartHour,
+		&settings.PeakEndHour,
+		&settings.CreatedAt,
+		&settings.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &settings, nil
+}
+
 func (a *App) listActiveSpaceSchedules() ([]SpaceSchedule, error) {
 	rows, err := a.db.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
@@ -2514,6 +2795,26 @@ func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
 	return err
 }
 
+func (a *App) createPricingRule(rule PricingRule) error {
+	_, err := a.db.Exec(`
+		INSERT INTO pricing_rules (
+			activity, quantity, weekday_offpeak_price, weekday_peak_price,
+			weekend_offpeak_price, weekend_peak_price, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		rule.Activity,
+		rule.Quantity,
+		rule.WeekdayOffPeak,
+		rule.WeekdayPeak,
+		rule.WeekendOffPeak,
+		rule.WeekendPeak,
+		time.Now().UTC(),
+		time.Now().UTC(),
+	)
+	return err
+}
+
 func (a *App) createPublicBookingRequest(schedule SpaceSchedule) error {
 	existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, 0)
 	if err != nil {
@@ -2633,6 +2934,34 @@ func (a *App) updateSpaceSchedule(schedule SpaceSchedule) error {
 	return err
 }
 
+func (a *App) updatePricingRule(rule PricingRule) error {
+	_, err := a.db.Exec(`
+		UPDATE pricing_rules
+		SET activity = ?, quantity = ?, weekday_offpeak_price = ?, weekday_peak_price = ?,
+		    weekend_offpeak_price = ?, weekend_peak_price = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		rule.Activity,
+		rule.Quantity,
+		rule.WeekdayOffPeak,
+		rule.WeekdayPeak,
+		rule.WeekendOffPeak,
+		rule.WeekendPeak,
+		time.Now().UTC(),
+		rule.ID,
+	)
+	return err
+}
+
+func (a *App) updatePricingSettings(settings PricingSettings) error {
+	_, err := a.db.Exec(`
+		UPDATE pricing_settings
+		SET peak_start_hour = ?, peak_end_hour = ?, updated_at = ?
+		WHERE id = 1
+	`, settings.PeakStartHour, settings.PeakEndHour, time.Now().UTC())
+	return err
+}
+
 func (a *App) updateBookingRequestStatus(scheduleID int64, status, reviewNote string) error {
 	schedule, err := a.findSpaceScheduleByID(scheduleID)
 	if err != nil {
@@ -2670,6 +2999,11 @@ func (a *App) deleteStudentGroup(groupID int64) error {
 
 func (a *App) deleteSpaceSchedule(scheduleID int64) error {
 	_, err := a.db.Exec(`DELETE FROM space_schedules WHERE id = ?`, scheduleID)
+	return err
+}
+
+func (a *App) deletePricingRule(pricingID int64) error {
+	_, err := a.db.Exec(`DELETE FROM pricing_rules WHERE id = ?`, pricingID)
 	return err
 }
 
@@ -2755,6 +3089,31 @@ func (a *App) findSpaceScheduleByID(scheduleID int64) (*SpaceSchedule, error) {
 		return nil, err
 	}
 	return &schedule, nil
+}
+
+func (a *App) findPricingRuleByID(pricingID int64) (*PricingRule, error) {
+	row := a.db.QueryRow(`
+		SELECT id, activity, quantity, weekday_offpeak_price, weekday_peak_price,
+		       weekend_offpeak_price, weekend_peak_price, created_at, updated_at
+		FROM pricing_rules
+		WHERE id = ?
+	`, pricingID)
+
+	var rule PricingRule
+	if err := row.Scan(
+		&rule.ID,
+		&rule.Activity,
+		&rule.Quantity,
+		&rule.WeekdayOffPeak,
+		&rule.WeekdayPeak,
+		&rule.WeekendOffPeak,
+		&rule.WeekendPeak,
+		&rule.CreatedAt,
+		&rule.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &rule, nil
 }
 
 func (a *App) deleteSessionByToken(token string) error {
@@ -2879,6 +3238,24 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
 			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS pricing_rules (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			activity TEXT NOT NULL,
+			quantity INTEGER NOT NULL,
+			weekday_offpeak_price REAL NOT NULL DEFAULT 0,
+			weekday_peak_price REAL NOT NULL DEFAULT 0,
+			weekend_offpeak_price REAL NOT NULL DEFAULT 0,
+			weekend_peak_price REAL NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS pricing_settings (
+			id INTEGER PRIMARY KEY,
+			peak_start_hour TEXT NOT NULL,
+			peak_end_hour TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS space_schedules (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			slot_date TEXT NOT NULL,
@@ -2905,6 +3282,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_rules_option ON pricing_rules(activity, quantity)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
 	}
@@ -2956,6 +3334,12 @@ func runMigrations(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_admissions_student_id ON admissions(student_id)`); err != nil {
 		return err
 	}
+	if err := seedPricingRules(db); err != nil {
+		return err
+	}
+	if err := seedPricingSettings(db); err != nil {
+		return err
+	}
 
 	if _, err := db.Exec(`DELETE FROM sessions WHERE expires_at <= ?`, time.Now().UTC()); err != nil {
 		return err
@@ -2999,8 +3383,8 @@ func seedRoles(db *sql.DB) error {
 	rolePermissions := map[string][]string{
 		"customer":   {"dashboard.view"},
 		"editor":     {"dashboard.view", "editor.access"},
-		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage"},
-		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage"},
+		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"},
+		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"},
 	}
 	for roleName, permissions := range rolePermissions {
 		roleID, err := queryRoleID(db, roleName)
@@ -3014,6 +3398,29 @@ func seedRoles(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+func seedPricingRules(db *sql.DB) error {
+	for _, option := range bookingOptionCatalog() {
+		if _, err := db.Exec(`
+			INSERT OR IGNORE INTO pricing_rules (
+				activity, quantity, weekday_offpeak_price, weekday_peak_price,
+				weekend_offpeak_price, weekend_peak_price, created_at, updated_at
+			)
+			VALUES (?, ?, 0, 0, 0, 0, ?, ?)
+		`, option.Activity, option.Quantity, time.Now().UTC(), time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func seedPricingSettings(db *sql.DB) error {
+	_, err := db.Exec(`
+		INSERT OR IGNORE INTO pricing_settings (id, peak_start_hour, peak_end_hour, created_at, updated_at)
+		VALUES (1, '17:00', '23:00', ?, ?)
+	`, time.Now().UTC(), time.Now().UTC())
+	return err
 }
 
 func bootstrapSuperadmin(db *sql.DB) error {
@@ -3329,6 +3736,38 @@ func scheduleFromRequest(r *http.Request) SpaceSchedule {
 	}
 }
 
+func pricingRuleFromRequest(r *http.Request) (PricingRule, error) {
+	quantity, err := strconv.Atoi(strings.TrimSpace(r.FormValue("quantity")))
+	if err != nil {
+		return PricingRule{}, errors.New("valid quantity is required")
+	}
+	weekdayOffPeak, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("weekday_offpeak_price")), 64)
+	if err != nil {
+		return PricingRule{}, errors.New("valid weekday off-peak price is required")
+	}
+	weekdayPeak, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("weekday_peak_price")), 64)
+	if err != nil {
+		return PricingRule{}, errors.New("valid weekday peak price is required")
+	}
+	weekendOffPeak, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("weekend_offpeak_price")), 64)
+	if err != nil {
+		return PricingRule{}, errors.New("valid weekend off-peak price is required")
+	}
+	weekendPeak, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("weekend_peak_price")), 64)
+	if err != nil {
+		return PricingRule{}, errors.New("valid weekend peak price is required")
+	}
+
+	return PricingRule{
+		Activity:       strings.ToLower(strings.TrimSpace(r.FormValue("activity"))),
+		Quantity:       quantity,
+		WeekdayOffPeak: weekdayOffPeak,
+		WeekdayPeak:    weekdayPeak,
+		WeekendOffPeak: weekendOffPeak,
+		WeekendPeak:    weekendPeak,
+	}, nil
+}
+
 func prefillPublicBookingDraft(r *http.Request, viewer *User, calendarDate string) *SpaceSchedule {
 	draft := &SpaceSchedule{
 		EntryType: "booking",
@@ -3397,6 +3836,39 @@ func validateStudentGroup(group StudentGroup) error {
 	default:
 		return nil
 	}
+}
+
+func validatePricingRule(rule PricingRule) error {
+	switch {
+	case rule.Activity == "":
+		return errors.New("activity is required")
+	case rule.Quantity <= 0:
+		return errors.New("quantity must be greater than 0")
+	case rule.WeekdayOffPeak < 0 || rule.WeekdayPeak < 0 || rule.WeekendOffPeak < 0 || rule.WeekendPeak < 0:
+		return errors.New("prices cannot be negative")
+	}
+
+	for _, option := range bookingOptionCatalog() {
+		if option.Activity == rule.Activity && option.Quantity == rule.Quantity {
+			return nil
+		}
+	}
+	return errors.New("unsupported booking option")
+}
+
+func validatePricingSettings(settings PricingSettings) error {
+	start, err := time.Parse("15:04", settings.PeakStartHour)
+	if err != nil {
+		return errors.New("valid peak start hour is required")
+	}
+	end, err := time.Parse("15:04", settings.PeakEndHour)
+	if err != nil {
+		return errors.New("valid peak end hour is required")
+	}
+	if !start.Before(end) {
+		return errors.New("peak end hour must be after peak start hour")
+	}
+	return nil
 }
 
 func validateSpaceScheduleInput(schedule SpaceSchedule) error {
@@ -3650,6 +4122,86 @@ func activityLabel(activity string) string {
 	return scheduleSummary(SpaceSchedule{Activity: activity, Quantity: 1})
 }
 
+func bookingProductLabel(activity string, quantity int) string {
+	return scheduleSummary(SpaceSchedule{Activity: activity, Quantity: quantity})
+}
+
+func isPeakHour(slotHour string, settings *PricingSettings) bool {
+	if settings == nil {
+		return false
+	}
+	slot, err := time.Parse("15:04", slotHour)
+	if err != nil {
+		return false
+	}
+	start, err := time.Parse("15:04", settings.PeakStartHour)
+	if err != nil {
+		return false
+	}
+	end, err := time.Parse("15:04", settings.PeakEndHour)
+	if err != nil {
+		return false
+	}
+	return (slot.Equal(start) || slot.After(start)) && (slot.Equal(end) || slot.Before(end))
+}
+
+func isWeekendDate(slotDate string) bool {
+	parsed, err := time.Parse("2006-01-02", slotDate)
+	if err != nil {
+		return false
+	}
+	return parsed.Weekday() == time.Saturday || parsed.Weekday() == time.Sunday
+}
+
+func pricingTierLabel(settings *PricingSettings, slotDate, slotHour string) string {
+	dayType := "Weekday"
+	if isWeekendDate(slotDate) {
+		dayType = "Weekend"
+	}
+	hourType := "Off-peak"
+	if isPeakHour(slotHour, settings) {
+		hourType = "Peak"
+	}
+	return dayType + " " + hourType
+}
+
+func priceForRuleSlot(rule PricingRule, settings *PricingSettings, slotDate, slotHour string) float64 {
+	if isWeekendDate(slotDate) {
+		if isPeakHour(slotHour, settings) {
+			return rule.WeekendPeak
+		}
+		return rule.WeekendOffPeak
+	}
+	if isPeakHour(slotHour, settings) {
+		return rule.WeekdayPeak
+	}
+	return rule.WeekdayOffPeak
+}
+
+func pricingRuleForOption(pricings []PricingRule, activity string, quantity int) *PricingRule {
+	for i := range pricings {
+		if pricings[i].Activity == activity && pricings[i].Quantity == quantity {
+			return &pricings[i]
+		}
+	}
+	return nil
+}
+
+func pricingForOption(pricings []PricingRule, settings *PricingSettings, slotDate, slotHour, activity string, quantity int) string {
+	rule := pricingRuleForOption(pricings, activity, quantity)
+	if rule == nil {
+		return "Set pricing"
+	}
+	if rule.WeekdayOffPeak == 0 && rule.WeekdayPeak == 0 && rule.WeekendOffPeak == 0 && rule.WeekendPeak == 0 {
+		return "Set pricing"
+	}
+	return money(priceForRuleSlot(*rule, settings, slotDate, slotHour))
+}
+
+func money(value float64) string {
+	return fmt.Sprintf("LKR %.2f", value)
+}
+
 func scheduleToneClasses(schedule SpaceSchedule) string {
 	switch schedule.Activity {
 	case "training":
@@ -3833,8 +4385,12 @@ func buildTemplates() (map[string]*template.Template, error) {
 		},
 		"admissionSelected":        admissionSelected,
 		"activityLabel":            activityLabel,
+		"bookingProductLabel":      bookingProductLabel,
 		"optionSummary":            optionSummary,
 		"bookingOptionSelected":    bookingOptionSelected,
+		"pricingForOption":         pricingForOption,
+		"pricingTierLabel":         pricingTierLabel,
+		"money":                    money,
 		"scheduleToneClasses":      scheduleToneClasses,
 		"scheduleBadgeClasses":     scheduleBadgeClasses,
 		"schedulesForCalendarSlot": schedulesForCalendarSlot,
@@ -3878,6 +4434,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"student-group-management": "templates/dashboard/student-group-management.html",
 		"booking-management":       "templates/dashboard/booking-management.html",
 		"booking-requests":         "templates/dashboard/booking-requests.html",
+		"pricing-management":       "templates/dashboard/pricing-management.html",
 		"forbidden":                "templates/dashboard/forbidden.html",
 	}
 	dashboardPartials := []string{

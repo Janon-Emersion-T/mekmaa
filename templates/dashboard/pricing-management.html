@@ -1,0 +1,182 @@
+{{define "pricing-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold sm:text-3xl">Pricing</h1>
+        <p class="mt-2 text-sm text-slate/70">Set booking prices for weekday, weekend, peak, and off-peak slots.</p>
+      </div>
+      <a href="/admin/pricing?action=new#pricing-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add pricing</a>
+    </div>
+  </div>
+
+  <div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+    <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-xl font-semibold sm:text-2xl">Rate structure</h2>
+          <p class="mt-2 text-sm text-slate/70">Weekend pricing is applied on Saturday and Sunday. Peak pricing follows the configured peak window below.</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-3 text-right">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Rules</p>
+          <p class="mt-1 text-2xl font-semibold text-obsidian">{{len .Pricings}}</p>
+        </div>
+      </div>
+
+      {{if .PricingSettings}}
+      <div class="mt-6 rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-obsidian">Peak hour window</h3>
+            <p class="mt-2 text-sm text-slate/68">Current peak hours: {{.PricingSettings.PeakStartHour}} to {{.PricingSettings.PeakEndHour}}</p>
+          </div>
+          <form action="/admin/pricing/settings" method="post" class="grid gap-3 sm:grid-cols-3 lg:min-w-[30rem]">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="time" name="peak_start_hour" value="{{.PricingSettings.PeakStartHour}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            <input type="time" name="peak_end_hour" value="{{.PricingSettings.PeakEndHour}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save window</button>
+          </form>
+        </div>
+      </div>
+      {{end}}
+
+      {{if eq .PricingMode "new"}}
+      <div id="pricing-form" class="mt-6">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-lg font-semibold">Create pricing</h3>
+          <a href="/admin/pricing" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
+        </div>
+        <form action="/admin/pricing/create" method="post" class="mt-5 grid gap-3">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <select name="activity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+            <option value="">Select activity</option>
+            <option value="full_indoor_cricket">Full Indoor Cricket</option>
+            <option value="futsal">Futsal</option>
+            <option value="badminton">Badminton</option>
+            <option value="table_tennis">Table Tennis</option>
+            <option value="cricket_net">Cricket Net</option>
+          </select>
+          <input type="number" name="quantity" min="1" max="3" placeholder="Quantity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="number" step="0.01" min="0" name="weekday_offpeak_price" placeholder="Weekday off-peak" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="number" step="0.01" min="0" name="weekday_peak_price" placeholder="Weekday peak" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="number" step="0.01" min="0" name="weekend_offpeak_price" placeholder="Weekend off-peak" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="number" step="0.01" min="0" name="weekend_peak_price" placeholder="Weekend peak" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create pricing</button>
+        </form>
+      </div>
+      {{end}}
+
+      {{if and (eq .PricingMode "view") .SelectedPricing}}
+      <div id="pricing-view" class="mt-6 space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-lg font-semibold">Pricing details</h3>
+          <a href="/admin/pricing" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Option</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{bookingProductLabel .SelectedPricing.Activity .SelectedPricing.Quantity}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Quantity</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{.SelectedPricing.Quantity}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Weekday off-peak</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{money .SelectedPricing.WeekdayOffPeak}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Weekday peak</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{money .SelectedPricing.WeekdayPeak}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Weekend off-peak</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{money .SelectedPricing.WeekendOffPeak}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Weekend peak</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{money .SelectedPricing.WeekendPeak}}</p>
+          </div>
+        </div>
+      </div>
+      {{end}}
+
+      {{if and (eq .PricingMode "edit") .SelectedPricing}}
+      <div id="pricing-edit" class="mt-6">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-lg font-semibold">Edit pricing</h3>
+          <a href="/admin/pricing" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
+        </div>
+        <form action="/admin/pricing/update" method="post" class="mt-5 grid gap-3">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <input type="hidden" name="pricing_id" value="{{.SelectedPricing.ID}}" />
+          <select name="activity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+            <option value="full_indoor_cricket" {{if eq .SelectedPricing.Activity "full_indoor_cricket"}}selected{{end}}>Full Indoor Cricket</option>
+            <option value="futsal" {{if eq .SelectedPricing.Activity "futsal"}}selected{{end}}>Futsal</option>
+            <option value="badminton" {{if eq .SelectedPricing.Activity "badminton"}}selected{{end}}>Badminton</option>
+            <option value="table_tennis" {{if eq .SelectedPricing.Activity "table_tennis"}}selected{{end}}>Table Tennis</option>
+            <option value="cricket_net" {{if eq .SelectedPricing.Activity "cricket_net"}}selected{{end}}>Cricket Net</option>
+          </select>
+          <input type="number" name="quantity" min="1" max="3" value="{{.SelectedPricing.Quantity}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="number" step="0.01" min="0" name="weekday_offpeak_price" value="{{printf "%.2f" .SelectedPricing.WeekdayOffPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="number" step="0.01" min="0" name="weekday_peak_price" value="{{printf "%.2f" .SelectedPricing.WeekdayPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="number" step="0.01" min="0" name="weekend_offpeak_price" value="{{printf "%.2f" .SelectedPricing.WeekendOffPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="number" step="0.01" min="0" name="weekend_peak_price" value="{{printf "%.2f" .SelectedPricing.WeekendPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Update pricing</button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+
+    <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
+      <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
+        <h2 class="text-xl font-semibold sm:text-2xl">Pricing list</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+            <tr>
+              <th class="px-5 py-4 font-medium sm:px-6">Option</th>
+              <th class="px-5 py-4 font-medium">Weekday Off-peak</th>
+              <th class="px-5 py-4 font-medium">Weekday Peak</th>
+              <th class="px-5 py-4 font-medium">Weekend Off-peak</th>
+              <th class="px-5 py-4 font-medium">Weekend Peak</th>
+              <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate/10">
+            {{range .Pricings}}
+            <tr class="bg-white/70 align-top">
+              <td class="px-5 py-4 sm:px-6 text-slate/75">
+                <p class="font-medium text-obsidian">{{bookingProductLabel .Activity .Quantity}}</p>
+              </td>
+              <td class="px-5 py-4 text-slate/75">{{money .WeekdayOffPeak}}</td>
+              <td class="px-5 py-4 text-slate/75">{{money .WeekdayPeak}}</td>
+              <td class="px-5 py-4 text-slate/75">{{money .WeekendOffPeak}}</td>
+              <td class="px-5 py-4 text-slate/75">{{money .WeekendPeak}}</td>
+              <td class="px-5 py-4 sm:px-6">
+                <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
+                  <a href="/admin/pricing?action=view&id={{.ID}}#pricing-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                  <a href="/admin/pricing?action=edit&id={{.ID}}#pricing-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+                  <form action="/admin/pricing/delete" method="post">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <input type="hidden" name="pricing_id" value="{{.ID}}" />
+                    <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50">Delete</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {{else}}
+            <tr>
+              <td colspan="6" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No pricing configured.</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+{{end}}
