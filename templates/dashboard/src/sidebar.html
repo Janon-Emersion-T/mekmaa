@@ -44,6 +44,14 @@
       <span>Role Manager</span>
       <span class="text-xs uppercase tracking-[0.2em]">Roles</span>
     </a>
+    <a href="/admin/student-groups" class="{{if isCurrentPath .CurrentPath "/admin/student-groups"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Group Manager</span>
+      <span class="text-xs uppercase tracking-[0.2em]">Groups</span>
+    </a>
+    <a href="/admin/bookings" class="{{if isCurrentPath .CurrentPath "/admin/bookings"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Booking Manager</span>
+      <span class="text-xs uppercase tracking-[0.2em]">Slots</span>
+    </a>
     {{end}}
     {{if hasPermission .User "admissions.manage"}}
     <a href="/admin/admissions" class="{{if isCurrentPath .CurrentPath "/admin/admissions"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">

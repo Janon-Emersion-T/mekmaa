@@ -1,0 +1,217 @@
+{{define "booking-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold sm:text-3xl">Booking manager</h1>
+        <p class="mt-2 text-sm text-slate/70">Bookings and training sessions in 1 hour slots</p>
+      </div>
+      <a href="/admin/bookings?action=new#schedule-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add new slot</a>
+    </div>
+  </div>
+
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <h2 class="text-xl font-semibold sm:text-2xl">Daily calendar</h2>
+        <p class="mt-2 text-sm text-slate/70">One day view for bookings and training blocks</p>
+      </div>
+      <form action="/admin/bookings" method="get" class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <input type="date" name="date" value="{{.CalendarDate}}" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+        <button type="submit" class="rounded-2xl border border-slate/10 bg-white px-5 py-3 text-sm font-medium text-slate transition hover:bg-cloud">View day</button>
+      </form>
+    </div>
+
+    <div class="mt-6 grid gap-3">
+      {{range .Hours}}
+      {{$hour := .}}
+      {{$slotSchedules := schedulesForCalendarSlot $.Schedules $.CalendarDate $hour}}
+      <div class="grid gap-3 rounded-3xl border border-slate/10 bg-cloud/65 p-4 lg:grid-cols-[8rem_1fr] lg:items-start">
+        <div class="rounded-2xl bg-white px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.22em] text-slate/55">Hour</p>
+          <p class="mt-2 text-lg font-semibold text-obsidian">{{$hour}}</p>
+        </div>
+        <div class="grid gap-3">
+          {{range $slotSchedules}}
+          <div class="rounded-2xl border {{if eq .EntryType "training"}}border-amber-200 bg-amber-50{{else}}border-slate/10 bg-white{{end}} px-4 py-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p class="text-sm font-semibold text-obsidian">{{.Title}}</p>
+                <p class="mt-1 text-sm text-slate/70">{{scheduleSummary .}}</p>
+                <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.EntryType}}</p>
+                {{if .Notes}}<p class="mt-2 text-sm text-slate/60">{{.Notes}}</p>{{end}}
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <a href="/admin/bookings?action=view&id={{.ID}}#schedule-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                <a href="/admin/bookings?action=edit&id={{.ID}}#schedule-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+              </div>
+            </div>
+          </div>
+          {{else}}
+          <div class="rounded-2xl border border-dashed border-slate/15 bg-white/80 px-4 py-5 text-sm text-slate/55">
+            No slot scheduled.
+          </div>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+
+  {{if eq .ScheduleMode "new"}}
+  <div id="schedule-form" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold sm:text-2xl">Add booking or training</h2>
+      <a href="/admin/bookings" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+    </div>
+    <form action="/admin/bookings/create" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <select name="entry_type" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+        <option value="booking">Booking</option>
+        <option value="training">Training</option>
+      </select>
+      <input type="date" name="slot_date" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <select name="slot_hour" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+        {{range .Hours}}
+        <option value="{{.}}">{{.}}</option>
+        {{end}}
+      </select>
+      <select name="activity" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+        {{range .Activities}}
+        <option value="{{.}}">{{activityLabel .}}</option>
+        {{end}}
+      </select>
+      <input type="number" name="quantity" min="1" max="3" value="1" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="title" placeholder="Title" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <textarea name="notes" placeholder="Notes" rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua"></textarea>
+      <div class="md:col-span-2 xl:col-span-3 flex justify-end">
+        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create</button>
+      </div>
+    </form>
+  </div>
+  {{end}}
+
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-5 py-4 font-medium sm:px-6">Date</th>
+            <th class="px-5 py-4 font-medium">Hour</th>
+            <th class="px-5 py-4 font-medium">Type</th>
+            <th class="px-5 py-4 font-medium">Space</th>
+            <th class="px-5 py-4 font-medium">Qty</th>
+            <th class="px-5 py-4 font-medium">Title</th>
+            <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .Schedules}}
+          <tr class="bg-white/70 align-top">
+            <td class="px-5 py-4 sm:px-6 text-slate/75">{{.SlotDate}}</td>
+            <td class="px-5 py-4 text-slate/75">{{.SlotHour}}</td>
+            <td class="px-5 py-4 text-slate/75 capitalize">{{.EntryType}}</td>
+            <td class="px-5 py-4 text-slate/75">{{scheduleSummary .}}</td>
+            <td class="px-5 py-4 text-slate/75">{{.Quantity}}</td>
+            <td class="px-5 py-4 text-slate/75">
+              <p class="font-medium text-obsidian">{{.Title}}</p>
+              {{if .Notes}}<p class="mt-1 text-xs text-slate/55">{{.Notes}}</p>{{end}}
+            </td>
+            <td class="px-5 py-4 sm:px-6">
+              <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
+                <a href="/admin/bookings?action=view&id={{.ID}}#schedule-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                <a href="/admin/bookings?action=edit&id={{.ID}}#schedule-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+                <form action="/admin/bookings/delete" method="post">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                  <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="7" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No bookings found.</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {{if and (eq .ScheduleMode "view") .SelectedSchedule}}
+  <div id="schedule-view" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold sm:text-2xl">Slot details</h2>
+      <a href="/admin/bookings" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+    </div>
+    <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Date</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedSchedule.SlotDate}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Hour</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedSchedule.SlotHour}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Type</p>
+        <p class="mt-2 text-sm font-medium capitalize text-obsidian">{{.SelectedSchedule.EntryType}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Space</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{scheduleSummary .SelectedSchedule}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Quantity</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedSchedule.Quantity}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Title</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedSchedule.Title}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4 md:col-span-2 xl:col-span-3">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Notes</p>
+        <p class="mt-2 text-sm leading-7 text-obsidian">{{.SelectedSchedule.Notes}}</p>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  {{if and (eq .ScheduleMode "edit") .SelectedSchedule}}
+  <div id="schedule-edit" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold sm:text-2xl">Edit slot</h2>
+      <a href="/admin/bookings" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+    </div>
+    <form action="/admin/bookings/update" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+      <select name="entry_type" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+        <option value="booking" {{if eq .SelectedSchedule.EntryType "booking"}}selected{{end}}>Booking</option>
+        <option value="training" {{if eq .SelectedSchedule.EntryType "training"}}selected{{end}}>Training</option>
+      </select>
+      <input type="date" name="slot_date" value="{{.SelectedSchedule.SlotDate}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <select name="slot_hour" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+        {{range .Hours}}
+        <option value="{{.}}" {{if eq $.SelectedSchedule.SlotHour .}}selected{{end}}>{{.}}</option>
+        {{end}}
+      </select>
+      <select name="activity" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+        {{range .Activities}}
+        <option value="{{.}}" {{if eq $.SelectedSchedule.Activity .}}selected{{end}}>{{activityLabel .}}</option>
+        {{end}}
+      </select>
+      <input type="number" name="quantity" min="1" max="3" value="{{.SelectedSchedule.Quantity}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="title" value="{{.SelectedSchedule.Title}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <textarea name="notes" rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{.SelectedSchedule.Notes}}</textarea>
+      <div class="md:col-span-2 xl:col-span-3 flex justify-end">
+        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save changes</button>
+      </div>
+    </form>
+  </div>
+  {{end}}
+</section>
+{{end}}

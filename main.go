@@ -38,7 +38,7 @@ var (
 	passwordPattern = regexp.MustCompile(`^.{10,}$`)
 	otpPattern      = regexp.MustCompile(`^\d{6}$`)
 	allRoles        = []string{"superadmin", "admin", "editor", "customer"}
-	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage"}
+	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage"}
 )
 
 type contextKey string
@@ -95,6 +95,29 @@ type Admission struct {
 	CreatedAt                time.Time
 }
 
+type StudentGroup struct {
+	ID           int64
+	Name         string
+	Code         string
+	Description  string
+	Students     []Admission
+	StudentCount int
+	CreatedAt    time.Time
+}
+
+type SpaceSchedule struct {
+	ID        int64
+	SlotDate  string
+	SlotHour  string
+	EntryType string
+	Activity  string
+	Quantity  int
+	Title     string
+	Notes     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type TemplateData struct {
 	Title             string
 	Description       string
@@ -113,6 +136,15 @@ type TemplateData struct {
 	Admissions        []Admission
 	SelectedAdmission *Admission
 	AdmissionMode     string
+	StudentGroups     []StudentGroup
+	SelectedGroup     *StudentGroup
+	GroupMode         string
+	Schedules         []SpaceSchedule
+	SelectedSchedule  *SpaceSchedule
+	ScheduleMode      string
+	Activities        []string
+	Hours             []string
+	CalendarDate      string
 	PendingEmail      string
 	OTPCodeLength     int
 	ResendAction      string
@@ -205,6 +237,14 @@ func main() {
 	mux.Handle("/admin/admissions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateAdmissionHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteAdmissionHandler), "admissions.manage")))
+	mux.Handle("/admin/student-groups", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentGroupManagementHandler), "student_groups.manage")))
+	mux.Handle("/admin/student-groups/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentGroupHandler), "student_groups.manage")))
+	mux.Handle("/admin/student-groups/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateStudentGroupHandler), "student_groups.manage")))
+	mux.Handle("/admin/student-groups/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentGroupHandler), "student_groups.manage")))
+	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
+	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
+	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
+	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.manage")))
 
 	log.Printf("server listening on %s", addr)
 	if err := http.ListenAndServe(addr, app.securityHeaders(mux)); err != nil {
@@ -218,8 +258,7 @@ func (a *App) homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := a.optionalUser(r)
-	data := a.newTemplateData(w, r, user)
+	data := a.newTemplateData(w, r, nil)
 	data.Title = "Go Auth System with RBAC"
 	data.Description = "Production-oriented starter with secure sessions, role checks, and an admin workflow."
 	data.Stats = []Stat{
@@ -604,6 +643,79 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 	a.render(w, "admission-management", data, http.StatusOK)
 }
 
+func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	groups, err := a.listStudentGroups()
+	if err != nil {
+		log.Printf("list student groups: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	admissions, err := a.listAdmissions()
+	if err != nil {
+		log.Printf("list admissions for groups: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Student Groups"
+	data.Description = "Manage student groups."
+	data.StudentGroups = groups
+	data.Admissions = admissions
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "view", "edit":
+		data.GroupMode = mode
+	}
+	if data.GroupMode == "view" || data.GroupMode == "edit" {
+		groupID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && groupID > 0 {
+			selectedGroup, err := a.findStudentGroupByID(groupID)
+			if err == nil {
+				data.SelectedGroup = selectedGroup
+			}
+		}
+	}
+	a.render(w, "student-group-management", data, http.StatusOK)
+}
+
+func (a *App) bookingManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	schedules, err := a.listSpaceSchedules()
+	if err != nil {
+		log.Printf("list bookings: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Booking Manager"
+	data.Description = "Manage bookings and training sessions."
+	data.Schedules = schedules
+	data.Activities = bookingActivities()
+	data.Hours = bookingHours()
+	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
+	if data.CalendarDate == "" {
+		data.CalendarDate = time.Now().Format("2006-01-02")
+	}
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "view", "edit":
+		data.ScheduleMode = mode
+	}
+	if data.ScheduleMode == "view" || data.ScheduleMode == "edit" {
+		scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && scheduleID > 0 {
+			selectedSchedule, err := a.findSpaceScheduleByID(scheduleID)
+			if err == nil {
+				data.SelectedSchedule = selectedSchedule
+			}
+		}
+	}
+	a.render(w, "booking-management", data, http.StatusOK)
+}
+
 func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -892,6 +1004,204 @@ func (a *App) deleteAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 
 	a.setFlash(w, "Admission deleted.")
 	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+}
+
+func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	group := studentGroupFromRequest(r)
+	admissionIDs := normalizeAdmissionIDs(r.Form["admission_ids"])
+	if err := validateStudentGroup(group); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createStudentGroup(group, admissionIDs); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "group code already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("create student group: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Student group created.")
+	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+}
+
+func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	groupID, err := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
+	if err != nil || groupID <= 0 {
+		http.Error(w, "invalid group id", http.StatusBadRequest)
+		return
+	}
+
+	group := studentGroupFromRequest(r)
+	group.ID = groupID
+	admissionIDs := normalizeAdmissionIDs(r.Form["admission_ids"])
+	if err := validateStudentGroup(group); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateStudentGroup(group, admissionIDs); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "group code already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("update student group: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Student group updated.")
+	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+}
+
+func (a *App) deleteStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	groupID, err := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
+	if err != nil || groupID <= 0 {
+		http.Error(w, "invalid group id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteStudentGroup(groupID); err != nil {
+		log.Printf("delete student group: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Student group deleted.")
+	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+}
+
+func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	schedule := scheduleFromRequest(r)
+	if err := validateSpaceScheduleInput(schedule); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createSpaceSchedule(schedule); err != nil {
+		log.Printf("create booking: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.setFlash(w, "Schedule created.")
+	http.Redirect(w, r, "/admin/bookings", http.StatusSeeOther)
+}
+
+func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	scheduleID, err := strconv.ParseInt(r.FormValue("schedule_id"), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+
+	schedule := scheduleFromRequest(r)
+	schedule.ID = scheduleID
+	if err := validateSpaceScheduleInput(schedule); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateSpaceSchedule(schedule); err != nil {
+		log.Printf("update booking: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.setFlash(w, "Schedule updated.")
+	http.Redirect(w, r, "/admin/bookings", http.StatusSeeOther)
+}
+
+func (a *App) deleteBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	scheduleID, err := strconv.ParseInt(r.FormValue("schedule_id"), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteSpaceSchedule(scheduleID); err != nil {
+		log.Printf("delete booking: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Schedule deleted.")
+	http.Redirect(w, r, "/admin/bookings", http.StatusSeeOther)
 }
 
 func (a *App) securityHeaders(next http.Handler) http.Handler {
@@ -1606,6 +1916,152 @@ func (a *App) listAdmissions() ([]Admission, error) {
 	return admissions, rows.Err()
 }
 
+func (a *App) listStudentGroups() ([]StudentGroup, error) {
+	rows, err := a.db.Query(`
+		SELECT id, name, code, description, created_at
+		FROM student_groups
+		ORDER BY created_at DESC, id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var groups []StudentGroup
+	for rows.Next() {
+		var group StudentGroup
+		if err := rows.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.CreatedAt); err != nil {
+			return nil, err
+		}
+		groups = append(groups, group)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range groups {
+		students, err := a.listStudentsForGroup(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		groups[i].Students = students
+		groups[i].StudentCount = len(students)
+	}
+
+	return groups, nil
+}
+
+func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
+	rows, err := a.db.Query(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, created_at, updated_at
+		FROM space_schedules
+		ORDER BY slot_date ASC, slot_hour ASC, entry_type ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []SpaceSchedule
+	for rows.Next() {
+		var schedule SpaceSchedule
+		if err := rows.Scan(
+			&schedule.ID,
+			&schedule.SlotDate,
+			&schedule.SlotHour,
+			&schedule.EntryType,
+			&schedule.Activity,
+			&schedule.Quantity,
+			&schedule.Title,
+			&schedule.Notes,
+			&schedule.CreatedAt,
+			&schedule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		schedules = append(schedules, schedule)
+	}
+	return schedules, rows.Err()
+}
+
+func (a *App) schedulesForSlot(slotDate, slotHour string, excludeID int64) ([]SpaceSchedule, error) {
+	rows, err := a.db.Query(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, created_at, updated_at
+		FROM space_schedules
+		WHERE slot_date = ? AND slot_hour = ? AND id != ?
+		ORDER BY id ASC
+	`, slotDate, slotHour, excludeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []SpaceSchedule
+	for rows.Next() {
+		var schedule SpaceSchedule
+		if err := rows.Scan(
+			&schedule.ID,
+			&schedule.SlotDate,
+			&schedule.SlotHour,
+			&schedule.EntryType,
+			&schedule.Activity,
+			&schedule.Quantity,
+			&schedule.Title,
+			&schedule.Notes,
+			&schedule.CreatedAt,
+			&schedule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		schedules = append(schedules, schedule)
+	}
+	return schedules, rows.Err()
+}
+
+func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
+	rows, err := a.db.Query(`
+		SELECT a.id, a.student_id, a.full_name, a.date_of_birth, a.gender, a.address, a.passport_number, a.school,
+		       a.guardian_name, a.guardian_relationship, a.guardian_contact_number, a.guardian_alternative_contact_number,
+		       a.medical_information, a.created_at
+		FROM admissions a
+		JOIN student_group_members sgm ON sgm.admission_id = a.id
+		WHERE sgm.group_id = ?
+		ORDER BY a.full_name ASC
+	`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var students []Admission
+	for rows.Next() {
+		var admission Admission
+		if err := rows.Scan(
+			&admission.ID,
+			&admission.StudentID,
+			&admission.FullName,
+			&admission.DateOfBirth,
+			&admission.Gender,
+			&admission.Address,
+			&admission.PassportNumber,
+			&admission.School,
+			&admission.GuardianName,
+			&admission.GuardianRelationship,
+			&admission.GuardianContactNumber,
+			&admission.GuardianAlternativePhone,
+			&admission.MedicalInformation,
+			&admission.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		students = append(students, admission)
+	}
+	return students, rows.Err()
+}
+
 func (a *App) createAdmission(admission Admission) error {
 	_, err := a.db.Exec(`
 		INSERT INTO admissions (
@@ -1626,6 +2082,59 @@ func (a *App) createAdmission(admission Admission) error {
 		admission.GuardianContactNumber,
 		admission.GuardianAlternativePhone,
 		admission.MedicalInformation,
+		time.Now().UTC(),
+		time.Now().UTC(),
+	)
+	return err
+}
+
+func (a *App) createStudentGroup(group StudentGroup, admissionIDs []int64) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
+		INSERT INTO student_groups (name, code, description, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, group.Name, group.Code, group.Description, time.Now().UTC(), time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	groupID, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+	for _, admissionID := range admissionIDs {
+		if _, err := tx.Exec(`INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, groupID, admissionID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
+	existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, 0)
+	if err != nil {
+		return err
+	}
+	if err := validateSpaceScheduleSlot(existing, schedule); err != nil {
+		return err
+	}
+
+	_, err = a.db.Exec(`
+		INSERT INTO space_schedules (slot_date, slot_hour, entry_type, activity, quantity, title, notes, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		schedule.EntryType,
+		schedule.Activity,
+		schedule.Quantity,
+		schedule.Title,
+		schedule.Notes,
 		time.Now().UTC(),
 		time.Now().UTC(),
 	)
@@ -1658,8 +2167,71 @@ func (a *App) updateAdmission(admission Admission) error {
 	return err
 }
 
+func (a *App) updateStudentGroup(group StudentGroup, admissionIDs []int64) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		UPDATE student_groups
+		SET name = ?, code = ?, description = ?, updated_at = ?
+		WHERE id = ?
+	`, group.Name, group.Code, group.Description, time.Now().UTC(), group.ID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM student_group_members WHERE group_id = ?`, group.ID); err != nil {
+		return err
+	}
+	for _, admissionID := range admissionIDs {
+		if _, err := tx.Exec(`INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, group.ID, admissionID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) updateSpaceSchedule(schedule SpaceSchedule) error {
+	existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, schedule.ID)
+	if err != nil {
+		return err
+	}
+	if err := validateSpaceScheduleSlot(existing, schedule); err != nil {
+		return err
+	}
+
+	_, err = a.db.Exec(`
+		UPDATE space_schedules
+		SET slot_date = ?, slot_hour = ?, entry_type = ?, activity = ?, quantity = ?, title = ?, notes = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		schedule.EntryType,
+		schedule.Activity,
+		schedule.Quantity,
+		schedule.Title,
+		schedule.Notes,
+		time.Now().UTC(),
+		schedule.ID,
+	)
+	return err
+}
+
 func (a *App) deleteAdmission(admissionID int64) error {
 	_, err := a.db.Exec(`DELETE FROM admissions WHERE id = ?`, admissionID)
+	return err
+}
+
+func (a *App) deleteStudentGroup(groupID int64) error {
+	_, err := a.db.Exec(`DELETE FROM student_groups WHERE id = ?`, groupID)
+	return err
+}
+
+func (a *App) deleteSpaceSchedule(scheduleID int64) error {
+	_, err := a.db.Exec(`DELETE FROM space_schedules WHERE id = ?`, scheduleID)
 	return err
 }
 
@@ -1692,6 +2264,51 @@ func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 		return nil, err
 	}
 	return &admission, nil
+}
+
+func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
+	row := a.db.QueryRow(`
+		SELECT id, name, code, description, created_at
+		FROM student_groups
+		WHERE id = ?
+	`, groupID)
+
+	var group StudentGroup
+	if err := row.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.CreatedAt); err != nil {
+		return nil, err
+	}
+	students, err := a.listStudentsForGroup(group.ID)
+	if err != nil {
+		return nil, err
+	}
+	group.Students = students
+	group.StudentCount = len(students)
+	return &group, nil
+}
+
+func (a *App) findSpaceScheduleByID(scheduleID int64) (*SpaceSchedule, error) {
+	row := a.db.QueryRow(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, created_at, updated_at
+		FROM space_schedules
+		WHERE id = ?
+	`, scheduleID)
+
+	var schedule SpaceSchedule
+	if err := row.Scan(
+		&schedule.ID,
+		&schedule.SlotDate,
+		&schedule.SlotHour,
+		&schedule.EntryType,
+		&schedule.Activity,
+		&schedule.Quantity,
+		&schedule.Title,
+		&schedule.Notes,
+		&schedule.CreatedAt,
+		&schedule.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &schedule, nil
 }
 
 func (a *App) deleteSessionByToken(token string) error {
@@ -1801,11 +2418,42 @@ func runMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS student_groups (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			code TEXT NOT NULL UNIQUE,
+			description TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS student_group_members (
+			group_id INTEGER NOT NULL,
+			admission_id INTEGER NOT NULL,
+			PRIMARY KEY (group_id, admission_id),
+			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS space_schedules (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			slot_date TEXT NOT NULL,
+			slot_hour TEXT NOT NULL,
+			entry_type TEXT NOT NULL,
+			activity TEXT NOT NULL,
+			quantity INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			notes TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_admissions_created_at ON admissions(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
 	}
 
@@ -1837,8 +2485,8 @@ func seedRoles(db *sql.DB) error {
 	rolePermissions := map[string][]string{
 		"customer":   {"dashboard.view"},
 		"editor":     {"dashboard.view", "editor.access"},
-		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage"},
-		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage"},
+		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage"},
+		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage"},
 	}
 	for roleName, permissions := range rolePermissions {
 		roleID, err := queryRoleID(db, roleName)
@@ -2099,6 +2747,36 @@ func normalizePermissions(permissions []string) []string {
 	return normalized
 }
 
+func normalizeAdmissionIDs(values []string) []int64 {
+	seen := map[int64]struct{}{}
+	var ids []int64
+	for _, value := range values {
+		id, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err != nil || id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+func bookingActivities() []string {
+	return []string{"training", "full_indoor_cricket", "futsal", "badminton", "table_tennis", "cricket_net"}
+}
+
+func bookingHours() []string {
+	var hours []string
+	for hour := 6; hour <= 23; hour++ {
+		hours = append(hours, fmt.Sprintf("%02d:00", hour))
+	}
+	return hours
+}
+
 func admissionFromRequest(r *http.Request) Admission {
 	return Admission{
 		StudentID:                strings.ToUpper(strings.TrimSpace(r.FormValue("student_id"))),
@@ -2113,6 +2791,35 @@ func admissionFromRequest(r *http.Request) Admission {
 		GuardianContactNumber:    strings.TrimSpace(r.FormValue("guardian_contact_number")),
 		GuardianAlternativePhone: strings.TrimSpace(r.FormValue("guardian_alternative_contact_number")),
 		MedicalInformation:       strings.TrimSpace(r.FormValue("medical_information")),
+	}
+}
+
+func scheduleFromRequest(r *http.Request) SpaceSchedule {
+	entryType := strings.ToLower(strings.TrimSpace(r.FormValue("entry_type")))
+	activity := strings.ToLower(strings.TrimSpace(r.FormValue("activity")))
+	if entryType == "training" {
+		activity = "training"
+	}
+	quantity, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("quantity")))
+	if quantity <= 0 {
+		quantity = 1
+	}
+	return SpaceSchedule{
+		SlotDate:  strings.TrimSpace(r.FormValue("slot_date")),
+		SlotHour:  strings.TrimSpace(r.FormValue("slot_hour")),
+		EntryType: entryType,
+		Activity:  activity,
+		Quantity:  quantity,
+		Title:     strings.TrimSpace(r.FormValue("title")),
+		Notes:     strings.TrimSpace(r.FormValue("notes")),
+	}
+}
+
+func studentGroupFromRequest(r *http.Request) StudentGroup {
+	return StudentGroup{
+		Name:        strings.TrimSpace(r.FormValue("name")),
+		Code:        strings.ToUpper(strings.TrimSpace(r.FormValue("code"))),
+		Description: strings.TrimSpace(r.FormValue("description")),
 	}
 }
 
@@ -2147,6 +2854,118 @@ func validateAdmission(admission Admission) error {
 	}
 }
 
+func validateStudentGroup(group StudentGroup) error {
+	switch {
+	case group.Name == "":
+		return errors.New("group name is required")
+	case group.Code == "":
+		return errors.New("group code is required")
+	case group.Description == "":
+		return errors.New("description is required")
+	default:
+		return nil
+	}
+}
+
+func validateSpaceScheduleInput(schedule SpaceSchedule) error {
+	if schedule.EntryType != "booking" && schedule.EntryType != "training" {
+		return errors.New("entry type is required")
+	}
+	if schedule.Title == "" {
+		return errors.New("title is required")
+	}
+	if _, err := time.Parse("2006-01-02", schedule.SlotDate); err != nil {
+		return errors.New("valid slot date is required")
+	}
+	if _, err := time.Parse("15:04", schedule.SlotHour); err != nil {
+		return errors.New("valid slot hour is required")
+	}
+	if schedule.EntryType == "training" {
+		schedule.Activity = "training"
+	}
+	switch schedule.Activity {
+	case "training":
+		if schedule.EntryType != "training" {
+			return errors.New("training activity must use training entry type")
+		}
+		if schedule.Quantity != 1 {
+			return errors.New("training quantity must be 1")
+		}
+	case "full_indoor_cricket", "futsal", "badminton":
+		if schedule.Quantity != 1 {
+			return errors.New("selected activity supports only quantity 1")
+		}
+	case "table_tennis":
+		if schedule.Quantity < 1 || schedule.Quantity > 2 {
+			return errors.New("table tennis quantity must be 1 or 2")
+		}
+	case "cricket_net":
+		if schedule.Quantity < 1 || schedule.Quantity > 3 {
+			return errors.New("cricket net quantity must be between 1 and 3")
+		}
+	default:
+		return errors.New("activity is required")
+	}
+	return nil
+}
+
+func validateSpaceScheduleSlot(existing []SpaceSchedule, candidate SpaceSchedule) error {
+	schedules := append([]SpaceSchedule{}, existing...)
+	schedules = append(schedules, candidate)
+
+	var trainings int
+	var fullIndoorCricket int
+	var futsal int
+	var badminton int
+	var tableTennis int
+	var cricketNets int
+
+	for _, schedule := range schedules {
+		switch schedule.Activity {
+		case "training":
+			trainings += schedule.Quantity
+		case "full_indoor_cricket":
+			fullIndoorCricket += schedule.Quantity
+		case "futsal":
+			futsal += schedule.Quantity
+		case "badminton":
+			badminton += schedule.Quantity
+		case "table_tennis":
+			tableTennis += schedule.Quantity
+		case "cricket_net":
+			cricketNets += schedule.Quantity
+		}
+	}
+
+	if trainings > 0 {
+		if len(schedules) > 1 || fullIndoorCricket > 0 || futsal > 0 || badminton > 0 || tableTennis > 0 || cricketNets > 0 {
+			return errors.New("training time blocks the full slot")
+		}
+		return nil
+	}
+
+	if fullIndoorCricket == 1 && futsal == 0 && badminton == 0 && tableTennis == 0 && cricketNets == 0 {
+		return nil
+	}
+	if futsal == 1 && fullIndoorCricket == 0 && badminton == 0 && tableTennis == 0 && cricketNets == 0 {
+		return nil
+	}
+	if badminton == 1 && cricketNets == 1 && fullIndoorCricket == 0 && futsal == 0 && tableTennis == 0 {
+		return nil
+	}
+	if tableTennis >= 1 && tableTennis <= 2 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && cricketNets == 0 {
+		return nil
+	}
+	if badminton == 1 && tableTennis == 1 && fullIndoorCricket == 0 && futsal == 0 && cricketNets == 0 {
+		return nil
+	}
+	if cricketNets == 3 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && tableTennis == 0 {
+		return nil
+	}
+
+	return errors.New("that slot combination is not allowed")
+}
+
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
 		if permission == target {
@@ -2154,6 +2973,58 @@ func containsPermission(permissions []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func isUniqueConstraintError(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "unique")
+}
+
+func admissionSelected(admissions []Admission, admissionID int64) bool {
+	for _, admission := range admissions {
+		if admission.ID == admissionID {
+			return true
+		}
+	}
+	return false
+}
+
+func scheduleSummary(schedule SpaceSchedule) string {
+	switch schedule.Activity {
+	case "training":
+		return "Training"
+	case "full_indoor_cricket":
+		return "Full Indoor Cricket"
+	case "futsal":
+		return "Futsal"
+	case "badminton":
+		return "Badminton"
+	case "table_tennis":
+		if schedule.Quantity > 1 {
+			return fmt.Sprintf("Table Tennis x%d", schedule.Quantity)
+		}
+		return "Table Tennis"
+	case "cricket_net":
+		if schedule.Quantity > 1 {
+			return fmt.Sprintf("Cricket Nets x%d", schedule.Quantity)
+		}
+		return "Cricket Net"
+	default:
+		return schedule.Activity
+	}
+}
+
+func activityLabel(activity string) string {
+	return scheduleSummary(SpaceSchedule{Activity: activity, Quantity: 1})
+}
+
+func schedulesForCalendarSlot(schedules []SpaceSchedule, slotDate, slotHour string) []SpaceSchedule {
+	var filtered []SpaceSchedule
+	for _, schedule := range schedules {
+		if schedule.SlotDate == slotDate && schedule.SlotHour == slotHour {
+			filtered = append(filtered, schedule)
+		}
+	}
+	return filtered
 }
 
 func normalizeRoleName(name string) string {
@@ -2251,6 +3122,13 @@ func buildTemplates() (map[string]*template.Template, error) {
 			}
 			return containsPermission(user.Permissions, permission)
 		},
+		"admissionSelected":        admissionSelected,
+		"activityLabel":            activityLabel,
+		"schedulesForCalendarSlot": schedulesForCalendarSlot,
+		"scheduleSummary":          scheduleSummary,
+		"sub": func(a, b int) int {
+			return a - b
+		},
 		"isSystemRole": isSystemRole,
 	}
 
@@ -2258,18 +3136,24 @@ func buildTemplates() (map[string]*template.Template, error) {
 	if err != nil {
 		return nil, err
 	}
+	publicPartials := []string{
+		"templates/partials/header.html",
+		"templates/partials/footer.html",
+	}
 
 	pages := map[string]string{
-		"home":                 "templates/home.html",
-		"login":                "templates/login.html",
-		"register":             "templates/register.html",
-		"verify-email":         "templates/verify-email.html",
-		"dashboard":            "templates/dashboard/dashboard.html",
-		"editor":               "templates/dashboard/editor.html",
-		"user-management":      "templates/dashboard/user-management.html",
-		"role-management":      "templates/dashboard/role-management.html",
-		"admission-management": "templates/dashboard/admission-management.html",
-		"forbidden":            "templates/dashboard/forbidden.html",
+		"home":                     "templates/pages/home.html",
+		"login":                    "templates/login.html",
+		"register":                 "templates/register.html",
+		"verify-email":             "templates/verify-email.html",
+		"dashboard":                "templates/dashboard/dashboard.html",
+		"editor":                   "templates/dashboard/editor.html",
+		"user-management":          "templates/dashboard/user-management.html",
+		"role-management":          "templates/dashboard/role-management.html",
+		"admission-management":     "templates/dashboard/admission-management.html",
+		"student-group-management": "templates/dashboard/student-group-management.html",
+		"booking-management":       "templates/dashboard/booking-management.html",
+		"forbidden":                "templates/dashboard/forbidden.html",
 	}
 	dashboardPartials := []string{
 		"templates/dashboard/src/sidebar.html",
@@ -2282,10 +3166,11 @@ func buildTemplates() (map[string]*template.Template, error) {
 		if err != nil {
 			return nil, err
 		}
-		if strings.HasPrefix(path, "templates/dashboard/") {
-			if _, err := tmpl.ParseFiles(dashboardPartials...); err != nil {
-				return nil, err
-			}
+		if _, err := tmpl.ParseFiles(publicPartials...); err != nil {
+			return nil, err
+		}
+		if _, err := tmpl.ParseFiles(dashboardPartials...); err != nil {
+			return nil, err
 		}
 		if _, err := tmpl.ParseFiles(path); err != nil {
 			return nil, err

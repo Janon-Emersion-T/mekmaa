@@ -1,0 +1,194 @@
+{{define "student-group-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold sm:text-3xl">Student groups</h1>
+        <p class="mt-2 text-sm text-slate/70">Manage groups and student assignments</p>
+      </div>
+      <a href="/admin/student-groups?action=new#group-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add new group</a>
+    </div>
+  </div>
+
+  {{if eq .GroupMode "new"}}
+  <div id="group-form" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold sm:text-2xl">Add group</h2>
+      <a href="/admin/student-groups" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+    </div>
+    <form action="/admin/student-groups/create" method="post" class="mt-6 space-y-6">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <div class="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <input type="text" name="name" placeholder="Group Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+        <input type="text" name="code" placeholder="Group Code" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
+        <textarea name="description" placeholder="Description" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua"></textarea>
+      </div>
+
+      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign students</h3>
+          <p class="text-xs text-slate/55">{{len .Admissions}} available</p>
+        </div>
+        <div class="mt-4 grid max-h-[24rem] gap-3 overflow-y-auto md:grid-cols-2 xl:grid-cols-3">
+          {{range .Admissions}}
+          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
+            <input type="checkbox" name="admission_ids" value="{{.ID}}" class="mt-1" />
+            <span class="min-w-0">
+              <span class="block font-medium text-obsidian">{{.FullName}}</span>
+              <span class="mt-1 block text-xs uppercase tracking-[0.18em] text-slate/55">{{.StudentID}}</span>
+              <span class="mt-1 block text-xs text-slate/60">{{.School}}</span>
+            </span>
+          </label>
+          {{else}}
+          <p class="text-sm text-slate/60">No students available.</p>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create group</button>
+      </div>
+    </form>
+  </div>
+  {{end}}
+
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-5 py-4 font-medium sm:px-6">Group</th>
+            <th class="px-5 py-4 font-medium">Code</th>
+            <th class="px-5 py-4 font-medium">Students</th>
+            <th class="px-5 py-4 font-medium">Preview</th>
+            <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .StudentGroups}}
+          <tr class="bg-white/70 align-top">
+            <td class="px-5 py-4 sm:px-6">
+              <p class="font-medium text-obsidian">{{.Name}}</p>
+              <p class="mt-1 text-sm text-slate/60">{{.Description}}</p>
+            </td>
+            <td class="px-5 py-4 text-slate/75">{{.Code}}</td>
+            <td class="px-5 py-4 text-slate/75">{{.StudentCount}}</td>
+            <td class="px-5 py-4 text-slate/75">
+              {{if .Students}}
+              {{range $index, $student := .Students}}{{if lt $index 3}}<p>{{$student.StudentID}} · {{$student.FullName}}</p>{{end}}{{end}}
+              {{if gt .StudentCount 3}}<p class="mt-1 text-xs text-slate/55">+ {{sub .StudentCount 3}} more</p>{{end}}
+              {{else}}
+              <p>No students</p>
+              {{end}}
+            </td>
+            <td class="px-5 py-4 sm:px-6">
+              <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
+                <a href="/admin/student-groups?action=view&id={{.ID}}#group-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                <a href="/admin/student-groups?action=edit&id={{.ID}}#group-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+                <form action="/admin/student-groups/delete" method="post">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="group_id" value="{{.ID}}" />
+                  <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="5" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No groups found.</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {{if and (eq .GroupMode "view") .SelectedGroup}}
+  <div id="group-view" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold sm:text-2xl">Group details</h2>
+      <a href="/admin/student-groups" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+    </div>
+    <div class="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+      <div class="space-y-4">
+        <div class="rounded-2xl bg-cloud px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Group Name</p>
+          <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedGroup.Name}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Group Code</p>
+          <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedGroup.Code}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Description</p>
+          <p class="mt-2 text-sm leading-7 text-obsidian">{{.SelectedGroup.Description}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Students</p>
+          <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedGroup.StudentCount}}</p>
+        </div>
+      </div>
+      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assigned students</h3>
+        <div class="mt-4 space-y-3">
+          {{range .SelectedGroup.Students}}
+          <div class="rounded-2xl bg-white px-4 py-3">
+            <p class="font-medium text-obsidian">{{.FullName}}</p>
+            <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.StudentID}}</p>
+            <p class="mt-1 text-sm text-slate/60">{{.School}}</p>
+          </div>
+          {{else}}
+          <p class="text-sm text-slate/60">No students assigned.</p>
+          {{end}}
+        </div>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  {{if and (eq .GroupMode "edit") .SelectedGroup}}
+  <div id="group-edit" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold sm:text-2xl">Edit group</h2>
+      <a href="/admin/student-groups" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+    </div>
+    <form action="/admin/student-groups/update" method="post" class="mt-6 space-y-6">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="hidden" name="group_id" value="{{.SelectedGroup.ID}}" />
+      <div class="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <input type="text" name="name" value="{{.SelectedGroup.Name}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+        <input type="text" name="code" value="{{.SelectedGroup.Code}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
+        <textarea name="description" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{.SelectedGroup.Description}}</textarea>
+      </div>
+
+      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign students</h3>
+          <p class="text-xs text-slate/55">{{len .Admissions}} available</p>
+        </div>
+        <div class="mt-4 grid max-h-[24rem] gap-3 overflow-y-auto md:grid-cols-2 xl:grid-cols-3">
+          {{range .Admissions}}
+          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
+            <input type="checkbox" name="admission_ids" value="{{.ID}}" {{if admissionSelected $.SelectedGroup.Students .ID}}checked{{end}} class="mt-1" />
+            <span class="min-w-0">
+              <span class="block font-medium text-obsidian">{{.FullName}}</span>
+              <span class="mt-1 block text-xs uppercase tracking-[0.18em] text-slate/55">{{.StudentID}}</span>
+              <span class="mt-1 block text-xs text-slate/60">{{.School}}</span>
+            </span>
+          </label>
+          {{else}}
+          <p class="text-sm text-slate/60">No students available.</p>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save changes</button>
+      </div>
+    </form>
+  </div>
+  {{end}}
+</section>
+{{end}}

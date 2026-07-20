@@ -105,14 +105,7 @@
       </div>
     </div>
     {{else}}
-    <header class="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 lg:px-8">
-      <a href="/" class="text-lg font-semibold tracking-[0.2em] uppercase">mekmaa3</a>
-      <nav class="flex items-center gap-3 text-sm">
-        <a href="/" class="rounded-full px-4 py-2 transition hover:bg-white/70">Home</a>
-        <a href="/login" class="rounded-full px-4 py-2 transition hover:bg-white/70">Sign in</a>
-        <a href="/register" class="rounded-full bg-obsidian px-4 py-2 text-cloud transition hover:bg-slate">Create account</a>
-      </nav>
-    </header>
+    {{template "public-header" .}}
 
     <main class="mx-auto max-w-6xl px-6 pb-16 lg:px-8">
       {{if .Flash}}
@@ -123,6 +116,7 @@
       {{end}}
       {{template "content" .}}
     </main>
+    {{template "public-footer" .}}
     {{end}}
   </body>
 </html>

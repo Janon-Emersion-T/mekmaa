@@ -1,0 +1,304 @@
+{{define "public-footer"}}
+<footer class="relative overflow-hidden bg-[#06130d] text-white">
+    <!-- Decorative background -->
+    <div class="absolute inset-0 opacity-20">
+        <div class="absolute -left-24 top-10 h-72 w-72 rounded-full bg-emerald-500 blur-[140px]"></div>
+        <div class="absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-lime-400 blur-[160px]"></div>
+
+        <div
+            class="absolute inset-0"
+            style="
+                background-image:
+                    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+                background-size: 38px 38px;
+            "
+        ></div>
+    </div>
+
+    <!-- CTA section -->
+    <div class="relative mx-auto max-w-7xl px-6 pt-16 lg:px-8">
+        <div
+            class="overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-emerald-600 via-emerald-700 to-[#092f20] px-7 py-10 shadow-2xl shadow-emerald-950/40 md:px-12 md:py-12"
+        >
+            <div class="flex flex-col items-start justify-between gap-8 lg:flex-row lg:items-center">
+                <div class="max-w-2xl">
+                    <span
+                        class="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-50 backdrop-blur"
+                    >
+                        Play • Train • Improve
+                    </span>
+
+                    <h2 class="text-3xl font-black leading-tight md:text-5xl">
+                        Your next game starts at
+                        <span class="text-lime-300">Mekmaa.</span>
+                    </h2>
+
+                    <p class="mt-4 max-w-xl text-sm leading-7 text-emerald-50/80 md:text-base">
+                        Book premium indoor sports facilities, join professional coaching
+                        sessions, and take your performance to the next level.
+                    </p>
+                </div>
+
+                <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                    <a
+                        href="/book"
+                        class="group inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-lime-300 px-7 font-bold text-[#082116] transition duration-300 hover:-translate-y-1 hover:bg-white hover:shadow-xl"
+                    >
+                        Book a Court
+                        <svg
+                            class="h-5 w-5 transition-transform group-hover:translate-x-1"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M13 7l5 5m0 0l-5 5m5-5H6"
+                            />
+                        </svg>
+                    </a>
+
+                    <a
+                        href="/coaching"
+                        class="inline-flex min-h-14 items-center justify-center rounded-full border border-white/20 bg-white/10 px-7 font-semibold text-white backdrop-blur transition duration-300 hover:-translate-y-1 hover:bg-white hover:text-[#082116]"
+                    >
+                        Explore Coaching
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main footer -->
+    <div class="relative mx-auto max-w-7xl px-6 pb-10 pt-16 lg:px-8">
+        <div class="grid gap-12 md:grid-cols-2 lg:grid-cols-12">
+            <!-- Brand -->
+            <div class="lg:col-span-4">
+                <a href="/" class="inline-flex items-center gap-4">
+                    <img
+                        src="/images/mekmaa-logo.png"
+                        alt="Mekmaa"
+                        class="h-16 w-auto object-contain"
+                    />
+                </a>
+
+                <p class="mt-6 max-w-sm text-sm leading-7 text-white/60">
+                    A modern indoor sports destination built for players, families,
+                    schools, teams, and future champions.
+                </p>
+
+                <!-- Sports chips -->
+                <div class="mt-6 flex flex-wrap gap-2">
+                    <span class="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                        Cricket
+                    </span>
+                    <span class="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                        Futsal
+                    </span>
+                    <span class="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                        Badminton
+                    </span>
+                    <span class="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                        Table Tennis
+                    </span>
+                    <span class="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                        Coaching
+                    </span>
+                </div>
+
+                <!-- Social links -->
+                <div class="mt-8 flex gap-3">
+                    <a
+                        href="#"
+                        aria-label="Facebook"
+                        class="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:-translate-y-1 hover:border-lime-300 hover:bg-lime-300 hover:text-[#082116]"
+                    >
+                        <span class="font-bold">f</span>
+                    </a>
+
+                    <a
+                        href="#"
+                        aria-label="Instagram"
+                        class="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:-translate-y-1 hover:border-lime-300 hover:bg-lime-300 hover:text-[#082116]"
+                    >
+                        <span class="font-bold">◎</span>
+                    </a>
+
+                    <a
+                        href="#"
+                        aria-label="TikTok"
+                        class="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:-translate-y-1 hover:border-lime-300 hover:bg-lime-300 hover:text-[#082116]"
+                    >
+                        <span class="font-bold">♪</span>
+                    </a>
+
+                    <a
+                        href="#"
+                        aria-label="WhatsApp"
+                        class="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:-translate-y-1 hover:border-lime-300 hover:bg-lime-300 hover:text-[#082116]"
+                    >
+                        <span class="font-bold">W</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Quick links -->
+            <div class="lg:col-span-2">
+                <h3 class="text-sm font-bold uppercase tracking-[0.2em] text-lime-300">
+                    Explore
+                </h3>
+
+                <ul class="mt-6 space-y-4 text-sm text-white/60">
+                    <li><a href="/" class="transition hover:text-white">Home</a></li>
+                    <li><a href="/about" class="transition hover:text-white">About Mekmaa</a></li>
+                    <li><a href="/sports" class="transition hover:text-white">Sports Facilities</a></li>
+                    <li><a href="/coaching" class="transition hover:text-white">Coaching</a></li>
+                    <li><a href="/gallery" class="transition hover:text-white">Gallery</a></li>
+                    <li><a href="/contact" class="transition hover:text-white">Contact</a></li>
+                </ul>
+            </div>
+
+            <!-- Facilities -->
+            <div class="lg:col-span-2">
+                <h3 class="text-sm font-bold uppercase tracking-[0.2em] text-lime-300">
+                    Facilities
+                </h3>
+
+                <ul class="mt-6 space-y-4 text-sm text-white/60">
+                    <li><a href="/sports/cricket" class="transition hover:text-white">Cricket Nets</a></li>
+                    <li><a href="/sports/futsal" class="transition hover:text-white">Futsal Court</a></li>
+                    <li><a href="/sports/badminton" class="transition hover:text-white">Badminton</a></li>
+                    <li><a href="/sports/table-tennis" class="transition hover:text-white">Table Tennis</a></li>
+                    <li><a href="/coaching/cricket" class="transition hover:text-white">Cricket Academy</a></li>
+                    <li><a href="/book" class="font-semibold text-lime-300 transition hover:text-white">Book Now →</a></li>
+                </ul>
+            </div>
+
+            <!-- Contact -->
+            <div class="lg:col-span-4">
+                <h3 class="text-sm font-bold uppercase tracking-[0.2em] text-lime-300">
+                    Visit Mekmaa
+                </h3>
+
+                <div class="mt-6 space-y-5">
+                    <a href="#" class="group flex items-start gap-4">
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lime-300">
+                            📍
+                        </div>
+                        <div>
+                            <span class="block text-xs uppercase tracking-wider text-white/40">
+                                Location
+                            </span>
+                            <span class="mt-1 block text-sm leading-6 text-white/70 transition group-hover:text-white">
+                                Add Mekmaa's complete address here
+                            </span>
+                        </div>
+                    </a>
+
+                    <a href="tel:+947XXXXXXXX" class="group flex items-start gap-4">
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lime-300">
+                            ☎
+                        </div>
+                        <div>
+                            <span class="block text-xs uppercase tracking-wider text-white/40">
+                                Call or WhatsApp
+                            </span>
+                            <span class="mt-1 block text-sm text-white/70 transition group-hover:text-white">
+                                +94 7X XXX XXXX
+                            </span>
+                        </div>
+                    </a>
+
+                    <a href="mailto:info@mekmaa.lk" class="group flex items-start gap-4">
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lime-300">
+                            ✉
+                        </div>
+                        <div>
+                            <span class="block text-xs uppercase tracking-wider text-white/40">
+                                Email
+                            </span>
+                            <span class="mt-1 block text-sm text-white/70 transition group-hover:text-white">
+                                info@mekmaa.lk
+                            </span>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Opening status -->
+                <div class="mt-7 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-xs uppercase tracking-widest text-white/40">
+                                Opening Hours
+                            </p>
+                            <p class="mt-2 text-sm font-semibold text-white">
+                                Daily — 6:00 AM to 11:00 PM
+                            </p>
+                        </div>
+
+                        <span class="inline-flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-300">
+                            <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-400"></span>
+                            Open Daily
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="my-10 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent"></div>
+
+        <!-- Bottom bar -->
+        <div class="flex flex-col items-center justify-between gap-5 text-center text-xs text-white/40 md:flex-row md:text-left">
+            <p>
+                © <span id="currentYear"></span> Mekmaa (Private Limited).
+                All rights reserved.
+            </p>
+
+            <div class="flex flex-wrap justify-center gap-x-6 gap-y-3">
+                <a href="/privacy-policy" class="transition hover:text-white">
+                    Privacy Policy
+                </a>
+                <a href="/terms-and-conditions" class="transition hover:text-white">
+                    Terms & Conditions
+                </a>
+                <a href="/refund-policy" class="transition hover:text-white">
+                    Booking & Refund Policy
+                </a>
+            </div>
+
+            <p>
+                Designed & Developed by
+                <a
+                    href="https://lkprofessionals.com"
+                    target="_blank"
+                    rel="noopener"
+                    class="font-semibold text-lime-300 transition hover:text-white"
+                >
+                    LKProfessionals
+                </a>
+            </p>
+        </div>
+    </div>
+
+    <!-- Large visual word -->
+    <div
+        aria-hidden="true"
+        class="pointer-events-none relative -mb-5 overflow-hidden text-center"
+    >
+        <span
+            class="select-none whitespace-nowrap text-[18vw] font-black leading-none tracking-[-0.08em] text-white/[0.025]"
+        >
+            MEKMAA
+        </span>
+    </div>
+</footer>
+
+<script>
+    document.getElementById("currentYear").textContent =
+        new Date().getFullYear();
+</script>
+{{end}}

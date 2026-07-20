@@ -1,0 +1,123 @@
+{{define "public-header"}}
+<header class="relative z-20 border-b border-obsidian/5 bg-cloud/70 backdrop-blur-xl">
+  <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5 lg:px-8">
+    <a
+      href="/"
+      class="group inline-flex items-center gap-3"
+      aria-label="Mekmaa home"
+    >
+      <div
+        class="flex h-11 w-11 items-center justify-center rounded-2xl bg-obsidian text-sm font-bold text-aqua shadow-lg shadow-obsidian/10 transition duration-300 group-hover:-translate-y-0.5"
+      >
+        M
+      </div>
+
+      <div>
+        <span class="block text-lg font-bold tracking-[0.16em] uppercase">
+          Mekmaa
+        </span>
+        <span class="block text-[10px] font-semibold uppercase tracking-[0.24em] text-slate/60">
+          Play · Train · Perform
+        </span>
+      </div>
+    </a>
+
+    <nav class="hidden items-center gap-1 text-sm font-semibold md:flex" aria-label="Main navigation">
+      <a
+        href="/"
+        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
+      >
+        Home
+      </a>
+
+      <a
+        href="/sports"
+        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
+      >
+        Sports
+      </a>
+
+      <a
+        href="/coaching"
+        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
+      >
+        Coaching
+      </a>
+
+      <a
+        href="/about"
+        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
+      >
+        About
+      </a>
+
+      <a
+        href="/contact"
+        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
+      >
+        Contact
+      </a>
+    </nav>
+
+    <div class="hidden items-center gap-3 md:flex">
+      <a
+        href="/login"
+        class="rounded-full px-4 py-2.5 text-sm font-semibold transition duration-200 hover:bg-white/80"
+      >
+        Sign in
+      </a>
+
+      <a
+        href="/register"
+        class="rounded-full bg-obsidian px-5 py-2.5 text-sm font-semibold text-cloud shadow-lg shadow-obsidian/15 transition duration-300 hover:-translate-y-0.5 hover:bg-slate"
+      >
+        Create account
+      </a>
+    </div>
+
+    <button
+      type="button"
+      data-public-menu-toggle
+      class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-obsidian/10 bg-white/70 md:hidden"
+      aria-label="Open navigation menu"
+      aria-expanded="false"
+    >
+      <svg
+        class="h-5 w-5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16" />
+      </svg>
+    </button>
+  </div>
+
+  <div
+    data-public-menu
+    class="mx-4 mb-4 hidden rounded-3xl border border-obsidian/10 bg-white/90 p-3 shadow-float backdrop-blur-xl md:hidden"
+  >
+    <nav class="grid gap-1 text-sm font-semibold" aria-label="Mobile navigation">
+      <a href="/" class="rounded-2xl px-4 py-3 hover:bg-mint/60">Home</a>
+      <a href="/sports" class="rounded-2xl px-4 py-3 hover:bg-mint/60">Sports</a>
+      <a href="/coaching" class="rounded-2xl px-4 py-3 hover:bg-mint/60">Coaching</a>
+      <a href="/about" class="rounded-2xl px-4 py-3 hover:bg-mint/60">About</a>
+      <a href="/contact" class="rounded-2xl px-4 py-3 hover:bg-mint/60">Contact</a>
+
+      <div class="my-2 h-px bg-obsidian/10"></div>
+
+      <a href="/login" class="rounded-2xl px-4 py-3 hover:bg-mint/60">
+        Sign in
+      </a>
+
+      <a
+        href="/register"
+        class="rounded-2xl bg-obsidian px-4 py-3 text-center text-cloud"
+      >
+        Create account
+      </a>
+    </nav>
+  </div>
+</header>
+{{end}}
