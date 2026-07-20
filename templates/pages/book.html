@@ -160,6 +160,11 @@
             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate/50">Selected slot</p>
             <p class="mt-2 text-base font-semibold text-obsidian">{{if and .DraftSchedule .DraftSchedule.SlotHour}}{{.DraftSchedule.SlotHour}} · {{activityLabel .DraftSchedule.Activity}}{{if gt .DraftSchedule.Quantity 1}} x{{.DraftSchedule.Quantity}}{{end}}{{else}}Choose a combination{{end}}</p>
           </div>
+          <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 sm:col-span-2 xl:col-span-1">
+            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-800/70">Price</p>
+            <p class="mt-2 text-xl font-semibold text-emerald-900">{{pricingForSchedule .Pricings .PricingSettings .DraftSchedule}}</p>
+            <p class="mt-1 text-xs text-emerald-800/70">{{if and .DraftSchedule .DraftSchedule.SlotHour}}{{pricingTierLabel .PricingSettings .DraftSchedule.SlotDate .DraftSchedule.SlotHour}}{{else}}Select a slot to see the rate{{end}}</p>
+          </div>
         </div>
 
         <form action="/book/request" method="post" class="mt-5 grid gap-3">

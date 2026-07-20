@@ -112,18 +112,36 @@
         <form action="/admin/pricing/update" method="post" class="mt-5 grid gap-3">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
           <input type="hidden" name="pricing_id" value="{{.SelectedPricing.ID}}" />
-          <select name="activity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
-            <option value="full_indoor_cricket" {{if eq .SelectedPricing.Activity "full_indoor_cricket"}}selected{{end}}>Full Indoor Cricket</option>
-            <option value="futsal" {{if eq .SelectedPricing.Activity "futsal"}}selected{{end}}>Futsal</option>
-            <option value="badminton" {{if eq .SelectedPricing.Activity "badminton"}}selected{{end}}>Badminton</option>
-            <option value="table_tennis" {{if eq .SelectedPricing.Activity "table_tennis"}}selected{{end}}>Table Tennis</option>
-            <option value="cricket_net" {{if eq .SelectedPricing.Activity "cricket_net"}}selected{{end}}>Cricket Net</option>
-          </select>
-          <input type="number" name="quantity" min="1" max="3" value="{{.SelectedPricing.Quantity}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-          <input type="number" step="0.01" min="0" name="weekday_offpeak_price" value="{{printf "%.2f" .SelectedPricing.WeekdayOffPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-          <input type="number" step="0.01" min="0" name="weekday_peak_price" value="{{printf "%.2f" .SelectedPricing.WeekdayPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-          <input type="number" step="0.01" min="0" name="weekend_offpeak_price" value="{{printf "%.2f" .SelectedPricing.WeekendOffPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-          <input type="number" step="0.01" min="0" name="weekend_peak_price" value="{{printf "%.2f" .SelectedPricing.WeekendPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <label class="grid gap-2">
+            <span class="text-sm font-medium text-obsidian">Activity</span>
+            <select name="activity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+              <option value="full_indoor_cricket" {{if eq .SelectedPricing.Activity "full_indoor_cricket"}}selected{{end}}>Full Indoor Cricket</option>
+              <option value="futsal" {{if eq .SelectedPricing.Activity "futsal"}}selected{{end}}>Futsal</option>
+              <option value="badminton" {{if eq .SelectedPricing.Activity "badminton"}}selected{{end}}>Badminton</option>
+              <option value="table_tennis" {{if eq .SelectedPricing.Activity "table_tennis"}}selected{{end}}>Table Tennis</option>
+              <option value="cricket_net" {{if eq .SelectedPricing.Activity "cricket_net"}}selected{{end}}>Cricket Net</option>
+            </select>
+          </label>
+          <label class="grid gap-2">
+            <span class="text-sm font-medium text-obsidian">Quantity</span>
+            <input type="number" name="quantity" min="1" max="3" value="{{.SelectedPricing.Quantity}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
+          <label class="grid gap-2">
+            <span class="text-sm font-medium text-obsidian">Weekday Off-peak Price</span>
+            <input type="number" step="0.01" min="0" name="weekday_offpeak_price" value="{{printf "%.2f" .SelectedPricing.WeekdayOffPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
+          <label class="grid gap-2">
+            <span class="text-sm font-medium text-obsidian">Weekday Peak Price</span>
+            <input type="number" step="0.01" min="0" name="weekday_peak_price" value="{{printf "%.2f" .SelectedPricing.WeekdayPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
+          <label class="grid gap-2">
+            <span class="text-sm font-medium text-obsidian">Weekend Off-peak Price</span>
+            <input type="number" step="0.01" min="0" name="weekend_offpeak_price" value="{{printf "%.2f" .SelectedPricing.WeekendOffPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
+          <label class="grid gap-2">
+            <span class="text-sm font-medium text-obsidian">Weekend Peak Price</span>
+            <input type="number" step="0.01" min="0" name="weekend_peak_price" value="{{printf "%.2f" .SelectedPricing.WeekendPeak}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
           <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Update pricing</button>
         </form>
       </div>

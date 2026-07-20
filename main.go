@@ -6,9 +6,11 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -38,7 +40,7 @@ var (
 	passwordPattern = regexp.MustCompile(`^.{10,}$`)
 	otpPattern      = regexp.MustCompile(`^\d{6}$`)
 	allRoles        = []string{"superadmin", "admin", "editor", "customer"}
-	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"}
+	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"}
 )
 
 type contextKey string
@@ -50,6 +52,7 @@ type App struct {
 	templates    map[string]*template.Template
 	cookieSecure bool
 	smtp         SMTPConfig
+	sms          SMSConfig
 }
 
 type SMTPConfig struct {
@@ -58,6 +61,13 @@ type SMTPConfig struct {
 	Username string
 	Password string
 	From     string
+	Enabled  bool
+}
+
+type SMSConfig struct {
+	UserID   string
+	APIKey   string
+	SenderID string
 	Enabled  bool
 }
 
@@ -150,6 +160,17 @@ type PricingSettings struct {
 	UpdatedAt     time.Time
 }
 
+type AttendanceRecord struct {
+	ID             int64
+	GroupID        int64
+	AdmissionID    int64
+	AttendanceDate string
+	Status         string
+	Note           string
+	RecordedAt     time.Time
+	UpdatedAt      time.Time
+}
+
 type BookingSlotAvailability struct {
 	Hour          string
 	Schedules     []SpaceSchedule
@@ -190,6 +211,9 @@ type TemplateData struct {
 	StudentGroups     []StudentGroup
 	SelectedGroup     *StudentGroup
 	GroupMode         string
+	AttendanceRecords []AttendanceRecord
+	AttendanceDate    string
+	RecentDates       []string
 	Schedules         []SpaceSchedule
 	DaySchedules      []SpaceSchedule
 	PendingSchedules  []SpaceSchedule
@@ -252,6 +276,14 @@ func main() {
 	smtpConfig.Enabled = smtpConfig.Username != "" && smtpConfig.Password != "" && smtpConfig.From != ""
 	log.Printf("smtp enabled=%t host=%s port=%s from=%s", smtpConfig.Enabled, smtpConfig.Host, smtpConfig.Port, smtpConfig.From)
 
+	smsConfig := SMSConfig{
+		UserID:   strings.TrimSpace(os.Getenv("SMSLENZ_USER_ID")),
+		APIKey:   strings.TrimSpace(os.Getenv("SMSLENZ_API_KEY")),
+		SenderID: strings.TrimSpace(os.Getenv("SMSLENZ_SENDER_ID")),
+	}
+	smsConfig.Enabled = smsConfig.UserID != "" && smsConfig.APIKey != "" && smsConfig.SenderID != ""
+	log.Printf("sms enabled=%t provider=smslenz sender_id=%s", smsConfig.Enabled, smsConfig.SenderID)
+
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Fatalf("open database: %v", err)
@@ -279,18 +311,27 @@ func main() {
 		templates:    templates,
 		cookieSecure: cookieSecure,
 		smtp:         smtpConfig,
+		sms:          smsConfig,
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
 	mux.HandleFunc("/", app.homeHandler)
+	mux.HandleFunc("/about", app.aboutHandler)
 	mux.HandleFunc("/book", app.publicBookingHandler)
 	mux.HandleFunc("/book/request", app.publicBookingRequestHandler)
+	mux.HandleFunc("/booking", app.legacyBookingRedirectHandler)
+	mux.HandleFunc("/contact", app.contactHandler)
+	mux.HandleFunc("/coaching", app.coachingHandler)
+	mux.HandleFunc("/coaching/", app.legacyCoachingRedirectHandler)
+	mux.HandleFunc("/gallery", app.legacyGalleryRedirectHandler)
 	mux.HandleFunc("/register", app.registerHandler)
 	mux.HandleFunc("/login", app.loginHandler)
 	mux.HandleFunc("/verify-email", app.verifyEmailHandler)
 	mux.HandleFunc("/verify-email/resend", app.resendVerificationHandler)
 	mux.HandleFunc("/logout", app.logoutHandler)
+	mux.HandleFunc("/sports", app.legacySportsRedirectHandler)
+	mux.HandleFunc("/sports/", app.legacySportsRedirectHandler)
 	mux.Handle("/dashboard", app.sessionMiddleware(http.HandlerFunc(app.dashboardHandler)))
 	mux.Handle("/editor", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.editorHandler), "editor", "admin", "superadmin")))
 	mux.Handle("/admin", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.adminRedirectHandler), "admin", "superadmin")))
@@ -309,6 +350,8 @@ func main() {
 	mux.Handle("/admin/student-groups/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentGroupHandler), "student_groups.manage")))
 	mux.Handle("/admin/student-groups/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateStudentGroupHandler), "student_groups.manage")))
 	mux.Handle("/admin/student-groups/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentGroupHandler), "student_groups.manage")))
+	mux.Handle("/admin/attendance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.attendanceManagementHandler), "attendance.manage")))
+	mux.Handle("/admin/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAttendanceHandler), "attendance.manage")))
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
@@ -351,6 +394,17 @@ func (a *App) homeHandler(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "home", data, http.StatusOK)
 }
 
+func (a *App) aboutHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/about" {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.newTemplateData(w, r, a.optionalUser(r))
+	data.Title = "About Mekmaa"
+	data.Description = "Learn more about Mekmaa."
+	a.render(w, "about", data, http.StatusOK)
+}
+
 func (a *App) publicBookingHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/book" {
 		http.NotFound(w, r)
@@ -365,6 +419,61 @@ func (a *App) publicBookingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.render(w, "book", data, http.StatusOK)
+}
+
+func (a *App) contactHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/contact" {
+		http.NotFound(w, r)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		data := a.newTemplateData(w, r, a.optionalUser(r))
+		data.Title = "Contact Mekmaa"
+		data.Description = "Contact Mekmaa."
+		a.render(w, "contact", data, http.StatusOK)
+	case http.MethodPost:
+		if err := a.verifyCSRF(r); err != nil {
+			http.Error(w, "invalid csrf token", http.StatusForbidden)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "invalid form submission", http.StatusBadRequest)
+			return
+		}
+		a.setFlash(w, "Your message has been received.")
+		http.Redirect(w, r, "/contact", http.StatusSeeOther)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (a *App) coachingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/coaching" {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.newTemplateData(w, r, a.optionalUser(r))
+	data.Title = "Coaching"
+	data.Description = "Explore Mekmaa coaching programs."
+	a.render(w, "coaching", data, http.StatusOK)
+}
+
+func (a *App) legacyBookingRedirectHandler(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/book", http.StatusMovedPermanently)
+}
+
+func (a *App) legacySportsRedirectHandler(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/book", http.StatusMovedPermanently)
+}
+
+func (a *App) legacyGalleryRedirectHandler(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/about", http.StatusMovedPermanently)
+}
+
+func (a *App) legacyCoachingRedirectHandler(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/coaching", http.StatusMovedPermanently)
 }
 
 func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
@@ -824,6 +933,43 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 	a.render(w, "student-group-management", data, http.StatusOK)
 }
 
+func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	groups, err := a.listStudentGroups()
+	if err != nil {
+		log.Printf("list student groups for attendance: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Attendance"
+	data.Description = "Manage student attendance by group."
+	data.StudentGroups = groups
+	data.AttendanceDate = strings.TrimSpace(r.URL.Query().Get("date"))
+	if data.AttendanceDate == "" {
+		data.AttendanceDate = time.Now().Format("2006-01-02")
+	}
+
+	groupID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("group_id")), 10, 64)
+	if err == nil && groupID > 0 {
+		selectedGroup, err := a.findStudentGroupByID(groupID)
+		if err == nil {
+			data.SelectedGroup = selectedGroup
+			records, err := a.listAttendanceRecords(groupID, data.AttendanceDate)
+			if err == nil {
+				data.AttendanceRecords = records
+			}
+			recentDates, err := a.listRecentAttendanceDates(groupID, 8)
+			if err == nil {
+				data.RecentDates = recentDates
+			}
+		}
+	}
+
+	a.render(w, "attendance-management", data, http.StatusOK)
+}
+
 func (a *App) bookingManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
 	data, err := a.buildBookingTemplateData(w, r, user)
@@ -953,7 +1099,20 @@ func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	a.setFlash(w, "Booking request confirmed.")
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		log.Printf("find confirmed booking request: %v", err)
+		a.setFlash(w, "Booking request confirmed.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	if err := a.sendBookingConfirmationSMS(schedule); err != nil {
+		log.Printf("send booking confirmation sms: %v", err)
+		a.setFlash(w, "Booking request confirmed, but SMS delivery failed or is not configured.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Booking request confirmed and SMS sent.")
 	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 }
 
@@ -1599,6 +1758,60 @@ func (a *App) deleteStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 
 	a.setFlash(w, "Student group deleted.")
 	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+}
+
+func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	groupID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("group_id")), 10, 64)
+	if err != nil || groupID <= 0 {
+		http.Error(w, "invalid group id", http.StatusBadRequest)
+		return
+	}
+	attendanceDate := strings.TrimSpace(r.FormValue("attendance_date"))
+	if _, err := time.Parse("2006-01-02", attendanceDate); err != nil {
+		http.Error(w, "invalid attendance date", http.StatusBadRequest)
+		return
+	}
+
+	group, err := a.findStudentGroupByID(groupID)
+	if err != nil {
+		http.Error(w, "group not found", http.StatusBadRequest)
+		return
+	}
+
+	records := make([]AttendanceRecord, 0, len(group.Students))
+	for _, student := range group.Students {
+		status := normalizeAttendanceStatus(r.FormValue(fmt.Sprintf("status_%d", student.ID)))
+		note := strings.TrimSpace(r.FormValue(fmt.Sprintf("note_%d", student.ID)))
+		records = append(records, AttendanceRecord{
+			GroupID:        groupID,
+			AdmissionID:    student.ID,
+			AttendanceDate: attendanceDate,
+			Status:         status,
+			Note:           note,
+		})
+	}
+
+	if err := a.replaceAttendanceRecords(groupID, attendanceDate, records); err != nil {
+		log.Printf("save attendance: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Attendance saved.")
+	http.Redirect(w, r, "/admin/attendance?group_id="+strconv.FormatInt(groupID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
 }
 
 func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
@@ -2445,6 +2658,65 @@ func (a *App) listStudentGroups() ([]StudentGroup, error) {
 	return groups, nil
 }
 
+func (a *App) listAttendanceRecords(groupID int64, attendanceDate string) ([]AttendanceRecord, error) {
+	rows, err := a.db.Query(`
+		SELECT id, group_id, admission_id, attendance_date, status, note, recorded_at, updated_at
+		FROM attendance_records
+		WHERE group_id = ? AND attendance_date = ?
+		ORDER BY admission_id ASC, id ASC
+	`, groupID, attendanceDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []AttendanceRecord
+	for rows.Next() {
+		var record AttendanceRecord
+		if err := rows.Scan(
+			&record.ID,
+			&record.GroupID,
+			&record.AdmissionID,
+			&record.AttendanceDate,
+			&record.Status,
+			&record.Note,
+			&record.RecordedAt,
+			&record.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (a *App) listRecentAttendanceDates(groupID int64, limit int) ([]string, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	rows, err := a.db.Query(`
+		SELECT DISTINCT attendance_date
+		FROM attendance_records
+		WHERE group_id = ?
+		ORDER BY attendance_date DESC
+		LIMIT ?
+	`, groupID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dates []string
+	for rows.Next() {
+		var date string
+		if err := rows.Scan(&date); err != nil {
+			return nil, err
+		}
+		dates = append(dates, date)
+	}
+	return dates, rows.Err()
+}
+
 func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 	rows, err := a.db.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
@@ -2753,6 +3025,39 @@ func (a *App) createStudentGroup(group StudentGroup, admissionIDs []int64) error
 	}
 	for _, admissionID := range admissionIDs {
 		if _, err := tx.Exec(`INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, groupID, admissionID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) replaceAttendanceRecords(groupID int64, attendanceDate string, records []AttendanceRecord) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM attendance_records WHERE group_id = ? AND attendance_date = ?`, groupID, attendanceDate); err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		if _, err := tx.Exec(`
+			INSERT INTO attendance_records (
+				group_id, admission_id, attendance_date, status, note, recorded_at, updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`,
+			record.GroupID,
+			record.AdmissionID,
+			record.AttendanceDate,
+			record.Status,
+			record.Note,
+			time.Now().UTC(),
+			time.Now().UTC(),
+		); err != nil {
 			return err
 		}
 	}
@@ -3238,6 +3543,18 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
 			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS attendance_records (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			admission_id INTEGER NOT NULL,
+			attendance_date TEXT NOT NULL,
+			status TEXT NOT NULL,
+			note TEXT NOT NULL DEFAULT '',
+			recorded_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS pricing_rules (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			activity TEXT NOT NULL,
@@ -3282,6 +3599,8 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_group_student_date ON attendance_records(group_id, admission_id, attendance_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_attendance_group_date ON attendance_records(group_id, attendance_date)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_rules_option ON pricing_rules(activity, quantity)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
@@ -3383,8 +3702,8 @@ func seedRoles(db *sql.DB) error {
 	rolePermissions := map[string][]string{
 		"customer":   {"dashboard.view"},
 		"editor":     {"dashboard.view", "editor.access"},
-		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"},
-		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"},
+		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"},
+		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"},
 	}
 	for roleName, permissions := range rolePermissions {
 		roleID, err := queryRoleID(db, roleName)
@@ -3560,6 +3879,63 @@ func (a *App) sendVerificationEmail(user *User, otp string) error {
 	return smtp.SendMail(a.smtp.Host+":"+a.smtp.Port, auth, a.smtp.From, []string{user.Email}, []byte(headers+body))
 }
 
+func (a *App) sendBookingConfirmationSMS(schedule *SpaceSchedule) error {
+	if schedule == nil {
+		return errors.New("schedule is required")
+	}
+	if !a.sms.Enabled {
+		return errors.New("sms is not configured")
+	}
+
+	phone, err := normalizeSMSPhone(schedule.RequesterPhone)
+	if err != nil {
+		return err
+	}
+
+	form := url.Values{}
+	form.Set("user_id", a.sms.UserID)
+	form.Set("api_key", a.sms.APIKey)
+	form.Set("sender_id", a.sms.SenderID)
+	form.Set("contact", phone)
+	form.Set("message", buildBookingConfirmationSMSBody(schedule))
+
+	endpoint := "https://smslenz.lk/api/send-sms"
+	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("sms send failed with status %s", resp.Status)
+	}
+
+	var payload struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	if !payload.Success {
+		if payload.Message != "" {
+			return errors.New(payload.Message)
+		}
+		return errors.New("sms send failed")
+	}
+	return nil
+}
+
 func (a *App) consumeVerificationCode(userID int64, otp string) error {
 	row := a.db.QueryRow(`SELECT otp_hash, expires_at FROM email_verifications WHERE user_id = ?`, userID)
 	var otpHash string
@@ -3593,6 +3969,44 @@ func (a *App) consumeVerificationCode(userID int64, otp string) error {
 func hashValue(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return fmt.Sprintf("%x", sum[:])
+}
+
+func normalizeSMSPhone(phone string) (string, error) {
+	trimmed := strings.TrimSpace(phone)
+	if trimmed == "" {
+		return "", errors.New("customer phone number is missing")
+	}
+
+	var builder strings.Builder
+	for i, r := range trimmed {
+		if r >= '0' && r <= '9' {
+			builder.WriteRune(r)
+			continue
+		}
+		if r == '+' && i == 0 {
+			builder.WriteRune(r)
+		}
+	}
+
+	normalized := builder.String()
+	if strings.HasPrefix(normalized, "+") {
+		digits := strings.TrimPrefix(normalized, "+")
+		if len(digits) < 8 || len(digits) > 15 {
+			return "", errors.New("customer phone number must be in E.164 format")
+		}
+		return normalized, nil
+	}
+	return "", errors.New("customer phone number must include country code, for example +9477xxxxxxx")
+}
+
+func buildBookingConfirmationSMSBody(schedule *SpaceSchedule) string {
+	return fmt.Sprintf(
+		"Booking confirmed: %s on %s at %s for %s. We look forward to seeing you.",
+		schedule.Title,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		scheduleSummary(*schedule),
+	)
 }
 
 func userHasAnyRole(user *User, roles ...string) bool {
@@ -4082,6 +4496,42 @@ func admissionSelected(admissions []Admission, admissionID int64) bool {
 	return false
 }
 
+func normalizeAttendanceStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "present":
+		return "present"
+	case "late":
+		return "late"
+	case "excused":
+		return "excused"
+	default:
+		return "absent"
+	}
+}
+
+func attendanceStatus(record AttendanceRecord) string {
+	return normalizeAttendanceStatus(record.Status)
+}
+
+func attendanceRecordFor(records []AttendanceRecord, admissionID int64) AttendanceRecord {
+	for _, record := range records {
+		if record.AdmissionID == admissionID {
+			return record
+		}
+	}
+	return AttendanceRecord{AdmissionID: admissionID, Status: "absent"}
+}
+
+func attendanceCount(records []AttendanceRecord, status string) int {
+	total := 0
+	for _, record := range records {
+		if attendanceStatus(record) == status {
+			total++
+		}
+	}
+	return total
+}
+
 func scheduleSummary(schedule SpaceSchedule) string {
 	switch schedule.Activity {
 	case "training":
@@ -4196,6 +4646,13 @@ func pricingForOption(pricings []PricingRule, settings *PricingSettings, slotDat
 		return "Set pricing"
 	}
 	return money(priceForRuleSlot(*rule, settings, slotDate, slotHour))
+}
+
+func pricingForSchedule(pricings []PricingRule, settings *PricingSettings, schedule *SpaceSchedule) string {
+	if schedule == nil || schedule.SlotDate == "" || schedule.SlotHour == "" || schedule.Activity == "" || schedule.Quantity <= 0 {
+		return "Choose a combination"
+	}
+	return pricingForOption(pricings, settings, schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity)
 }
 
 func money(value float64) string {
@@ -4384,11 +4841,15 @@ func buildTemplates() (map[string]*template.Template, error) {
 			return containsPermission(user.Permissions, permission)
 		},
 		"admissionSelected":        admissionSelected,
+		"attendanceCount":          attendanceCount,
+		"attendanceRecordFor":      attendanceRecordFor,
+		"attendanceStatus":         attendanceStatus,
 		"activityLabel":            activityLabel,
 		"bookingProductLabel":      bookingProductLabel,
 		"optionSummary":            optionSummary,
 		"bookingOptionSelected":    bookingOptionSelected,
 		"pricingForOption":         pricingForOption,
+		"pricingForSchedule":       pricingForSchedule,
 		"pricingTierLabel":         pricingTierLabel,
 		"money":                    money,
 		"scheduleToneClasses":      scheduleToneClasses,
@@ -4422,7 +4883,10 @@ func buildTemplates() (map[string]*template.Template, error) {
 
 	pages := map[string]string{
 		"home":                     "templates/pages/home.html",
+		"about":                    "templates/pages/about.html",
 		"book":                     "templates/pages/book.html",
+		"contact":                  "templates/pages/contact.html",
+		"coaching":                 "templates/pages/coaching.html",
 		"login":                    "templates/login.html",
 		"register":                 "templates/register.html",
 		"verify-email":             "templates/verify-email.html",
@@ -4432,6 +4896,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"role-management":          "templates/dashboard/role-management.html",
 		"admission-management":     "templates/dashboard/admission-management.html",
 		"student-group-management": "templates/dashboard/student-group-management.html",
+		"attendance-management":    "templates/dashboard/attendance-management.html",
 		"booking-management":       "templates/dashboard/booking-management.html",
 		"booking-requests":         "templates/dashboard/booking-requests.html",
 		"pricing-management":       "templates/dashboard/pricing-management.html",

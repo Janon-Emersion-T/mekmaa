@@ -48,6 +48,12 @@
       <span>Group Manager</span>
       <span class="text-xs uppercase tracking-[0.2em]">Groups</span>
     </a>
+    {{if hasPermission .User "attendance.manage"}}
+    <a href="/admin/attendance" class="{{if isCurrentPath .CurrentPath "/admin/attendance"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Attendance</span>
+      <span class="text-xs uppercase tracking-[0.2em]">Sheet</span>
+    </a>
+    {{end}}
     <a href="/admin/bookings" class="{{if isCurrentPath .CurrentPath "/admin/bookings"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
       <span>Booking Manager</span>
       <span class="text-xs uppercase tracking-[0.2em]">Slots</span>

@@ -1,0 +1,122 @@
+{{define "attendance-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold sm:text-3xl">Attendance</h1>
+        <p class="mt-2 text-sm text-slate/70">Mark attendance for one student group at a time.</p>
+      </div>
+      <form action="/admin/attendance" method="get" class="grid gap-3 sm:grid-cols-[minmax(14rem,1fr)_11rem_auto]">
+        <select name="group_id" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+          <option value="">Select group</option>
+          {{range .StudentGroups}}
+          <option value="{{.ID}}" {{if and $.SelectedGroup (eq $.SelectedGroup.ID .ID)}}selected{{end}}>{{.Name}} · {{.Code}}</option>
+          {{end}}
+        </select>
+        <input type="date" name="date" value="{{.AttendanceDate}}" max="2026-07-20" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Load sheet</button>
+      </form>
+    </div>
+  </div>
+
+  {{if .SelectedGroup}}
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <h2 class="text-xl font-semibold sm:text-2xl">{{.SelectedGroup.Name}}</h2>
+        <p class="mt-2 text-sm text-slate/70">{{.SelectedGroup.Code}} · {{.AttendanceDate}}</p>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div class="rounded-2xl bg-cloud px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Students</p>
+          <p class="mt-2 text-2xl font-semibold text-obsidian">{{.SelectedGroup.StudentCount}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Status set</p>
+          <p class="mt-2 text-sm font-medium text-obsidian">Present, Absent, Late, Excused</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-emerald-800/70">Present</p>
+        <p class="mt-2 text-2xl font-semibold text-emerald-900">{{attendanceCount .AttendanceRecords "present"}}</p>
+      </div>
+      <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-rose-800/70">Absent</p>
+        <p class="mt-2 text-2xl font-semibold text-rose-900">{{attendanceCount .AttendanceRecords "absent"}}</p>
+      </div>
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-amber-800/70">Late</p>
+        <p class="mt-2 text-2xl font-semibold text-amber-900">{{attendanceCount .AttendanceRecords "late"}}</p>
+      </div>
+      <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-sky-800/70">Excused</p>
+        <p class="mt-2 text-2xl font-semibold text-sky-900">{{attendanceCount .AttendanceRecords "excused"}}</p>
+      </div>
+    </div>
+
+    {{if .RecentDates}}
+    <div class="mt-6 rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Recent attendance dates</h3>
+        <p class="text-xs text-slate/55">Quickly reopen an existing group sheet.</p>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        {{range .RecentDates}}
+        <a href="/admin/attendance?group_id={{$.SelectedGroup.ID}}&date={{.}}" class="{{if eq $.AttendanceDate .}}bg-obsidian text-cloud{{else}}bg-white text-slate hover:bg-mint/60{{end}} rounded-full border border-slate/10 px-4 py-2 text-sm font-medium transition">{{.}}</a>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+
+    <form action="/admin/attendance/save" method="post" class="mt-6 space-y-4">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="hidden" name="group_id" value="{{.SelectedGroup.ID}}" />
+      <input type="hidden" name="attendance_date" value="{{.AttendanceDate}}" />
+
+      <div class="grid gap-4">
+        {{range .SelectedGroup.Students}}
+        {{$record := attendanceRecordFor $.AttendanceRecords .ID}}
+        <div class="rounded-3xl border border-slate/10 bg-cloud/65 p-4 sm:p-5">
+          <div class="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_15rem_minmax(0,1fr)] lg:items-center">
+            <div>
+              <p class="text-base font-semibold text-obsidian">{{.FullName}}</p>
+              <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.StudentID}}</p>
+              <p class="mt-2 text-sm text-slate/62">{{.School}}</p>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-obsidian">Status</label>
+              <select name="status_{{.ID}}" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+                <option value="present" {{if eq (attendanceStatus $record) "present"}}selected{{end}}>Present</option>
+                <option value="absent" {{if eq (attendanceStatus $record) "absent"}}selected{{end}}>Absent</option>
+                <option value="late" {{if eq (attendanceStatus $record) "late"}}selected{{end}}>Late</option>
+                <option value="excused" {{if eq (attendanceStatus $record) "excused"}}selected{{end}}>Excused</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-obsidian">Note</label>
+              <input type="text" name="note_{{.ID}}" value="{{$record.Note}}" placeholder="Optional note" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            </div>
+          </div>
+        </div>
+        {{else}}
+        <div class="rounded-2xl border border-dashed border-slate/15 bg-white/80 px-4 py-6 text-sm text-slate/58">No students in this group.</div>
+        {{end}}
+      </div>
+
+      <div class="flex justify-end">
+        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save attendance</button>
+      </div>
+    </form>
+  </div>
+  {{else}}
+  <div class="rounded-[1.5rem] border border-dashed border-slate/15 bg-white/75 px-5 py-10 text-center text-sm text-slate/60 shadow-sm sm:rounded-[2rem]">
+    Select a group and a date to open the attendance sheet.
+  </div>
+  {{end}}
+</section>
+{{end}}
