@@ -399,7 +399,7 @@ func (a *App) aboutHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := a.newTemplateData(w, r, a.optionalUser(r))
+	data := a.newTemplateData(w, r, nil)
 	data.Title = "About Mekmaa"
 	data.Description = "Learn more about Mekmaa."
 	a.render(w, "about", data, http.StatusOK)
@@ -429,7 +429,7 @@ func (a *App) contactHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		data := a.newTemplateData(w, r, a.optionalUser(r))
+		data := a.newTemplateData(w, r, nil)
 		data.Title = "Contact Mekmaa"
 		data.Description = "Contact Mekmaa."
 		a.render(w, "contact", data, http.StatusOK)
@@ -454,7 +454,7 @@ func (a *App) coachingHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := a.newTemplateData(w, r, a.optionalUser(r))
+	data := a.newTemplateData(w, r, nil)
 	data.Title = "Coaching"
 	data.Description = "Explore Mekmaa coaching programs."
 	a.render(w, "coaching", data, http.StatusOK)
