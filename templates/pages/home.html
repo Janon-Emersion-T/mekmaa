@@ -1,41 +1,1092 @@
 {{define "home"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
-<section class="grid gap-10 py-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center lg:py-16">
-  <div>
-    <p class="text-sm font-semibold uppercase tracking-[0.35em] text-slate/70">Auth starter</p>
-    <h1 class="mt-4 max-w-3xl text-5xl font-semibold leading-tight sm:text-6xl">Secure authentication and RBAC without pretending the backend is optional.</h1>
-    <p class="mt-6 max-w-2xl text-lg leading-8 text-slate/80">This Go starter gives you registration, login, session handling, role checks, email verification, and an admin panel to assign access levels. It is intentionally server-first and easy to audit.</p>
-    <div class="mt-10 flex flex-col gap-4 sm:flex-row">
-      {{if .User}}
-      <a href="/dashboard" class="rounded-full bg-obsidian px-7 py-3 text-center text-sm font-medium text-cloud transition hover:bg-slate">Open dashboard</a>
-      {{else}}
-      <a href="/register" class="rounded-full bg-obsidian px-7 py-3 text-center text-sm font-medium text-cloud transition hover:bg-slate">Create account</a>
-      <a href="/login" class="rounded-full border border-obsidian/10 bg-white/80 px-7 py-3 text-center text-sm font-medium transition hover:border-aqua hover:text-slate">Sign in</a>
-      {{end}}
-    </div>
-    <div class="mt-12 grid gap-5 sm:grid-cols-3">
-      {{range .Stats}}
-      <div class="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-sm">
-        <p class="text-3xl font-semibold">{{.Value}}</p>
-        <p class="mt-2 text-sm text-slate/75">{{.Label}}</p>
-      </div>
-      {{end}}
-    </div>
-  </div>
+<main class="overflow-hidden">
+  <!-- Hero section -->
+  <section
+    class="relative isolate min-h-[calc(100svh-8rem)] py-8 sm:py-12 lg:flex lg:items-center lg:py-16"
+  >
+    <!-- Decorative background -->
+    <div
+      class="pointer-events-none absolute inset-0 -z-20 overflow-hidden"
+      aria-hidden="true"
+    >
+      <div
+        class="absolute -left-32 top-20 h-80 w-80 rounded-full bg-aqua/20 blur-[100px]"
+      ></div>
 
-  <div class="rounded-[2rem] border border-white/80 bg-white/80 p-6 shadow-float backdrop-blur">
-    <div class="rounded-[1.5rem] bg-obsidian p-6 text-cloud">
-      <p class="text-sm uppercase tracking-[0.3em] text-aqua/80">Included</p>
-      <div class="mt-6 space-y-4">
-        {{range .Features}}
-        <div class="rounded-2xl bg-white/10 p-4">
-          <h2 class="text-lg font-semibold">{{.Title}}</h2>
-          <p class="mt-2 text-sm leading-7 text-cloud/80">{{.Body}}</p>
+      <div
+        class="absolute -right-32 top-1/3 h-[28rem] w-[28rem] rounded-full bg-amber/15 blur-[120px]"
+      ></div>
+
+      <div
+        class="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-mint/70 blur-[100px]"
+      ></div>
+
+      <div
+        class="absolute inset-0 opacity-[0.035]"
+        style="
+          background-image:
+            linear-gradient(to right, #0b1215 1px, transparent 1px),
+            linear-gradient(to bottom, #0b1215 1px, transparent 1px);
+          background-size: 42px 42px;
+        "
+      ></div>
+    </div>
+
+    <div
+      class="mx-auto grid w-full max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-16 lg:px-8"
+    >
+      <!-- Hero content -->
+      <div
+        data-reveal
+        class="relative z-10 translate-y-6 opacity-0 transition-all duration-700 ease-out"
+      >
+        <div
+          class="inline-flex items-center gap-2 rounded-full border border-obsidian/10 bg-white/70 px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate shadow-sm backdrop-blur-xl sm:px-4"
+        >
+          <span class="relative flex h-2.5 w-2.5">
+            <span
+              class="absolute inline-flex h-full w-full animate-ping rounded-full bg-aqua opacity-75"
+            ></span>
+            <span
+              class="relative inline-flex h-2.5 w-2.5 rounded-full bg-aqua"
+            ></span>
+          </span>
+
+          Jaffna's indoor sports destination
         </div>
+
+        <h1
+          class="mt-6 max-w-4xl text-[clamp(3.2rem,8vw,7.2rem)] font-semibold leading-[0.88] tracking-[-0.065em] text-obsidian"
+        >
+          Play more.
+          <span
+            class="relative mt-1 block w-fit text-slate"
+          >
+            Grow stronger.
+
+            <svg
+              class="absolute -bottom-3 left-0 h-4 w-full text-aqua"
+              viewBox="0 0 420 22"
+              fill="none"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M4 15C104 5 257 5 416 12"
+                stroke="currentColor"
+                stroke-width="8"
+                stroke-linecap="round"
+              />
+            </svg>
+          </span>
+        </h1>
+
+        <p
+          class="mt-8 max-w-2xl text-base leading-8 text-slate/75 sm:text-lg lg:text-xl lg:leading-9"
+        >
+          Book premium indoor facilities for cricket, futsal, badminton and
+          table tennis, or join structured coaching programmes designed for
+          children and teenagers.
+        </p>
+
+        <!-- Primary actions -->
+        <div class="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+          {{if .User}}
+          <a
+            href="/dashboard"
+            class="group relative isolate inline-flex items-center justify-center gap-2 overflow-hidden rounded-full bg-obsidian px-7 py-4 text-sm font-bold text-cloud shadow-xl shadow-obsidian/15 transition duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-obsidian/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua focus-visible:ring-offset-4"
+          >
+            <span
+              class="absolute inset-0 -z-10 translate-y-full bg-slate transition-transform duration-300 group-hover:translate-y-0"
+            ></span>
+
+            Open dashboard
+
+            <svg
+              class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M5 12h14m-6-6 6 6-6 6"
+              />
+            </svg>
+          </a>
+
+          <a
+            href="/sports"
+            class="inline-flex items-center justify-center gap-2 rounded-full border border-obsidian/10 bg-white/75 px-7 py-4 text-sm font-bold text-obsidian shadow-sm backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-aqua hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua"
+          >
+            Explore sports
+          </a>
+          {{else}}
+          <a
+            href="/register"
+            class="group relative isolate inline-flex items-center justify-center gap-2 overflow-hidden rounded-full bg-obsidian px-7 py-4 text-sm font-bold text-cloud shadow-xl shadow-obsidian/15 transition duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-obsidian/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua focus-visible:ring-offset-4"
+          >
+            <span
+              class="absolute inset-0 -z-10 translate-y-full bg-slate transition-transform duration-300 group-hover:translate-y-0"
+            ></span>
+
+            Book your session
+
+            <svg
+              class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M5 12h14m-6-6 6 6-6 6"
+              />
+            </svg>
+          </a>
+
+          <a
+            href="/coaching"
+            class="group inline-flex items-center justify-center gap-2 rounded-full border border-obsidian/10 bg-white/75 px-7 py-4 text-sm font-bold text-obsidian shadow-sm backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-aqua hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua"
+          >
+            View coaching
+
+            <svg
+              class="h-4 w-4 transition-transform duration-300 group-hover:rotate-12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M8 5v14l11-7z"
+              />
+            </svg>
+          </a>
+          {{end}}
+        </div>
+
+        <!-- Trust row -->
+        <div
+          class="mt-10 flex flex-col gap-5 border-t border-obsidian/10 pt-6 sm:flex-row sm:items-center"
+        >
+          <div class="flex -space-x-3">
+            <div
+              class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cloud bg-obsidian text-xs font-bold text-cloud"
+            >
+              CR
+            </div>
+            <div
+              class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cloud bg-amber text-xs font-bold text-obsidian"
+            >
+              FT
+            </div>
+            <div
+              class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cloud bg-aqua text-xs font-bold text-obsidian"
+            >
+              BD
+            </div>
+            <div
+              class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cloud bg-blush text-xs font-bold text-obsidian"
+            >
+              TT
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center gap-1 text-amber" aria-label="Five stars">
+              {{range seq 5}}
+              <svg
+                class="h-4 w-4 fill-current"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  d="m12 2.7 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9z"
+                />
+              </svg>
+              {{end}}
+            </div>
+
+            <p class="mt-1 text-sm font-semibold text-slate/70">
+              Built for players, families and future champions.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hero visual -->
+      <div
+        data-reveal
+        class="relative translate-y-8 opacity-0 transition-all delay-150 duration-700 ease-out"
+      >
+        <div class="relative mx-auto max-w-[620px]">
+          <!-- Decorative orbit -->
+          <div
+            class="absolute -inset-8 -z-10 rounded-[3rem] border border-obsidian/5"
+            aria-hidden="true"
+          ></div>
+
+          <div
+            class="absolute -inset-4 -z-10 rounded-[2.75rem] border border-obsidian/5"
+            aria-hidden="true"
+          ></div>
+
+          <!-- Main image card -->
+          <div
+            class="relative overflow-hidden rounded-[2rem] border border-white/70 bg-obsidian shadow-[0_40px_120px_rgba(11,18,21,0.22)] sm:rounded-[2.75rem]"
+          >
+            <div class="relative aspect-[4/5] sm:aspect-[5/6] lg:aspect-[4/5]">
+              <img
+                src="/images/mekmaa-indoor-sports.jpg"
+                alt="Indoor sports at Mekmaa"
+                class="h-full w-full object-cover transition duration-1000 hover:scale-105"
+                loading="eager"
+                fetchpriority="high"
+              />
+
+              <div
+                class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/10 to-transparent"
+              ></div>
+
+              <div
+                class="absolute inset-0 bg-gradient-to-r from-obsidian/25 via-transparent to-transparent"
+              ></div>
+
+              <!-- Facility label -->
+              <div
+                class="absolute left-4 top-4 flex items-center gap-3 rounded-2xl border border-white/20 bg-obsidian/55 px-4 py-3 text-cloud shadow-lg backdrop-blur-xl sm:left-6 sm:top-6"
+              >
+                <span
+                  class="flex h-10 w-10 items-center justify-center rounded-xl bg-aqua text-obsidian"
+                >
+                  <svg
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 21s7-4.4 7-11a7 7 0 1 0-14 0c0 6.6 7 11 7 11Z"
+                    />
+                    <circle cx="12" cy="10" r="2.5" />
+                  </svg>
+                </span>
+
+                <div>
+                  <p class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-cloud/55">
+                    Location
+                  </p>
+                  <p class="mt-0.5 text-sm font-bold">Mekmaa Indoor</p>
+                </div>
+              </div>
+
+              <!-- Main visual content -->
+              <div class="absolute inset-x-0 bottom-0 p-5 sm:p-7">
+                <div
+                  class="rounded-[1.75rem] border border-white/15 bg-white/10 p-5 text-cloud shadow-2xl backdrop-blur-2xl sm:p-6"
+                >
+                  <div
+                    class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"
+                  >
+                    <div>
+                      <p
+                        class="text-xs font-bold uppercase tracking-[0.22em] text-aqua"
+                      >
+                        Available today
+                      </p>
+
+                      <h2 class="mt-2 text-2xl font-semibold sm:text-3xl">
+                        Your game starts here.
+                      </h2>
+
+                      <p class="mt-2 max-w-sm text-sm leading-6 text-cloud/70">
+                        Choose your sport, reserve a time and arrive ready to
+                        play.
+                      </p>
+                    </div>
+
+                    <a
+                      href="/register"
+                      class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-aqua text-obsidian transition duration-300 hover:rotate-[-8deg] hover:scale-110"
+                      aria-label="Book a session"
+                    >
+                      <svg
+                        class="h-5 w-5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        aria-hidden="true"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M5 12h14m-6-6 6 6-6 6"
+                        />
+                      </svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Floating sport card -->
+          <div
+            data-float-card
+            class="absolute -left-2 top-[37%] hidden w-48 rounded-3xl border border-white/70 bg-white/90 p-4 shadow-2xl backdrop-blur-xl sm:block lg:-left-12"
+          >
+            <div class="flex items-center gap-3">
+              <span
+                class="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber text-obsidian"
+              >
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="8" />
+                  <path d="M8.5 5.5c2 2 3 4.2 3.5 6.5.5 2.4.3 4.6-1 6.5" />
+                </svg>
+              </span>
+
+              <div>
+                <p class="text-sm font-bold text-obsidian">Cricket nets</p>
+                <p class="mt-0.5 text-xs text-slate/60">Hourly bookings</p>
+              </div>
+            </div>
+
+            <div class="mt-4 h-1.5 overflow-hidden rounded-full bg-obsidian/5">
+              <div class="h-full w-3/4 rounded-full bg-aqua"></div>
+            </div>
+          </div>
+
+          <!-- Floating coaching card -->
+          <div
+            data-float-card
+            class="absolute -bottom-6 right-2 hidden w-56 rounded-3xl bg-obsidian p-5 text-cloud shadow-2xl sm:block lg:-right-8"
+          >
+            <div class="flex items-center justify-between">
+              <div>
+                <p
+                  class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-aqua"
+                >
+                  Coaching
+                </p>
+                <p class="mt-1 text-base font-bold">Kids and teens</p>
+              </div>
+
+              <span
+                class="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10"
+              >
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 3 4 7l8 4 8-4-8-4Zm-6 6v5c0 2.2 2.7 4 6 4s6-1.8 6-4V9"
+                  />
+                </svg>
+              </span>
+            </div>
+
+            <a
+              href="/coaching"
+              class="mt-4 inline-flex items-center gap-2 text-xs font-bold text-cloud/70 transition hover:text-aqua"
+            >
+              Explore programmes
+              <span aria-hidden="true">→</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats strip -->
+  <section class="relative py-10 sm:py-14">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div
+        data-reveal
+        class="translate-y-6 overflow-hidden rounded-[2rem] border border-white/70 bg-white/70 opacity-0 shadow-sm backdrop-blur-xl transition-all duration-700"
+      >
+        <div class="grid sm:grid-cols-3">
+          {{range $index, $stat := .Stats}}
+          <div
+            class="group relative p-6 sm:p-8 {{if gt $index 0}}border-t border-obsidian/10 sm:border-l sm:border-t-0{{end}}"
+          >
+            <div
+              class="absolute inset-0 scale-95 rounded-[2rem] bg-mint/0 transition duration-300 group-hover:scale-100 group-hover:bg-mint/50"
+            ></div>
+
+            <div class="relative">
+              <p
+                class="text-4xl font-semibold tracking-tight text-obsidian sm:text-5xl"
+                data-counter
+              >
+                {{.Value}}
+              </p>
+
+              <p
+                class="mt-2 text-sm font-semibold leading-6 text-slate/60"
+              >
+                {{.Label}}
+              </p>
+            </div>
+          </div>
+          {{end}}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Sports section -->
+  <section class="py-16 sm:py-24">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div
+        data-reveal
+        class="flex translate-y-6 flex-col gap-6 opacity-0 transition-all duration-700 md:flex-row md:items-end md:justify-between"
+      >
+        <div>
+          <p
+            class="text-xs font-bold uppercase tracking-[0.25em] text-slate/55"
+          >
+            Choose your game
+          </p>
+
+          <h2
+            class="mt-4 max-w-3xl text-4xl font-semibold leading-tight tracking-[-0.04em] text-obsidian sm:text-5xl lg:text-6xl"
+          >
+            One venue.
+            <span class="text-slate/55">Multiple ways to play.</span>
+          </h2>
+        </div>
+
+        <a
+          href="/sports"
+          class="group inline-flex w-fit items-center gap-2 text-sm font-bold text-obsidian"
+        >
+          View all sports
+          <span
+            class="flex h-10 w-10 items-center justify-center rounded-full border border-obsidian/10 bg-white transition duration-300 group-hover:translate-x-1 group-hover:bg-obsidian group-hover:text-cloud"
+          >
+            <svg
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M5 12h14m-6-6 6 6-6 6"
+              />
+            </svg>
+          </span>
+        </a>
+      </div>
+
+      <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <!-- Cricket -->
+        <a
+          href="/sports/cricket"
+          data-reveal
+          class="group relative min-h-[380px] translate-y-8 overflow-hidden rounded-[2rem] bg-obsidian opacity-0 shadow-lg transition-all duration-700 hover:-translate-y-2 hover:shadow-2xl"
+        >
+          <img
+            src="/images/sports/cricket.jpg"
+            alt="Indoor cricket at Mekmaa"
+            class="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-700 group-hover:scale-110"
+            loading="lazy"
+          />
+
+          <div
+            class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/20 to-transparent"
+          ></div>
+
+          <div class="absolute inset-x-0 bottom-0 p-6 text-cloud">
+            <span
+              class="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] backdrop-blur"
+            >
+              Nets and matches
+            </span>
+
+            <h3 class="mt-4 text-3xl font-semibold">Cricket</h3>
+
+            <div
+              class="mt-4 flex items-center justify-between border-t border-white/20 pt-4"
+            >
+              <span class="text-sm text-cloud/65">Reserve your lane</span>
+
+              <span
+                class="flex h-10 w-10 items-center justify-center rounded-full bg-aqua text-obsidian transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110"
+              >
+                →
+              </span>
+            </div>
+          </div>
+        </a>
+
+        <!-- Futsal -->
+        <a
+          href="/sports/futsal"
+          data-reveal
+          class="group relative min-h-[380px] translate-y-8 overflow-hidden rounded-[2rem] bg-obsidian opacity-0 shadow-lg transition-all delay-75 duration-700 hover:-translate-y-2 hover:shadow-2xl"
+        >
+          <img
+            src="/images/sports/futsal.jpg"
+            alt="Indoor futsal at Mekmaa"
+            class="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-700 group-hover:scale-110"
+            loading="lazy"
+          />
+
+          <div
+            class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/20 to-transparent"
+          ></div>
+
+          <div class="absolute inset-x-0 bottom-0 p-6 text-cloud">
+            <span
+              class="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] backdrop-blur"
+            >
+              Full facility
+            </span>
+
+            <h3 class="mt-4 text-3xl font-semibold">Futsal</h3>
+
+            <div
+              class="mt-4 flex items-center justify-between border-t border-white/20 pt-4"
+            >
+              <span class="text-sm text-cloud/65">Bring your team</span>
+
+              <span
+                class="flex h-10 w-10 items-center justify-center rounded-full bg-amber text-obsidian transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110"
+              >
+                →
+              </span>
+            </div>
+          </div>
+        </a>
+
+        <!-- Badminton -->
+        <a
+          href="/sports/badminton"
+          data-reveal
+          class="group relative min-h-[380px] translate-y-8 overflow-hidden rounded-[2rem] bg-obsidian opacity-0 shadow-lg transition-all delay-100 duration-700 hover:-translate-y-2 hover:shadow-2xl"
+        >
+          <img
+            src="/images/sports/badminton.jpg"
+            alt="Indoor badminton at Mekmaa"
+            class="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-700 group-hover:scale-110"
+            loading="lazy"
+          />
+
+          <div
+            class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/20 to-transparent"
+          ></div>
+
+          <div class="absolute inset-x-0 bottom-0 p-6 text-cloud">
+            <span
+              class="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] backdrop-blur"
+            >
+              Court booking
+            </span>
+
+            <h3 class="mt-4 text-3xl font-semibold">Badminton</h3>
+
+            <div
+              class="mt-4 flex items-center justify-between border-t border-white/20 pt-4"
+            >
+              <span class="text-sm text-cloud/65">Play at your pace</span>
+
+              <span
+                class="flex h-10 w-10 items-center justify-center rounded-full bg-blush text-obsidian transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110"
+              >
+                →
+              </span>
+            </div>
+          </div>
+        </a>
+
+        <!-- Table tennis -->
+        <a
+          href="/sports/table-tennis"
+          data-reveal
+          class="group relative min-h-[380px] translate-y-8 overflow-hidden rounded-[2rem] bg-obsidian opacity-0 shadow-lg transition-all delay-150 duration-700 hover:-translate-y-2 hover:shadow-2xl"
+        >
+          <img
+            src="/images/sports/table-tennis.jpg"
+            alt="Table tennis at Mekmaa"
+            class="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-700 group-hover:scale-110"
+            loading="lazy"
+          />
+
+          <div
+            class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/20 to-transparent"
+          ></div>
+
+          <div class="absolute inset-x-0 bottom-0 p-6 text-cloud">
+            <span
+              class="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] backdrop-blur"
+            >
+              Flexible sessions
+            </span>
+
+            <h3 class="mt-4 text-3xl font-semibold">Table tennis</h3>
+
+            <div
+              class="mt-4 flex items-center justify-between border-t border-white/20 pt-4"
+            >
+              <span class="text-sm text-cloud/65">Fast, focused and fun</span>
+
+              <span
+                class="flex h-10 w-10 items-center justify-center rounded-full bg-mint text-obsidian transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110"
+              >
+                →
+              </span>
+            </div>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Coaching section -->
+  <section class="py-16 sm:py-24">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div
+        data-reveal
+        class="relative translate-y-8 overflow-hidden rounded-[2.25rem] bg-obsidian opacity-0 shadow-[0_40px_100px_rgba(11,18,21,0.18)] transition-all duration-700 sm:rounded-[3rem]"
+      >
+        <div
+          class="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-aqua/20 blur-[100px]"
+          aria-hidden="true"
+        ></div>
+
+        <div
+          class="pointer-events-none absolute -bottom-40 left-1/3 h-96 w-96 rounded-full bg-amber/10 blur-[120px]"
+          aria-hidden="true"
+        ></div>
+
+        <div
+          class="relative grid gap-10 p-6 sm:p-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center lg:p-12"
+        >
+          <div class="text-cloud">
+            <p
+              class="text-xs font-bold uppercase tracking-[0.25em] text-aqua"
+            >
+              Mekmaa Cricket Academy
+            </p>
+
+            <h2
+              class="mt-5 text-4xl font-semibold leading-tight tracking-[-0.04em] sm:text-5xl"
+            >
+              Training young players for the game and for life.
+            </h2>
+
+            <p class="mt-6 max-w-xl text-base leading-8 text-cloud/65">
+              Our coaching programmes help children and teenagers develop
+              technical ability, confidence, discipline, teamwork and a
+              long-term love for sport.
+            </p>
+
+            <div class="mt-8 grid gap-3 sm:grid-cols-2">
+              <div
+                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <span
+                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-aqua text-obsidian"
+                >
+                  ✓
+                </span>
+                <span class="text-sm font-semibold">Age-based training</span>
+              </div>
+
+              <div
+                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <span
+                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber text-obsidian"
+                >
+                  ✓
+                </span>
+                <span class="text-sm font-semibold">Structured sessions</span>
+              </div>
+
+              <div
+                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <span
+                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blush text-obsidian"
+                >
+                  ✓
+                </span>
+                <span class="text-sm font-semibold">Player development</span>
+              </div>
+
+              <div
+                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <span
+                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint text-obsidian"
+                >
+                  ✓
+                </span>
+                <span class="text-sm font-semibold">Regular attendance</span>
+              </div>
+            </div>
+
+            <a
+              href="/coaching"
+              class="group mt-8 inline-flex items-center gap-2 rounded-full bg-cloud px-6 py-3.5 text-sm font-bold text-obsidian transition duration-300 hover:-translate-y-1 hover:bg-aqua"
+            >
+              Explore coaching programmes
+              <span
+                class="transition-transform duration-300 group-hover:translate-x-1"
+                aria-hidden="true"
+              >
+                →
+              </span>
+            </a>
+          </div>
+
+          <div class="relative">
+            <div
+              class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-2"
+            >
+              <img
+                src="/images/mekmaa-coaching.jpg"
+                alt="Cricket coaching for children at Mekmaa"
+                class="aspect-[4/3] h-full w-full rounded-[1.6rem] object-cover"
+                loading="lazy"
+              />
+            </div>
+
+            <div
+              class="absolute -bottom-5 left-4 rounded-2xl border border-white/20 bg-cloud/95 px-5 py-4 text-obsidian shadow-2xl backdrop-blur-xl sm:left-8"
+            >
+              <p
+                class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-slate/55"
+              >
+                Built for
+              </p>
+              <p class="mt-1 text-lg font-bold">Kids and teenagers</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature section -->
+  <section class="py-16 sm:py-24">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div
+        data-reveal
+        class="mx-auto max-w-3xl translate-y-6 text-center opacity-0 transition-all duration-700"
+      >
+        <p
+          class="text-xs font-bold uppercase tracking-[0.25em] text-slate/55"
+        >
+          Why Mekmaa
+        </p>
+
+        <h2
+          class="mt-4 text-4xl font-semibold leading-tight tracking-[-0.04em] text-obsidian sm:text-5xl"
+        >
+          Everything you need to play with confidence.
+        </h2>
+      </div>
+
+      <div class="mt-10 grid gap-5 md:grid-cols-3">
+        {{range $index, $feature := .Features}}
+        <article
+          data-reveal
+          class="group translate-y-8 rounded-[2rem] border border-white/70 bg-white/75 p-6 opacity-0 shadow-sm backdrop-blur-xl transition-all duration-700 hover:-translate-y-2 hover:border-aqua/40 hover:shadow-xl sm:p-8"
+          style="transition-delay: calc({{$index}} * 80ms);"
+        >
+          <div
+            class="flex h-14 w-14 items-center justify-center rounded-2xl bg-obsidian text-cloud shadow-lg transition duration-300 group-hover:-rotate-6 group-hover:scale-110 group-hover:bg-slate"
+          >
+            {{if eq $index 0}}
+            <svg
+              class="h-6 w-6"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              aria-hidden="true"
+            >
+              <rect x="4" y="5" width="16" height="15" rx="3" />
+              <path d="M8 3v4m8-4v4M4 10h16" />
+            </svg>
+            {{else if eq $index 1}}
+            <svg
+              class="h-6 w-6"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 3 4 7l8 4 8-4-8-4Zm-6 6v5c0 2.2 2.7 4 6 4s6-1.8 6-4V9"
+              />
+            </svg>
+            {{else}}
+            <svg
+              class="h-6 w-6"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 3v18M5.5 6.5 18.5 17.5M18.5 6.5 5.5 17.5"
+              />
+            </svg>
+            {{end}}
+          </div>
+
+          <h3
+            class="mt-7 text-2xl font-semibold tracking-tight text-obsidian"
+          >
+            {{.Title}}
+          </h3>
+
+          <p class="mt-4 text-sm leading-7 text-slate/65">
+            {{.Body}}
+          </p>
+
+          <div
+            class="mt-7 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate/45 transition group-hover:text-obsidian"
+          >
+            Learn more
+            <span
+              class="transition-transform duration-300 group-hover:translate-x-1"
+            >
+              →
+            </span>
+          </div>
+        </article>
         {{end}}
       </div>
     </div>
-  </div>
-</section>
+  </section>
+
+  <!-- Booking process -->
+  <section class="py-16 sm:py-24">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div
+        class="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-start lg:gap-20"
+      >
+        <div
+          data-reveal
+          class="translate-y-6 opacity-0 transition-all duration-700 lg:sticky lg:top-40"
+        >
+          <p
+            class="text-xs font-bold uppercase tracking-[0.25em] text-slate/55"
+          >
+            Simple booking
+          </p>
+
+          <h2
+            class="mt-4 text-4xl font-semibold leading-tight tracking-[-0.04em] text-obsidian sm:text-5xl"
+          >
+            From planning to playing in three steps.
+          </h2>
+
+          <p class="mt-5 max-w-lg text-base leading-8 text-slate/65">
+            No unnecessary complexity. Select an activity, choose an available
+            time and confirm your booking.
+          </p>
+
+          <a
+            href="/register"
+            class="mt-7 inline-flex items-center gap-2 rounded-full bg-obsidian px-6 py-3.5 text-sm font-bold text-cloud transition duration-300 hover:-translate-y-1 hover:bg-slate"
+          >
+            Start booking
+            <span aria-hidden="true">→</span>
+          </a>
+        </div>
+
+        <div class="space-y-4">
+          <article
+            data-reveal
+            class="group translate-y-8 rounded-[2rem] border border-obsidian/10 bg-white/70 p-6 opacity-0 transition-all duration-700 hover:border-aqua hover:bg-white sm:p-8"
+          >
+            <div class="flex gap-5 sm:gap-7">
+              <span
+                class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-lg font-bold text-cloud transition group-hover:-rotate-6 group-hover:bg-aqua group-hover:text-obsidian"
+              >
+                01
+              </span>
+
+              <div>
+                <h3 class="text-2xl font-semibold text-obsidian">
+                  Choose your activity
+                </h3>
+                <p class="mt-3 max-w-xl text-sm leading-7 text-slate/65">
+                  Select cricket, futsal, badminton, table tennis or an
+                  available coaching programme.
+                </p>
+              </div>
+            </div>
+          </article>
+
+          <article
+            data-reveal
+            class="group translate-y-8 rounded-[2rem] border border-obsidian/10 bg-white/70 p-6 opacity-0 transition-all delay-75 duration-700 hover:border-amber hover:bg-white sm:p-8"
+          >
+            <div class="flex gap-5 sm:gap-7">
+              <span
+                class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-lg font-bold text-cloud transition group-hover:rotate-6 group-hover:bg-amber group-hover:text-obsidian"
+              >
+                02
+              </span>
+
+              <div>
+                <h3 class="text-2xl font-semibold text-obsidian">
+                  Select a time
+                </h3>
+                <p class="mt-3 max-w-xl text-sm leading-7 text-slate/65">
+                  Review available sessions and choose a convenient one-hour
+                  booking slot.
+                </p>
+              </div>
+            </div>
+          </article>
+
+          <article
+            data-reveal
+            class="group translate-y-8 rounded-[2rem] border border-obsidian/10 bg-white/70 p-6 opacity-0 transition-all delay-100 duration-700 hover:border-blush hover:bg-white sm:p-8"
+          >
+            <div class="flex gap-5 sm:gap-7">
+              <span
+                class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-lg font-bold text-cloud transition group-hover:-rotate-6 group-hover:bg-blush group-hover:text-obsidian"
+              >
+                03
+              </span>
+
+              <div>
+                <h3 class="text-2xl font-semibold text-obsidian">
+                  Confirm and play
+                </h3>
+                <p class="mt-3 max-w-xl text-sm leading-7 text-slate/65">
+                  Confirm your reservation, arrive at Mekmaa and pay at the
+                  facility before your session.
+                </p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const revealElements = document.querySelectorAll("[data-reveal]");
+    const floatingCards = document.querySelectorAll("[data-float-card]");
+
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    if (prefersReducedMotion) {
+      revealElements.forEach((element) => {
+        element.classList.remove(
+          "translate-y-6",
+          "translate-y-8",
+          "opacity-0"
+        );
+        element.classList.add("translate-y-0", "opacity-100");
+      });
+
+      return;
+    }
+
+    const revealObserver = new IntersectionObserver(
+      (entries, observer) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+
+          entry.target.classList.remove(
+            "translate-y-6",
+            "translate-y-8",
+            "opacity-0"
+          );
+          entry.target.classList.add("translate-y-0", "opacity-100");
+
+          observer.unobserve(entry.target);
+        });
+      },
+      {
+        threshold: 0.12,
+        rootMargin: "0px 0px -60px 0px"
+      }
+    );
+
+    revealElements.forEach((element) => {
+      revealObserver.observe(element);
+    });
+
+    let animationFrame;
+
+    const updateFloatingCards = () => {
+      const scrollPosition = window.scrollY;
+
+      floatingCards.forEach((card, index) => {
+        const direction = index % 2 === 0 ? 1 : -1;
+        const offset = scrollPosition * 0.025 * direction;
+
+        card.style.transform = `translate3d(0, ${offset}px, 0)`;
+      });
+
+      animationFrame = null;
+    };
+
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (animationFrame) return;
+
+        animationFrame = window.requestAnimationFrame(
+          updateFloatingCards
+        );
+      },
+      { passive: true }
+    );
+  });
+</script>
 {{end}}

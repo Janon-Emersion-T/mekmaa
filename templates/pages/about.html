@@ -1,0 +1,435 @@
+{{define "about"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="relative overflow-hidden">
+  <!-- Background -->
+  <div class="absolute inset-0 -z-20 bg-cloud"></div>
+  <div class="absolute -left-32 top-20 -z-10 h-80 w-80 rounded-full bg-aqua/20 blur-3xl"></div>
+  <div class="absolute -right-32 top-96 -z-10 h-96 w-96 rounded-full bg-amber/15 blur-3xl"></div>
+
+  <!-- Hero -->
+  <section class="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:py-24">
+    <div>
+      <p class="inline-flex rounded-full border border-obsidian/10 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate">
+        About Mekmaa
+      </p>
+
+      <h1 class="mt-6 max-w-4xl text-4xl font-semibold leading-tight text-obsidian sm:text-5xl lg:text-6xl">
+        More than a sports venue.
+        <span class="text-slate/65">A place to play, train and grow.</span>
+      </h1>
+
+      <p class="mt-6 max-w-2xl text-base leading-8 text-slate/75 sm:text-lg">
+        Mekmaa is a modern indoor sports and coaching facility created for
+        players, families, children, teenagers and communities that want a
+        professional, safe and welcoming place to stay active.
+      </p>
+
+      <div class="mt-9 flex flex-col gap-3 sm:flex-row">
+        <a
+          href="/booking"
+          class="inline-flex items-center justify-center rounded-full bg-obsidian px-7 py-3.5 text-sm font-semibold text-cloud transition hover:-translate-y-0.5 hover:bg-slate"
+        >
+          Book a Sports Session
+        </a>
+
+        <a
+          href="/contact"
+          class="inline-flex items-center justify-center rounded-full border border-obsidian/15 bg-white px-7 py-3.5 text-sm font-semibold text-obsidian transition hover:border-obsidian hover:bg-obsidian hover:text-cloud"
+        >
+          Contact Our Team
+        </a>
+      </div>
+    </div>
+
+    <!-- Hero Visual -->
+    <div class="relative">
+      <div class="overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-float">
+        <img
+          src="/static/images/about/mekmaa-indoor-sports.jpg"
+          alt="Mekmaa indoor sports facility"
+          class="h-[480px] w-full object-cover"
+        />
+      </div>
+
+      <div class="absolute -bottom-6 -left-4 max-w-xs rounded-[1.5rem] border border-white/70 bg-white/90 p-5 shadow-xl backdrop-blur-xl sm:-left-8">
+        <p class="text-sm font-semibold text-obsidian">
+          Built for every level
+        </p>
+
+        <p class="mt-2 text-sm leading-6 text-slate/70">
+          From casual bookings to structured coaching, Mekmaa gives every
+          player room to improve.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Statistics -->
+  <section class="mx-auto max-w-7xl px-5 pb-16 sm:px-8">
+    <div class="grid overflow-hidden rounded-[2rem] border border-white/80 bg-white/80 shadow-sm backdrop-blur-xl sm:grid-cols-2 lg:grid-cols-4">
+      <div class="p-7 lg:p-8">
+        <p class="text-3xl font-semibold text-obsidian">4+</p>
+        <p class="mt-2 text-sm leading-6 text-slate/65">Indoor sports activities</p>
+      </div>
+
+      <div class="border-t border-obsidian/5 p-7 sm:border-l sm:border-t-0 lg:p-8">
+        <p class="text-3xl font-semibold text-obsidian">All Ages</p>
+        <p class="mt-2 text-sm leading-6 text-slate/65">Programs for children, teens and adults</p>
+      </div>
+
+      <div class="border-t border-obsidian/5 p-7 lg:border-l lg:border-t-0 lg:p-8">
+        <p class="text-3xl font-semibold text-obsidian">7 Days</p>
+        <p class="mt-2 text-sm leading-6 text-slate/65">Flexible sessions throughout the week</p>
+      </div>
+
+      <div class="border-t border-obsidian/5 p-7 sm:border-l lg:border-t-0 lg:p-8">
+        <p class="text-3xl font-semibold text-obsidian">1 Place</p>
+        <p class="mt-2 text-sm leading-6 text-slate/65">Playing, coaching and community activities</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Our Story -->
+  <section class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+    <div class="grid gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+          Our Story
+        </p>
+
+        <h2 class="mt-4 text-3xl font-semibold leading-tight text-obsidian sm:text-4xl">
+          Created to make quality sports facilities more accessible.
+        </h2>
+      </div>
+
+      <div class="space-y-6 text-base leading-8 text-slate/75 sm:text-lg">
+        <p>
+          Mekmaa was established with a clear purpose: to provide a dependable
+          indoor environment where people can play sports regardless of weather,
+          age or experience level.
+        </p>
+
+        <p>
+          We recognised that many players needed more than an empty court. They
+          needed proper facilities, flexible booking options, professional
+          coaching and a team that genuinely cared about their progress.
+        </p>
+
+        <p>
+          Today, Mekmaa brings all of those elements together under one roof.
+          Our facility supports cricket, futsal, badminton and table tennis,
+          alongside structured coaching sessions designed mainly for children
+          and teenagers.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- What We Offer -->
+  <section class="border-y border-obsidian/5 bg-white/60">
+    <div class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+      <div class="max-w-3xl">
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+          What We Offer
+        </p>
+
+        <h2 class="mt-4 text-3xl font-semibold text-obsidian sm:text-4xl">
+          One flexible venue. Multiple ways to play.
+        </h2>
+
+        <p class="mt-5 text-base leading-8 text-slate/70 sm:text-lg">
+          Mekmaa is designed to serve casual players, competitive teams,
+          families and aspiring young athletes.
+        </p>
+      </div>
+
+      <div class="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <!-- Cricket -->
+        <article class="group rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-mint text-xl">
+            🏏
+          </div>
+
+          <h3 class="mt-6 text-xl font-semibold text-obsidian">
+            Cricket
+          </h3>
+
+          <p class="mt-3 text-sm leading-7 text-slate/70">
+            Book cricket nets for practice sessions or reserve the complete
+            indoor area for a cricket game.
+          </p>
+        </article>
+
+        <!-- Futsal -->
+        <article class="group rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-aqua/25 text-xl">
+            ⚽
+          </div>
+
+          <h3 class="mt-6 text-xl font-semibold text-obsidian">
+            Futsal
+          </h3>
+
+          <p class="mt-3 text-sm leading-7 text-slate/70">
+            Gather your team and book the complete indoor facility for a
+            fast-paced futsal session.
+          </p>
+        </article>
+
+        <!-- Badminton -->
+        <article class="group rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blush text-xl">
+            🏸
+          </div>
+
+          <h3 class="mt-6 text-xl font-semibold text-obsidian">
+            Badminton
+          </h3>
+
+          <p class="mt-3 text-sm leading-7 text-slate/70">
+            Enjoy an indoor badminton session with friends, family or training
+            partners in a comfortable setting.
+          </p>
+        </article>
+
+        <!-- Table Tennis -->
+        <article class="group rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber/20 text-xl">
+            🏓
+          </div>
+
+          <h3 class="mt-6 text-xl font-semibold text-obsidian">
+            Table Tennis
+          </h3>
+
+          <p class="mt-3 text-sm leading-7 text-slate/70">
+            Book one or multiple table tennis areas for casual matches,
+            practice or friendly competitions.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Coaching -->
+  <section class="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 lg:grid-cols-2 lg:items-center lg:py-24">
+    <div class="relative order-2 lg:order-1">
+      <div class="overflow-hidden rounded-[2rem] bg-obsidian p-3 shadow-float">
+        <img
+          src="/static/images/about/mekmaa-coaching.jpg"
+          alt="Children attending sports coaching at Mekmaa"
+          class="h-[460px] w-full rounded-[1.5rem] object-cover"
+        />
+      </div>
+
+      <div class="absolute -right-4 top-8 rounded-2xl bg-amber px-5 py-4 shadow-xl sm:-right-8">
+        <p class="text-sm font-semibold text-obsidian">
+          Learn. Practise. Improve.
+        </p>
+      </div>
+    </div>
+
+    <div class="order-1 lg:order-2">
+      <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+        Coaching at Mekmaa
+      </p>
+
+      <h2 class="mt-4 text-3xl font-semibold leading-tight text-obsidian sm:text-4xl">
+        Helping the next generation build skills and confidence.
+      </h2>
+
+      <p class="mt-6 text-base leading-8 text-slate/75 sm:text-lg">
+        Our coaching programs are designed primarily for children and
+        teenagers. Sessions focus on technical development, discipline,
+        teamwork, fitness and confidence.
+      </p>
+
+      <div class="mt-8 space-y-4">
+        <div class="flex gap-4 rounded-2xl border border-obsidian/5 bg-white/70 p-5">
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-obsidian text-sm text-cloud">
+            01
+          </span>
+
+          <div>
+            <h3 class="font-semibold text-obsidian">Structured Training</h3>
+            <p class="mt-1 text-sm leading-6 text-slate/65">
+              Sessions are organised around player ability, development needs
+              and age group.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex gap-4 rounded-2xl border border-obsidian/5 bg-white/70 p-5">
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-obsidian text-sm text-cloud">
+            02
+          </span>
+
+          <div>
+            <h3 class="font-semibold text-obsidian">Positive Environment</h3>
+            <p class="mt-1 text-sm leading-6 text-slate/65">
+              Young players can improve in a supportive, respectful and safe
+              training environment.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex gap-4 rounded-2xl border border-obsidian/5 bg-white/70 p-5">
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-obsidian text-sm text-cloud">
+            03
+          </span>
+
+          <div>
+            <h3 class="font-semibold text-obsidian">Long-Term Development</h3>
+            <p class="mt-1 text-sm leading-6 text-slate/65">
+              We focus on consistent progress rather than chasing overnight
+              results.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <a
+        href="/coaching"
+        class="mt-8 inline-flex items-center gap-3 rounded-full bg-obsidian px-7 py-3.5 text-sm font-semibold text-cloud transition hover:bg-slate"
+      >
+        Explore Coaching Programs
+        <span aria-hidden="true">→</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- Mission and Vision -->
+  <section class="mx-auto max-w-7xl px-5 pb-16 sm:px-8 lg:pb-24">
+    <div class="grid gap-5 lg:grid-cols-2">
+      <article class="relative overflow-hidden rounded-[2rem] bg-obsidian p-8 text-cloud sm:p-10">
+        <div class="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-aqua/20 blur-3xl"></div>
+
+        <p class="relative text-sm font-semibold uppercase tracking-[0.3em] text-aqua">
+          Our Mission
+        </p>
+
+        <h2 class="relative mt-5 text-3xl font-semibold leading-tight">
+          To make quality sports experiences accessible, flexible and
+          professionally managed.
+        </h2>
+
+        <p class="relative mt-6 max-w-xl leading-8 text-cloud/70">
+          We aim to provide reliable facilities, practical booking options and
+          development-focused coaching for the communities we serve.
+        </p>
+      </article>
+
+      <article class="relative overflow-hidden rounded-[2rem] bg-mint p-8 text-obsidian sm:p-10">
+        <div class="absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-aqua/40 blur-3xl"></div>
+
+        <p class="relative text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">
+          Our Vision
+        </p>
+
+        <h2 class="relative mt-5 text-3xl font-semibold leading-tight">
+          To become a trusted centre for sports, coaching and active community
+          life.
+        </h2>
+
+        <p class="relative mt-6 max-w-xl leading-8 text-slate/70">
+          We want Mekmaa to be recognised as a place where people return,
+          improve, build friendships and create lasting sporting memories.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <!-- Values -->
+  <section class="bg-white/70">
+    <div class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+      <div class="text-center">
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+          Our Values
+        </p>
+
+        <h2 class="mt-4 text-3xl font-semibold text-obsidian sm:text-4xl">
+          The standards behind every Mekmaa experience.
+        </h2>
+      </div>
+
+      <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <article class="rounded-[1.75rem] border border-obsidian/5 bg-cloud p-7">
+          <span class="text-3xl">🏆</span>
+          <h3 class="mt-5 text-lg font-semibold text-obsidian">Quality</h3>
+          <p class="mt-3 text-sm leading-7 text-slate/65">
+            We maintain reliable facilities and deliver services with
+            professional standards.
+          </p>
+        </article>
+
+        <article class="rounded-[1.75rem] border border-obsidian/5 bg-cloud p-7">
+          <span class="text-3xl">🤝</span>
+          <h3 class="mt-5 text-lg font-semibold text-obsidian">Respect</h3>
+          <p class="mt-3 text-sm leading-7 text-slate/65">
+            Every player, parent, coach and team member deserves a welcoming
+            environment.
+          </p>
+        </article>
+
+        <article class="rounded-[1.75rem] border border-obsidian/5 bg-cloud p-7">
+          <span class="text-3xl">📈</span>
+          <h3 class="mt-5 text-lg font-semibold text-obsidian">Progress</h3>
+          <p class="mt-3 text-sm leading-7 text-slate/65">
+            We believe meaningful improvement is built through patience,
+            practice and consistency.
+          </p>
+        </article>
+
+        <article class="rounded-[1.75rem] border border-obsidian/5 bg-cloud p-7">
+          <span class="text-3xl">🛡️</span>
+          <h3 class="mt-5 text-lg font-semibold text-obsidian">Safety</h3>
+          <p class="mt-3 text-sm leading-7 text-slate/65">
+            We prioritise responsible operations, clear rules and player
+            wellbeing.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+    <div class="relative overflow-hidden rounded-[2.25rem] bg-obsidian px-6 py-12 text-center text-cloud sm:px-12 sm:py-16">
+      <div class="absolute left-0 top-0 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-aqua/20 blur-3xl"></div>
+      <div class="absolute bottom-0 right-0 h-64 w-64 translate-x-1/2 translate-y-1/2 rounded-full bg-amber/20 blur-3xl"></div>
+
+      <div class="relative mx-auto max-w-3xl">
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-aqua">
+          Play Your Way
+        </p>
+
+        <h2 class="mt-5 text-3xl font-semibold leading-tight sm:text-5xl">
+          Your next game, practice or coaching session starts at Mekmaa.
+        </h2>
+
+        <p class="mx-auto mt-6 max-w-2xl leading-8 text-cloud/70">
+          Choose your activity, select a suitable time and let our team take
+          care of the rest.
+        </p>
+
+        <div class="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+          <a
+            href="/booking"
+            class="inline-flex items-center justify-center rounded-full bg-aqua px-7 py-3.5 text-sm font-semibold text-obsidian transition hover:bg-mint"
+          >
+            Book Now
+          </a>
+
+          <a
+            href="/contact"
+            class="inline-flex items-center justify-center rounded-full border border-cloud/20 px-7 py-3.5 text-sm font-semibold text-cloud transition hover:bg-cloud hover:text-obsidian"
+          >
+            Speak to Our Team
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</section>
+{{end}}

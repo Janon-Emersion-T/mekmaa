@@ -16,12 +16,50 @@
     <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
         <h2 class="text-xl font-semibold sm:text-2xl">Daily calendar</h2>
-        <p class="mt-2 text-sm text-slate/70">One day view for bookings and training blocks</p>
+        <p class="mt-2 text-sm text-slate/70">One day view for bookings and training blocks on {{.CalendarDate}}</p>
       </div>
-      <form action="/admin/bookings" method="get" class="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <input type="date" name="date" value="{{.CalendarDate}}" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-        <button type="submit" class="rounded-2xl border border-slate/10 bg-white px-5 py-3 text-sm font-medium text-slate transition hover:bg-cloud">View day</button>
-      </form>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <a href="/admin/bookings?date={{.PreviousDate}}" class="rounded-2xl border border-slate/10 bg-white px-5 py-3 text-center text-sm font-medium text-slate transition hover:bg-cloud">Previous day</a>
+        <form action="/admin/bookings" method="get" class="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input type="date" name="date" value="{{.CalendarDate}}" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+          <button type="submit" class="rounded-2xl border border-slate/10 bg-white px-5 py-3 text-sm font-medium text-slate transition hover:bg-cloud">View day</button>
+        </form>
+        <a href="/admin/bookings?date={{.NextDate}}" class="rounded-2xl border border-slate/10 bg-white px-5 py-3 text-center text-sm font-medium text-slate transition hover:bg-cloud">Next day</a>
+      </div>
+    </div>
+
+    <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {{range .DailyStats}}
+      <div class="rounded-3xl border border-slate/8 bg-cloud p-4 sm:p-5">
+        <p class="text-xl font-semibold sm:text-2xl">{{.Value}}</p>
+        <p class="mt-2 text-sm text-slate/72">{{.Label}}</p>
+      </div>
+      {{end}}
+    </div>
+
+    <div class="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <p class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Allowed combinations</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Full indoor cricket only</span>
+          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Futsal only</span>
+          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Badminton + 1 cricket net</span>
+          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Badminton + 1 table tennis</span>
+          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Table tennis only, up to 2</span>
+          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Cricket nets only, exactly 3</span>
+          <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Training blocks full hour</span>
+        </div>
+      </div>
+      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <p class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Venue inventory</p>
+        <div class="mt-4 grid gap-2 sm:grid-cols-2">
+          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate">2 Table tennis courts</div>
+          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate">1 Badminton court</div>
+          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate">1 Futsal court</div>
+          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate">3 Cricket nets</div>
+          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate sm:col-span-2">1 Full indoor cricket area</div>
+        </div>
+      </div>
     </div>
 
     <div class="mt-6 grid gap-3">
@@ -35,12 +73,14 @@
         </div>
         <div class="grid gap-3">
           {{range $slotSchedules}}
-          <div class="rounded-2xl border {{if eq .EntryType "training"}}border-amber-200 bg-amber-50{{else}}border-slate/10 bg-white{{end}} px-4 py-4">
+          <div class="rounded-2xl border px-4 py-4 {{scheduleToneClasses .}}">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p class="text-sm font-semibold text-obsidian">{{.Title}}</p>
-                <p class="mt-1 text-sm text-slate/70">{{scheduleSummary .}}</p>
-                <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.EntryType}}</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <span class="rounded-full px-3 py-1 text-xs font-semibold {{scheduleBadgeClasses .}}">{{scheduleSummary .}}</span>
+                  <span class="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate/70">{{.EntryType}}</span>
+                </div>
                 {{if .Notes}}<p class="mt-2 text-sm text-slate/60">{{.Notes}}</p>{{end}}
               </div>
               <div class="flex flex-wrap gap-2">
@@ -60,32 +100,79 @@
     </div>
   </div>
 
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
+    <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
+      <h2 class="text-xl font-semibold sm:text-2xl">Selected day schedule</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-5 py-4 font-medium sm:px-6">Hour</th>
+            <th class="px-5 py-4 font-medium">Type</th>
+            <th class="px-5 py-4 font-medium">Space</th>
+            <th class="px-5 py-4 font-medium">Qty</th>
+            <th class="px-5 py-4 font-medium">Title</th>
+            <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .DaySchedules}}
+          <tr class="bg-white/70 align-top">
+            <td class="px-5 py-4 sm:px-6 text-slate/75">{{.SlotHour}}</td>
+            <td class="px-5 py-4 text-slate/75"><span class="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate/70">{{.EntryType}}</span></td>
+            <td class="px-5 py-4 text-slate/75"><span class="rounded-full px-3 py-1 text-xs font-semibold {{scheduleBadgeClasses .}}">{{scheduleSummary .}}</span></td>
+            <td class="px-5 py-4 text-slate/75">{{.Quantity}}</td>
+            <td class="px-5 py-4 text-slate/75">
+              <p class="font-medium text-obsidian">{{.Title}}</p>
+              {{if .Notes}}<p class="mt-1 text-xs text-slate/55">{{.Notes}}</p>{{end}}
+            </td>
+            <td class="px-5 py-4 sm:px-6">
+              <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
+                <a href="/admin/bookings?action=view&id={{.ID}}#schedule-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                <a href="/admin/bookings?action=edit&id={{.ID}}#schedule-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+              </div>
+            </td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="6" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No schedules for {{.CalendarDate}}.</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   {{if eq .ScheduleMode "new"}}
   <div id="schedule-form" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-xl font-semibold sm:text-2xl">Add booking or training</h2>
       <a href="/admin/bookings" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
     </div>
+    {{if .Error}}
+    <div class="mt-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">{{.Error}}</div>
+    {{end}}
     <form action="/admin/bookings/create" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
       <select name="entry_type" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
-        <option value="booking">Booking</option>
-        <option value="training">Training</option>
+        <option value="booking" {{if or (not .DraftSchedule) (eq .DraftSchedule.EntryType "booking")}}selected{{end}}>Booking</option>
+        <option value="training" {{if and .DraftSchedule (eq .DraftSchedule.EntryType "training")}}selected{{end}}>Training</option>
       </select>
-      <input type="date" name="slot_date" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="date" name="slot_date" value="{{if and .DraftSchedule .DraftSchedule.SlotDate}}{{.DraftSchedule.SlotDate}}{{else}}{{.CalendarDate}}{{end}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
       <select name="slot_hour" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
         {{range .Hours}}
-        <option value="{{.}}">{{.}}</option>
+        <option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.SlotHour .)}}selected{{end}}>{{.}}</option>
         {{end}}
       </select>
       <select name="activity" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
         {{range .Activities}}
-        <option value="{{.}}">{{activityLabel .}}</option>
+        <option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.Activity .)}}selected{{end}}>{{activityLabel .}}</option>
         {{end}}
       </select>
-      <input type="number" name="quantity" min="1" max="3" value="1" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="title" placeholder="Title" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <textarea name="notes" placeholder="Notes" rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua"></textarea>
+      <input type="number" name="quantity" min="1" max="3" value="{{if and .DraftSchedule (gt .DraftSchedule.Quantity 0)}}{{.DraftSchedule.Quantity}}{{else}}1{{end}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="title" value="{{if .DraftSchedule}}{{.DraftSchedule.Title}}{{end}}" placeholder="Title" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+      <textarea name="notes" placeholder="Notes" rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{if .DraftSchedule}}{{.DraftSchedule.Notes}}{{end}}</textarea>
       <div class="md:col-span-2 xl:col-span-3 flex justify-end">
         <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create</button>
       </div>
@@ -112,8 +199,8 @@
           <tr class="bg-white/70 align-top">
             <td class="px-5 py-4 sm:px-6 text-slate/75">{{.SlotDate}}</td>
             <td class="px-5 py-4 text-slate/75">{{.SlotHour}}</td>
-            <td class="px-5 py-4 text-slate/75 capitalize">{{.EntryType}}</td>
-            <td class="px-5 py-4 text-slate/75">{{scheduleSummary .}}</td>
+            <td class="px-5 py-4 text-slate/75"><span class="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate/70">{{.EntryType}}</span></td>
+            <td class="px-5 py-4 text-slate/75"><span class="rounded-full px-3 py-1 text-xs font-semibold {{scheduleBadgeClasses .}}">{{scheduleSummary .}}</span></td>
             <td class="px-5 py-4 text-slate/75">{{.Quantity}}</td>
             <td class="px-5 py-4 text-slate/75">
               <p class="font-medium text-obsidian">{{.Title}}</p>
@@ -162,7 +249,7 @@
       </div>
       <div class="rounded-2xl bg-cloud px-4 py-4">
         <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Space</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{scheduleSummary .SelectedSchedule}}</p>
+        <p class="mt-2"><span class="rounded-full px-3 py-1 text-xs font-semibold {{scheduleBadgeClasses .SelectedSchedule}}">{{scheduleSummary .SelectedSchedule}}</span></p>
       </div>
       <div class="rounded-2xl bg-cloud px-4 py-4">
         <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Quantity</p>
@@ -186,6 +273,9 @@
       <h2 class="text-xl font-semibold sm:text-2xl">Edit slot</h2>
       <a href="/admin/bookings" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
     </div>
+    {{if .Error}}
+    <div class="mt-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">{{.Error}}</div>
+    {{end}}
     <form action="/admin/bookings/update" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
       <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />

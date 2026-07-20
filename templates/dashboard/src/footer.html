@@ -1,8 +1,67 @@
 {{define "dashboard-footer"}}
-<footer class="border-t border-white/60 bg-white/65 px-3 py-4 text-sm text-slate/65 backdrop-blur-xl sm:px-6 lg:px-8">
-  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-    <p>mekmaa3 dashboard shell</p>
-    <p>Responsive sidebar, authenticated routes, and role-aware navigation.</p>
+<footer class="mt-auto border-t border-white/70 bg-white/70 px-4 py-5 text-sm text-slate/65 shadow-[0_-12px_40px_rgba(11,18,21,0.04)] backdrop-blur-xl sm:px-6 lg:px-8">
+  <div class="mx-auto flex w-full max-w-[1600px] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+    <!-- Company identity -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-obsidian text-xs font-bold uppercase tracking-wider text-cloud shadow-sm">
+        M
+      </div>
+
+      <div>
+        <p class="font-semibold text-obsidian">
+          Mekmaa (Pvt) Ltd
+        </p>
+
+        <p class="mt-0.5 text-xs text-slate/50">
+          Sports, training and facility management
+        </p>
+      </div>
+    </div>
+
+    <!-- Copyright -->
+    <p class="text-xs leading-5 text-slate/50 sm:text-center">
+      &copy; 2026 Mekmaa (Pvt) Ltd. All rights reserved.
+    </p>
+
+    <!-- Developer credit -->
+    <div class="flex flex-col gap-1 sm:items-end">
+      <p class="text-xs text-slate/50">
+        Designed and developed by
+      </p>
+
+      <a
+        href="https://lkprofessionals.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Visit LKProfessionals website"
+        class="group inline-flex w-fit items-center gap-1.5 font-semibold text-obsidian transition hover:text-slate focus:outline-none focus:ring-4 focus:ring-aqua/20"
+      >
+        <span>LKProfessionals (Pvt) Ltd</span>
+
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          class="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M13.5 6H18m0 0v4.5M18 6l-7.5 7.5"
+          />
+
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M15 13.5v4.125A2.375 2.375 0 0 1 12.625 20h-6.25A2.375 2.375 0 0 1 4 17.625v-6.25A2.375 2.375 0 0 1 6.375 9H10.5"
+          />
+        </svg>
+      </a>
+    </div>
+
   </div>
 </footer>
 {{end}}

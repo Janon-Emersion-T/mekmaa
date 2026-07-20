@@ -52,6 +52,12 @@
       <span>Booking Manager</span>
       <span class="text-xs uppercase tracking-[0.2em]">Slots</span>
     </a>
+    {{if hasPermission .User "booking_requests.manage"}}
+    <a href="/admin/booking-requests" class="{{if isCurrentPath .CurrentPath "/admin/booking-requests"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">
+      <span>Booking Requests</span>
+      <span class="text-xs uppercase tracking-[0.2em]">Review</span>
+    </a>
+    {{end}}
     {{end}}
     {{if hasPermission .User "admissions.manage"}}
     <a href="/admin/admissions" class="{{if isCurrentPath .CurrentPath "/admin/admissions"}}bg-cloud text-obsidian{{else}}text-slate/75 hover:bg-cloud{{end}} flex items-center justify-between rounded-2xl px-4 py-3 font-medium transition">

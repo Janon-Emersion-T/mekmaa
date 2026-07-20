@@ -1,123 +1,1007 @@
 {{define "public-header"}}
-<header class="relative z-20 border-b border-obsidian/5 bg-cloud/70 backdrop-blur-xl">
-  <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5 lg:px-8">
-    <a
-      href="/"
-      class="group inline-flex items-center gap-3"
-      aria-label="Mekmaa home"
+<header
+  data-site-header
+  class="fixed inset-x-0 top-0 z-50 transition-all duration-300"
+>
+  <!-- Announcement bar -->
+  <div
+    data-announcement-bar
+    class="relative overflow-hidden border-b border-white/10 bg-obsidian text-cloud"
+  >
+    <div
+      class="mx-auto flex min-h-9 max-w-7xl items-center justify-center gap-2 px-12 py-2 text-center text-xs font-semibold sm:text-sm"
     >
-      <div
-        class="flex h-11 w-11 items-center justify-center rounded-2xl bg-obsidian text-sm font-bold text-aqua shadow-lg shadow-obsidian/10 transition duration-300 group-hover:-translate-y-0.5"
-      >
-        M
-      </div>
+      <span
+        class="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-aqua"
+        aria-hidden="true"
+      ></span>
 
-      <div>
-        <span class="block text-lg font-bold tracking-[0.16em] uppercase">
-          Mekmaa
-        </span>
-        <span class="block text-[10px] font-semibold uppercase tracking-[0.24em] text-slate/60">
-          Play · Train · Perform
-        </span>
-      </div>
-    </a>
-
-    <nav class="hidden items-center gap-1 text-sm font-semibold md:flex" aria-label="Main navigation">
-      <a
-        href="/"
-        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
-      >
-        Home
-      </a>
-
-      <a
-        href="/sports"
-        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
-      >
-        Sports
-      </a>
-
-      <a
-        href="/coaching"
-        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
-      >
-        Coaching
-      </a>
-
-      <a
-        href="/about"
-        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
-      >
-        About
-      </a>
+      <p>
+        Indoor sports bookings and professional coaching now available.
+      </p>
 
       <a
         href="/contact"
-        class="rounded-full px-4 py-2.5 transition duration-200 hover:bg-white/80"
+        class="hidden items-center gap-1 text-aqua transition hover:text-white sm:inline-flex"
       >
-        Contact
-      </a>
-    </nav>
-
-    <div class="hidden items-center gap-3 md:flex">
-      <a
-        href="/login"
-        class="rounded-full px-4 py-2.5 text-sm font-semibold transition duration-200 hover:bg-white/80"
-      >
-        Sign in
-      </a>
-
-      <a
-        href="/register"
-        class="rounded-full bg-obsidian px-5 py-2.5 text-sm font-semibold text-cloud shadow-lg shadow-obsidian/15 transition duration-300 hover:-translate-y-0.5 hover:bg-slate"
-      >
-        Create account
+        Contact us
+        <svg
+          class="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M5 12h14m-6-6 6 6-6 6"
+          />
+        </svg>
       </a>
     </div>
 
     <button
       type="button"
-      data-public-menu-toggle
-      class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-obsidian/10 bg-white/70 md:hidden"
-      aria-label="Open navigation menu"
-      aria-expanded="false"
+      data-announcement-close
+      class="absolute right-3 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-cloud/70 transition hover:bg-white/10 hover:text-white"
+      aria-label="Close announcement"
     >
       <svg
-        class="h-5 w-5"
+        class="h-4 w-4"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
         stroke-width="2"
+        aria-hidden="true"
       >
-        <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16" />
+        <path stroke-linecap="round" d="m6 6 12 12M18 6 6 18" />
       </svg>
     </button>
   </div>
 
+  <!-- Main navigation -->
   <div
-    data-public-menu
-    class="mx-4 mb-4 hidden rounded-3xl border border-obsidian/10 bg-white/90 p-3 shadow-float backdrop-blur-xl md:hidden"
+    data-header-surface
+    class="border-b border-obsidian/5 bg-cloud/80 backdrop-blur-2xl transition-all duration-300"
   >
-    <nav class="grid gap-1 text-sm font-semibold" aria-label="Mobile navigation">
-      <a href="/" class="rounded-2xl px-4 py-3 hover:bg-mint/60">Home</a>
-      <a href="/sports" class="rounded-2xl px-4 py-3 hover:bg-mint/60">Sports</a>
-      <a href="/coaching" class="rounded-2xl px-4 py-3 hover:bg-mint/60">Coaching</a>
-      <a href="/about" class="rounded-2xl px-4 py-3 hover:bg-mint/60">About</a>
-      <a href="/contact" class="rounded-2xl px-4 py-3 hover:bg-mint/60">Contact</a>
-
-      <div class="my-2 h-px bg-obsidian/10"></div>
-
-      <a href="/login" class="rounded-2xl px-4 py-3 hover:bg-mint/60">
-        Sign in
-      </a>
-
+    <div
+      class="mx-auto flex h-[82px] max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-8"
+    >
+      <!-- Brand -->
       <a
-        href="/register"
-        class="rounded-2xl bg-obsidian px-4 py-3 text-center text-cloud"
+        href="/"
+        class="group relative inline-flex min-w-0 items-center gap-3 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-aqua focus-visible:ring-offset-4 focus-visible:ring-offset-cloud"
+        aria-label="Mekmaa home"
       >
-        Create account
+        <span
+          class="absolute -inset-2 -z-10 scale-95 rounded-3xl bg-white/0 transition duration-300 group-hover:scale-100 group-hover:bg-white/70"
+          aria-hidden="true"
+        ></span>
+
+        <img
+          src="/images/mekmaa-private-limited.jpeg"
+          alt="Mekmaa Private Limited"
+          class="h-12 w-auto rounded-xl object-contain shadow-sm ring-1 ring-obsidian/5 transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-md sm:h-14"
+        />
+
+        <span
+          class="hidden h-9 w-px bg-gradient-to-b from-transparent via-obsidian/15 to-transparent xl:block"
+          aria-hidden="true"
+        ></span>
+
+        <img
+          src="/images/mekmaa-cricket-academy.jpeg"
+          alt="Mekmaa Cricket Academy"
+          class="hidden h-12 w-auto rounded-xl object-contain shadow-sm ring-1 ring-obsidian/5 transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-md sm:block sm:h-14"
+        />
       </a>
-    </nav>
+
+      <!-- Desktop navigation -->
+      <nav
+        class="hidden items-center rounded-full border border-obsidian/5 bg-white/55 p-1.5 shadow-sm backdrop-blur-xl lg:flex"
+        aria-label="Main navigation"
+      >
+        <a
+          href="/"
+          data-nav-link
+          class="nav-link relative rounded-full px-4 py-2.5 text-sm font-semibold text-obsidian/70 transition duration-200 hover:bg-white hover:text-obsidian"
+        >
+          Home
+        </a>
+
+        <!-- Sports dropdown -->
+        <div
+          class="group relative"
+          data-dropdown
+        >
+          <button
+            type="button"
+            data-dropdown-trigger
+            class="nav-link inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold text-obsidian/70 transition duration-200 hover:bg-white hover:text-obsidian"
+            aria-expanded="false"
+            aria-haspopup="true"
+          >
+            Sports
+
+            <svg
+              class="h-4 w-4 transition-transform duration-200 group-hover:rotate-180"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="m6 9 6 6 6-6"
+              />
+            </svg>
+          </button>
+
+          <div
+            data-dropdown-menu
+            class="pointer-events-none invisible absolute left-1/2 top-full z-50 w-[580px] -translate-x-1/2 translate-y-3 pt-4 opacity-0 transition duration-200 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
+          >
+            <div
+              class="grid grid-cols-2 gap-2 rounded-[2rem] border border-obsidian/10 bg-white/95 p-3 shadow-[0_30px_90px_rgba(11,18,21,0.18)] backdrop-blur-2xl"
+            >
+              <a
+                href="/sports/cricket"
+                class="group/item flex gap-3 rounded-2xl p-3 transition hover:bg-mint/60"
+              >
+                <span
+                  class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-cloud transition group-hover/item:-rotate-3 group-hover/item:scale-105"
+                >
+                  <svg
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="M8.5 5.5c2 2 3 4.2 3.5 6.5.5 2.4.3 4.6-1 6.5" />
+                  </svg>
+                </span>
+
+                <span>
+                  <span class="block font-bold text-obsidian">Cricket</span>
+                  <span class="mt-1 block text-xs leading-5 text-obsidian/55">
+                    Nets, matches and practice sessions.
+                  </span>
+                </span>
+              </a>
+
+              <a
+                href="/sports/futsal"
+                class="group/item flex gap-3 rounded-2xl p-3 transition hover:bg-mint/60"
+              >
+                <span
+                  class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber text-obsidian transition group-hover/item:rotate-3 group-hover/item:scale-105"
+                >
+                  <svg
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="m9 8 3-2 3 2-1 4h-4zM7 14l3-2m4 0 3 2" />
+                  </svg>
+                </span>
+
+                <span>
+                  <span class="block font-bold text-obsidian">Futsal</span>
+                  <span class="mt-1 block text-xs leading-5 text-obsidian/55">
+                    Fast-paced indoor football bookings.
+                  </span>
+                </span>
+              </a>
+
+              <a
+                href="/sports/badminton"
+                class="group/item flex gap-3 rounded-2xl p-3 transition hover:bg-mint/60"
+              >
+                <span
+                  class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-aqua text-obsidian transition group-hover/item:-rotate-3 group-hover/item:scale-105"
+                >
+                  <svg
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    aria-hidden="true"
+                  >
+                    <path d="m7 5 10 10M9 3l2 6-6-2M15 17l3 3" />
+                  </svg>
+                </span>
+
+                <span>
+                  <span class="block font-bold text-obsidian">Badminton</span>
+                  <span class="mt-1 block text-xs leading-5 text-obsidian/55">
+                    Courts for casual and competitive play.
+                  </span>
+                </span>
+              </a>
+
+              <a
+                href="/sports/table-tennis"
+                class="group/item flex gap-3 rounded-2xl p-3 transition hover:bg-mint/60"
+              >
+                <span
+                  class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blush text-obsidian transition group-hover/item:rotate-3 group-hover/item:scale-105"
+                >
+                  <svg
+                    class="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    aria-hidden="true"
+                  >
+                    <circle cx="8" cy="8" r="4" />
+                    <path d="m11 11 7 7M16 6h2" />
+                  </svg>
+                </span>
+
+                <span>
+                  <span class="block font-bold text-obsidian">Table Tennis</span>
+                  <span class="mt-1 block text-xs leading-5 text-obsidian/55">
+                    Flexible hourly table bookings.
+                  </span>
+                </span>
+              </a>
+
+              <a
+                href="/sports"
+                class="col-span-2 flex items-center justify-between rounded-2xl bg-obsidian px-5 py-4 text-cloud transition hover:bg-slate"
+              >
+                <span>
+                  <span class="block text-sm font-bold">Explore all sports</span>
+                  <span class="mt-0.5 block text-xs text-cloud/65">
+                    View facilities, availability and booking options.
+                  </span>
+                </span>
+
+                <svg
+                  class="h-5 w-5 transition-transform duration-200 group-hover:translate-x-1"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M5 12h14m-6-6 6 6-6 6"
+                  />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <a
+          href="/book"
+          data-nav-link
+          class="nav-link relative rounded-full px-4 py-2.5 text-sm font-semibold text-obsidian/70 transition duration-200 hover:bg-white hover:text-obsidian"
+        >
+          Booking
+        </a>
+
+        <a
+          href="/coaching"
+          data-nav-link
+          class="nav-link relative rounded-full px-4 py-2.5 text-sm font-semibold text-obsidian/70 transition duration-200 hover:bg-white hover:text-obsidian"
+        >
+          Coaching
+        </a>
+
+        <a
+          href="/about"
+          data-nav-link
+          class="nav-link relative rounded-full px-4 py-2.5 text-sm font-semibold text-obsidian/70 transition duration-200 hover:bg-white hover:text-obsidian"
+        >
+          About
+        </a>
+
+        <a
+          href="/contact"
+          data-nav-link
+          class="nav-link relative rounded-full px-4 py-2.5 text-sm font-semibold text-obsidian/70 transition duration-200 hover:bg-white hover:text-obsidian"
+        >
+          Contact
+        </a>
+      </nav>
+
+      <!-- Desktop actions -->
+      <div class="hidden shrink-0 items-center gap-2 lg:flex">
+        <a
+          href="/login"
+          class="rounded-full px-4 py-2.5 text-sm font-bold text-obsidian/70 transition hover:bg-white hover:text-obsidian focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua"
+        >
+          Sign in
+        </a>
+
+        <a
+          href="/register"
+          class="group relative isolate inline-flex items-center gap-2 overflow-hidden rounded-full bg-obsidian px-5 py-3 text-sm font-bold text-cloud shadow-lg shadow-obsidian/15 transition duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-obsidian/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua focus-visible:ring-offset-2"
+        >
+          <span
+            class="absolute inset-0 -z-10 translate-y-full bg-slate transition-transform duration-300 group-hover:translate-y-0"
+            aria-hidden="true"
+          ></span>
+
+          Create account
+
+          <svg
+            class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M5 12h14m-6-6 6 6-6 6"
+            />
+          </svg>
+        </a>
+      </div>
+
+      <!-- Mobile menu toggle -->
+      <button
+        type="button"
+        data-mobile-menu-toggle
+        class="relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-obsidian/10 bg-white/70 text-obsidian shadow-sm transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua lg:hidden"
+        aria-label="Open navigation menu"
+        aria-expanded="false"
+        aria-controls="mobile-navigation"
+      >
+        <span class="sr-only">Toggle navigation</span>
+
+        <span
+          data-menu-icon
+          class="relative block h-5 w-6"
+          aria-hidden="true"
+        >
+          <span
+            class="absolute left-0 top-0.5 h-0.5 w-6 rounded-full bg-current transition-all duration-300"
+          ></span>
+
+          <span
+            class="absolute left-0 top-2.5 h-0.5 w-6 rounded-full bg-current transition-all duration-300"
+          ></span>
+
+          <span
+            class="absolute bottom-0.5 left-0 h-0.5 w-6 rounded-full bg-current transition-all duration-300"
+          ></span>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile backdrop -->
+  <div
+    data-mobile-backdrop
+    class="pointer-events-none fixed inset-0 top-0 z-[-1] bg-obsidian/35 opacity-0 backdrop-blur-sm transition-opacity duration-300 lg:hidden"
+    aria-hidden="true"
+  ></div>
+
+  <!-- Mobile navigation panel -->
+  <div
+    id="mobile-navigation"
+    data-mobile-menu
+    class="invisible fixed inset-x-3 top-3 z-50 translate-y-[-1rem] scale-[0.98] opacity-0 transition-all duration-300 sm:inset-x-5 lg:hidden"
+    aria-hidden="true"
+  >
+    <div
+      class="max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-[2rem] border border-white/70 bg-cloud/95 p-3 shadow-[0_30px_100px_rgba(11,18,21,0.28)] backdrop-blur-2xl"
+    >
+      <!-- Mobile panel header -->
+      <div class="flex items-center justify-between gap-4 px-2 py-2">
+        <a
+          href="/"
+          class="inline-flex min-w-0 items-center gap-2"
+          aria-label="Mekmaa home"
+        >
+          <img
+            src="/images/mekmaa-private-limited.jpeg"
+            alt="Mekmaa Private Limited"
+            class="h-12 w-auto rounded-xl object-contain ring-1 ring-obsidian/5"
+          />
+
+          <img
+            src="/images/mekmaa-cricket-academy.jpeg"
+            alt="Mekmaa Cricket Academy"
+            class="hidden h-12 w-auto rounded-xl object-contain ring-1 ring-obsidian/5 xs:block"
+          />
+        </a>
+
+        <button
+          type="button"
+          data-mobile-menu-close
+          class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-obsidian/10 bg-white text-obsidian transition hover:bg-mint"
+          aria-label="Close navigation menu"
+        >
+          <svg
+            class="h-5 w-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path stroke-linecap="round" d="m6 6 12 12M18 6 6 18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="my-3 h-px bg-obsidian/10"></div>
+
+      <nav
+        class="grid gap-1"
+        aria-label="Mobile navigation"
+      >
+        <a
+          href="/"
+          data-mobile-nav-link
+          class="flex items-center justify-between rounded-2xl px-4 py-3.5 font-bold text-obsidian transition hover:bg-white"
+        >
+          Home
+          <span class="text-obsidian/35">01</span>
+        </a>
+
+        <!-- Mobile sports accordion -->
+        <div
+          class="rounded-2xl"
+          data-mobile-accordion
+        >
+          <button
+            type="button"
+            data-mobile-accordion-trigger
+            class="flex w-full items-center justify-between rounded-2xl px-4 py-3.5 text-left font-bold text-obsidian transition hover:bg-white"
+            aria-expanded="false"
+          >
+            <span>Sports</span>
+
+            <svg
+              data-accordion-icon
+              class="h-5 w-5 transition-transform duration-300"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="m6 9 6 6 6-6"
+              />
+            </svg>
+          </button>
+
+          <div
+            data-mobile-accordion-content
+            class="grid max-h-0 gap-1 overflow-hidden px-2 opacity-0 transition-all duration-300"
+          >
+            <a
+              href="/sports"
+              class="rounded-xl px-4 py-3 text-sm font-semibold text-obsidian/65 transition hover:bg-mint hover:text-obsidian"
+            >
+              All sports
+            </a>
+
+            <a
+              href="/sports/cricket"
+              class="rounded-xl px-4 py-3 text-sm font-semibold text-obsidian/65 transition hover:bg-mint hover:text-obsidian"
+            >
+              Cricket
+            </a>
+
+            <a
+              href="/sports/futsal"
+              class="rounded-xl px-4 py-3 text-sm font-semibold text-obsidian/65 transition hover:bg-mint hover:text-obsidian"
+            >
+              Futsal
+            </a>
+
+            <a
+              href="/sports/badminton"
+              class="rounded-xl px-4 py-3 text-sm font-semibold text-obsidian/65 transition hover:bg-mint hover:text-obsidian"
+            >
+              Badminton
+            </a>
+
+            <a
+              href="/sports/table-tennis"
+              class="rounded-xl px-4 py-3 text-sm font-semibold text-obsidian/65 transition hover:bg-mint hover:text-obsidian"
+            >
+              Table tennis
+            </a>
+          </div>
+        </div>
+
+        <a
+          href="/book"
+          data-mobile-nav-link
+          class="flex items-center justify-between rounded-2xl px-4 py-3.5 font-bold text-obsidian transition hover:bg-white"
+        >
+          Booking
+          <span class="text-obsidian/35">03</span>
+        </a>
+
+        <a
+          href="/coaching"
+          data-mobile-nav-link
+          class="flex items-center justify-between rounded-2xl px-4 py-3.5 font-bold text-obsidian transition hover:bg-white"
+        >
+          Coaching
+          <span class="text-obsidian/35">04</span>
+        </a>
+
+        <a
+          href="/about"
+          data-mobile-nav-link
+          class="flex items-center justify-between rounded-2xl px-4 py-3.5 font-bold text-obsidian transition hover:bg-white"
+        >
+          About
+          <span class="text-obsidian/35">05</span>
+        </a>
+
+        <a
+          href="/contact"
+          data-mobile-nav-link
+          class="flex items-center justify-between rounded-2xl px-4 py-3.5 font-bold text-obsidian transition hover:bg-white"
+        >
+          Contact
+          <span class="text-obsidian/35">06</span>
+        </a>
+      </nav>
+
+      <div class="my-3 h-px bg-obsidian/10"></div>
+
+      <div class="grid gap-2 sm:grid-cols-2">
+        <a
+          href="/login"
+          class="rounded-2xl border border-obsidian/10 bg-white px-4 py-3.5 text-center text-sm font-bold text-obsidian transition hover:border-obsidian/20 hover:bg-mint"
+        >
+          Sign in
+        </a>
+
+        <a
+          href="/register"
+          class="rounded-2xl bg-obsidian px-4 py-3.5 text-center text-sm font-bold text-cloud shadow-lg shadow-obsidian/15 transition hover:bg-slate"
+        >
+          Create account
+        </a>
+      </div>
+
+      <div
+        class="mt-3 flex items-center justify-between rounded-2xl bg-mint/60 px-4 py-3 text-xs font-semibold text-obsidian/60"
+      >
+        <span>Book. Play. Improve.</span>
+        <span class="inline-flex items-center gap-1">
+          <span class="h-2 w-2 animate-pulse rounded-full bg-aqua"></span>
+          Open now
+        </span>
+      </div>
+    </div>
   </div>
 </header>
+
+<!-- Header spacer prevents fixed-header content overlap -->
+<div data-header-spacer class="h-[127px]"></div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const header = document.querySelector("[data-site-header]");
+    const headerSurface = document.querySelector("[data-header-surface]");
+    const headerSpacer = document.querySelector("[data-header-spacer]");
+
+    const announcementBar = document.querySelector(
+      "[data-announcement-bar]"
+    );
+    const announcementClose = document.querySelector(
+      "[data-announcement-close]"
+    );
+
+    const mobileMenu = document.querySelector("[data-mobile-menu]");
+    const mobileBackdrop = document.querySelector(
+      "[data-mobile-backdrop]"
+    );
+    const mobileToggle = document.querySelector(
+      "[data-mobile-menu-toggle]"
+    );
+    const mobileClose = document.querySelector(
+      "[data-mobile-menu-close]"
+    );
+    const menuIcon = document.querySelector("[data-menu-icon]");
+
+    const accordion = document.querySelector("[data-mobile-accordion]");
+    const accordionTrigger = document.querySelector(
+      "[data-mobile-accordion-trigger]"
+    );
+    const accordionContent = document.querySelector(
+      "[data-mobile-accordion-content]"
+    );
+    const accordionIcon = document.querySelector(
+      "[data-accordion-icon]"
+    );
+
+    let menuOpen = false;
+    let lastScrollY = window.scrollY;
+
+    const updateHeaderSpacer = () => {
+      if (!header || !headerSpacer) return;
+      headerSpacer.style.height = `${header.offsetHeight}px`;
+    };
+
+    const setMenuIconState = (isOpen) => {
+      if (!menuIcon) return;
+
+      const lines = menuIcon.querySelectorAll("span");
+
+      if (lines.length !== 3) return;
+
+      if (isOpen) {
+        lines[0].classList.add("top-2.5", "rotate-45");
+        lines[0].classList.remove("top-0.5");
+
+        lines[1].classList.add("opacity-0", "scale-x-0");
+
+        lines[2].classList.add("bottom-2", "-rotate-45");
+        lines[2].classList.remove("bottom-0.5");
+      } else {
+        lines[0].classList.remove("top-2.5", "rotate-45");
+        lines[0].classList.add("top-0.5");
+
+        lines[1].classList.remove("opacity-0", "scale-x-0");
+
+        lines[2].classList.remove("bottom-2", "-rotate-45");
+        lines[2].classList.add("bottom-0.5");
+      }
+    };
+
+    const openMobileMenu = () => {
+      if (!mobileMenu || !mobileBackdrop || !mobileToggle) return;
+
+      menuOpen = true;
+
+      mobileMenu.classList.remove(
+        "invisible",
+        "translate-y-[-1rem]",
+        "scale-[0.98]",
+        "opacity-0"
+      );
+      mobileMenu.classList.add(
+        "visible",
+        "translate-y-0",
+        "scale-100",
+        "opacity-100"
+      );
+      mobileMenu.setAttribute("aria-hidden", "false");
+
+      mobileBackdrop.classList.remove(
+        "pointer-events-none",
+        "opacity-0"
+      );
+      mobileBackdrop.classList.add(
+        "pointer-events-auto",
+        "opacity-100"
+      );
+
+      mobileToggle.setAttribute("aria-expanded", "true");
+      mobileToggle.setAttribute(
+        "aria-label",
+        "Close navigation menu"
+      );
+
+      document.documentElement.classList.add("overflow-hidden");
+      document.body.classList.add("overflow-hidden");
+
+      setMenuIconState(true);
+
+      window.requestAnimationFrame(() => {
+        mobileClose?.focus();
+      });
+    };
+
+    const closeMobileMenu = () => {
+      if (!mobileMenu || !mobileBackdrop || !mobileToggle) return;
+
+      menuOpen = false;
+
+      mobileMenu.classList.add(
+        "invisible",
+        "translate-y-[-1rem]",
+        "scale-[0.98]",
+        "opacity-0"
+      );
+      mobileMenu.classList.remove(
+        "visible",
+        "translate-y-0",
+        "scale-100",
+        "opacity-100"
+      );
+      mobileMenu.setAttribute("aria-hidden", "true");
+
+      mobileBackdrop.classList.add(
+        "pointer-events-none",
+        "opacity-0"
+      );
+      mobileBackdrop.classList.remove(
+        "pointer-events-auto",
+        "opacity-100"
+      );
+
+      mobileToggle.setAttribute("aria-expanded", "false");
+      mobileToggle.setAttribute(
+        "aria-label",
+        "Open navigation menu"
+      );
+
+      document.documentElement.classList.remove("overflow-hidden");
+      document.body.classList.remove("overflow-hidden");
+
+      setMenuIconState(false);
+    };
+
+    const toggleMobileMenu = () => {
+      menuOpen ? closeMobileMenu() : openMobileMenu();
+    };
+
+    mobileToggle?.addEventListener("click", toggleMobileMenu);
+    mobileClose?.addEventListener("click", closeMobileMenu);
+    mobileBackdrop?.addEventListener("click", closeMobileMenu);
+
+    document
+      .querySelectorAll("[data-mobile-nav-link]")
+      .forEach((link) => {
+        link.addEventListener("click", closeMobileMenu);
+      });
+
+    accordionTrigger?.addEventListener("click", () => {
+      const isExpanded =
+        accordionTrigger.getAttribute("aria-expanded") === "true";
+
+      accordionTrigger.setAttribute(
+        "aria-expanded",
+        String(!isExpanded)
+      );
+
+      accordion?.classList.toggle("bg-white/60", !isExpanded);
+      accordionIcon?.classList.toggle("rotate-180", !isExpanded);
+
+      if (!accordionContent) return;
+
+      if (!isExpanded) {
+        accordionContent.style.maxHeight =
+          `${accordionContent.scrollHeight}px`;
+        accordionContent.classList.remove("opacity-0");
+        accordionContent.classList.add("pb-2", "opacity-100");
+      } else {
+        accordionContent.style.maxHeight = "0px";
+        accordionContent.classList.add("opacity-0");
+        accordionContent.classList.remove("pb-2", "opacity-100");
+      }
+    });
+
+    announcementClose?.addEventListener("click", () => {
+      if (!announcementBar) return;
+
+      announcementBar.style.maxHeight =
+        `${announcementBar.scrollHeight}px`;
+
+      window.requestAnimationFrame(() => {
+        announcementBar.style.transition =
+          "max-height 300ms ease, opacity 200ms ease";
+        announcementBar.style.maxHeight = "0px";
+        announcementBar.style.opacity = "0";
+      });
+
+      window.setTimeout(() => {
+        announcementBar.remove();
+        updateHeaderSpacer();
+      }, 320);
+    });
+
+    const handleHeaderScroll = () => {
+      if (!headerSurface || !header) return;
+
+      const currentScrollY = Math.max(window.scrollY, 0);
+      const isScrolled = currentScrollY > 16;
+      const scrollingDown =
+        currentScrollY > lastScrollY && currentScrollY > 180;
+
+      headerSurface.classList.toggle(
+        "shadow-[0_16px_45px_rgba(11,18,21,0.10)]",
+        isScrolled
+      );
+      headerSurface.classList.toggle("bg-cloud/95", isScrolled);
+      headerSurface.classList.toggle("bg-cloud/80", !isScrolled);
+
+      if (!menuOpen) {
+        header.style.transform = scrollingDown
+          ? "translateY(-100%)"
+          : "translateY(0)";
+      }
+
+      lastScrollY = currentScrollY;
+    };
+
+    const markActiveNavigation = () => {
+      const normalizePath = (path) => {
+        if (!path || path === "/") return "/";
+        return path.replace(/\/+$/, "");
+      };
+
+      const currentPath = normalizePath(window.location.pathname);
+
+      document
+        .querySelectorAll("[data-nav-link]")
+        .forEach((link) => {
+          const linkPath = normalizePath(
+            new URL(link.href, window.location.origin).pathname
+          );
+
+          const isActive =
+            linkPath === "/"
+              ? currentPath === "/"
+              : currentPath === linkPath ||
+                currentPath.startsWith(`${linkPath}/`);
+
+          if (!isActive) return;
+
+          link.classList.add(
+            "bg-obsidian",
+            "text-cloud",
+            "shadow-md",
+            "shadow-obsidian/10"
+          );
+          link.classList.remove("text-obsidian/70");
+          link.setAttribute("aria-current", "page");
+        });
+    };
+
+    const initialiseDesktopDropdowns = () => {
+      document.querySelectorAll("[data-dropdown]").forEach((dropdown) => {
+        const trigger = dropdown.querySelector(
+          "[data-dropdown-trigger]"
+        );
+        const menu = dropdown.querySelector("[data-dropdown-menu]");
+
+        if (!trigger || !menu) return;
+
+        const openDropdown = () => {
+          trigger.setAttribute("aria-expanded", "true");
+        };
+
+        const closeDropdown = () => {
+          trigger.setAttribute("aria-expanded", "false");
+        };
+
+        dropdown.addEventListener("mouseenter", openDropdown);
+        dropdown.addEventListener("mouseleave", closeDropdown);
+        dropdown.addEventListener("focusin", openDropdown);
+
+        dropdown.addEventListener("focusout", (event) => {
+          if (!dropdown.contains(event.relatedTarget)) {
+            closeDropdown();
+          }
+        });
+
+        trigger.addEventListener("click", () => {
+          const isOpen =
+            trigger.getAttribute("aria-expanded") === "true";
+
+          trigger.setAttribute("aria-expanded", String(!isOpen));
+
+          menu.classList.toggle("pointer-events-none", isOpen);
+          menu.classList.toggle("invisible", isOpen);
+          menu.classList.toggle("translate-y-3", isOpen);
+          menu.classList.toggle("opacity-0", isOpen);
+
+          menu.classList.toggle("pointer-events-auto", !isOpen);
+          menu.classList.toggle("visible", !isOpen);
+          menu.classList.toggle("translate-y-0", !isOpen);
+          menu.classList.toggle("opacity-100", !isOpen);
+        });
+      });
+    };
+
+    const trapMobileMenuFocus = (event) => {
+      if (!menuOpen || event.key !== "Tab" || !mobileMenu) return;
+
+      const focusableElements = mobileMenu.querySelectorAll(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+
+      if (!focusableElements.length) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement =
+        focusableElements[focusableElements.length - 1];
+
+      if (
+        event.shiftKey &&
+        document.activeElement === firstElement
+      ) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (
+        !event.shiftKey &&
+        document.activeElement === lastElement
+      ) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && menuOpen) {
+        closeMobileMenu();
+        mobileToggle?.focus();
+      }
+
+      trapMobileMenuFocus(event);
+    });
+
+    window.addEventListener("scroll", handleHeaderScroll, {
+      passive: true,
+    });
+
+    window.addEventListener("resize", () => {
+      updateHeaderSpacer();
+
+      if (window.innerWidth >= 1024 && menuOpen) {
+        closeMobileMenu();
+      }
+
+      if (
+        accordionTrigger?.getAttribute("aria-expanded") === "true" &&
+        accordionContent
+      ) {
+        accordionContent.style.maxHeight =
+          `${accordionContent.scrollHeight}px`;
+      }
+    });
+
+    markActiveNavigation();
+    initialiseDesktopDropdowns();
+    updateHeaderSpacer();
+    handleHeaderScroll();
+  });
+</script>
+
+<style>
+  @media (prefers-reduced-motion: reduce) {
+    [data-site-header],
+    [data-site-header] *,
+    [data-mobile-menu],
+    [data-mobile-backdrop] {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (hover: none) {
+    [data-dropdown-menu] {
+      display: none;
+    }
+  }
+</style>
 {{end}}

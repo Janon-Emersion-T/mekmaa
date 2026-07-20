@@ -38,7 +38,7 @@ var (
 	passwordPattern = regexp.MustCompile(`^.{10,}$`)
 	otpPattern      = regexp.MustCompile(`^\d{6}$`)
 	allRoles        = []string{"superadmin", "admin", "editor", "customer"}
-	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage"}
+	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage"}
 )
 
 type contextKey string
@@ -106,16 +106,46 @@ type StudentGroup struct {
 }
 
 type SpaceSchedule struct {
-	ID        int64
-	SlotDate  string
-	SlotHour  string
-	EntryType string
-	Activity  string
-	Quantity  int
-	Title     string
-	Notes     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID              int64
+	SlotDate        string
+	SlotHour        string
+	EntryType       string
+	Activity        string
+	Quantity        int
+	Title           string
+	Notes           string
+	Status          string
+	RequesterName   string
+	RequesterEmail  string
+	RequesterPhone  string
+	RequestedByUser int64
+	ReviewNote      string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type BookingOption struct {
+	Activity string
+	Quantity int
+	Label    string
+}
+
+type BookingSlotAvailability struct {
+	Hour          string
+	Schedules     []SpaceSchedule
+	Options       []BookingOption
+	BlockedReason string
+}
+
+type CalendarDay struct {
+	Date          string
+	DayLabel      string
+	MonthLabel    string
+	DayNumber     string
+	OpenSlotCount int
+	BusySlotCount int
+	IsToday       bool
+	IsSelected    bool
 }
 
 type TemplateData struct {
@@ -123,6 +153,7 @@ type TemplateData struct {
 	Description       string
 	CurrentPath       string
 	User              *User
+	Viewer            *User
 	HideChrome        bool
 	CSRFToken         string
 	Flash             string
@@ -140,11 +171,21 @@ type TemplateData struct {
 	SelectedGroup     *StudentGroup
 	GroupMode         string
 	Schedules         []SpaceSchedule
+	DaySchedules      []SpaceSchedule
+	PendingSchedules  []SpaceSchedule
 	SelectedSchedule  *SpaceSchedule
+	DraftSchedule     *SpaceSchedule
 	ScheduleMode      string
+	BookingSlots      []BookingSlotAvailability
+	WeekDays          []CalendarDay
+	BookingOptions    []BookingOption
 	Activities        []string
 	Hours             []string
 	CalendarDate      string
+	PreviousDate      string
+	NextDate          string
+	TodayDate         string
+	DailyStats        []Stat
 	PendingEmail      string
 	OTPCodeLength     int
 	ResendAction      string
@@ -217,7 +258,10 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
 	mux.HandleFunc("/", app.homeHandler)
+	mux.HandleFunc("/book", app.publicBookingHandler)
+	mux.HandleFunc("/book/request", app.publicBookingRequestHandler)
 	mux.HandleFunc("/register", app.registerHandler)
 	mux.HandleFunc("/login", app.loginHandler)
 	mux.HandleFunc("/verify-email", app.verifyEmailHandler)
@@ -245,6 +289,9 @@ func main() {
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.manage")))
+	mux.Handle("/admin/booking-requests", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingRequestsHandler), "booking_requests.manage")))
+	mux.Handle("/admin/booking-requests/confirm", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.confirmBookingRequestHandler), "booking_requests.manage")))
+	mux.Handle("/admin/booking-requests/reject", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.rejectBookingRequestHandler), "booking_requests.manage")))
 
 	log.Printf("server listening on %s", addr)
 	if err := http.ListenAndServe(addr, app.securityHeaders(mux)); err != nil {
@@ -273,6 +320,74 @@ func (a *App) homeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.render(w, "home", data, http.StatusOK)
+}
+
+func (a *App) publicBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/book" {
+		http.NotFound(w, r)
+		return
+	}
+
+	viewer := a.optionalUser(r)
+	data, err := a.buildPublicBookingData(w, r, viewer)
+	if err != nil {
+		log.Printf("build public booking data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.render(w, "book", data, http.StatusOK)
+}
+
+func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		a.writePublicBookingError(w, r, nil, "Invalid session token. Refresh and try again.", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		a.writePublicBookingError(w, r, nil, "Invalid form submission.", http.StatusBadRequest)
+		return
+	}
+
+	viewer := a.optionalUser(r)
+	schedule := scheduleFromRequest(r)
+	schedule.EntryType = "booking"
+	schedule.Status = "pending"
+	schedule.RequesterName = strings.TrimSpace(r.FormValue("requester_name"))
+	schedule.RequesterEmail = strings.ToLower(strings.TrimSpace(r.FormValue("requester_email")))
+	schedule.RequesterPhone = strings.TrimSpace(r.FormValue("requester_phone"))
+	if viewer != nil {
+		schedule.RequestedByUser = viewer.ID
+		if schedule.RequesterName == "" {
+			schedule.RequesterName = viewer.Name
+		}
+		if schedule.RequesterEmail == "" {
+			schedule.RequesterEmail = viewer.Email
+		}
+	}
+
+	if schedule.RequesterName == "" || !emailPattern.MatchString(schedule.RequesterEmail) {
+		a.writePublicBookingError(w, r, &schedule, "Name and a valid email are required.", http.StatusBadRequest)
+		return
+	}
+	if schedule.RequesterPhone == "" {
+		a.writePublicBookingError(w, r, &schedule, "Contact number is required.", http.StatusBadRequest)
+		return
+	}
+	if err := validateSpaceScheduleInput(schedule); err != nil {
+		a.writePublicBookingError(w, r, &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createPublicBookingRequest(schedule); err != nil {
+		a.writePublicBookingError(w, r, &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.setFlash(w, "Booking request sent. We will review it soon.")
+	http.Redirect(w, r, "/book?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
 }
 
 func (a *App) registerHandler(w http.ResponseWriter, r *http.Request) {
@@ -682,22 +797,11 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 
 func (a *App) bookingManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	schedules, err := a.listSpaceSchedules()
+	data, err := a.buildBookingTemplateData(w, r, user)
 	if err != nil {
-		log.Printf("list bookings: %v", err)
+		log.Printf("build booking data: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
-	}
-
-	data := a.newTemplateData(w, r, user)
-	data.Title = "Booking Manager"
-	data.Description = "Manage bookings and training sessions."
-	data.Schedules = schedules
-	data.Activities = bookingActivities()
-	data.Hours = bookingHours()
-	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
-	if data.CalendarDate == "" {
-		data.CalendarDate = time.Now().Format("2006-01-02")
 	}
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
@@ -714,6 +818,166 @@ func (a *App) bookingManagementHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.render(w, "booking-management", data, http.StatusOK)
+}
+
+func (a *App) bookingRequestsHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	data, err := a.buildBookingTemplateData(w, r, user)
+	if err != nil {
+		log.Printf("build booking data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.Title = "Booking Requests"
+	data.Description = "Review pending booking requests."
+	a.render(w, "booking-requests", data, http.StatusOK)
+}
+
+func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(r.FormValue("schedule_id"), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	if err := a.updateBookingRequestStatus(scheduleID, "confirmed", ""); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	a.setFlash(w, "Booking request confirmed.")
+	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+}
+
+func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(r.FormValue("schedule_id"), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+	if err := a.updateBookingRequestStatus(scheduleID, "rejected", reviewNote); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	a.setFlash(w, "Booking request rejected.")
+	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+}
+
+func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, user *User) (TemplateData, error) {
+	schedules, err := a.listSpaceSchedules()
+	if err != nil {
+		return TemplateData{}, err
+	}
+	pending, err := a.listPendingSpaceSchedules()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Booking Manager"
+	data.Description = "Manage bookings and training sessions."
+	data.Schedules = schedules
+	data.PendingSchedules = pending
+	data.Activities = bookingActivities()
+	data.Hours = bookingHours()
+	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
+	if data.CalendarDate == "" {
+		data.CalendarDate = time.Now().Format("2006-01-02")
+	}
+	selectedDate, err := time.Parse("2006-01-02", data.CalendarDate)
+	if err != nil {
+		selectedDate = time.Now()
+		data.CalendarDate = selectedDate.Format("2006-01-02")
+	}
+	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
+	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
+	data.DaySchedules = schedulesForDate(schedules, data.CalendarDate)
+	data.DailyStats = buildDailyBookingStats(data.DaySchedules, data.Hours)
+	return data, nil
+}
+
+func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, viewer *User) (TemplateData, error) {
+	schedules, err := a.listActiveSpaceSchedules()
+	if err != nil {
+		return TemplateData{}, err
+	}
+	data := a.newTemplateData(w, r, nil)
+	data.Viewer = viewer
+	data.Title = "Book a Slot"
+	data.Description = "Check availability and request a booking."
+	data.Schedules = schedules
+	data.Activities = bookingActivities()
+	data.Hours = bookingHours()
+	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
+	if data.CalendarDate == "" {
+		data.CalendarDate = time.Now().Format("2006-01-02")
+	}
+	selectedDate, err := time.Parse("2006-01-02", data.CalendarDate)
+	if err != nil {
+		selectedDate = time.Now()
+		data.CalendarDate = selectedDate.Format("2006-01-02")
+	}
+	data.TodayDate = time.Now().Format("2006-01-02")
+	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
+	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
+	data.BookingSlots = buildBookingSlotAvailability(schedules, data.CalendarDate, data.Hours)
+	data.WeekDays = buildBookingWeekDays(schedules, selectedDate, data.Hours)
+	data.DraftSchedule = prefillPublicBookingDraft(r, viewer, data.CalendarDate)
+	return data, nil
+}
+
+func (a *App) writePublicBookingError(w http.ResponseWriter, r *http.Request, draft *SpaceSchedule, message string, status int) {
+	viewer := a.optionalUser(r)
+	data, err := a.buildPublicBookingData(w, r, viewer)
+	if err != nil {
+		log.Printf("build public booking data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.Error = message
+	data.DraftSchedule = draft
+	a.render(w, "book", data, status)
+}
+
+func (a *App) writeBookingError(w http.ResponseWriter, r *http.Request, mode string, selected *SpaceSchedule, message string, status int) {
+	user, _ := a.currentUser(r.Context())
+	data, err := a.buildBookingTemplateData(w, r, user)
+	if err != nil {
+		log.Printf("build booking data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.Error = message
+	data.ScheduleMode = mode
+	if mode == "edit" {
+		data.SelectedSchedule = selected
+	} else if mode == "new" {
+		data.DraftSchedule = selected
+	}
+	a.render(w, "booking-management", data, status)
 }
 
 func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -1116,22 +1380,22 @@ func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.verifyCSRF(r); err != nil {
-		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		a.writeBookingError(w, r, "new", nil, "Invalid session token. Refresh and try again.", http.StatusForbidden)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		a.writeBookingError(w, r, "new", nil, "Invalid form submission.", http.StatusBadRequest)
 		return
 	}
 
 	schedule := scheduleFromRequest(r)
 	if err := validateSpaceScheduleInput(schedule); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := a.createSpaceSchedule(schedule); err != nil {
 		log.Printf("create booking: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -1145,29 +1409,29 @@ func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.verifyCSRF(r); err != nil {
-		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		a.writeBookingError(w, r, "edit", nil, "Invalid session token. Refresh and try again.", http.StatusForbidden)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		a.writeBookingError(w, r, "edit", nil, "Invalid form submission.", http.StatusBadRequest)
 		return
 	}
 
 	scheduleID, err := strconv.ParseInt(r.FormValue("schedule_id"), 10, 64)
 	if err != nil || scheduleID <= 0 {
-		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		a.writeBookingError(w, r, "edit", nil, "Invalid schedule id.", http.StatusBadRequest)
 		return
 	}
 
 	schedule := scheduleFromRequest(r)
 	schedule.ID = scheduleID
 	if err := validateSpaceScheduleInput(schedule); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := a.updateSpaceSchedule(schedule); err != nil {
 		log.Printf("update booking: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -1209,7 +1473,7 @@ func (a *App) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; form-action 'self'")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -1956,7 +2220,9 @@ func (a *App) listStudentGroups() ([]StudentGroup, error) {
 
 func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 	rows, err := a.db.Query(`
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, created_at, updated_at
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       created_at, updated_at
 		FROM space_schedules
 		ORDER BY slot_date ASC, slot_hour ASC, entry_type ASC, id ASC
 	`)
@@ -1977,6 +2243,96 @@ func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 			&schedule.Quantity,
 			&schedule.Title,
 			&schedule.Notes,
+			&schedule.Status,
+			&schedule.RequesterName,
+			&schedule.RequesterEmail,
+			&schedule.RequesterPhone,
+			&schedule.RequestedByUser,
+			&schedule.ReviewNote,
+			&schedule.CreatedAt,
+			&schedule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		schedules = append(schedules, schedule)
+	}
+	return schedules, rows.Err()
+}
+
+func (a *App) listActiveSpaceSchedules() ([]SpaceSchedule, error) {
+	rows, err := a.db.Query(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       created_at, updated_at
+		FROM space_schedules
+		WHERE status IN ('pending', 'confirmed')
+		ORDER BY slot_date ASC, slot_hour ASC, entry_type ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []SpaceSchedule
+	for rows.Next() {
+		var schedule SpaceSchedule
+		if err := rows.Scan(
+			&schedule.ID,
+			&schedule.SlotDate,
+			&schedule.SlotHour,
+			&schedule.EntryType,
+			&schedule.Activity,
+			&schedule.Quantity,
+			&schedule.Title,
+			&schedule.Notes,
+			&schedule.Status,
+			&schedule.RequesterName,
+			&schedule.RequesterEmail,
+			&schedule.RequesterPhone,
+			&schedule.RequestedByUser,
+			&schedule.ReviewNote,
+			&schedule.CreatedAt,
+			&schedule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		schedules = append(schedules, schedule)
+	}
+	return schedules, rows.Err()
+}
+
+func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
+	rows, err := a.db.Query(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       created_at, updated_at
+		FROM space_schedules
+		WHERE status = 'pending'
+		ORDER BY created_at ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []SpaceSchedule
+	for rows.Next() {
+		var schedule SpaceSchedule
+		if err := rows.Scan(
+			&schedule.ID,
+			&schedule.SlotDate,
+			&schedule.SlotHour,
+			&schedule.EntryType,
+			&schedule.Activity,
+			&schedule.Quantity,
+			&schedule.Title,
+			&schedule.Notes,
+			&schedule.Status,
+			&schedule.RequesterName,
+			&schedule.RequesterEmail,
+			&schedule.RequesterPhone,
+			&schedule.RequestedByUser,
+			&schedule.ReviewNote,
 			&schedule.CreatedAt,
 			&schedule.UpdatedAt,
 		); err != nil {
@@ -1989,9 +2345,11 @@ func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 
 func (a *App) schedulesForSlot(slotDate, slotHour string, excludeID int64) ([]SpaceSchedule, error) {
 	rows, err := a.db.Query(`
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, created_at, updated_at
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       created_at, updated_at
 		FROM space_schedules
-		WHERE slot_date = ? AND slot_hour = ? AND id != ?
+		WHERE slot_date = ? AND slot_hour = ? AND id != ? AND status != 'rejected'
 		ORDER BY id ASC
 	`, slotDate, slotHour, excludeID)
 	if err != nil {
@@ -2011,6 +2369,12 @@ func (a *App) schedulesForSlot(slotDate, slotHour string, excludeID int64) ([]Sp
 			&schedule.Quantity,
 			&schedule.Title,
 			&schedule.Notes,
+			&schedule.Status,
+			&schedule.RequesterName,
+			&schedule.RequesterEmail,
+			&schedule.RequesterPhone,
+			&schedule.RequestedByUser,
+			&schedule.ReviewNote,
 			&schedule.CreatedAt,
 			&schedule.UpdatedAt,
 		); err != nil {
@@ -2125,8 +2489,11 @@ func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
 	}
 
 	_, err = a.db.Exec(`
-		INSERT INTO space_schedules (slot_date, slot_hour, entry_type, activity, quantity, title, notes, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO space_schedules (
+			slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+			requester_name, requester_email, requester_phone, requested_by_user_id, review_note, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		schedule.SlotDate,
 		schedule.SlotHour,
@@ -2135,6 +2502,52 @@ func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
 		schedule.Quantity,
 		schedule.Title,
 		schedule.Notes,
+		"confirmed",
+		schedule.RequesterName,
+		schedule.RequesterEmail,
+		schedule.RequesterPhone,
+		nil,
+		"",
+		time.Now().UTC(),
+		time.Now().UTC(),
+	)
+	return err
+}
+
+func (a *App) createPublicBookingRequest(schedule SpaceSchedule) error {
+	existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, 0)
+	if err != nil {
+		return err
+	}
+	if err := validateSpaceScheduleSlot(existing, schedule); err != nil {
+		return err
+	}
+
+	var requestedBy any
+	if schedule.RequestedByUser > 0 {
+		requestedBy = schedule.RequestedByUser
+	}
+
+	_, err = a.db.Exec(`
+		INSERT INTO space_schedules (
+			slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+			requester_name, requester_email, requester_phone, requested_by_user_id, review_note, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		"booking",
+		schedule.Activity,
+		schedule.Quantity,
+		schedule.Title,
+		schedule.Notes,
+		"pending",
+		schedule.RequesterName,
+		schedule.RequesterEmail,
+		schedule.RequesterPhone,
+		requestedBy,
+		"",
 		time.Now().UTC(),
 		time.Now().UTC(),
 	)
@@ -2220,6 +2633,31 @@ func (a *App) updateSpaceSchedule(schedule SpaceSchedule) error {
 	return err
 }
 
+func (a *App) updateBookingRequestStatus(scheduleID int64, status, reviewNote string) error {
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		return err
+	}
+	if schedule.Status != "pending" {
+		return errors.New("booking request is no longer pending")
+	}
+	if status == "confirmed" {
+		existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, schedule.ID)
+		if err != nil {
+			return err
+		}
+		if err := validateSpaceScheduleSlot(existing, *schedule); err != nil {
+			return err
+		}
+	}
+	_, err = a.db.Exec(`
+		UPDATE space_schedules
+		SET status = ?, review_note = ?, updated_at = ?
+		WHERE id = ?
+	`, status, reviewNote, time.Now().UTC(), scheduleID)
+	return err
+}
+
 func (a *App) deleteAdmission(admissionID int64) error {
 	_, err := a.db.Exec(`DELETE FROM admissions WHERE id = ?`, admissionID)
 	return err
@@ -2288,7 +2726,9 @@ func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
 
 func (a *App) findSpaceScheduleByID(scheduleID int64) (*SpaceSchedule, error) {
 	row := a.db.QueryRow(`
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, created_at, updated_at
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       created_at, updated_at
 		FROM space_schedules
 		WHERE id = ?
 	`, scheduleID)
@@ -2303,6 +2743,12 @@ func (a *App) findSpaceScheduleByID(scheduleID int64) (*SpaceSchedule, error) {
 		&schedule.Quantity,
 		&schedule.Title,
 		&schedule.Notes,
+		&schedule.Status,
+		&schedule.RequesterName,
+		&schedule.RequesterEmail,
+		&schedule.RequesterPhone,
+		&schedule.RequestedByUser,
+		&schedule.ReviewNote,
 		&schedule.CreatedAt,
 		&schedule.UpdatedAt,
 	); err != nil {
@@ -2442,6 +2888,12 @@ func runMigrations(db *sql.DB) error {
 			quantity INTEGER NOT NULL,
 			title TEXT NOT NULL,
 			notes TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'confirmed',
+			requester_name TEXT NOT NULL DEFAULT '',
+			requester_email TEXT NOT NULL DEFAULT '',
+			requester_phone TEXT NOT NULL DEFAULT '',
+			requested_by_user_id INTEGER,
+			review_note TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
@@ -2465,6 +2917,42 @@ func runMigrations(db *sql.DB) error {
 	if _, err := db.Exec(`UPDATE admissions SET student_id = 'STD-' || printf('%05d', id) WHERE student_id IS NULL OR TRIM(student_id) = ''`); err != nil {
 		return err
 	}
+
+	bookingColumns := []struct {
+		name       string
+		definition string
+	}{
+		{name: "status", definition: "TEXT NOT NULL DEFAULT 'confirmed'"},
+		{name: "requester_name", definition: "TEXT NOT NULL DEFAULT ''"},
+		{name: "requester_email", definition: "TEXT NOT NULL DEFAULT ''"},
+		{name: "requester_phone", definition: "TEXT NOT NULL DEFAULT ''"},
+		{name: "requested_by_user_id", definition: "INTEGER"},
+		{name: "review_note", definition: "TEXT NOT NULL DEFAULT ''"},
+	}
+	for _, column := range bookingColumns {
+		exists, err := tableHasColumn(db, "space_schedules", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := db.Exec(fmt.Sprintf("ALTER TABLE space_schedules ADD COLUMN %s %s", column.name, column.definition)); err != nil {
+			return err
+		}
+	}
+	statusExists, err := tableHasColumn(db, "space_schedules", "status")
+	if err != nil {
+		return err
+	}
+	if statusExists {
+		if _, err := db.Exec(`UPDATE space_schedules SET status = 'confirmed' WHERE status IS NULL OR TRIM(status) = ''`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_space_schedules_status ON space_schedules(status)`); err != nil {
+			return err
+		}
+	}
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_admissions_student_id ON admissions(student_id)`); err != nil {
 		return err
 	}
@@ -2472,8 +2960,34 @@ func runMigrations(db *sql.DB) error {
 	if _, err := db.Exec(`DELETE FROM sessions WHERE expires_at <= ?`, time.Now().UTC()); err != nil {
 		return err
 	}
-	_, err := db.Exec(`DELETE FROM email_verifications WHERE expires_at <= ?`, time.Now().UTC())
+	_, err = db.Exec(`DELETE FROM email_verifications WHERE expires_at <= ?`, time.Now().UTC())
 	return err
+}
+
+func tableHasColumn(db *sql.DB, tableName, columnName string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", tableName))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			columnType string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &pk); err != nil {
+			return false, err
+		}
+		if name == columnName {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func seedRoles(db *sql.DB) error {
@@ -2485,8 +2999,8 @@ func seedRoles(db *sql.DB) error {
 	rolePermissions := map[string][]string{
 		"customer":   {"dashboard.view"},
 		"editor":     {"dashboard.view", "editor.access"},
-		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage"},
-		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage"},
+		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage"},
+		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "space_bookings.manage", "booking_requests.manage"},
 	}
 	for roleName, permissions := range rolePermissions {
 		roleID, err := queryRoleID(db, roleName)
@@ -2815,6 +3329,24 @@ func scheduleFromRequest(r *http.Request) SpaceSchedule {
 	}
 }
 
+func prefillPublicBookingDraft(r *http.Request, viewer *User, calendarDate string) *SpaceSchedule {
+	draft := &SpaceSchedule{
+		EntryType: "booking",
+		SlotDate:  calendarDate,
+		SlotHour:  strings.TrimSpace(r.URL.Query().Get("hour")),
+		Activity:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("activity"))),
+		Quantity:  1,
+	}
+	if quantity, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("quantity"))); err == nil && quantity > 0 {
+		draft.Quantity = quantity
+	}
+	if viewer != nil {
+		draft.RequesterName = viewer.Name
+		draft.RequesterEmail = viewer.Email
+	}
+	return draft
+}
+
 func studentGroupFromRequest(r *http.Request) StudentGroup {
 	return StudentGroup{
 		Name:        strings.TrimSpace(r.FormValue("name")),
@@ -2966,6 +3498,96 @@ func validateSpaceScheduleSlot(existing []SpaceSchedule, candidate SpaceSchedule
 	return errors.New("that slot combination is not allowed")
 }
 
+func bookingOptionCatalog() []BookingOption {
+	return []BookingOption{
+		{Activity: "full_indoor_cricket", Quantity: 1, Label: "Full Indoor Cricket"},
+		{Activity: "futsal", Quantity: 1, Label: "Futsal"},
+		{Activity: "badminton", Quantity: 1, Label: "Badminton"},
+		{Activity: "table_tennis", Quantity: 1, Label: "Table Tennis x1"},
+		{Activity: "table_tennis", Quantity: 2, Label: "Table Tennis x2"},
+		{Activity: "cricket_net", Quantity: 1, Label: "Cricket Net x1"},
+		{Activity: "cricket_net", Quantity: 3, Label: "Cricket Nets x3"},
+	}
+}
+
+func buildBookingSlotAvailability(schedules []SpaceSchedule, slotDate string, hours []string) []BookingSlotAvailability {
+	var availability []BookingSlotAvailability
+	for _, hour := range hours {
+		existing := schedulesForCalendarSlot(schedules, slotDate, hour)
+		slot := BookingSlotAvailability{
+			Hour:      hour,
+			Schedules: existing,
+		}
+
+		hasTraining := false
+		for _, schedule := range existing {
+			if schedule.EntryType == "training" || schedule.Activity == "training" {
+				hasTraining = true
+				break
+			}
+		}
+		if hasTraining {
+			slot.BlockedReason = "Training session"
+			availability = append(availability, slot)
+			continue
+		}
+
+		for _, option := range bookingOptionCatalog() {
+			candidate := SpaceSchedule{
+				EntryType: "booking",
+				Activity:  option.Activity,
+				Quantity:  option.Quantity,
+				SlotDate:  slotDate,
+				SlotHour:  hour,
+				Status:    "pending",
+			}
+			if err := validateSpaceScheduleSlot(existing, candidate); err == nil {
+				slot.Options = append(slot.Options, option)
+			}
+		}
+		if len(slot.Options) == 0 {
+			slot.BlockedReason = "No bookable combinations available"
+		}
+		availability = append(availability, slot)
+	}
+	return availability
+}
+
+func buildBookingWeekDays(schedules []SpaceSchedule, selectedDate time.Time, hours []string) []CalendarDay {
+	start := selectedDate.AddDate(0, 0, -3)
+	today := time.Now().Format("2006-01-02")
+	days := make([]CalendarDay, 0, 7)
+
+	for offset := 0; offset < 7; offset++ {
+		day := start.AddDate(0, 0, offset)
+		date := day.Format("2006-01-02")
+		availability := buildBookingSlotAvailability(schedules, date, hours)
+
+		openCount := 0
+		busyCount := 0
+		for _, slot := range availability {
+			if len(slot.Options) > 0 {
+				openCount++
+			} else {
+				busyCount++
+			}
+		}
+
+		days = append(days, CalendarDay{
+			Date:          date,
+			DayLabel:      day.Format("Mon"),
+			MonthLabel:    day.Format("Jan"),
+			DayNumber:     day.Format("02"),
+			OpenSlotCount: openCount,
+			BusySlotCount: busyCount,
+			IsToday:       date == today,
+			IsSelected:    date == selectedDate.Format("2006-01-02"),
+		})
+	}
+
+	return days
+}
+
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
 		if permission == target {
@@ -3013,8 +3635,57 @@ func scheduleSummary(schedule SpaceSchedule) string {
 	}
 }
 
+func optionSummary(option BookingOption) string {
+	return scheduleSummary(SpaceSchedule{Activity: option.Activity, Quantity: option.Quantity})
+}
+
+func bookingOptionSelected(draft *SpaceSchedule, slotHour, activity string, quantity int) bool {
+	if draft == nil {
+		return false
+	}
+	return draft.SlotHour == slotHour && draft.Activity == activity && draft.Quantity == quantity
+}
+
 func activityLabel(activity string) string {
 	return scheduleSummary(SpaceSchedule{Activity: activity, Quantity: 1})
+}
+
+func scheduleToneClasses(schedule SpaceSchedule) string {
+	switch schedule.Activity {
+	case "training":
+		return "border-amber-200 bg-amber-50 text-amber-900"
+	case "full_indoor_cricket":
+		return "border-emerald-200 bg-emerald-50 text-emerald-900"
+	case "futsal":
+		return "border-sky-200 bg-sky-50 text-sky-900"
+	case "badminton":
+		return "border-violet-200 bg-violet-50 text-violet-900"
+	case "table_tennis":
+		return "border-cyan-200 bg-cyan-50 text-cyan-900"
+	case "cricket_net":
+		return "border-lime-200 bg-lime-50 text-lime-900"
+	default:
+		return "border-slate/10 bg-white text-slate"
+	}
+}
+
+func scheduleBadgeClasses(schedule SpaceSchedule) string {
+	switch schedule.Activity {
+	case "training":
+		return "bg-amber-100 text-amber-800"
+	case "full_indoor_cricket":
+		return "bg-emerald-100 text-emerald-800"
+	case "futsal":
+		return "bg-sky-100 text-sky-800"
+	case "badminton":
+		return "bg-violet-100 text-violet-800"
+	case "table_tennis":
+		return "bg-cyan-100 text-cyan-800"
+	case "cricket_net":
+		return "bg-lime-100 text-lime-800"
+	default:
+		return "bg-slate-100 text-slate-800"
+	}
 }
 
 func schedulesForCalendarSlot(schedules []SpaceSchedule, slotDate, slotHour string) []SpaceSchedule {
@@ -3025,6 +3696,38 @@ func schedulesForCalendarSlot(schedules []SpaceSchedule, slotDate, slotHour stri
 		}
 	}
 	return filtered
+}
+
+func schedulesForDate(schedules []SpaceSchedule, slotDate string) []SpaceSchedule {
+	var filtered []SpaceSchedule
+	for _, schedule := range schedules {
+		if schedule.SlotDate == slotDate {
+			filtered = append(filtered, schedule)
+		}
+	}
+	return filtered
+}
+
+func buildDailyBookingStats(schedules []SpaceSchedule, hours []string) []Stat {
+	occupiedHours := map[string]struct{}{}
+	trainingHours := map[string]struct{}{}
+	bookingEntries := 0
+	for _, schedule := range schedules {
+		occupiedHours[schedule.SlotHour] = struct{}{}
+		if schedule.EntryType == "training" {
+			trainingHours[schedule.SlotHour] = struct{}{}
+		}
+		if schedule.EntryType == "booking" {
+			bookingEntries++
+		}
+	}
+
+	return []Stat{
+		{Label: "Total slots used", Value: strconv.Itoa(len(occupiedHours))},
+		{Label: "Training hours", Value: strconv.Itoa(len(trainingHours))},
+		{Label: "Booking entries", Value: strconv.Itoa(bookingEntries)},
+		{Label: "Open hours", Value: strconv.Itoa(len(hours) - len(occupiedHours))},
+	}
 }
 
 func normalizeRoleName(name string) string {
@@ -3043,7 +3746,13 @@ func isSystemRole(name string) bool {
 func isIgnorableMigrationError(err error, stmt string) bool {
 	lowerErr := strings.ToLower(err.Error())
 	return (strings.Contains(stmt, "ALTER TABLE users ADD COLUMN email_verified_at") ||
-		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN student_id")) &&
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN student_id") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_name") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_email") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_phone") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requested_by_user_id") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN review_note")) &&
 		strings.Contains(lowerErr, "duplicate column name")
 }
 
@@ -3124,8 +3833,22 @@ func buildTemplates() (map[string]*template.Template, error) {
 		},
 		"admissionSelected":        admissionSelected,
 		"activityLabel":            activityLabel,
+		"optionSummary":            optionSummary,
+		"bookingOptionSelected":    bookingOptionSelected,
+		"scheduleToneClasses":      scheduleToneClasses,
+		"scheduleBadgeClasses":     scheduleBadgeClasses,
 		"schedulesForCalendarSlot": schedulesForCalendarSlot,
 		"scheduleSummary":          scheduleSummary,
+		"seq": func(n int) []int {
+			if n <= 0 {
+				return nil
+			}
+			values := make([]int, n)
+			for i := 0; i < n; i++ {
+				values[i] = i
+			}
+			return values
+		},
 		"sub": func(a, b int) int {
 			return a - b
 		},
@@ -3143,6 +3866,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 
 	pages := map[string]string{
 		"home":                     "templates/pages/home.html",
+		"book":                     "templates/pages/book.html",
 		"login":                    "templates/login.html",
 		"register":                 "templates/register.html",
 		"verify-email":             "templates/verify-email.html",
@@ -3153,6 +3877,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"admission-management":     "templates/dashboard/admission-management.html",
 		"student-group-management": "templates/dashboard/student-group-management.html",
 		"booking-management":       "templates/dashboard/booking-management.html",
+		"booking-requests":         "templates/dashboard/booking-requests.html",
 		"forbidden":                "templates/dashboard/forbidden.html",
 	}
 	dashboardPartials := []string{

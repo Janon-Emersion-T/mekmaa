@@ -1,191 +1,1451 @@
 {{define "admission-management"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
-<section class="space-y-6">
-  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold sm:text-3xl">Admissions management</h1>
-        <p class="mt-2 text-sm text-slate/70">Current admissions</p>
-      </div>
-      <a href="/admin/admissions?action=new#admission-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add new admission</a>
-    </div>
-  </div>
+<section class="mx-auto w-full max-w-[1600px] space-y-6 pb-10">
 
-  {{if eq .AdmissionMode "new"}}
-  <div id="admission-form" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex items-center justify-between gap-3">
-      <h2 class="text-xl font-semibold sm:text-2xl">Add admission</h2>
-      <a href="/admin/admissions" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+  <!-- Page header -->
+  <header class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <div class="flex items-center gap-2 text-sm font-medium text-slate/60">
+        <a href="/admin" class="transition hover:text-obsidian">
+          Administration
+        </a>
+
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="h-4 w-4"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L10.94 10 7.23 6.29a.75.75 0 1 1 1.06-1.06l4.24 4.24a.75.75 0 0 1 0 1.06l-4.24 4.24a.75.75 0 0 1-1.08 0Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+
+        <span class="text-obsidian">Admissions</span>
+      </div>
+
+      <h1 class="mt-2 text-3xl font-semibold tracking-tight text-obsidian sm:text-4xl">
+        Admissions management
+      </h1>
+
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-slate/65 sm:text-base">
+        Register students, maintain guardian and medical information, and manage
+        the current admissions directory.
+      </p>
     </div>
-    <form action="/admin/admissions/create" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div class="rounded-2xl border border-obsidian/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/50">
+          Admissions
+        </p>
+
+        <p class="mt-1 text-2xl font-semibold text-obsidian">
+          {{len .Admissions}}
+        </p>
+      </div>
+
+      {{if ne .AdmissionMode "new"}}
+      <a
+        href="/admin/admissions?action=new#admission-form"
+        class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-obsidian px-6 text-sm font-semibold text-cloud shadow-[0_12px_30px_rgba(11,18,21,0.22)] transition hover:-translate-y-0.5 hover:bg-slate hover:shadow-[0_16px_35px_rgba(11,18,21,0.26)] focus:outline-none focus:ring-4 focus:ring-aqua/30 active:translate-y-0"
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          class="h-5 w-5"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M12 4.5v15m7.5-7.5h-15"
+          />
+        </svg>
+
+        Add admission
+      </a>
+      {{end}}
+    </div>
+  </header>
+
+  <!-- Create admission -->
+  {{if eq .AdmissionMode "new"}}
+  <section
+    id="admission-form"
+    class="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/85 shadow-[0_20px_60px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:rounded-[2rem]"
+  >
+    <div class="flex flex-col gap-4 border-b border-slate/10 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
+      <div class="flex items-start gap-4">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-cloud shadow-sm">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            class="h-5 w-5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.1a7.5 7.5 0 0 1 15 0M19.5 8.25v6m3-3h-6"
+            />
+          </svg>
+        </div>
+
+        <div>
+          <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
+            New student admission
+          </h2>
+
+          <p class="mt-1 text-sm leading-6 text-slate/60">
+            Enter the student, guardian, education, and medical details below.
+          </p>
+        </div>
+      </div>
+
+      <a
+        href="/admin/admissions"
+        class="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-slate/20 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          class="h-4 w-4"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="m15 18-6-6 6-6"
+          />
+        </svg>
+
+        Back to admissions
+      </a>
+    </div>
+
+    <form action="/admin/admissions/create" method="post" class="p-5 sm:p-8">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-      <input type="text" name="student_id" placeholder="Student ID" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
-      <input type="text" name="full_name" placeholder="Full Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="date" name="date_of_birth" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <select name="gender" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
-        <option value="">Gender</option>
-        <option value="male">Male</option>
-        <option value="female">Female</option>
-      </select>
-      <textarea name="address" placeholder="Address" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua"></textarea>
-      <input type="text" name="passport_number" placeholder="P.P. No" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="school" placeholder="School" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="guardian_name" placeholder="Parent / Guardian Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="guardian_relationship" placeholder="Relationship" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="guardian_contact_number" placeholder="Contact No" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="guardian_alternative_contact_number" placeholder="Alternative Contact Number" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <textarea name="medical_information" placeholder="Any Medical Condition or Allergies" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua"></textarea>
-      <div class="md:col-span-2 xl:col-span-3 flex justify-end">
-        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create admission</button>
+
+      <!-- Student information -->
+      <fieldset>
+        <div class="flex items-center gap-3">
+          <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-aqua/15 text-obsidian">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              class="h-4 w-4"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.1a7.5 7.5 0 0 1 15 0"
+              />
+            </svg>
+          </span>
+
+          <div>
+            <legend class="text-base font-semibold text-obsidian">
+              Student information
+            </legend>
+
+            <p class="text-xs leading-5 text-slate/50">
+              Core identification and education details.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div class="space-y-2">
+            <label for="new-student-id" class="block text-sm font-semibold text-obsidian">
+              Student ID
+            </label>
+
+            <input
+              id="new-student-id"
+              type="text"
+              name="student_id"
+              placeholder="Example: STU-0001"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm uppercase text-obsidian shadow-sm outline-none transition placeholder:normal-case placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <label for="new-full-name" class="block text-sm font-semibold text-obsidian">
+              Full name
+            </label>
+
+            <input
+              id="new-full-name"
+              type="text"
+              name="full_name"
+              placeholder="Student's full legal name"
+              required
+              autocomplete="name"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <label for="new-date-of-birth" class="block text-sm font-semibold text-obsidian">
+              Date of birth
+            </label>
+
+            <input
+              id="new-date-of-birth"
+              type="date"
+              name="date_of_birth"
+              required
+              autocomplete="bday"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <label for="new-gender" class="block text-sm font-semibold text-obsidian">
+              Gender
+            </label>
+
+            <select
+              id="new-gender"
+              name="gender"
+              required
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            >
+              <option value="">Select gender</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <label for="new-passport-number" class="block text-sm font-semibold text-obsidian">
+              P.P. number
+            </label>
+
+            <input
+              id="new-passport-number"
+              type="text"
+              name="passport_number"
+              placeholder="Passport or identification number"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm uppercase text-obsidian shadow-sm outline-none transition placeholder:normal-case placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <label for="new-school" class="block text-sm font-semibold text-obsidian">
+              School
+            </label>
+
+            <input
+              id="new-school"
+              type="text"
+              name="school"
+              placeholder="Current school"
+              required
+              autocomplete="organization"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2 md:col-span-2 xl:col-span-3">
+            <label for="new-address" class="block text-sm font-semibold text-obsidian">
+              Residential address
+            </label>
+
+            <textarea
+              id="new-address"
+              name="address"
+              placeholder="Enter the complete residential address"
+              required
+              rows="3"
+              autocomplete="street-address"
+              class="w-full resize-y rounded-2xl border border-slate/15 bg-white px-4 py-3 text-sm leading-6 text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            ></textarea>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- Guardian information -->
+      <fieldset class="mt-8 border-t border-slate/10 pt-8">
+        <div class="flex items-center gap-3">
+          <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-aqua/15 text-obsidian">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              class="h-4 w-4"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128a12.318 12.318 0 0 1-6.376 1.872C5.1 21 2 19.55 2 17.5c0-1.88 2.608-3.24 5.755-3.47M12 6.75a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Zm9 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"
+              />
+            </svg>
+          </span>
+
+          <div>
+            <legend class="text-base font-semibold text-obsidian">
+              Parent or guardian
+            </legend>
+
+            <p class="text-xs leading-5 text-slate/50">
+              Primary emergency and administrative contact information.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div class="space-y-2 xl:col-span-2">
+            <label for="new-guardian-name" class="block text-sm font-semibold text-obsidian">
+              Parent or guardian name
+            </label>
+
+            <input
+              id="new-guardian-name"
+              type="text"
+              name="guardian_name"
+              placeholder="Full name"
+              required
+              autocomplete="name"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2 xl:col-span-2">
+            <label for="new-guardian-relationship" class="block text-sm font-semibold text-obsidian">
+              Relationship
+            </label>
+
+            <input
+              id="new-guardian-relationship"
+              type="text"
+              name="guardian_relationship"
+              placeholder="Example: Father, Mother or Guardian"
+              required
+              autocomplete="off"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2 xl:col-span-2">
+            <label for="new-guardian-contact" class="block text-sm font-semibold text-obsidian">
+              Primary contact number
+            </label>
+
+            <input
+              id="new-guardian-contact"
+              type="tel"
+              name="guardian_contact_number"
+              placeholder="Primary phone number"
+              required
+              autocomplete="tel"
+              inputmode="tel"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2 xl:col-span-2">
+            <label for="new-guardian-alternative-contact" class="block text-sm font-semibold text-obsidian">
+              Alternative contact number
+            </label>
+
+            <input
+              id="new-guardian-alternative-contact"
+              type="tel"
+              name="guardian_alternative_contact_number"
+              placeholder="Alternative phone number"
+              required
+              autocomplete="tel"
+              inputmode="tel"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- Medical information -->
+      <fieldset class="mt-8 border-t border-slate/10 pt-8">
+        <div class="flex items-center gap-3">
+          <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-red-50 text-red-700">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              class="h-4 w-4"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 21s-7.5-4.35-7.5-10.125A4.875 4.875 0 0 1 12 6.77a4.875 4.875 0 0 1 7.5 4.105C19.5 16.65 12 21 12 21Z"
+              />
+
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M9 12h6m-3-3v6"
+              />
+            </svg>
+          </span>
+
+          <div>
+            <legend class="text-base font-semibold text-obsidian">
+              Medical information
+            </legend>
+
+            <p class="text-xs leading-5 text-slate/50">
+              Record allergies, ongoing conditions, medication, or emergency considerations.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-5">
+          <label for="new-medical-information" class="sr-only">
+            Medical conditions or allergies
+          </label>
+
+          <textarea
+            id="new-medical-information"
+            name="medical_information"
+            placeholder="Enter known medical conditions, allergies, medication, or write 'None'"
+            required
+            rows="4"
+            class="w-full resize-y rounded-2xl border border-slate/15 bg-white px-4 py-3 text-sm leading-6 text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+          ></textarea>
+        </div>
+      </fieldset>
+
+      <div class="mt-8 flex flex-col-reverse gap-3 border-t border-slate/10 pt-6 sm:flex-row sm:justify-end">
+        <a
+          href="/admin/admissions"
+          class="inline-flex h-12 items-center justify-center rounded-2xl border border-slate/15 bg-white px-6 text-sm font-semibold text-slate transition hover:border-slate/25 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
+        >
+          Cancel
+        </a>
+
+        <button
+          type="submit"
+          class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-obsidian px-6 text-sm font-semibold text-cloud shadow-[0_12px_30px_rgba(11,18,21,0.22)] transition hover:-translate-y-0.5 hover:bg-slate hover:shadow-[0_16px_35px_rgba(11,18,21,0.26)] focus:outline-none focus:ring-4 focus:ring-aqua/30 active:translate-y-0"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            class="h-5 w-5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+            />
+          </svg>
+
+          Create admission
+        </button>
       </div>
     </form>
-  </div>
+  </section>
   {{end}}
 
-  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
-    <div class="overflow-x-auto">
+  <!-- Admissions directory -->
+  <section
+    class="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/85 shadow-[0_20px_60px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:rounded-[2rem]"
+  >
+    <div class="flex flex-col gap-4 border-b border-slate/10 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
+      <div>
+        <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
+          Current admissions
+        </h2>
+
+        <p class="mt-1 text-sm leading-6 text-slate/60">
+          Review student records and open, edit, or remove an admission.
+        </p>
+      </div>
+
+      <div class="inline-flex w-fit items-center gap-2 rounded-full border border-slate/10 bg-cloud px-3 py-2 text-xs font-semibold text-slate/60">
+        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+        {{len .Admissions}} registered
+      </div>
+    </div>
+
+    <!-- Desktop table -->
+    <div class="hidden overflow-x-auto lg:block">
       <table class="min-w-full text-left text-sm">
-        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
-          <tr>
-            <th class="px-5 py-4 font-medium sm:px-6">Student ID</th>
-            <th class="px-5 py-4 font-medium">Student</th>
-            <th class="px-5 py-4 font-medium">DOB</th>
-            <th class="px-5 py-4 font-medium">Gender</th>
-            <th class="px-5 py-4 font-medium">School</th>
-            <th class="px-5 py-4 font-medium">Guardian</th>
-            <th class="px-5 py-4 font-medium">Contact</th>
-            <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
+        <thead class="border-b border-slate/10 bg-cloud/70">
+          <tr class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/55">
+            <th scope="col" class="px-6 py-4">Student</th>
+            <th scope="col" class="px-5 py-4">Student ID</th>
+            <th scope="col" class="px-5 py-4">Date of birth</th>
+            <th scope="col" class="px-5 py-4">Gender</th>
+            <th scope="col" class="px-5 py-4">School</th>
+            <th scope="col" class="px-5 py-4">Guardian</th>
+            <th scope="col" class="px-5 py-4">Contact</th>
+            <th scope="col" class="px-6 py-4 text-right">Actions</th>
           </tr>
         </thead>
+
         <tbody class="divide-y divide-slate/10">
           {{range .Admissions}}
-          <tr class="bg-white/70 align-top">
-            <td class="px-5 py-4 sm:px-6">
-              <p class="font-medium text-obsidian">{{.StudentID}}</p>
+          <tr class="bg-white/55 align-middle transition hover:bg-cloud/60">
+            <td class="px-6 py-5">
+              <div class="flex min-w-[14rem] items-center gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-obsidian text-sm font-semibold uppercase text-cloud shadow-sm">
+                  {{printf "%.1s" .FullName}}
+                </div>
+
+                <div class="min-w-0">
+                  <p class="truncate font-semibold text-obsidian">
+                    {{.FullName}}
+                  </p>
+
+                  <p class="mt-1 truncate text-xs uppercase tracking-[0.14em] text-slate/50">
+                    {{.PassportNumber}}
+                  </p>
+                </div>
+              </div>
             </td>
-            <td class="px-5 py-4 sm:px-6">
-              <p class="font-medium text-obsidian">{{.FullName}}</p>
-              <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.PassportNumber}}</p>
+
+            <td class="px-5 py-5">
+              <span class="inline-flex rounded-lg border border-slate/10 bg-cloud px-2.5 py-1.5 font-mono text-xs font-semibold text-obsidian">
+                {{.StudentID}}
+              </span>
             </td>
-            <td class="px-5 py-4 text-slate/75">{{.DateOfBirth}}</td>
-            <td class="px-5 py-4 text-slate/75">{{.Gender}}</td>
-            <td class="px-5 py-4 text-slate/75">{{.School}}</td>
-            <td class="px-5 py-4 text-slate/75">
-              <p>{{.GuardianName}}</p>
-              <p class="mt-1 text-xs text-slate/55">{{.GuardianRelationship}}</p>
+
+            <td class="whitespace-nowrap px-5 py-5 text-slate/70">
+              {{.DateOfBirth}}
             </td>
-            <td class="px-5 py-4 text-slate/75">
-              <p>{{.GuardianContactNumber}}</p>
-              <p class="mt-1 text-xs text-slate/55">{{.GuardianAlternativePhone}}</p>
+
+            <td class="px-5 py-5">
+              <span class="inline-flex rounded-full border border-slate/10 bg-white px-2.5 py-1 text-xs font-medium capitalize text-slate/70">
+                {{.Gender}}
+              </span>
             </td>
-            <td class="px-5 py-4 sm:px-6">
-              <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
-                <a href="/admin/admissions?action=view&id={{.ID}}#admission-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
-                <a href="/admin/admissions?action=edit&id={{.ID}}#admission-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+
+            <td class="max-w-[14rem] px-5 py-5 text-slate/70">
+              <p class="truncate">{{.School}}</p>
+            </td>
+
+            <td class="px-5 py-5">
+              <p class="font-medium text-obsidian">
+                {{.GuardianName}}
+              </p>
+
+              <p class="mt-1 text-xs capitalize text-slate/50">
+                {{.GuardianRelationship}}
+              </p>
+            </td>
+
+            <td class="whitespace-nowrap px-5 py-5">
+              <a
+                href="tel:{{.GuardianContactNumber}}"
+                class="font-medium text-obsidian transition hover:text-slate"
+              >
+                {{.GuardianContactNumber}}
+              </a>
+
+              <p class="mt-1 text-xs text-slate/50">
+                {{.GuardianAlternativePhone}}
+              </p>
+            </td>
+
+            <td class="px-6 py-5">
+              <div class="flex min-w-[12rem] justify-end gap-2">
+                <a
+                  href="/admin/admissions?action=view&id={{.ID}}#admission-view"
+                  class="inline-flex h-9 items-center justify-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate shadow-sm transition hover:border-aqua/50 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
+                >
+                  View
+                </a>
+
+                <a
+                  href="/admin/admissions?action=edit&id={{.ID}}#admission-edit"
+                  class="inline-flex h-9 items-center justify-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate shadow-sm transition hover:border-aqua/50 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
+                >
+                  Edit
+                </a>
+
                 <form action="/admin/admissions/delete" method="post">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="admission_id" value="{{.ID}}" />
-                  <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50">Delete</button>
+
+                  <button
+                    type="submit"
+                    class="inline-flex h-9 items-center justify-center rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50 focus:outline-none focus:ring-4 focus:ring-red-100"
+                  >
+                    Delete
+                  </button>
                 </form>
               </div>
             </td>
           </tr>
+
           {{else}}
           <tr>
-            <td colspan="8" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No admissions found.</td>
+            <td colspan="8" class="px-6 py-16">
+              <div class="flex flex-col items-center justify-center text-center">
+                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-cloud text-slate/45">
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    class="h-7 w-7"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.1a7.5 7.5 0 0 1 15 0M19.5 8.25v6m3-3h-6"
+                    />
+                  </svg>
+                </div>
+
+                <h3 class="mt-4 text-lg font-semibold text-obsidian">
+                  No admissions found
+                </h3>
+
+                <p class="mt-2 max-w-sm text-sm leading-6 text-slate/55">
+                  Add the first student admission to begin building the admissions directory.
+                </p>
+
+                <a
+                  href="/admin/admissions?action=new#admission-form"
+                  class="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"
+                >
+                  Add admission
+                </a>
+              </div>
+            </td>
           </tr>
           {{end}}
         </tbody>
       </table>
     </div>
-  </div>
 
+    <!-- Mobile and tablet cards -->
+    <div class="space-y-4 p-4 sm:p-6 lg:hidden">
+      {{range .Admissions}}
+      <article class="overflow-hidden rounded-[1.5rem] border border-slate/10 bg-cloud/60">
+        <div class="p-4 sm:p-5">
+          <div class="flex items-start gap-3">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-obsidian text-sm font-semibold uppercase text-cloud">
+              {{printf "%.1s" .FullName}}
+            </div>
+
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <h3 class="truncate text-base font-semibold text-obsidian">
+                    {{.FullName}}
+                  </h3>
+
+                  <p class="mt-1 font-mono text-xs font-medium text-slate/55">
+                    {{.StudentID}}
+                  </p>
+                </div>
+
+                <span class="inline-flex rounded-full border border-slate/10 bg-white px-2.5 py-1 text-[11px] font-semibold capitalize text-slate/60">
+                  {{.Gender}}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <dl class="mt-5 grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <dt class="text-xs font-medium uppercase tracking-[0.12em] text-slate/45">
+                Date of birth
+              </dt>
+
+              <dd class="mt-1 font-medium text-obsidian">
+                {{.DateOfBirth}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-medium uppercase tracking-[0.12em] text-slate/45">
+                P.P. number
+              </dt>
+
+              <dd class="mt-1 truncate font-medium text-obsidian">
+                {{.PassportNumber}}
+              </dd>
+            </div>
+
+            <div class="col-span-2">
+              <dt class="text-xs font-medium uppercase tracking-[0.12em] text-slate/45">
+                School
+              </dt>
+
+              <dd class="mt-1 font-medium text-obsidian">
+                {{.School}}
+              </dd>
+            </div>
+
+            <div class="col-span-2">
+              <dt class="text-xs font-medium uppercase tracking-[0.12em] text-slate/45">
+                Guardian
+              </dt>
+
+              <dd class="mt-1 font-medium text-obsidian">
+                {{.GuardianName}}
+              </dd>
+
+              <dd class="mt-0.5 text-xs capitalize text-slate/50">
+                {{.GuardianRelationship}}
+              </dd>
+            </div>
+
+            <div class="col-span-2">
+              <dt class="text-xs font-medium uppercase tracking-[0.12em] text-slate/45">
+                Contact
+              </dt>
+
+              <dd class="mt-1">
+                <a
+                  href="tel:{{.GuardianContactNumber}}"
+                  class="font-medium text-obsidian"
+                >
+                  {{.GuardianContactNumber}}
+                </a>
+              </dd>
+
+              <dd class="mt-0.5 text-xs text-slate/50">
+                Alternative: {{.GuardianAlternativePhone}}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 border-t border-slate/10 bg-white/60 p-3">
+          <a
+            href="/admin/admissions?action=view&id={{.ID}}#admission-view"
+            class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white text-xs font-semibold text-slate transition hover:bg-cloud"
+          >
+            View
+          </a>
+
+          <a
+            href="/admin/admissions?action=edit&id={{.ID}}#admission-edit"
+            class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white text-xs font-semibold text-slate transition hover:bg-cloud"
+          >
+            Edit
+          </a>
+
+          <form action="/admin/admissions/delete" method="post">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+            <input type="hidden" name="admission_id" value="{{.ID}}" />
+
+            <button
+              type="submit"
+              class="inline-flex h-10 w-full items-center justify-center rounded-xl border border-red-200 bg-white text-xs font-semibold text-red-700 transition hover:bg-red-50"
+            >
+              Delete
+            </button>
+          </form>
+        </div>
+      </article>
+
+      {{else}}
+      <div class="flex min-h-72 flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-12 text-center">
+        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate/45 shadow-sm">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            class="h-7 w-7"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.1a7.5 7.5 0 0 1 15 0M19.5 8.25v6m3-3h-6"
+            />
+          </svg>
+        </div>
+
+        <h3 class="mt-4 text-lg font-semibold text-obsidian">
+          No admissions found
+        </h3>
+
+        <p class="mt-2 max-w-sm text-sm leading-6 text-slate/55">
+          Add the first student admission to begin building the admissions directory.
+        </p>
+
+        <a
+          href="/admin/admissions?action=new#admission-form"
+          class="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"
+        >
+          Add admission
+        </a>
+      </div>
+      {{end}}
+    </div>
+  </section>
+
+  <!-- Admission details -->
   {{if and (eq .AdmissionMode "view") .SelectedAdmission}}
-  <div id="admission-view" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex items-center justify-between gap-3">
-      <h2 class="text-xl font-semibold sm:text-2xl">Admission details</h2>
-      <a href="/admin/admissions" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+  <section
+    id="admission-view"
+    class="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/85 shadow-[0_20px_60px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:rounded-[2rem]"
+  >
+    <div class="flex flex-col gap-4 border-b border-slate/10 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
+      <div class="flex items-center gap-4">
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-base font-semibold uppercase text-cloud shadow-sm">
+          {{printf "%.1s" .SelectedAdmission.FullName}}
+        </div>
+
+        <div>
+          <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
+            {{.SelectedAdmission.FullName}}
+          </h2>
+
+          <p class="mt-1 font-mono text-xs font-medium text-slate/50">
+            {{.SelectedAdmission.StudentID}}
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <a
+          href="/admin/admissions?action=edit&id={{.SelectedAdmission.ID}}#admission-edit"
+          class="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            class="h-4 w-4"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Z"
+            />
+          </svg>
+
+          Edit admission
+        </a>
+
+        <a
+          href="/admin/admissions"
+          class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+        >
+          Close
+        </a>
+      </div>
     </div>
-    <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Student ID</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.StudentID}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Full Name</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.FullName}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Date of Birth</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.DateOfBirth}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Gender</p>
-        <p class="mt-2 text-sm font-medium capitalize text-obsidian">{{.SelectedAdmission.Gender}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">P.P. No</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.PassportNumber}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">School</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.School}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Guardian</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.GuardianName}}</p>
-        <p class="mt-1 text-sm text-slate/65">{{.SelectedAdmission.GuardianRelationship}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Contact No</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.GuardianContactNumber}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Alternative Contact</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedAdmission.GuardianAlternativePhone}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4 md:col-span-2 xl:col-span-3">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Address</p>
-        <p class="mt-2 text-sm leading-7 text-obsidian">{{.SelectedAdmission.Address}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4 md:col-span-2 xl:col-span-3">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Medical Information</p>
-        <p class="mt-2 text-sm leading-7 text-obsidian">{{.SelectedAdmission.MedicalInformation}}</p>
+
+    <div class="p-5 sm:p-8">
+      <div class="grid gap-6 xl:grid-cols-3">
+        <!-- Student details -->
+        <section class="rounded-[1.5rem] border border-slate/10 bg-cloud/55 p-5 xl:col-span-2">
+          <div class="flex items-center gap-3">
+            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-obsidian shadow-sm">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                class="h-4 w-4"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.1a7.5 7.5 0 0 1 15 0"
+                />
+              </svg>
+            </span>
+
+            <h3 class="font-semibold text-obsidian">
+              Student details
+            </h3>
+          </div>
+
+          <dl class="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Student ID
+              </dt>
+
+              <dd class="mt-2 font-mono text-sm font-semibold text-obsidian">
+                {{.SelectedAdmission.StudentID}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Full name
+              </dt>
+
+              <dd class="mt-2 text-sm font-semibold text-obsidian">
+                {{.SelectedAdmission.FullName}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Date of birth
+              </dt>
+
+              <dd class="mt-2 text-sm font-medium text-obsidian">
+                {{.SelectedAdmission.DateOfBirth}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Gender
+              </dt>
+
+              <dd class="mt-2 text-sm font-medium capitalize text-obsidian">
+                {{.SelectedAdmission.Gender}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                P.P. number
+              </dt>
+
+              <dd class="mt-2 text-sm font-medium text-obsidian">
+                {{.SelectedAdmission.PassportNumber}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                School
+              </dt>
+
+              <dd class="mt-2 text-sm font-medium text-obsidian">
+                {{.SelectedAdmission.School}}
+              </dd>
+            </div>
+
+            <div class="sm:col-span-2 lg:col-span-3">
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Residential address
+              </dt>
+
+              <dd class="mt-2 whitespace-pre-line text-sm leading-7 text-obsidian">
+                {{.SelectedAdmission.Address}}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <!-- Guardian details -->
+        <section class="rounded-[1.5rem] border border-slate/10 bg-cloud/55 p-5">
+          <div class="flex items-center gap-3">
+            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-obsidian shadow-sm">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                class="h-4 w-4"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M12 6.75a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"
+                />
+              </svg>
+            </span>
+
+            <h3 class="font-semibold text-obsidian">
+              Guardian contact
+            </h3>
+          </div>
+
+          <dl class="mt-5 space-y-5">
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Name
+              </dt>
+
+              <dd class="mt-2 text-sm font-semibold text-obsidian">
+                {{.SelectedAdmission.GuardianName}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Relationship
+              </dt>
+
+              <dd class="mt-2 text-sm font-medium capitalize text-obsidian">
+                {{.SelectedAdmission.GuardianRelationship}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Primary contact
+              </dt>
+
+              <dd class="mt-2">
+                <a
+                  href="tel:{{.SelectedAdmission.GuardianContactNumber}}"
+                  class="text-sm font-semibold text-obsidian transition hover:text-slate"
+                >
+                  {{.SelectedAdmission.GuardianContactNumber}}
+                </a>
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Alternative contact
+              </dt>
+
+              <dd class="mt-2">
+                <a
+                  href="tel:{{.SelectedAdmission.GuardianAlternativePhone}}"
+                  class="text-sm font-semibold text-obsidian transition hover:text-slate"
+                >
+                  {{.SelectedAdmission.GuardianAlternativePhone}}
+                </a>
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <!-- Medical information -->
+        <section class="rounded-[1.5rem] border border-red-100 bg-red-50/55 p-5 xl:col-span-3">
+          <div class="flex items-start gap-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-red-700 shadow-sm">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                class="h-4 w-4"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 21s-7.5-4.35-7.5-10.125A4.875 4.875 0 0 1 12 6.77a4.875 4.875 0 0 1 7.5 4.105C19.5 16.65 12 21 12 21Z"
+                />
+
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9 12h6m-3-3v6"
+                />
+              </svg>
+            </span>
+
+            <div class="min-w-0">
+              <h3 class="font-semibold text-red-900">
+                Medical information
+              </h3>
+
+              <p class="mt-2 whitespace-pre-line text-sm leading-7 text-red-900/80">
+                {{.SelectedAdmission.MedicalInformation}}
+              </p>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
-  </div>
+  </section>
   {{end}}
 
+  <!-- Edit admission -->
   {{if and (eq .AdmissionMode "edit") .SelectedAdmission}}
-  <div id="admission-edit" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex items-center justify-between gap-3">
-      <h2 class="text-xl font-semibold sm:text-2xl">Edit admission</h2>
-      <a href="/admin/admissions" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+  <section
+    id="admission-edit"
+    class="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/85 shadow-[0_20px_60px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:rounded-[2rem]"
+  >
+    <div class="flex flex-col gap-4 border-b border-slate/10 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
+      <div class="flex items-start gap-4">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-cloud shadow-sm">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            class="h-5 w-5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Z"
+            />
+          </svg>
+        </div>
+
+        <div>
+          <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
+            Edit admission
+          </h2>
+
+          <p class="mt-1 text-sm leading-6 text-slate/60">
+            Update the admission record for {{.SelectedAdmission.FullName}}.
+          </p>
+        </div>
+      </div>
+
+      <a
+        href="/admin/admissions"
+        class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+      >
+        Close
+      </a>
     </div>
-    <form action="/admin/admissions/update" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+
+    <form action="/admin/admissions/update" method="post" class="p-5 sm:p-8">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
       <input type="hidden" name="admission_id" value="{{.SelectedAdmission.ID}}" />
-      <input type="text" name="student_id" value="{{.SelectedAdmission.StudentID}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
-      <input type="text" name="full_name" value="{{.SelectedAdmission.FullName}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="date" name="date_of_birth" value="{{.SelectedAdmission.DateOfBirth}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <select name="gender" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
-        <option value="male" {{if eq .SelectedAdmission.Gender "male"}}selected{{end}}>Male</option>
-        <option value="female" {{if eq .SelectedAdmission.Gender "female"}}selected{{end}}>Female</option>
-      </select>
-      <textarea name="address" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{.SelectedAdmission.Address}}</textarea>
-      <input type="text" name="passport_number" value="{{.SelectedAdmission.PassportNumber}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="school" value="{{.SelectedAdmission.School}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="guardian_name" value="{{.SelectedAdmission.GuardianName}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="guardian_relationship" value="{{.SelectedAdmission.GuardianRelationship}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="guardian_contact_number" value="{{.SelectedAdmission.GuardianContactNumber}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="guardian_alternative_contact_number" value="{{.SelectedAdmission.GuardianAlternativePhone}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <textarea name="medical_information" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{.SelectedAdmission.MedicalInformation}}</textarea>
-      <div class="md:col-span-2 xl:col-span-3 flex justify-end">
-        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save changes</button>
+
+      <fieldset>
+        <div class="flex items-center gap-3">
+          <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-aqua/15 text-obsidian">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              class="h-4 w-4"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.1a7.5 7.5 0 0 1 15 0"
+              />
+            </svg>
+          </span>
+
+          <legend class="text-base font-semibold text-obsidian">
+            Student information
+          </legend>
+        </div>
+
+        <div class="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div class="space-y-2">
+            <label for="edit-student-id" class="block text-sm font-semibold text-obsidian">
+              Student ID
+            </label>
+
+            <input
+              id="edit-student-id"
+              type="text"
+              name="student_id"
+              value="{{.SelectedAdmission.StudentID}}"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm uppercase text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <label for="edit-full-name" class="block text-sm font-semibold text-obsidian">
+              Full name
+            </label>
+
+            <input
+              id="edit-full-name"
+              type="text"
+              name="full_name"
+              value="{{.SelectedAdmission.FullName}}"
+              required
+              autocomplete="name"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <label for="edit-date-of-birth" class="block text-sm font-semibold text-obsidian">
+              Date of birth
+            </label>
+
+            <input
+              id="edit-date-of-birth"
+              type="date"
+              name="date_of_birth"
+              value="{{.SelectedAdmission.DateOfBirth}}"
+              required
+              autocomplete="bday"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <label for="edit-gender" class="block text-sm font-semibold text-obsidian">
+              Gender
+            </label>
+
+            <select
+              id="edit-gender"
+              name="gender"
+              required
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            >
+              <option value="male" {{if eq .SelectedAdmission.Gender "male"}}selected{{end}}>
+                Male
+              </option>
+
+              <option value="female" {{if eq .SelectedAdmission.Gender "female"}}selected{{end}}>
+                Female
+              </option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <label for="edit-passport-number" class="block text-sm font-semibold text-obsidian">
+              P.P. number
+            </label>
+
+            <input
+              id="edit-passport-number"
+              type="text"
+              name="passport_number"
+              value="{{.SelectedAdmission.PassportNumber}}"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm uppercase text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <label for="edit-school" class="block text-sm font-semibold text-obsidian">
+              School
+            </label>
+
+            <input
+              id="edit-school"
+              type="text"
+              name="school"
+              value="{{.SelectedAdmission.School}}"
+              required
+              autocomplete="organization"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2 md:col-span-2 xl:col-span-3">
+            <label for="edit-address" class="block text-sm font-semibold text-obsidian">
+              Residential address
+            </label>
+
+            <textarea
+              id="edit-address"
+              name="address"
+              required
+              rows="3"
+              autocomplete="street-address"
+              class="w-full resize-y rounded-2xl border border-slate/15 bg-white px-4 py-3 text-sm leading-6 text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            >{{.SelectedAdmission.Address}}</textarea>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="mt-8 border-t border-slate/10 pt-8">
+        <div class="flex items-center gap-3">
+          <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-aqua/15 text-obsidian">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              class="h-4 w-4"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952M12 6.75a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"
+              />
+            </svg>
+          </span>
+
+          <legend class="text-base font-semibold text-obsidian">
+            Parent or guardian
+          </legend>
+        </div>
+
+        <div class="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div class="space-y-2 xl:col-span-2">
+            <label for="edit-guardian-name" class="block text-sm font-semibold text-obsidian">
+              Parent or guardian name
+            </label>
+
+            <input
+              id="edit-guardian-name"
+              type="text"
+              name="guardian_name"
+              value="{{.SelectedAdmission.GuardianName}}"
+              required
+              autocomplete="name"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2 xl:col-span-2">
+            <label for="edit-guardian-relationship" class="block text-sm font-semibold text-obsidian">
+              Relationship
+            </label>
+
+            <input
+              id="edit-guardian-relationship"
+              type="text"
+              name="guardian_relationship"
+              value="{{.SelectedAdmission.GuardianRelationship}}"
+              required
+              autocomplete="off"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2 xl:col-span-2">
+            <label for="edit-guardian-contact" class="block text-sm font-semibold text-obsidian">
+              Primary contact number
+            </label>
+
+            <input
+              id="edit-guardian-contact"
+              type="tel"
+              name="guardian_contact_number"
+              value="{{.SelectedAdmission.GuardianContactNumber}}"
+              required
+              autocomplete="tel"
+              inputmode="tel"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <div class="space-y-2 xl:col-span-2">
+            <label for="edit-guardian-alternative-contact" class="block text-sm font-semibold text-obsidian">
+              Alternative contact number
+            </label>
+
+            <input
+              id="edit-guardian-alternative-contact"
+              type="tel"
+              name="guardian_alternative_contact_number"
+              value="{{.SelectedAdmission.GuardianAlternativePhone}}"
+              required
+              autocomplete="tel"
+              inputmode="tel"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="mt-8 border-t border-slate/10 pt-8">
+        <div class="flex items-center gap-3">
+          <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-red-50 text-red-700">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              class="h-4 w-4"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 21s-7.5-4.35-7.5-10.125A4.875 4.875 0 0 1 12 6.77a4.875 4.875 0 0 1 7.5 4.105C19.5 16.65 12 21 12 21Z"
+              />
+
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M9 12h6m-3-3v6"
+              />
+            </svg>
+          </span>
+
+          <legend class="text-base font-semibold text-obsidian">
+            Medical information
+          </legend>
+        </div>
+
+        <div class="mt-5">
+          <label for="edit-medical-information" class="sr-only">
+            Medical conditions or allergies
+          </label>
+
+          <textarea
+            id="edit-medical-information"
+            name="medical_information"
+            required
+            rows="4"
+            class="w-full resize-y rounded-2xl border border-slate/15 bg-white px-4 py-3 text-sm leading-6 text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+          >{{.SelectedAdmission.MedicalInformation}}</textarea>
+        </div>
+      </fieldset>
+
+      <div class="mt-8 flex flex-col-reverse gap-3 border-t border-slate/10 pt-6 sm:flex-row sm:justify-end">
+        <a
+          href="/admin/admissions"
+          class="inline-flex h-12 items-center justify-center rounded-2xl border border-slate/15 bg-white px-6 text-sm font-semibold text-slate transition hover:bg-cloud"
+        >
+          Cancel
+        </a>
+
+        <button
+          type="submit"
+          class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-obsidian px-6 text-sm font-semibold text-cloud shadow-[0_12px_30px_rgba(11,18,21,0.22)] transition hover:-translate-y-0.5 hover:bg-slate focus:outline-none focus:ring-4 focus:ring-aqua/30 active:translate-y-0"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            class="h-5 w-5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+            />
+          </svg>
+
+          Save changes
+        </button>
       </div>
     </form>
-  </div>
+  </section>
   {{end}}
 </section>
 {{end}}

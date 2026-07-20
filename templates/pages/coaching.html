@@ -1,0 +1,784 @@
+{{define "coaching"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="relative overflow-hidden bg-cloud">
+  <!-- Decorative Background -->
+  <div class="pointer-events-none absolute inset-0 -z-10">
+    <div class="absolute -left-32 top-24 h-96 w-96 rounded-full bg-aqua/20 blur-3xl"></div>
+    <div class="absolute -right-32 top-[42rem] h-96 w-96 rounded-full bg-amber/15 blur-3xl"></div>
+    <div class="absolute bottom-40 left-1/3 h-80 w-80 rounded-full bg-blush/30 blur-3xl"></div>
+  </div>
+
+  <!-- Hero -->
+  <section class="mx-auto grid max-w-7xl gap-12 px-5 py-14 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:py-24">
+    <div>
+      <p class="inline-flex items-center gap-2 rounded-full border border-obsidian/10 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate backdrop-blur-xl">
+        <span class="h-2 w-2 rounded-full bg-aqua"></span>
+        Mekmaa Coaching
+      </p>
+
+      <h1 class="mt-6 max-w-4xl text-4xl font-semibold leading-[1.08] text-obsidian sm:text-5xl lg:text-6xl">
+        Coaching that develops
+        <span class="text-slate/60">skill, discipline and confidence.</span>
+      </h1>
+
+      <p class="mt-6 max-w-2xl text-base leading-8 text-slate/75 sm:text-lg">
+        Mekmaa provides structured sports coaching for children and teenagers
+        in a supportive indoor environment. Our programs are designed to help
+        young players learn the fundamentals, improve consistently and enjoy
+        every stage of their sporting journey.
+      </p>
+
+      <div class="mt-9 flex flex-col gap-3 sm:flex-row">
+        <a
+          href="#programs"
+          class="inline-flex items-center justify-center rounded-full bg-obsidian px-7 py-3.5 text-sm font-semibold text-cloud transition hover:-translate-y-0.5 hover:bg-slate"
+        >
+          Explore Coaching Programs
+        </a>
+
+        <a
+          href="/contact"
+          class="inline-flex items-center justify-center rounded-full border border-obsidian/15 bg-white px-7 py-3.5 text-sm font-semibold text-obsidian transition hover:border-obsidian hover:bg-obsidian hover:text-cloud"
+        >
+          Speak to Our Team
+        </a>
+      </div>
+
+      <div class="mt-10 grid max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
+        <div class="rounded-2xl border border-white/80 bg-white/75 p-4 backdrop-blur-xl">
+          <p class="text-lg font-semibold text-obsidian">Kids</p>
+          <p class="mt-1 text-xs leading-5 text-slate/60">Beginner-friendly training</p>
+        </div>
+
+        <div class="rounded-2xl border border-white/80 bg-white/75 p-4 backdrop-blur-xl">
+          <p class="text-lg font-semibold text-obsidian">Teens</p>
+          <p class="mt-1 text-xs leading-5 text-slate/60">Progressive development</p>
+        </div>
+
+        <div class="rounded-2xl border border-white/80 bg-white/75 p-4 backdrop-blur-xl">
+          <p class="text-lg font-semibold text-obsidian">Indoor</p>
+          <p class="mt-1 text-xs leading-5 text-slate/60">Weather-ready sessions</p>
+        </div>
+
+        <div class="rounded-2xl border border-white/80 bg-white/75 p-4 backdrop-blur-xl">
+          <p class="text-lg font-semibold text-obsidian">Focused</p>
+          <p class="mt-1 text-xs leading-5 text-slate/60">Skill-based coaching</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hero Visual -->
+    <div class="relative">
+      <div class="overflow-hidden rounded-[2rem] border border-white/80 bg-white p-3 shadow-float">
+        <img
+          src="/static/images/coaching/coaching-hero.jpg"
+          alt="Young athletes participating in coaching at Mekmaa"
+          class="h-[520px] w-full rounded-[1.5rem] object-cover"
+        />
+      </div>
+
+      <div class="absolute -bottom-6 -left-3 max-w-xs rounded-[1.5rem] border border-white/70 bg-white/90 p-5 shadow-xl backdrop-blur-xl sm:-left-8">
+        <div class="flex items-center gap-3">
+          <span class="flex h-10 w-10 items-center justify-center rounded-2xl bg-mint text-lg">
+            ↗
+          </span>
+
+          <div>
+            <p class="font-semibold text-obsidian">Progress with purpose</p>
+            <p class="mt-1 text-xs leading-5 text-slate/60">
+              Every session supports long-term player development.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="absolute -right-3 top-8 rounded-2xl bg-amber px-5 py-4 shadow-xl sm:-right-7">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-obsidian/60">
+          Train Better
+        </p>
+        <p class="mt-1 font-semibold text-obsidian">
+          Play with confidence
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Coaching Introduction -->
+  <section class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+    <div class="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+          Our Approach
+        </p>
+
+        <h2 class="mt-4 text-3xl font-semibold leading-tight text-obsidian sm:text-4xl">
+          Strong foundations before flashy results.
+        </h2>
+      </div>
+
+      <div class="space-y-6 text-base leading-8 text-slate/75 sm:text-lg">
+        <p>
+          Good coaching is not simply about repeating drills. It is about
+          understanding the player, building the correct fundamentals and
+          creating an environment where consistent improvement becomes
+          possible.
+        </p>
+
+        <p>
+          At Mekmaa, our coaching sessions combine technical instruction,
+          practical exercises, fitness, discipline, teamwork and match-based
+          learning. Players are encouraged to improve at a sustainable pace
+          while developing a healthy relationship with sport.
+        </p>
+
+        <p>
+          Whether a child is taking their first steps or a teenager is looking
+          to sharpen existing skills, the objective remains the same: build
+          capable, confident and responsible players.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Programs -->
+  <section id="programs" class="border-y border-obsidian/5 bg-white/65">
+    <div class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+      <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl">
+          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+            Coaching Programs
+          </p>
+
+          <h2 class="mt-4 text-3xl font-semibold leading-tight text-obsidian sm:text-4xl">
+            Programs built around player development.
+          </h2>
+
+          <p class="mt-5 text-base leading-8 text-slate/70 sm:text-lg">
+            Coaching availability, age groups and session times may vary.
+            Contact Mekmaa for the current schedule and enrolment details.
+          </p>
+        </div>
+
+        <a
+          href="/contact"
+          class="inline-flex w-fit items-center gap-3 rounded-full border border-obsidian/15 bg-white px-6 py-3 text-sm font-semibold text-obsidian transition hover:bg-obsidian hover:text-cloud"
+        >
+          Check Availability
+          <span aria-hidden="true">→</span>
+        </a>
+      </div>
+
+      <div class="mt-12 grid gap-6 lg:grid-cols-2">
+        <!-- Cricket Coaching -->
+        <article class="group overflow-hidden rounded-[2rem] border border-obsidian/5 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+          <div class="relative overflow-hidden">
+            <img
+              src="/static/images/coaching/cricket-coaching.jpg"
+              alt="Cricket coaching session for young players at Mekmaa"
+              class="h-72 w-full object-cover transition duration-700 group-hover:scale-105"
+            />
+
+            <div class="absolute inset-0 bg-gradient-to-t from-obsidian/75 via-transparent to-transparent"></div>
+
+            <span class="absolute left-5 top-5 rounded-full bg-white/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-obsidian backdrop-blur-xl">
+              Featured Program
+            </span>
+
+            <div class="absolute bottom-5 left-5 right-5">
+              <p class="text-sm font-medium text-aqua">Cricket Development</p>
+              <h3 class="mt-1 text-3xl font-semibold text-white">
+                Cricket Coaching
+              </h3>
+            </div>
+          </div>
+
+          <div class="p-7 sm:p-8">
+            <p class="leading-7 text-slate/70">
+              Structured cricket training covering batting, bowling, fielding,
+              fitness, match awareness and the discipline required to develop
+              into a well-rounded player.
+            </p>
+
+            <div class="mt-7 grid gap-3 sm:grid-cols-2">
+              <div class="rounded-2xl bg-cloud p-4">
+                <p class="text-sm font-semibold text-obsidian">Batting Skills</p>
+                <p class="mt-1 text-xs leading-5 text-slate/60">
+                  Technique, balance, shot selection and timing.
+                </p>
+              </div>
+
+              <div class="rounded-2xl bg-cloud p-4">
+                <p class="text-sm font-semibold text-obsidian">Bowling Skills</p>
+                <p class="mt-1 text-xs leading-5 text-slate/60">
+                  Action, control, rhythm and variation.
+                </p>
+              </div>
+
+              <div class="rounded-2xl bg-cloud p-4">
+                <p class="text-sm font-semibold text-obsidian">Fielding</p>
+                <p class="mt-1 text-xs leading-5 text-slate/60">
+                  Catching, movement, throwing and reaction speed.
+                </p>
+              </div>
+
+              <div class="rounded-2xl bg-cloud p-4">
+                <p class="text-sm font-semibold text-obsidian">Match Awareness</p>
+                <p class="mt-1 text-xs leading-5 text-slate/60">
+                  Decision-making, teamwork and game understanding.
+                </p>
+              </div>
+            </div>
+
+            <a
+              href="/contact?subject=Cricket%20Coaching"
+              class="mt-7 inline-flex items-center gap-3 text-sm font-semibold text-obsidian transition hover:gap-4"
+            >
+              Enquire About Cricket Coaching
+              <span aria-hidden="true">→</span>
+            </a>
+          </div>
+        </article>
+
+        <!-- Multi-sport / Junior Development -->
+        <article class="group overflow-hidden rounded-[2rem] border border-obsidian/5 bg-obsidian text-cloud shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+          <div class="relative overflow-hidden">
+            <img
+              src="/static/images/coaching/junior-development.jpg"
+              alt="Junior sports development program at Mekmaa"
+              class="h-72 w-full object-cover opacity-80 transition duration-700 group-hover:scale-105"
+            />
+
+            <div class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/20 to-transparent"></div>
+
+            <span class="absolute left-5 top-5 rounded-full border border-white/20 bg-obsidian/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-cloud backdrop-blur-xl">
+              Young Athletes
+            </span>
+
+            <div class="absolute bottom-5 left-5 right-5">
+              <p class="text-sm font-medium text-amber">Foundation Program</p>
+              <h3 class="mt-1 text-3xl font-semibold text-white">
+                Junior Player Development
+              </h3>
+            </div>
+          </div>
+
+          <div class="p-7 sm:p-8">
+            <p class="leading-7 text-cloud/70">
+              A broad development program designed to improve coordination,
+              movement, fitness, teamwork and confidence through structured
+              sports-based activities.
+            </p>
+
+            <div class="mt-7 space-y-3">
+              <div class="flex gap-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-aqua text-sm font-semibold text-obsidian">
+                  01
+                </span>
+
+                <div>
+                  <p class="font-semibold text-cloud">Movement Fundamentals</p>
+                  <p class="mt-1 text-xs leading-5 text-cloud/55">
+                    Balance, speed, coordination and body control.
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex gap-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber text-sm font-semibold text-obsidian">
+                  02
+                </span>
+
+                <div>
+                  <p class="font-semibold text-cloud">Teamwork</p>
+                  <p class="mt-1 text-xs leading-5 text-cloud/55">
+                    Communication, cooperation and respect for others.
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex gap-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blush text-sm font-semibold text-obsidian">
+                  03
+                </span>
+
+                <div>
+                  <p class="font-semibold text-cloud">Confidence Building</p>
+                  <p class="mt-1 text-xs leading-5 text-cloud/55">
+                    Positive encouragement through achievable challenges.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <a
+              href="/contact?subject=Junior%20Player%20Development"
+              class="mt-7 inline-flex items-center gap-3 text-sm font-semibold text-aqua transition hover:gap-4"
+            >
+              Enquire About Junior Programs
+              <span aria-hidden="true">→</span>
+            </a>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Age Groups -->
+  <section class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+    <div class="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+          Player Pathway
+        </p>
+
+        <h2 class="mt-4 text-3xl font-semibold leading-tight text-obsidian sm:text-4xl">
+          The right training at the right stage.
+        </h2>
+
+        <p class="mt-6 text-base leading-8 text-slate/70 sm:text-lg">
+          Players develop differently. Mekmaa coaching is structured to
+          recognise varying levels of confidence, physical development,
+          technical ability and sporting experience.
+        </p>
+
+        <div class="mt-8 rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+          <p class="text-sm font-semibold text-obsidian">
+            Important enrolment note
+          </p>
+
+          <p class="mt-3 text-sm leading-7 text-slate/65">
+            Final group placement should be determined by the coach or
+            management team after considering the player's age, current skill
+            level and available coaching groups.
+          </p>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <article class="grid gap-5 rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm sm:grid-cols-[auto_1fr] sm:items-center">
+          <div class="flex h-20 w-20 items-center justify-center rounded-[1.5rem] bg-mint text-center">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate/55">Stage</p>
+              <p class="text-xl font-semibold text-obsidian">01</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-xl font-semibold text-obsidian">
+              Beginners
+            </h3>
+
+            <p class="mt-2 text-sm leading-7 text-slate/65">
+              Introduction to basic movement, rules, equipment, safety and core
+              sporting techniques.
+            </p>
+          </div>
+        </article>
+
+        <article class="grid gap-5 rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm sm:grid-cols-[auto_1fr] sm:items-center">
+          <div class="flex h-20 w-20 items-center justify-center rounded-[1.5rem] bg-aqua/25 text-center">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate/55">Stage</p>
+              <p class="text-xl font-semibold text-obsidian">02</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-xl font-semibold text-obsidian">
+              Developing Players
+            </h3>
+
+            <p class="mt-2 text-sm leading-7 text-slate/65">
+              Refining technique, improving consistency and introducing
+              situational and match-based training.
+            </p>
+          </div>
+        </article>
+
+        <article class="grid gap-5 rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm sm:grid-cols-[auto_1fr] sm:items-center">
+          <div class="flex h-20 w-20 items-center justify-center rounded-[1.5rem] bg-amber/25 text-center">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate/55">Stage</p>
+              <p class="text-xl font-semibold text-obsidian">03</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-xl font-semibold text-obsidian">
+              Advanced Development
+            </h3>
+
+            <p class="mt-2 text-sm leading-7 text-slate/65">
+              Focused sessions for players ready for more demanding technical,
+              tactical and performance-oriented training.
+            </p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Training Method -->
+  <section class="bg-obsidian text-cloud">
+    <div class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+      <div class="mx-auto max-w-3xl text-center">
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-aqua">
+          How Sessions Work
+        </p>
+
+        <h2 class="mt-4 text-3xl font-semibold leading-tight sm:text-4xl">
+          A practical coaching process that keeps players engaged.
+        </h2>
+
+        <p class="mt-5 leading-8 text-cloud/65">
+          Every session may be adapted based on the sport, age group, ability
+          level and coaching objective.
+        </p>
+      </div>
+
+      <div class="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <article class="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-aqua text-sm font-semibold text-obsidian">
+            01
+          </span>
+
+          <h3 class="mt-6 text-xl font-semibold">Warm-Up</h3>
+
+          <p class="mt-3 text-sm leading-7 text-cloud/60">
+            Mobility, coordination and movement preparation to help players
+            train safely and effectively.
+          </p>
+        </article>
+
+        <article class="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber text-sm font-semibold text-obsidian">
+            02
+          </span>
+
+          <h3 class="mt-6 text-xl font-semibold">Skill Development</h3>
+
+          <p class="mt-3 text-sm leading-7 text-cloud/60">
+            Focused drills that teach and reinforce the technical fundamentals
+            of the activity.
+          </p>
+        </article>
+
+        <article class="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blush text-sm font-semibold text-obsidian">
+            03
+          </span>
+
+          <h3 class="mt-6 text-xl font-semibold">Practical Application</h3>
+
+          <p class="mt-3 text-sm leading-7 text-cloud/60">
+            Game situations and challenges that help players apply learned
+            skills under realistic conditions.
+          </p>
+        </article>
+
+        <article class="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-mint text-sm font-semibold text-obsidian">
+            04
+          </span>
+
+          <h3 class="mt-6 text-xl font-semibold">Feedback</h3>
+
+          <p class="mt-3 text-sm leading-7 text-cloud/60">
+            Constructive guidance on what went well, what needs work and what
+            the player should focus on next.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Benefits -->
+  <section class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+    <div class="grid gap-12 lg:grid-cols-2 lg:items-center">
+      <div class="relative">
+        <div class="overflow-hidden rounded-[2rem] bg-white p-3 shadow-float">
+          <img
+            src="/static/images/coaching/coaching-benefits.jpg"
+            alt="Young players developing skills during a Mekmaa coaching session"
+            class="h-[500px] w-full rounded-[1.5rem] object-cover"
+          />
+        </div>
+
+        <div class="absolute -bottom-5 right-3 rounded-[1.5rem] bg-mint p-5 shadow-xl sm:-right-6">
+          <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate/55">
+            Beyond Sport
+          </p>
+          <p class="mt-1 font-semibold text-obsidian">
+            Building better habits
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+          Why Coaching Matters
+        </p>
+
+        <h2 class="mt-4 text-3xl font-semibold leading-tight text-obsidian sm:text-4xl">
+          Development that goes beyond technique.
+        </h2>
+
+        <p class="mt-6 text-base leading-8 text-slate/70 sm:text-lg">
+          Sports coaching can contribute to physical fitness, confidence,
+          communication, patience and personal responsibility. These qualities
+          matter both inside and outside the playing area.
+        </p>
+
+        <div class="mt-8 grid gap-4 sm:grid-cols-2">
+          <div class="rounded-2xl border border-obsidian/5 bg-white p-5">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-aqua/25">
+              ✓
+            </div>
+            <h3 class="mt-4 font-semibold text-obsidian">Technical Skills</h3>
+            <p class="mt-2 text-sm leading-6 text-slate/60">
+              Learn the correct fundamentals from the beginning.
+            </p>
+          </div>
+
+          <div class="rounded-2xl border border-obsidian/5 bg-white p-5">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-mint">
+              ✓
+            </div>
+            <h3 class="mt-4 font-semibold text-obsidian">Physical Fitness</h3>
+            <p class="mt-2 text-sm leading-6 text-slate/60">
+              Improve movement, stamina, agility and coordination.
+            </p>
+          </div>
+
+          <div class="rounded-2xl border border-obsidian/5 bg-white p-5">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber/25">
+              ✓
+            </div>
+            <h3 class="mt-4 font-semibold text-obsidian">Self-Confidence</h3>
+            <p class="mt-2 text-sm leading-6 text-slate/60">
+              Build confidence through progress and encouragement.
+            </p>
+          </div>
+
+          <div class="rounded-2xl border border-obsidian/5 bg-white p-5">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blush">
+              ✓
+            </div>
+            <h3 class="mt-4 font-semibold text-obsidian">Discipline</h3>
+            <p class="mt-2 text-sm leading-6 text-slate/60">
+              Develop focus, responsibility and respect for the process.
+            </p>
+          </div>
+
+          <div class="rounded-2xl border border-obsidian/5 bg-white p-5">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-aqua/25">
+              ✓
+            </div>
+            <h3 class="mt-4 font-semibold text-obsidian">Teamwork</h3>
+            <p class="mt-2 text-sm leading-6 text-slate/60">
+              Learn to communicate and work effectively with others.
+            </p>
+          </div>
+
+          <div class="rounded-2xl border border-obsidian/5 bg-white p-5">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-mint">
+              ✓
+            </div>
+            <h3 class="mt-4 font-semibold text-obsidian">Healthy Routine</h3>
+            <p class="mt-2 text-sm leading-6 text-slate/60">
+              Make regular physical activity part of everyday life.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Enrolment Process -->
+  <section class="border-y border-obsidian/5 bg-white/65">
+    <div class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
+      <div class="mx-auto max-w-3xl text-center">
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+          Getting Started
+        </p>
+
+        <h2 class="mt-4 text-3xl font-semibold text-obsidian sm:text-4xl">
+          A simple path from enquiry to training.
+        </h2>
+      </div>
+
+      <div class="relative mt-12 grid gap-5 lg:grid-cols-4">
+        <article class="relative rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+          <p class="text-sm font-semibold text-aqua">Step 01</p>
+          <h3 class="mt-4 text-xl font-semibold text-obsidian">
+            Contact Mekmaa
+          </h3>
+          <p class="mt-3 text-sm leading-7 text-slate/65">
+            Tell us the player's age, preferred sport and current experience.
+          </p>
+        </article>
+
+        <article class="relative rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+          <p class="text-sm font-semibold text-amber">Step 02</p>
+          <h3 class="mt-4 text-xl font-semibold text-obsidian">
+            Check Availability
+          </h3>
+          <p class="mt-3 text-sm leading-7 text-slate/65">
+            Our team will explain the available groups, times and current
+            coaching schedule.
+          </p>
+        </article>
+
+        <article class="relative rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+          <p class="text-sm font-semibold text-slate">Step 03</p>
+          <h3 class="mt-4 text-xl font-semibold text-obsidian">
+            Confirm Placement
+          </h3>
+          <p class="mt-3 text-sm leading-7 text-slate/65">
+            The player may be placed in a suitable group based on age and
+            ability.
+          </p>
+        </article>
+
+        <article class="relative rounded-[1.75rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+          <p class="text-sm font-semibold text-obsidian">Step 04</p>
+          <h3 class="mt-4 text-xl font-semibold text-obsidian">
+            Start Training
+          </h3>
+          <p class="mt-3 text-sm leading-7 text-slate/65">
+            Attend the confirmed session and begin the development journey.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="mx-auto max-w-5xl px-5 py-16 sm:px-8 lg:py-24">
+    <div class="text-center">
+      <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/55">
+        Coaching FAQ
+      </p>
+
+      <h2 class="mt-4 text-3xl font-semibold text-obsidian sm:text-4xl">
+        Common questions from parents and players.
+      </h2>
+    </div>
+
+    <div class="mt-12 space-y-4">
+      <details class="group rounded-[1.5rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-obsidian">
+          What age groups can join Mekmaa coaching?
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cloud transition group-open:rotate-45">
+            +
+          </span>
+        </summary>
+
+        <p class="mt-4 max-w-3xl text-sm leading-7 text-slate/65">
+          Mekmaa coaching is mainly designed for children and teenagers.
+          Available age groups may depend on the current program and coaching
+          schedule.
+        </p>
+      </details>
+
+      <details class="group rounded-[1.5rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-obsidian">
+          Can complete beginners join?
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cloud transition group-open:rotate-45">
+            +
+          </span>
+        </summary>
+
+        <p class="mt-4 max-w-3xl text-sm leading-7 text-slate/65">
+          Yes. Beginner players can be introduced to the fundamentals in an
+          appropriate group, subject to availability and coach assessment.
+        </p>
+      </details>
+
+      <details class="group rounded-[1.5rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-obsidian">
+          What equipment should players bring?
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cloud transition group-open:rotate-45">
+            +
+          </span>
+        </summary>
+
+        <p class="mt-4 max-w-3xl text-sm leading-7 text-slate/65">
+          Equipment requirements vary by sport and program. Contact Mekmaa
+          before the first session to confirm what clothing and equipment are
+          required.
+        </p>
+      </details>
+
+      <details class="group rounded-[1.5rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-obsidian">
+          How long is each coaching session?
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cloud transition group-open:rotate-45">
+            +
+          </span>
+        </summary>
+
+        <p class="mt-4 max-w-3xl text-sm leading-7 text-slate/65">
+          Session duration may vary by program and group. The Mekmaa team will
+          confirm the exact duration when you enquire or enrol.
+        </p>
+      </details>
+
+      <details class="group rounded-[1.5rem] border border-obsidian/5 bg-white p-6 shadow-sm">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-obsidian">
+          How can I register my child?
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cloud transition group-open:rotate-45">
+            +
+          </span>
+        </summary>
+
+        <p class="mt-4 max-w-3xl text-sm leading-7 text-slate/65">
+          Use the contact page or contact Mekmaa directly. Provide the child's
+          age, preferred program and previous experience so the team can advise
+          you properly.
+        </p>
+      </details>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="mx-auto max-w-7xl px-5 pb-16 sm:px-8 lg:pb-24">
+    <div class="relative overflow-hidden rounded-[2.25rem] bg-obsidian px-6 py-12 text-center text-cloud sm:px-12 sm:py-16">
+      <div class="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-aqua/20 blur-3xl"></div>
+      <div class="absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-amber/20 blur-3xl"></div>
+
+      <div class="relative mx-auto max-w-3xl">
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-aqua">
+          Start Their Journey
+        </p>
+
+        <h2 class="mt-5 text-3xl font-semibold leading-tight sm:text-5xl">
+          Give your child a stronger start in sport.
+        </h2>
+
+        <p class="mx-auto mt-6 max-w-2xl leading-8 text-cloud/70">
+          Contact Mekmaa to learn about current coaching programs, available
+          age groups, session times and enrolment requirements.
+        </p>
+
+        <div class="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+          <a
+            href="/contact?subject=Coaching%20Enquiry"
+            class="inline-flex items-center justify-center rounded-full bg-aqua px-7 py-3.5 text-sm font-semibold text-obsidian transition hover:bg-mint"
+          >
+            Enquire About Coaching
+          </a>
+
+          <a
+            href="/booking"
+            class="inline-flex items-center justify-center rounded-full border border-cloud/20 px-7 py-3.5 text-sm font-semibold text-cloud transition hover:bg-cloud hover:text-obsidian"
+          >
+            Book a Sports Session
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</section>
+{{end}}

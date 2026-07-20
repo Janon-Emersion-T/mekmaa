@@ -1,68 +1,496 @@
 {{define "user-management"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
-<section class="space-y-6">
-  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <h1 class="text-2xl font-semibold sm:text-3xl">User management</h1>
-    <form action="/admin/users/create" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
+<section class="mx-auto w-full max-w-[1600px] space-y-6 pb-10">
+
+  <!-- Page header -->
+  <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <div class="flex items-center gap-2 text-sm font-medium text-slate/60">
+        <a href="/admin" class="transition hover:text-obsidian">Administration</a>
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="h-4 w-4"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L10.94 10 7.23 6.29a.75.75 0 1 1 1.06-1.06l4.24 4.24a.75.75 0 0 1 0 1.06l-4.24 4.24a.75.75 0 0 1-1.08 0Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <span class="text-obsidian">Users</span>
+      </div>
+
+      <h1 class="mt-2 text-3xl font-semibold tracking-tight text-obsidian sm:text-4xl">
+        User management
+      </h1>
+
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-slate/65 sm:text-base">
+        Create user accounts, manage verification status, and control role-based access.
+      </p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="rounded-2xl border border-obsidian/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/50">
+          Total users
+        </p>
+        <p class="mt-1 text-2xl font-semibold text-obsidian">
+          {{len .Users}}
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <!-- Create user -->
+  <section
+    class="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/85 shadow-[0_20px_60px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:rounded-[2rem]"
+  >
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-8 sm:py-6">
+      <div class="flex items-start gap-4">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-cloud shadow-sm">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            class="h-5 w-5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21C5.1 21 2 19.55 2 17.5c0-1.88 2.608-3.24 5.755-3.47M12 6.75a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Zm7.5 1.5v6m3-3h-6"
+            />
+          </svg>
+        </div>
+
+        <div>
+          <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
+            Create a new user
+          </h2>
+          <p class="mt-1 text-sm leading-6 text-slate/60">
+            Add account details and assign the appropriate access roles.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <form action="/admin/users/create" method="post" class="p-5 sm:p-8">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-      <input type="text" name="name" placeholder="Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="email" name="email" placeholder="Email" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="password" name="password" placeholder="Password" required minlength="10" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <label class="flex items-center gap-2 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
-        <input type="checkbox" name="verified" value="true" />
-        <span>Verified</span>
-      </label>
-      <div class="md:col-span-2 xl:col-span-3 flex flex-wrap gap-2 sm:gap-3">
-        {{range .Available}}
-        <label class="inline-flex items-center gap-2 rounded-full border border-obsidian/10 bg-white px-4 py-2 text-sm">
-          <input type="checkbox" name="roles" value="{{.}}" {{if eq . "customer"}}checked{{end}} />
-          <span>{{.}}</span>
-        </label>
+
+      <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <!-- Name -->
+        <div class="space-y-2">
+          <label for="create-user-name" class="block text-sm font-semibold text-obsidian">
+            Full name
+          </label>
+
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate/40">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                class="h-5 w-5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.1a7.5 7.5 0 0 1 15 0"
+                />
+              </svg>
+            </div>
+
+            <input
+              id="create-user-name"
+              type="text"
+              name="name"
+              placeholder="Enter the user's full name"
+              required
+              autocomplete="name"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white pl-12 pr-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+        </div>
+
+        <!-- Email -->
+        <div class="space-y-2">
+          <label for="create-user-email" class="block text-sm font-semibold text-obsidian">
+            Email address
+          </label>
+
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate/40">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                class="h-5 w-5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M21.75 6.75v10.5A2.25 2.25 0 0 1 19.5 19.5h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0-8.56 5.707a2.25 2.25 0 0 1-2.38 0L2.25 6.75"
+                />
+              </svg>
+            </div>
+
+            <input
+              id="create-user-email"
+              type="email"
+              name="email"
+              placeholder="name@example.com"
+              required
+              autocomplete="email"
+              inputmode="email"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white pl-12 pr-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div class="space-y-2 md:col-span-2 xl:col-span-1">
+          <label for="create-user-password" class="block text-sm font-semibold text-obsidian">
+            Temporary password
+          </label>
+
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate/40">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                class="h-5 w-5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M16.5 10.5V6.75a4.5 4.5 0 0 0-9 0v3.75m-.75 10.5h10.5A2.25 2.25 0 0 0 19.5 18.75v-6A2.25 2.25 0 0 0 17.25 10.5H6.75A2.25 2.25 0 0 0 4.5 12.75v6A2.25 2.25 0 0 0 6.75 21Z"
+                />
+              </svg>
+            </div>
+
+            <input
+              id="create-user-password"
+              type="password"
+              name="password"
+              placeholder="Minimum 10 characters"
+              required
+              minlength="10"
+              autocomplete="new-password"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white pl-12 pr-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+          </div>
+
+          <p class="text-xs leading-5 text-slate/50">
+            Use at least 10 characters for better account security.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+        <div class="space-y-5">
+          <!-- Verification -->
+          <div>
+            <p class="text-sm font-semibold text-obsidian">Account status</p>
+
+            <label class="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate/10 bg-cloud/60 p-4 transition hover:border-aqua/50 hover:bg-aqua/5">
+              <input
+                type="checkbox"
+                name="verified"
+                value="true"
+                class="peer mt-0.5 h-5 w-5 shrink-0 rounded-md border-slate/25 text-obsidian accent-obsidian focus:ring-aqua"
+              />
+
+              <span>
+                <span class="block text-sm font-semibold text-obsidian">
+                  Mark email as verified
+                </span>
+                <span class="mt-1 block text-xs leading-5 text-slate/55">
+                  Enable this only when the email address has already been confirmed.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <!-- Roles -->
+          <fieldset>
+            <legend class="text-sm font-semibold text-obsidian">
+              Initial roles
+            </legend>
+
+            <p class="mt-1 text-xs leading-5 text-slate/50">
+              Select one or more roles. Customer access is selected by default.
+            </p>
+
+            <div class="mt-3 flex flex-wrap gap-2.5">
+              {{range .Available}}
+              <label class="group relative cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="roles"
+                  value="{{.}}"
+                  {{if eq . "customer"}}checked{{end}}
+                  class="peer sr-only"
+                />
+
+                <span class="inline-flex min-h-10 items-center gap-2 rounded-full border border-obsidian/10 bg-white px-4 py-2 text-sm font-medium capitalize text-slate shadow-sm transition group-hover:border-obsidian/25 peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud peer-focus-visible:ring-4 peer-focus-visible:ring-aqua/25">
+                  <span class="flex h-4 w-4 items-center justify-center rounded-full border border-current/30">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      class="h-3 w-3 opacity-0 transition peer-checked:opacity-100"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.704 5.292a1 1 0 0 1 .004 1.414l-7.25 7.292a1 1 0 0 1-1.42 0l-3.75-3.77a1 1 0 1 1 1.418-1.41l3.04 3.055 6.542-6.577a1 1 0 0 1 1.416-.004Z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                  </span>
+
+                  <span>{{.}}</span>
+                </span>
+              </label>
+              {{end}}
+            </div>
+          </fieldset>
+        </div>
+
+        <button
+          type="submit"
+          class="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-obsidian px-6 text-sm font-semibold text-cloud shadow-[0_12px_30px_rgba(11,18,21,0.22)] transition hover:-translate-y-0.5 hover:bg-slate hover:shadow-[0_16px_35px_rgba(11,18,21,0.26)] focus:outline-none focus:ring-4 focus:ring-aqua/30 active:translate-y-0 xl:w-auto"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            class="h-5 w-5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 4.5v15m7.5-7.5h-15"
+            />
+          </svg>
+
+          Create user
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- User directory -->
+  <section
+    id="user-management"
+    class="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/85 shadow-[0_20px_60px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:rounded-[2rem]"
+  >
+    <div class="flex flex-col gap-4 border-b border-slate/10 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
+      <div>
+        <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
+          User directory
+        </h2>
+
+        <p class="mt-1 text-sm leading-6 text-slate/60">
+          Review existing accounts and update their assigned roles.
+        </p>
+      </div>
+
+      <div class="inline-flex w-fit items-center gap-2 rounded-full border border-slate/10 bg-cloud px-3 py-2 text-xs font-semibold text-slate/60">
+        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+        {{len .Users}} registered
+      </div>
+    </div>
+
+    <div class="p-4 sm:p-6 lg:p-8">
+      <div class="space-y-4">
+        {{range .Users}}
+        {{$user := .}}
+
+        <form
+          action="/admin/users/roles"
+          method="post"
+          class="group overflow-hidden rounded-[1.5rem] border border-slate/10 bg-cloud/65 transition duration-200 hover:border-slate/20 hover:bg-cloud hover:shadow-[0_16px_45px_rgba(11,18,21,0.08)]"
+        >
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+          <input type="hidden" name="user_id" value="{{.ID}}" />
+          <input type="hidden" name="return_to" value="/admin/users" />
+
+          <div class="p-4 sm:p-5 lg:p-6">
+            <div class="grid gap-6 xl:grid-cols-[minmax(260px,0.8fr)_minmax(420px,1.2fr)] xl:items-start">
+
+              <!-- User identity -->
+              <div class="flex min-w-0 items-start gap-4">
+                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-base font-semibold uppercase text-cloud shadow-sm">
+                  {{printf "%.1s" .Name}}
+                </div>
+
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="truncate text-lg font-semibold text-obsidian sm:text-xl">
+                      {{.Name}}
+                    </h3>
+
+                    {{if .Verified}}
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        class="h-3.5 w-3.5"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M16.704 5.292a1 1 0 0 1 .004 1.414l-7.25 7.292a1 1 0 0 1-1.42 0l-3.75-3.77a1 1 0 1 1 1.418-1.41l3.04 3.055 6.542-6.577a1 1 0 0 1 1.416-.004Z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                      Verified
+                    </span>
+                    {{else}}
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                      <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                      Pending
+                    </span>
+                    {{end}}
+                  </div>
+
+                  <a
+                    href="mailto:{{.Email}}"
+                    class="mt-2 block break-all text-sm font-medium text-slate/65 transition hover:text-obsidian"
+                  >
+                    {{.Email}}
+                  </a>
+
+                  <div class="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate/10 bg-white/70 px-2.5 py-1.5 text-xs text-slate/50">
+                    <span class="font-medium uppercase tracking-[0.1em]">User ID</span>
+                    <span class="font-mono text-obsidian/70">{{.ID}}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Role selection -->
+              <fieldset class="min-w-0">
+                <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <legend class="text-sm font-semibold text-obsidian">
+                    Assigned roles
+                  </legend>
+
+                  <span class="text-xs text-slate/45">
+                    Changes apply after saving
+                  </span>
+                </div>
+
+                <div class="mt-3 flex flex-wrap gap-2">
+                  {{range $role := $.Available}}
+                  <label class="group/role relative cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="roles"
+                      value="{{$role}}"
+                      {{if contains $user.Roles $role}}checked{{end}}
+                      class="peer sr-only"
+                    />
+
+                    <span class="inline-flex min-h-10 items-center gap-2 rounded-full border border-obsidian/10 bg-white px-3.5 py-2 text-sm font-medium capitalize text-slate shadow-sm transition group-hover/role:border-obsidian/25 peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud peer-focus-visible:ring-4 peer-focus-visible:ring-aqua/25">
+                      <span class="flex h-4 w-4 items-center justify-center rounded-full border border-current/30">
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          class="h-3 w-3 opacity-0 transition peer-checked:opacity-100"
+                        >
+                          <path
+                            fill-rule="evenodd"
+                            d="M16.704 5.292a1 1 0 0 1 .004 1.414l-7.25 7.292a1 1 0 0 1-1.42 0l-3.75-3.77a1 1 0 1 1 1.418-1.41l3.04 3.055 6.542-6.577a1 1 0 0 1 1.416-.004Z"
+                            clip-rule="evenodd"
+                          />
+                        </svg>
+                      </span>
+
+                      <span>{{$role}}</span>
+                    </span>
+                  </label>
+                  {{end}}
+                </div>
+              </fieldset>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3 border-t border-slate/10 bg-white/55 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 lg:px-6">
+            <p class="text-xs leading-5 text-slate/50">
+              Role changes affect the user's authorization permissions.
+            </p>
+
+            <button
+              type="submit"
+              class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud shadow-sm transition hover:bg-slate focus:outline-none focus:ring-4 focus:ring-aqua/25 sm:w-auto"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                class="h-4 w-4"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                />
+              </svg>
+
+              Save roles
+            </button>
+          </div>
+        </form>
+
+        {{else}}
+
+        <!-- Empty state -->
+        <div class="flex min-h-72 flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-12 text-center">
+          <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate/45 shadow-sm">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              class="h-7 w-7"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.205-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72A9.095 9.095 0 0 0 6 18.72m.942-3.197a5.99 5.99 0 0 0-.942 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"
+              />
+            </svg>
+          </div>
+
+          <h3 class="mt-4 text-lg font-semibold text-obsidian">
+            No users found
+          </h3>
+
+          <p class="mt-2 max-w-sm text-sm leading-6 text-slate/55">
+            Create the first user account using the form above. They will appear here once successfully created.
+          </p>
+        </div>
+
         {{end}}
       </div>
-      <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create user</button>
-    </form>
-  </div>
-
-  <div id="user-management" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <h2 class="text-xl font-semibold sm:text-2xl">Users</h2>
-    <div class="mt-6 space-y-4">
-      {{range .Users}}
-      {{$user := .}}
-      <form action="/admin/users/roles" method="post" class="rounded-3xl border border-slate/8 bg-cloud p-4 sm:p-5">
-        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-        <input type="hidden" name="user_id" value="{{.ID}}" />
-        <input type="hidden" name="return_to" value="/admin/users" />
-
-        <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <h3 class="text-xl font-semibold">{{.Name}}</h3>
-              <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] {{if .Verified}}bg-emerald-100 text-emerald-700{{else}}bg-amber-100 text-amber-700{{end}}">
-                {{if .Verified}}Verified{{else}}Pending{{end}}
-              </span>
-            </div>
-            <p class="mt-2 break-all text-sm text-slate/70">{{.Email}}</p>
-            <p class="mt-1 text-sm text-slate/70">ID {{.ID}}</p>
-          </div>
-
-          <div class="flex flex-wrap gap-2 2xl:max-w-xl">
-            {{range $role := $.Available}}
-            <label class="inline-flex items-center gap-2 rounded-full border border-obsidian/10 bg-white px-4 py-2 text-sm">
-              <input type="checkbox" name="roles" value="{{$role}}" {{if contains $user.Roles $role}}checked{{end}} />
-              <span>{{$role}}</span>
-            </label>
-            {{end}}
-          </div>
-        </div>
-
-        <div class="mt-4 flex justify-end">
-          <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Update roles</button>
-        </div>
-      </form>
-      {{end}}
     </div>
-  </div>
+  </section>
 </section>
 {{end}}

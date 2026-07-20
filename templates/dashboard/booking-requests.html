@@ -1,0 +1,64 @@
+{{define "booking-requests"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <h1 class="text-2xl font-semibold sm:text-3xl">Booking requests</h1>
+    <p class="mt-2 text-sm text-slate/70">Pending customer booking requests awaiting review.</p>
+  </div>
+
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-5 py-4 font-medium sm:px-6">Date</th>
+            <th class="px-5 py-4 font-medium">Hour</th>
+            <th class="px-5 py-4 font-medium">Request</th>
+            <th class="px-5 py-4 font-medium">Customer</th>
+            <th class="px-5 py-4 font-medium">Notes</th>
+            <th class="px-5 py-4 font-medium text-right sm:px-6">Decision</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .PendingSchedules}}
+          <tr class="bg-white/70 align-top">
+            <td class="px-5 py-4 sm:px-6 text-slate/75">{{.SlotDate}}</td>
+            <td class="px-5 py-4 text-slate/75">{{.SlotHour}}</td>
+            <td class="px-5 py-4 text-slate/75">
+              <p class="font-medium text-obsidian">{{.Title}}</p>
+              <p class="mt-1"><span class="rounded-full px-3 py-1 text-xs font-semibold {{scheduleBadgeClasses .}}">{{scheduleSummary .}}</span></p>
+            </td>
+            <td class="px-5 py-4 text-slate/75">
+              <p>{{.RequesterName}}</p>
+              <p class="mt-1 text-xs text-slate/55">{{.RequesterEmail}}</p>
+              <p class="mt-1 text-xs text-slate/55">{{.RequesterPhone}}</p>
+            </td>
+            <td class="px-5 py-4 text-slate/75">{{if .Notes}}{{.Notes}}{{else}}-{{end}}</td>
+            <td class="px-5 py-4 sm:px-6">
+              <div class="flex flex-col gap-3 lg:items-end">
+                <form action="/admin/booking-requests/confirm" method="post">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                  <button type="submit" class="w-full rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate lg:w-auto">Confirm</button>
+                </form>
+                <form action="/admin/booking-requests/reject" method="post" class="flex w-full flex-col gap-2 lg:w-64">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                  <input type="text" name="review_note" placeholder="Reason (optional)" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+                  <button type="submit" class="rounded-2xl border border-red-200 bg-white px-5 py-3 text-sm font-medium text-red-700 transition hover:bg-red-50">Reject</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="6" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No pending booking requests.</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{{end}}
