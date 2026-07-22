@@ -166,6 +166,7 @@ type AdmissionPricing struct {
 	ID           int64
 	PracticeType string
 	Price        float64
+	MonthlyFee   float64
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -1210,15 +1211,25 @@ func (a *App) saveAdmissionPricingHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, "valid group practice price is required", http.StatusBadRequest)
 		return
 	}
+	groupMonthlyFee, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("group_practice_monthly_fee")), 64)
+	if err != nil || groupMonthlyFee < 0 {
+		http.Error(w, "valid group practice monthly fee is required", http.StatusBadRequest)
+		return
+	}
 	oneToOnePrice, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("one_to_one_practice_price")), 64)
 	if err != nil || oneToOnePrice < 0 {
 		http.Error(w, "valid one to one practice price is required", http.StatusBadRequest)
 		return
 	}
+	oneToOneMonthlyFee, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("one_to_one_practice_monthly_fee")), 64)
+	if err != nil || oneToOneMonthlyFee < 0 {
+		http.Error(w, "valid one to one practice monthly fee is required", http.StatusBadRequest)
+		return
+	}
 
 	pricings := []AdmissionPricing{
-		{PracticeType: "group_practice", Price: groupPrice},
-		{PracticeType: "one_to_one_practice", Price: oneToOnePrice},
+		{PracticeType: "group_practice", Price: groupPrice, MonthlyFee: groupMonthlyFee},
+		{PracticeType: "one_to_one_practice", Price: oneToOnePrice, MonthlyFee: oneToOneMonthlyFee},
 	}
 	if err := a.saveAdmissionPricings(pricings); err != nil {
 		log.Printf("save admission pricing: %v", err)
@@ -2948,7 +2959,7 @@ func (a *App) listPricingRules() ([]PricingRule, error) {
 
 func (a *App) listAdmissionPricings() ([]AdmissionPricing, error) {
 	rows, err := a.db.Query(`
-		SELECT id, practice_type, price, created_at, updated_at
+		SELECT id, practice_type, price, COALESCE(monthly_fee, 0), created_at, updated_at
 		FROM admission_pricing
 		ORDER BY practice_type ASC, id ASC
 	`)
@@ -2964,6 +2975,7 @@ func (a *App) listAdmissionPricings() ([]AdmissionPricing, error) {
 			&pricing.ID,
 			&pricing.PracticeType,
 			&pricing.Price,
+			&pricing.MonthlyFee,
 			&pricing.CreatedAt,
 			&pricing.UpdatedAt,
 		); err != nil {
@@ -3316,14 +3328,16 @@ func (a *App) saveAdmissionPricings(pricings []AdmissionPricing) error {
 
 	for _, pricing := range pricings {
 		if _, err := tx.Exec(`
-			INSERT INTO admission_pricing (practice_type, price, created_at, updated_at)
-			VALUES (?, ?, ?, ?)
+			INSERT INTO admission_pricing (practice_type, price, monthly_fee, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT(practice_type) DO UPDATE SET
 				price = excluded.price,
+				monthly_fee = excluded.monthly_fee,
 				updated_at = excluded.updated_at
 		`,
 			pricing.PracticeType,
 			pricing.Price,
+			pricing.MonthlyFee,
 			time.Now().UTC(),
 			time.Now().UTC(),
 		); err != nil {
@@ -3797,6 +3811,7 @@ func runMigrations(db *sql.DB) error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			practice_type TEXT NOT NULL UNIQUE,
 			price REAL NOT NULL DEFAULT 0,
+			monthly_fee REAL NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
@@ -3856,6 +3871,18 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admissions_admission_date ON admissions(admission_date)`); err != nil {
+		return err
+	}
+	admissionPricingMonthlyFeeExists, err := tableHasColumn(db, "admission_pricing", "monthly_fee")
+	if err != nil {
+		return err
+	}
+	if !admissionPricingMonthlyFeeExists {
+		if _, err := db.Exec(`ALTER TABLE admission_pricing ADD COLUMN monthly_fee REAL NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec(`UPDATE admission_pricing SET monthly_fee = 0 WHERE monthly_fee IS NULL`); err != nil {
 		return err
 	}
 
@@ -3984,14 +4011,14 @@ func seedPricingRules(db *sql.DB) error {
 func seedAdmissionPricing(db *sql.DB) error {
 	now := time.Now().UTC()
 	defaults := []AdmissionPricing{
-		{PracticeType: "group_practice", Price: 0},
-		{PracticeType: "one_to_one_practice", Price: 0},
+		{PracticeType: "group_practice", Price: 0, MonthlyFee: 0},
+		{PracticeType: "one_to_one_practice", Price: 0, MonthlyFee: 0},
 	}
 	for _, pricing := range defaults {
 		if _, err := db.Exec(`
-			INSERT OR IGNORE INTO admission_pricing (practice_type, price, created_at, updated_at)
-			VALUES (?, ?, ?, ?)
-		`, pricing.PracticeType, pricing.Price, now, now); err != nil {
+			INSERT OR IGNORE INTO admission_pricing (practice_type, price, monthly_fee, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?)
+		`, pricing.PracticeType, pricing.Price, pricing.MonthlyFee, now, now); err != nil {
 			return err
 		}
 	}
