@@ -2736,7 +2736,7 @@ func (a *App) deleteSessionsForUser(userID int64) error {
 
 func (a *App) listAdmissions() ([]Admission, error) {
 	rows, err := a.db.Query(`
-		SELECT id, student_id, full_name, admission_date, date_of_birth, gender, practice_type, address, passport_number, school,
+		SELECT id, student_id, full_name, COALESCE(admission_date, ''), date_of_birth, gender, practice_type, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 		       medical_information, created_at
 		FROM admissions
@@ -3123,7 +3123,7 @@ func (a *App) schedulesForSlot(slotDate, slotHour string, excludeID int64) ([]Sp
 
 func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 	rows, err := a.db.Query(`
-		SELECT a.id, a.student_id, a.full_name, a.admission_date, a.date_of_birth, a.gender, a.practice_type, a.address, a.passport_number, a.school,
+		SELECT a.id, a.student_id, a.full_name, COALESCE(a.admission_date, ''), a.date_of_birth, a.gender, a.practice_type, a.address, a.passport_number, a.school,
 		       a.guardian_name, a.guardian_relationship, a.guardian_contact_number, a.guardian_alternative_contact_number,
 		       a.medical_information, a.created_at
 		FROM admissions a
@@ -3530,7 +3530,7 @@ func (a *App) deletePricingRule(pricingID int64) error {
 
 func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 	row := a.db.QueryRow(`
-		SELECT id, student_id, full_name, admission_date, date_of_birth, gender, practice_type, address, passport_number, school,
+		SELECT id, student_id, full_name, COALESCE(admission_date, ''), date_of_birth, gender, practice_type, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 		       medical_information, created_at
 		FROM admissions
@@ -3844,7 +3844,12 @@ func runMigrations(db *sql.DB) error {
 	if _, err := db.Exec(`UPDATE admissions SET student_id = 'STD-' || printf('%05d', id) WHERE student_id IS NULL OR TRIM(student_id) = ''`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`UPDATE admissions SET admission_date = DATE(created_at) WHERE admission_date IS NULL OR TRIM(admission_date) = ''`); err != nil {
+	if _, err := db.Exec(`UPDATE admissions
+		SET admission_date = CASE
+			WHEN created_at IS NOT NULL AND LENGTH(TRIM(CAST(created_at AS TEXT))) >= 10 THEN SUBSTR(TRIM(CAST(created_at AS TEXT)), 1, 10)
+			ELSE ''
+		END
+		WHERE admission_date IS NULL OR TRIM(admission_date) = ''`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`UPDATE admissions SET practice_type = 'group_practice' WHERE practice_type IS NULL OR TRIM(practice_type) = ''`); err != nil {
