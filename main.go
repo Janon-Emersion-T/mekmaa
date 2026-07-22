@@ -378,18 +378,8 @@ func (a *App) homeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := a.newTemplateData(w, r, nil)
-	data.Title = "Go Auth System with RBAC"
-	data.Description = "Production-oriented starter with secure sessions, role checks, and an admin workflow."
-	data.Stats = []Stat{
-		{Value: "4", Label: "Built-in roles"},
-		{Value: "6", Label: "Digit email OTP"},
-		{Value: "24h", Label: "Session lifetime"},
-	}
-	data.Features = []Feature{
-		{Title: "Credential security", Body: "Passwords are hashed with bcrypt and sessions are stored server-side as SHA-256 token hashes."},
-		{Title: "Email verification", Body: "New accounts receive a 6-digit verification code before they can create a session."},
-		{Title: "Role-based access control", Body: "Customer, editor, admin, and superadmin roles gate separate areas of the application with dedicated middleware."},
-	}
+	data.Title = "Mekmaa | Indoor Sports and Coaching in Jaffna"
+	data.Description = "Book cricket nets, futsal, badminton, table tennis and tennis at Mekmaa in Jaffna, with coaching programmes for kids, teens and adults."
 
 	a.render(w, "home", data, http.StatusOK)
 }

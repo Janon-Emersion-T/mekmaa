@@ -1,1092 +1,466 @@
 {{define "home"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
-<main class="overflow-hidden">
-  <!-- Hero section -->
+<style>
+  .hero-shell {
+    overflow-x: clip;
+  }
+
+  .hero-hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-enhanced [data-hero-reveal] {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 560ms ease, transform 560ms ease;
+    }
+
+    .hero-enhanced [data-hero-line] > span {
+      opacity: 0;
+      transform: translateY(110%);
+      transition: opacity 720ms ease, transform 720ms cubic-bezier(.2,.9,.2,1);
+    }
+
+    .hero-enhanced [data-hero-visual] {
+      opacity: 0;
+      transform: translate3d(0, 18px, 0) scale(.98);
+      transition: opacity 720ms ease, transform 720ms cubic-bezier(.2,.9,.2,1);
+    }
+
+    .hero-enhanced [data-float-card] {
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 620ms ease, transform 620ms ease;
+    }
+
+    .hero-enhanced [data-hero-reveal].is-visible,
+    .hero-enhanced [data-hero-line].is-visible > span,
+    .hero-enhanced [data-hero-visual].is-visible,
+    .hero-enhanced [data-float-card].is-visible {
+      opacity: 1;
+      transform: translate3d(var(--hero-move-x, 0), var(--hero-move-y, 0), 0) scale(1);
+    }
+
+    .hero-enhanced [data-float-card].is-visible {
+      animation: hero-float 6s ease-in-out infinite;
+      animation-delay: var(--float-delay, 0s);
+    }
+
+    .hero-enhanced [data-glow-orb] {
+      animation: hero-glow 12s ease-in-out infinite;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-shell * {
+      scroll-behavior: auto;
+    }
+  }
+
+  @keyframes hero-float {
+    0%, 100% {
+      transform: translate3d(0, 0, 0);
+    }
+
+    50% {
+      transform: translate3d(0, -8px, 0);
+    }
+  }
+
+  @keyframes hero-glow {
+    0%, 100% {
+      transform: scale(1) translate3d(0, 0, 0);
+      opacity: .8;
+    }
+
+    50% {
+      transform: scale(1.05) translate3d(0, -6px, 0);
+      opacity: 1;
+    }
+  }
+</style>
+
+<section class="hero-shell relative left-1/2 right-1/2 w-screen -translate-x-1/2">
+  <div class="absolute inset-0 -z-30 bg-[#071426]"></div>
+  <div class="absolute inset-0 -z-20 bg-[linear-gradient(135deg,#071426_0%,#0a2d28_48%,#071426_100%)]"></div>
+  <div class="absolute inset-0 -z-10 opacity-[0.08]" style="background-image:linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px);background-size:34px 34px;"></div>
+  <div data-glow-orb class="pointer-events-none absolute -left-24 top-24 h-60 w-60 rounded-full bg-[#22C55E]/20 blur-[90px] sm:h-[22rem] sm:w-[22rem]"></div>
+  <div data-glow-orb class="pointer-events-none absolute right-0 top-0 h-[20rem] w-[20rem] rounded-full bg-[#FACC15]/12 blur-[110px] sm:h-[24rem] sm:w-[24rem]"></div>
+  <div data-glow-orb class="pointer-events-none absolute bottom-0 left-1/3 h-60 w-60 rounded-full bg-[#0F8A5F]/25 blur-[100px] sm:h-72 sm:w-72"></div>
+
   <section
-    class="relative isolate min-h-[calc(100svh-8rem)] py-8 sm:py-12 lg:flex lg:items-center lg:py-16"
+    class="relative mx-auto max-w-7xl px-4 pb-10 pt-28 sm:px-6 sm:pb-12 sm:pt-32 lg:px-8 lg:pb-16 lg:pt-36"
+    aria-labelledby="hero-heading"
   >
-    <!-- Decorative background -->
-    <div
-      class="pointer-events-none absolute inset-0 -z-20 overflow-hidden"
-      aria-hidden="true"
-    >
-      <div
-        class="absolute -left-32 top-20 h-80 w-80 rounded-full bg-aqua/20 blur-[100px]"
-      ></div>
+    <div class="grid gap-8 lg:min-h-[calc(100svh-18rem)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-12">
+      <div class="relative z-10 min-w-0">
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <p
+            data-hero-reveal
+            class="inline-flex min-h-11 max-w-full items-center justify-center rounded-full border border-white/12 bg-white/8 px-4 py-2 text-center text-[0.64rem] font-bold uppercase tracking-[0.28em] text-[#E5E7EB] backdrop-blur-xl sm:w-auto sm:justify-start sm:text-[0.68rem] sm:tracking-[0.34em]"
+          >
+            LEARN • PLAY • ACHIEVE
+          </p>
 
-      <div
-        class="absolute -right-32 top-1/3 h-[28rem] w-[28rem] rounded-full bg-amber/15 blur-[120px]"
-      ></div>
-
-      <div
-        class="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-mint/70 blur-[100px]"
-      ></div>
-
-      <div
-        class="absolute inset-0 opacity-[0.035]"
-        style="
-          background-image:
-            linear-gradient(to right, #0b1215 1px, transparent 1px),
-            linear-gradient(to bottom, #0b1215 1px, transparent 1px);
-          background-size: 42px 42px;
-        "
-      ></div>
-    </div>
-
-    <div
-      class="mx-auto grid w-full max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-16 lg:px-8"
-    >
-      <!-- Hero content -->
-      <div
-        data-reveal
-        class="relative z-10 translate-y-6 opacity-0 transition-all duration-700 ease-out"
-      >
-        <div
-          class="inline-flex items-center gap-2 rounded-full border border-obsidian/10 bg-white/70 px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate shadow-sm backdrop-blur-xl sm:px-4"
-        >
-          <span class="relative flex h-2.5 w-2.5">
-            <span
-              class="absolute inline-flex h-full w-full animate-ping rounded-full bg-aqua opacity-75"
-            ></span>
-            <span
-              class="relative inline-flex h-2.5 w-2.5 rounded-full bg-aqua"
-            ></span>
-          </span>
-
-          Jaffna's indoor sports destination
+          <div
+            data-hero-reveal
+            class="inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-full border border-[#FACC15]/25 bg-[#FACC15]/10 px-4 py-2 text-center text-xs font-semibold text-[#FDE68A] backdrop-blur-xl sm:w-auto sm:justify-start"
+          >
+            <span class="h-2.5 w-2.5 rounded-full bg-[#FACC15]"></span>
+            Bookings open daily
+          </div>
         </div>
 
         <h1
-          class="mt-6 max-w-4xl text-[clamp(3.2rem,8vw,7.2rem)] font-semibold leading-[0.88] tracking-[-0.065em] text-obsidian"
+          id="hero-heading"
+          class="mt-6 max-w-4xl text-[clamp(2.7rem,11vw,6.2rem)] font-black uppercase leading-[0.9] tracking-[-0.06em] text-white sm:text-[clamp(3.25rem,9vw,6.2rem)]"
         >
-          Play more.
-          <span
-            class="relative mt-1 block w-fit text-slate"
-          >
-            Grow stronger.
-
-            <svg
-              class="absolute -bottom-3 left-0 h-4 w-full text-aqua"
-              viewBox="0 0 420 22"
-              fill="none"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M4 15C104 5 257 5 416 12"
-                stroke="currentColor"
-                stroke-width="8"
-                stroke-linecap="round"
-              />
-            </svg>
+          <span data-hero-line class="block overflow-hidden">
+            <span class="block">Jaffna's Premier</span>
+          </span>
+          <span data-hero-line class="mt-1 block overflow-hidden">
+            <span class="block bg-gradient-to-r from-[#FACC15] via-[#FDE68A] to-[#F59E0B] bg-clip-text text-transparent">Indoor Sports</span>
+          </span>
+          <span data-hero-line class="mt-1 block overflow-hidden">
+            <span class="block">Destination</span>
           </span>
         </h1>
 
         <p
-          class="mt-8 max-w-2xl text-base leading-8 text-slate/75 sm:text-lg lg:text-xl lg:leading-9"
+          data-hero-reveal
+          class="mt-6 max-w-2xl text-base leading-8 text-white sm:text-lg lg:text-[1.125rem]"
         >
-          Book premium indoor facilities for cricket, futsal, badminton and
-          table tennis, or join structured coaching programmes designed for
-          children and teenagers.
+          Book premium indoor courts, sharpen your skills, and enjoy cricket nets, futsal, badminton, table tennis and tennis in Jaffna, with sports coaching for kids, teens and adults all under one roof.
         </p>
 
-        <!-- Primary actions -->
-        <div class="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-          {{if .User}}
+        <div
+          data-hero-reveal
+          class="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
+        >
           <a
-            href="/dashboard"
-            class="group relative isolate inline-flex items-center justify-center gap-2 overflow-hidden rounded-full bg-obsidian px-7 py-4 text-sm font-bold text-cloud shadow-xl shadow-obsidian/15 transition duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-obsidian/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua focus-visible:ring-offset-4"
+            href="/book"
+            class="group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-gradient-to-r from-[#0F8A5F] to-[#22C55E] px-6 py-3.5 text-sm font-bold text-white shadow-[0_20px_50px_rgba(15,138,95,0.35)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_26px_60px_rgba(15,138,95,0.42)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FACC15] focus-visible:ring-offset-2 focus-visible:ring-offset-[#071426] sm:w-auto"
           >
-            <span
-              class="absolute inset-0 -z-10 translate-y-full bg-slate transition-transform duration-300 group-hover:translate-y-0"
-            ></span>
-
-            Open dashboard
-
-            <svg
-              class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M5 12h14m-6-6 6 6-6 6"
-              />
+            <svg class="h-5 w-5 text-[#FACC15]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="3"></rect>
+              <path d="M8 3v4m8-4v4M3 10h18"></path>
             </svg>
+            Book Your Slot
           </a>
 
           <a
             href="/sports"
-            class="inline-flex items-center justify-center gap-2 rounded-full border border-obsidian/10 bg-white/75 px-7 py-4 text-sm font-bold text-obsidian shadow-sm backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-aqua hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua"
+            class="group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full border border-white/14 bg-white/8 px-6 py-3.5 text-sm font-bold text-white backdrop-blur-xl transition duration-300 hover:-translate-y-0.5 hover:bg-white/14 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#071426] sm:w-auto"
           >
-            Explore sports
-          </a>
-          {{else}}
-          <a
-            href="/register"
-            class="group relative isolate inline-flex items-center justify-center gap-2 overflow-hidden rounded-full bg-obsidian px-7 py-4 text-sm font-bold text-cloud shadow-xl shadow-obsidian/15 transition duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-obsidian/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua focus-visible:ring-offset-4"
-          >
-            <span
-              class="absolute inset-0 -z-10 translate-y-full bg-slate transition-transform duration-300 group-hover:translate-y-0"
-            ></span>
-
-            Book your session
-
-            <svg
-              class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M5 12h14m-6-6 6 6-6 6"
-              />
+            Explore Sports
+            <svg class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6"></path>
             </svg>
           </a>
 
           <a
             href="/coaching"
-            class="group inline-flex items-center justify-center gap-2 rounded-full border border-obsidian/10 bg-white/75 px-7 py-4 text-sm font-bold text-obsidian shadow-sm backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-aqua hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua"
+            class="inline-flex min-h-12 w-full items-center justify-center text-sm font-semibold text-[#FDE68A] underline decoration-white/20 underline-offset-4 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FACC15] focus-visible:ring-offset-2 focus-visible:ring-offset-[#071426] sm:w-auto"
           >
-            View coaching
-
-            <svg
-              class="h-4 w-4 transition-transform duration-300 group-hover:rotate-12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M8 5v14l11-7z"
-              />
-            </svg>
+            View Coaching Programmes
           </a>
-          {{end}}
         </div>
 
-        <!-- Trust row -->
         <div
-          class="mt-10 flex flex-col gap-5 border-t border-obsidian/10 pt-6 sm:flex-row sm:items-center"
+          data-hero-reveal
+          class="mt-8 flex flex-col gap-3 text-sm font-medium text-[#E5E7EB] sm:flex-row sm:flex-wrap sm:items-center"
         >
-          <div class="flex -space-x-3">
-            <div
-              class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cloud bg-obsidian text-xs font-bold text-cloud"
+          <span class="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-white/10 bg-white/8 px-4 py-2 text-center backdrop-blur-xl sm:w-auto sm:justify-start">
+            Now featuring
+            <span
+              data-sport-rotator
+              aria-live="polite"
+              class="ml-2 inline-block min-w-[8.8rem] text-left font-bold text-[#FACC15]"
             >
-              CR
-            </div>
-            <div
-              class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cloud bg-amber text-xs font-bold text-obsidian"
-            >
-              FT
-            </div>
-            <div
-              class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cloud bg-aqua text-xs font-bold text-obsidian"
-            >
-              BD
-            </div>
-            <div
-              class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cloud bg-blush text-xs font-bold text-obsidian"
-            >
-              TT
-            </div>
+              Cricket Nets
+            </span>
+          </span>
+          <a
+            href="tel:+94772207297"
+            class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/8 px-4 py-2 text-[#E5E7EB] backdrop-blur-xl transition hover:bg-white/14 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#071426] sm:w-auto"
+          >
+            <svg class="h-4 w-4 text-[#22C55E]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M22 16.92V20a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.51 19.51 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3.09a2 2 0 0 1 2 1.72c.12.9.34 1.77.66 2.6a2 2 0 0 1-.45 2.11L8.1 9.91a16 16 0 0 0 6 6l1.48-1.31a2 2 0 0 1 2.11-.45c.83.32 1.7.54 2.6.66A2 2 0 0 1 22 16.92Z"></path>
+            </svg>
+            077 220 7297
+          </a>
+        </div>
+
+        <div
+          data-hero-reveal
+          class="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        >
+          <div class="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 text-sm text-[#E5E7EB] backdrop-blur-xl">
+            <p class="font-semibold text-white">Modern Indoor Facility</p>
+            <p class="mt-1 text-[#E5E7EB]/70">Premium indoor setup in Jaffna.</p>
           </div>
-
-          <div>
-            <div class="flex items-center gap-1 text-amber" aria-label="Five stars">
-              {{range seq 5}}
-              <svg
-                class="h-4 w-4 fill-current"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  d="m12 2.7 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9z"
-                />
-              </svg>
-              {{end}}
-            </div>
-
-            <p class="mt-1 text-sm font-semibold text-slate/70">
-              Built for players, families and future champions.
-            </p>
+          <div class="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 text-sm text-[#E5E7EB] backdrop-blur-xl">
+            <p class="font-semibold text-white">Safe & Friendly Environment</p>
+            <p class="mt-1 text-[#E5E7EB]/70">Welcoming space for families and teams.</p>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 text-sm text-[#E5E7EB] backdrop-blur-xl">
+            <p class="font-semibold text-white">Professional Coaching</p>
+            <p class="mt-1 text-[#E5E7EB]/70">Guided development for every level.</p>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 text-sm text-[#E5E7EB] backdrop-blur-xl">
+            <p class="font-semibold text-white">Kids, Teens & Adults</p>
+            <p class="mt-1 text-[#E5E7EB]/70">Sport for learning, training and play.</p>
           </div>
         </div>
       </div>
 
-      <!-- Hero visual -->
-      <div
-        data-reveal
-        class="relative translate-y-8 opacity-0 transition-all delay-150 duration-700 ease-out"
-      >
-        <div class="relative mx-auto max-w-[620px]">
-          <!-- Decorative orbit -->
-          <div
-            class="absolute -inset-8 -z-10 rounded-[3rem] border border-obsidian/5"
-            aria-hidden="true"
-          ></div>
+      <div class="relative min-w-0">
+        <div
+          data-hero-visual
+          class="relative mx-auto max-w-[34rem] sm:max-w-[38rem] will-change-transform"
+        >
+          <div data-glow-orb class="absolute inset-x-10 top-8 -z-10 h-36 rounded-full bg-[#22C55E]/20 blur-[80px] sm:inset-x-12 sm:h-48 sm:blur-[100px]"></div>
+          <div data-glow-orb class="absolute inset-x-16 bottom-6 -z-10 h-28 rounded-full bg-[#FACC15]/12 blur-[72px] sm:inset-x-20 sm:h-40 sm:blur-[90px]"></div>
 
-          <div
-            class="absolute -inset-4 -z-10 rounded-[2.75rem] border border-obsidian/5"
-            aria-hidden="true"
-          ></div>
-
-          <!-- Main image card -->
-          <div
-            class="relative overflow-hidden rounded-[2rem] border border-white/70 bg-obsidian shadow-[0_40px_120px_rgba(11,18,21,0.22)] sm:rounded-[2.75rem]"
-          >
-            <div class="relative aspect-[4/5] sm:aspect-[5/6] lg:aspect-[4/5]">
-              <img
-                src="/images/mekmaa-indoor-sports.jpg"
-                alt="Indoor sports at Mekmaa"
-                class="h-full w-full object-cover transition duration-1000 hover:scale-105"
-                loading="eager"
-                fetchpriority="high"
-              />
-
-              <div
-                class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/10 to-transparent"
-              ></div>
-
-              <div
-                class="absolute inset-0 bg-gradient-to-r from-obsidian/25 via-transparent to-transparent"
-              ></div>
-
-              <!-- Facility label -->
-              <div
-                class="absolute left-4 top-4 flex items-center gap-3 rounded-2xl border border-white/20 bg-obsidian/55 px-4 py-3 text-cloud shadow-lg backdrop-blur-xl sm:left-6 sm:top-6"
-              >
-                <span
-                  class="flex h-10 w-10 items-center justify-center rounded-xl bg-aqua text-obsidian"
-                >
-                  <svg
-                    class="h-5 w-5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    aria-hidden="true"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M12 21s7-4.4 7-11a7 7 0 1 0-14 0c0 6.6 7 11 7 11Z"
-                    />
-                    <circle cx="12" cy="10" r="2.5" />
-                  </svg>
-                </span>
-
-                <div>
-                  <p class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-cloud/55">
-                    Location
-                  </p>
-                  <p class="mt-0.5 text-sm font-bold">Mekmaa Indoor</p>
+          <div class="relative overflow-hidden rounded-[1.6rem] border border-white/12 bg-white/7 p-2.5 shadow-[0_24px_70px_rgba(0,0,0,0.32)] backdrop-blur-2xl sm:rounded-[2.25rem] sm:p-3">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(250,204,21,.18),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(34,197,94,.22),transparent_32%)]"></div>
+            <div class="relative overflow-hidden rounded-[1.25rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02))] sm:rounded-[1.8rem]">
+              <div class="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#FACC15]/12 to-transparent"></div>
+              <div class="grid gap-4 p-4 sm:gap-5 sm:p-6">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                  <div class="rounded-2xl border border-white/10 bg-[#071426]/70 px-4 py-3 text-white backdrop-blur-xl">
+                    <p class="text-[0.66rem] font-bold uppercase tracking-[0.24em] text-[#FDE68A]">All-in-one venue</p>
+                    <p class="mt-2 text-xl font-black uppercase tracking-[-0.04em]">Indoor action.</p>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-left text-white backdrop-blur-xl sm:text-right">
+                    <p class="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-[#E5E7EB]/65">Open to</p>
+                    <p class="mt-1 text-sm font-bold">Kids • Teens • Adults</p>
+                  </div>
                 </div>
-              </div>
 
-              <!-- Main visual content -->
-              <div class="absolute inset-x-0 bottom-0 p-5 sm:p-7">
-                <div
-                  class="rounded-[1.75rem] border border-white/15 bg-white/10 p-5 text-cloud shadow-2xl backdrop-blur-2xl sm:p-6"
-                >
-                  <div
-                    class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"
-                  >
-                    <div>
-                      <p
-                        class="text-xs font-bold uppercase tracking-[0.22em] text-aqua"
-                      >
-                        Available today
-                      </p>
-
-                      <h2 class="mt-2 text-2xl font-semibold sm:text-3xl">
-                        Your game starts here.
-                      </h2>
-
-                      <p class="mt-2 max-w-sm text-sm leading-6 text-cloud/70">
-                        Choose your sport, reserve a time and arrive ready to
-                        play.
-                      </p>
+                <div class="grid gap-4 md:grid-cols-[1.15fr_0.85fr]">
+                  <div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[linear-gradient(180deg,rgba(7,20,38,.9),rgba(6,78,59,.86))] p-4 text-white sm:p-5">
+                    <div class="absolute right-0 top-0 h-28 w-28 rounded-full bg-[#FACC15]/18 blur-3xl"></div>
+                    <div class="absolute bottom-0 left-0 h-32 w-32 rounded-full bg-[#22C55E]/20 blur-3xl"></div>
+                    <img
+                      src="/images/mekmaa-private-limited.jpeg"
+                      alt="Mekmaa indoor sports facility featuring cricket, futsal, badminton, table tennis and tennis."
+                      class="relative z-10 mx-auto aspect-square w-full max-w-[13rem] rounded-[1rem] object-cover object-center shadow-[0_18px_45px_rgba(0,0,0,0.32)] sm:max-w-[15rem] lg:max-w-[17rem]"
+                      loading="eager"
+                      fetchpriority="high"
+                    />
+                    <div class="relative z-10 mt-4 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/8 px-4 py-3 backdrop-blur-xl">
+                      <div>
+                        <p class="text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-[#E5E7EB]/70">Contact</p>
+                        <p class="mt-1 text-sm font-bold">077 220 7297</p>
+                      </div>
+                      <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#FACC15] text-[#071426]">
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6"></path>
+                        </svg>
+                      </span>
                     </div>
+                  </div>
 
-                    <a
-                      href="/register"
-                      class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-aqua text-obsidian transition duration-300 hover:rotate-[-8deg] hover:scale-110"
-                      aria-label="Book a session"
-                    >
-                      <svg
-                        class="h-5 w-5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        aria-hidden="true"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M5 12h14m-6-6 6 6-6 6"
-                        />
-                      </svg>
-                    </a>
+                  <div class="grid gap-4">
+                    <div class="rounded-[1.35rem] border border-white/10 bg-white/8 p-4 text-white backdrop-blur-xl">
+                      <img
+                        src="/images/mekmaa-cricket-academy.jpeg"
+                        alt="Mekmaa Cricket Academy brand"
+                        class="h-24 w-full rounded-[1rem] object-cover shadow-lg sm:h-28"
+                        loading="lazy"
+                      />
+                      <p class="mt-4 text-sm font-bold">Structured coaching</p>
+                      <p class="mt-1 text-xs leading-6 text-[#E5E7EB]/70">Professional sessions designed for skill growth and confidence.</p>
+                    </div>
+                    <div class="rounded-[1.35rem] border border-white/10 bg-[#FACC15]/12 p-4 text-white backdrop-blur-xl">
+                      <p class="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-[#FDE68A]">Featured sports</p>
+                      <ul class="mt-3 space-y-2 text-sm font-semibold">
+                        <li>Cricket Nets</li>
+                        <li>Futsal</li>
+                        <li>Badminton</li>
+                        <li>Table Tennis</li>
+                        <li>Tennis</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Floating sport card -->
-          <div
-            data-float-card
-            class="absolute -left-2 top-[37%] hidden w-48 rounded-3xl border border-white/70 bg-white/90 p-4 shadow-2xl backdrop-blur-xl sm:block lg:-left-12"
-          >
+          <div data-float-card style="--float-delay:0s" class="absolute left-0 top-[18%] hidden max-w-[10rem] -translate-x-2 rounded-[1.2rem] border border-white/12 bg-white/10 p-3.5 text-white shadow-xl backdrop-blur-xl xl:block">
             <div class="flex items-center gap-3">
-              <span
-                class="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber text-obsidian"
-              >
-                <svg
-                  class="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="12" r="8" />
-                  <path d="M8.5 5.5c2 2 3 4.2 3.5 6.5.5 2.4.3 4.6-1 6.5" />
+              <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FACC15] text-[#071426]">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8"></circle>
+                  <path d="M8.5 5.5c2 2 3 4.2 3.5 6.5.5 2.4.3 4.6-1 6.5"></path>
                 </svg>
               </span>
-
               <div>
-                <p class="text-sm font-bold text-obsidian">Cricket nets</p>
-                <p class="mt-0.5 text-xs text-slate/60">Hourly bookings</p>
+                <p class="text-sm font-bold">Cricket Nets</p>
+                <p class="mt-1 text-xs text-[#E5E7EB]/72">Practice. Improve. Perform.</p>
               </div>
-            </div>
-
-            <div class="mt-4 h-1.5 overflow-hidden rounded-full bg-obsidian/5">
-              <div class="h-full w-3/4 rounded-full bg-aqua"></div>
             </div>
           </div>
 
-          <!-- Floating coaching card -->
-          <div
-            data-float-card
-            class="absolute -bottom-6 right-2 hidden w-56 rounded-3xl bg-obsidian p-5 text-cloud shadow-2xl sm:block lg:-right-8"
-          >
-            <div class="flex items-center justify-between">
-              <div>
-                <p
-                  class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-aqua"
-                >
-                  Coaching
-                </p>
-                <p class="mt-1 text-base font-bold">Kids and teens</p>
-              </div>
-
-              <span
-                class="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10"
-              >
-                <svg
-                  class="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  aria-hidden="true"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M12 3 4 7l8 4 8-4-8-4Zm-6 6v5c0 2.2 2.7 4 6 4s6-1.8 6-4V9"
-                  />
+          <div data-float-card style="--float-delay:1.3s" class="absolute right-0 top-[8%] hidden max-w-[10rem] translate-x-1 rounded-[1.2rem] border border-white/12 bg-white/10 p-3.5 text-white shadow-xl backdrop-blur-xl xl:block">
+            <div class="flex items-center gap-3">
+              <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#22C55E] text-[#071426]">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8"></circle>
+                  <path d="m9 8 3-2 3 2-1 4h-4zM7 14l3-2m4 0 3 2"></path>
                 </svg>
               </span>
-            </div>
-
-            <a
-              href="/coaching"
-              class="mt-4 inline-flex items-center gap-2 text-xs font-bold text-cloud/70 transition hover:text-aqua"
-            >
-              Explore programmes
-              <span aria-hidden="true">→</span>
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Stats strip -->
-  <section class="relative py-10 sm:py-14">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div
-        data-reveal
-        class="translate-y-6 overflow-hidden rounded-[2rem] border border-white/70 bg-white/70 opacity-0 shadow-sm backdrop-blur-xl transition-all duration-700"
-      >
-        <div class="grid sm:grid-cols-3">
-          {{range $index, $stat := .Stats}}
-          <div
-            class="group relative p-6 sm:p-8 {{if gt $index 0}}border-t border-obsidian/10 sm:border-l sm:border-t-0{{end}}"
-          >
-            <div
-              class="absolute inset-0 scale-95 rounded-[2rem] bg-mint/0 transition duration-300 group-hover:scale-100 group-hover:bg-mint/50"
-            ></div>
-
-            <div class="relative">
-              <p
-                class="text-4xl font-semibold tracking-tight text-obsidian sm:text-5xl"
-                data-counter
-              >
-                {{.Value}}
-              </p>
-
-              <p
-                class="mt-2 text-sm font-semibold leading-6 text-slate/60"
-              >
-                {{.Label}}
-              </p>
-            </div>
-          </div>
-          {{end}}
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Sports section -->
-  <section class="py-16 sm:py-24">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div
-        data-reveal
-        class="flex translate-y-6 flex-col gap-6 opacity-0 transition-all duration-700 md:flex-row md:items-end md:justify-between"
-      >
-        <div>
-          <p
-            class="text-xs font-bold uppercase tracking-[0.25em] text-slate/55"
-          >
-            Choose your game
-          </p>
-
-          <h2
-            class="mt-4 max-w-3xl text-4xl font-semibold leading-tight tracking-[-0.04em] text-obsidian sm:text-5xl lg:text-6xl"
-          >
-            One venue.
-            <span class="text-slate/55">Multiple ways to play.</span>
-          </h2>
-        </div>
-
-        <a
-          href="/sports"
-          class="group inline-flex w-fit items-center gap-2 text-sm font-bold text-obsidian"
-        >
-          View all sports
-          <span
-            class="flex h-10 w-10 items-center justify-center rounded-full border border-obsidian/10 bg-white transition duration-300 group-hover:translate-x-1 group-hover:bg-obsidian group-hover:text-cloud"
-          >
-            <svg
-              class="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M5 12h14m-6-6 6 6-6 6"
-              />
-            </svg>
-          </span>
-        </a>
-      </div>
-
-      <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <!-- Cricket -->
-        <a
-          href="/sports/cricket"
-          data-reveal
-          class="group relative min-h-[380px] translate-y-8 overflow-hidden rounded-[2rem] bg-obsidian opacity-0 shadow-lg transition-all duration-700 hover:-translate-y-2 hover:shadow-2xl"
-        >
-          <img
-            src="/images/sports/cricket.jpg"
-            alt="Indoor cricket at Mekmaa"
-            class="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-700 group-hover:scale-110"
-            loading="lazy"
-          />
-
-          <div
-            class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/20 to-transparent"
-          ></div>
-
-          <div class="absolute inset-x-0 bottom-0 p-6 text-cloud">
-            <span
-              class="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] backdrop-blur"
-            >
-              Nets and matches
-            </span>
-
-            <h3 class="mt-4 text-3xl font-semibold">Cricket</h3>
-
-            <div
-              class="mt-4 flex items-center justify-between border-t border-white/20 pt-4"
-            >
-              <span class="text-sm text-cloud/65">Reserve your lane</span>
-
-              <span
-                class="flex h-10 w-10 items-center justify-center rounded-full bg-aqua text-obsidian transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110"
-              >
-                →
-              </span>
-            </div>
-          </div>
-        </a>
-
-        <!-- Futsal -->
-        <a
-          href="/sports/futsal"
-          data-reveal
-          class="group relative min-h-[380px] translate-y-8 overflow-hidden rounded-[2rem] bg-obsidian opacity-0 shadow-lg transition-all delay-75 duration-700 hover:-translate-y-2 hover:shadow-2xl"
-        >
-          <img
-            src="/images/sports/futsal.jpg"
-            alt="Indoor futsal at Mekmaa"
-            class="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-700 group-hover:scale-110"
-            loading="lazy"
-          />
-
-          <div
-            class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/20 to-transparent"
-          ></div>
-
-          <div class="absolute inset-x-0 bottom-0 p-6 text-cloud">
-            <span
-              class="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] backdrop-blur"
-            >
-              Full facility
-            </span>
-
-            <h3 class="mt-4 text-3xl font-semibold">Futsal</h3>
-
-            <div
-              class="mt-4 flex items-center justify-between border-t border-white/20 pt-4"
-            >
-              <span class="text-sm text-cloud/65">Bring your team</span>
-
-              <span
-                class="flex h-10 w-10 items-center justify-center rounded-full bg-amber text-obsidian transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110"
-              >
-                →
-              </span>
-            </div>
-          </div>
-        </a>
-
-        <!-- Badminton -->
-        <a
-          href="/sports/badminton"
-          data-reveal
-          class="group relative min-h-[380px] translate-y-8 overflow-hidden rounded-[2rem] bg-obsidian opacity-0 shadow-lg transition-all delay-100 duration-700 hover:-translate-y-2 hover:shadow-2xl"
-        >
-          <img
-            src="/images/sports/badminton.jpg"
-            alt="Indoor badminton at Mekmaa"
-            class="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-700 group-hover:scale-110"
-            loading="lazy"
-          />
-
-          <div
-            class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/20 to-transparent"
-          ></div>
-
-          <div class="absolute inset-x-0 bottom-0 p-6 text-cloud">
-            <span
-              class="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] backdrop-blur"
-            >
-              Court booking
-            </span>
-
-            <h3 class="mt-4 text-3xl font-semibold">Badminton</h3>
-
-            <div
-              class="mt-4 flex items-center justify-between border-t border-white/20 pt-4"
-            >
-              <span class="text-sm text-cloud/65">Play at your pace</span>
-
-              <span
-                class="flex h-10 w-10 items-center justify-center rounded-full bg-blush text-obsidian transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110"
-              >
-                →
-              </span>
-            </div>
-          </div>
-        </a>
-
-        <!-- Table tennis -->
-        <a
-          href="/sports/table-tennis"
-          data-reveal
-          class="group relative min-h-[380px] translate-y-8 overflow-hidden rounded-[2rem] bg-obsidian opacity-0 shadow-lg transition-all delay-150 duration-700 hover:-translate-y-2 hover:shadow-2xl"
-        >
-          <img
-            src="/images/sports/table-tennis.jpg"
-            alt="Table tennis at Mekmaa"
-            class="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-700 group-hover:scale-110"
-            loading="lazy"
-          />
-
-          <div
-            class="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/20 to-transparent"
-          ></div>
-
-          <div class="absolute inset-x-0 bottom-0 p-6 text-cloud">
-            <span
-              class="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] backdrop-blur"
-            >
-              Flexible sessions
-            </span>
-
-            <h3 class="mt-4 text-3xl font-semibold">Table tennis</h3>
-
-            <div
-              class="mt-4 flex items-center justify-between border-t border-white/20 pt-4"
-            >
-              <span class="text-sm text-cloud/65">Fast, focused and fun</span>
-
-              <span
-                class="flex h-10 w-10 items-center justify-center rounded-full bg-mint text-obsidian transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-110"
-              >
-                →
-              </span>
-            </div>
-          </div>
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- Coaching section -->
-  <section class="py-16 sm:py-24">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div
-        data-reveal
-        class="relative translate-y-8 overflow-hidden rounded-[2.25rem] bg-obsidian opacity-0 shadow-[0_40px_100px_rgba(11,18,21,0.18)] transition-all duration-700 sm:rounded-[3rem]"
-      >
-        <div
-          class="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-aqua/20 blur-[100px]"
-          aria-hidden="true"
-        ></div>
-
-        <div
-          class="pointer-events-none absolute -bottom-40 left-1/3 h-96 w-96 rounded-full bg-amber/10 blur-[120px]"
-          aria-hidden="true"
-        ></div>
-
-        <div
-          class="relative grid gap-10 p-6 sm:p-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center lg:p-12"
-        >
-          <div class="text-cloud">
-            <p
-              class="text-xs font-bold uppercase tracking-[0.25em] text-aqua"
-            >
-              Mekmaa Cricket Academy
-            </p>
-
-            <h2
-              class="mt-5 text-4xl font-semibold leading-tight tracking-[-0.04em] sm:text-5xl"
-            >
-              Training young players for the game and for life.
-            </h2>
-
-            <p class="mt-6 max-w-xl text-base leading-8 text-cloud/65">
-              Our coaching programmes help children and teenagers develop
-              technical ability, confidence, discipline, teamwork and a
-              long-term love for sport.
-            </p>
-
-            <div class="mt-8 grid gap-3 sm:grid-cols-2">
-              <div
-                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
-              >
-                <span
-                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-aqua text-obsidian"
-                >
-                  ✓
-                </span>
-                <span class="text-sm font-semibold">Age-based training</span>
-              </div>
-
-              <div
-                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
-              >
-                <span
-                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber text-obsidian"
-                >
-                  ✓
-                </span>
-                <span class="text-sm font-semibold">Structured sessions</span>
-              </div>
-
-              <div
-                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
-              >
-                <span
-                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blush text-obsidian"
-                >
-                  ✓
-                </span>
-                <span class="text-sm font-semibold">Player development</span>
-              </div>
-
-              <div
-                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
-              >
-                <span
-                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint text-obsidian"
-                >
-                  ✓
-                </span>
-                <span class="text-sm font-semibold">Regular attendance</span>
-              </div>
-            </div>
-
-            <a
-              href="/coaching"
-              class="group mt-8 inline-flex items-center gap-2 rounded-full bg-cloud px-6 py-3.5 text-sm font-bold text-obsidian transition duration-300 hover:-translate-y-1 hover:bg-aqua"
-            >
-              Explore coaching programmes
-              <span
-                class="transition-transform duration-300 group-hover:translate-x-1"
-                aria-hidden="true"
-              >
-                →
-              </span>
-            </a>
-          </div>
-
-          <div class="relative">
-            <div
-              class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-2"
-            >
-              <img
-                src="/images/mekmaa-coaching.jpg"
-                alt="Cricket coaching for children at Mekmaa"
-                class="aspect-[4/3] h-full w-full rounded-[1.6rem] object-cover"
-                loading="lazy"
-              />
-            </div>
-
-            <div
-              class="absolute -bottom-5 left-4 rounded-2xl border border-white/20 bg-cloud/95 px-5 py-4 text-obsidian shadow-2xl backdrop-blur-xl sm:left-8"
-            >
-              <p
-                class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-slate/55"
-              >
-                Built for
-              </p>
-              <p class="mt-1 text-lg font-bold">Kids and teenagers</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Feature section -->
-  <section class="py-16 sm:py-24">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div
-        data-reveal
-        class="mx-auto max-w-3xl translate-y-6 text-center opacity-0 transition-all duration-700"
-      >
-        <p
-          class="text-xs font-bold uppercase tracking-[0.25em] text-slate/55"
-        >
-          Why Mekmaa
-        </p>
-
-        <h2
-          class="mt-4 text-4xl font-semibold leading-tight tracking-[-0.04em] text-obsidian sm:text-5xl"
-        >
-          Everything you need to play with confidence.
-        </h2>
-      </div>
-
-      <div class="mt-10 grid gap-5 md:grid-cols-3">
-        {{range $index, $feature := .Features}}
-        <article
-          data-reveal
-          class="group translate-y-8 rounded-[2rem] border border-white/70 bg-white/75 p-6 opacity-0 shadow-sm backdrop-blur-xl transition-all duration-700 hover:-translate-y-2 hover:border-aqua/40 hover:shadow-xl sm:p-8"
-          style="transition-delay: calc({{$index}} * 80ms);"
-        >
-          <div
-            class="flex h-14 w-14 items-center justify-center rounded-2xl bg-obsidian text-cloud shadow-lg transition duration-300 group-hover:-rotate-6 group-hover:scale-110 group-hover:bg-slate"
-          >
-            {{if eq $index 0}}
-            <svg
-              class="h-6 w-6"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              aria-hidden="true"
-            >
-              <rect x="4" y="5" width="16" height="15" rx="3" />
-              <path d="M8 3v4m8-4v4M4 10h16" />
-            </svg>
-            {{else if eq $index 1}}
-            <svg
-              class="h-6 w-6"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              aria-hidden="true"
-            >
-              <path
-                d="M12 3 4 7l8 4 8-4-8-4Zm-6 6v5c0 2.2 2.7 4 6 4s6-1.8 6-4V9"
-              />
-            </svg>
-            {{else}}
-            <svg
-              class="h-6 w-6"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 3v18M5.5 6.5 18.5 17.5M18.5 6.5 5.5 17.5"
-              />
-            </svg>
-            {{end}}
-          </div>
-
-          <h3
-            class="mt-7 text-2xl font-semibold tracking-tight text-obsidian"
-          >
-            {{.Title}}
-          </h3>
-
-          <p class="mt-4 text-sm leading-7 text-slate/65">
-            {{.Body}}
-          </p>
-
-          <div
-            class="mt-7 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate/45 transition group-hover:text-obsidian"
-          >
-            Learn more
-            <span
-              class="transition-transform duration-300 group-hover:translate-x-1"
-            >
-              →
-            </span>
-          </div>
-        </article>
-        {{end}}
-      </div>
-    </div>
-  </section>
-
-  <!-- Booking process -->
-  <section class="py-16 sm:py-24">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div
-        class="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-start lg:gap-20"
-      >
-        <div
-          data-reveal
-          class="translate-y-6 opacity-0 transition-all duration-700 lg:sticky lg:top-40"
-        >
-          <p
-            class="text-xs font-bold uppercase tracking-[0.25em] text-slate/55"
-          >
-            Simple booking
-          </p>
-
-          <h2
-            class="mt-4 text-4xl font-semibold leading-tight tracking-[-0.04em] text-obsidian sm:text-5xl"
-          >
-            From planning to playing in three steps.
-          </h2>
-
-          <p class="mt-5 max-w-lg text-base leading-8 text-slate/65">
-            No unnecessary complexity. Select an activity, choose an available
-            time and confirm your booking.
-          </p>
-
-          <a
-            href="/register"
-            class="mt-7 inline-flex items-center gap-2 rounded-full bg-obsidian px-6 py-3.5 text-sm font-bold text-cloud transition duration-300 hover:-translate-y-1 hover:bg-slate"
-          >
-            Start booking
-            <span aria-hidden="true">→</span>
-          </a>
-        </div>
-
-        <div class="space-y-4">
-          <article
-            data-reveal
-            class="group translate-y-8 rounded-[2rem] border border-obsidian/10 bg-white/70 p-6 opacity-0 transition-all duration-700 hover:border-aqua hover:bg-white sm:p-8"
-          >
-            <div class="flex gap-5 sm:gap-7">
-              <span
-                class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-lg font-bold text-cloud transition group-hover:-rotate-6 group-hover:bg-aqua group-hover:text-obsidian"
-              >
-                01
-              </span>
-
               <div>
-                <h3 class="text-2xl font-semibold text-obsidian">
-                  Choose your activity
-                </h3>
-                <p class="mt-3 max-w-xl text-sm leading-7 text-slate/65">
-                  Select cricket, futsal, badminton, table tennis or an
-                  available coaching programme.
-                </p>
+                <p class="text-sm font-bold">Futsal</p>
+                <p class="mt-1 text-xs text-[#E5E7EB]/72">Fast. Fun. Competitive.</p>
               </div>
             </div>
+          </div>
+
+          <div data-float-card style="--float-delay:2.1s" class="absolute right-0 bottom-[18%] hidden max-w-[10rem] translate-x-2 rounded-[1.2rem] border border-white/12 bg-white/10 p-3.5 text-white shadow-xl backdrop-blur-xl xl:block">
+            <div class="flex items-center gap-3">
+              <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-[#071426]">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <path d="m7 5 10 10M9 3l2 6-6-2M15 17l3 3"></path>
+                </svg>
+              </span>
+              <div>
+                <p class="text-sm font-bold">Badminton</p>
+                <p class="mt-1 text-xs text-[#E5E7EB]/72">Smash Your Limits.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="hero-hide-scrollbar mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 pr-2 md:hidden"
+          aria-label="Featured sports"
+          style="-ms-overflow-style:none;scrollbar-width:none;"
+        >
+          <article class="min-w-[85%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 text-white backdrop-blur-xl">
+            <p class="text-sm font-bold">Cricket Nets</p>
+            <p class="mt-1 text-sm text-[#E5E7EB]/72">Practice. Improve. Perform.</p>
           </article>
-
-          <article
-            data-reveal
-            class="group translate-y-8 rounded-[2rem] border border-obsidian/10 bg-white/70 p-6 opacity-0 transition-all delay-75 duration-700 hover:border-amber hover:bg-white sm:p-8"
-          >
-            <div class="flex gap-5 sm:gap-7">
-              <span
-                class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-lg font-bold text-cloud transition group-hover:rotate-6 group-hover:bg-amber group-hover:text-obsidian"
-              >
-                02
-              </span>
-
-              <div>
-                <h3 class="text-2xl font-semibold text-obsidian">
-                  Select a time
-                </h3>
-                <p class="mt-3 max-w-xl text-sm leading-7 text-slate/65">
-                  Review available sessions and choose a convenient one-hour
-                  booking slot.
-                </p>
-              </div>
-            </div>
+          <article class="min-w-[85%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 text-white backdrop-blur-xl">
+            <p class="text-sm font-bold">Futsal</p>
+            <p class="mt-1 text-sm text-[#E5E7EB]/72">Fast. Fun. Competitive.</p>
           </article>
-
-          <article
-            data-reveal
-            class="group translate-y-8 rounded-[2rem] border border-obsidian/10 bg-white/70 p-6 opacity-0 transition-all delay-100 duration-700 hover:border-blush hover:bg-white sm:p-8"
-          >
-            <div class="flex gap-5 sm:gap-7">
-              <span
-                class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-lg font-bold text-cloud transition group-hover:-rotate-6 group-hover:bg-blush group-hover:text-obsidian"
-              >
-                03
-              </span>
-
-              <div>
-                <h3 class="text-2xl font-semibold text-obsidian">
-                  Confirm and play
-                </h3>
-                <p class="mt-3 max-w-xl text-sm leading-7 text-slate/65">
-                  Confirm your reservation, arrive at Mekmaa and pay at the
-                  facility before your session.
-                </p>
-              </div>
-            </div>
+          <article class="min-w-[85%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 text-white backdrop-blur-xl">
+            <p class="text-sm font-bold">Badminton</p>
+            <p class="mt-1 text-sm text-[#E5E7EB]/72">Smash Your Limits.</p>
+          </article>
+          <article class="min-w-[85%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 text-white backdrop-blur-xl">
+            <p class="text-sm font-bold">Table Tennis</p>
+            <p class="mt-1 text-sm text-[#E5E7EB]/72">Focus. Reflex. Win.</p>
+          </article>
+          <article class="min-w-[85%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 text-white backdrop-blur-xl">
+            <p class="text-sm font-bold">Tennis</p>
+            <p class="mt-1 text-sm text-[#E5E7EB]/72">Train. Compete. Excel.</p>
           </article>
         </div>
       </div>
     </div>
   </section>
-</main>
+</section>
 
 <script>
-  document.addEventListener("DOMContentLoaded", () => {
-    const revealElements = document.querySelectorAll("[data-reveal]");
-    const floatingCards = document.querySelectorAll("[data-float-card]");
+  document.addEventListener("DOMContentLoaded", function () {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const hero = document.querySelector("[aria-labelledby='hero-heading']");
+    const visual = document.querySelector("[data-hero-visual]");
+    const floatCards = document.querySelectorAll("[data-float-card]");
+    const revealItems = document.querySelectorAll("[data-hero-reveal]");
+    const heroLines = document.querySelectorAll("[data-hero-line] > span");
+    const sportRotator = document.querySelector("[data-sport-rotator]");
+    const sports = [
+      "Cricket Nets",
+      "Futsal",
+      "Badminton",
+      "Table Tennis",
+      "Tennis"
+    ];
 
-    const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-
-    if (prefersReducedMotion) {
-      revealElements.forEach((element) => {
-        element.classList.remove(
-          "translate-y-6",
-          "translate-y-8",
-          "opacity-0"
-        );
-        element.classList.add("translate-y-0", "opacity-100");
-      });
-
+    if (!hero) {
       return;
     }
 
-    const revealObserver = new IntersectionObserver(
-      (entries, observer) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
+    hero.classList.add("hero-enhanced");
 
-          entry.target.classList.remove(
-            "translate-y-6",
-            "translate-y-8",
-            "opacity-0"
-          );
-          entry.target.classList.add("translate-y-0", "opacity-100");
+    if (reduceMotion.matches) {
+      return;
+    }
 
-          observer.unobserve(entry.target);
-        });
-      },
-      {
-        threshold: 0.12,
-        rootMargin: "0px 0px -60px 0px"
-      }
-    );
-
-    revealElements.forEach((element) => {
-      revealObserver.observe(element);
+    revealItems.forEach(function (item, index) {
+      item.style.transitionDelay = 120 + index * 110 + "ms";
     });
 
-    let animationFrame;
+    heroLines.forEach(function (line, index) {
+      line.style.transitionDelay = 180 + index * 130 + "ms";
+    });
 
-    const updateFloatingCards = () => {
-      const scrollPosition = window.scrollY;
+    if (visual) {
+      visual.style.transitionDelay = "260ms";
+    }
 
-      floatingCards.forEach((card, index) => {
-        const direction = index % 2 === 0 ? 1 : -1;
-        const offset = scrollPosition * 0.025 * direction;
+    floatCards.forEach(function (card, index) {
+      card.style.transitionDelay = 420 + index * 120 + "ms";
+    });
 
-        card.style.transform = `translate3d(0, ${offset}px, 0)`;
+    requestAnimationFrame(function () {
+      revealItems.forEach(function (item) {
+        item.classList.add("is-visible");
       });
 
-      animationFrame = null;
-    };
+      heroLines.forEach(function (line) {
+        line.classList.add("is-visible");
+      });
 
-    window.addEventListener(
-      "scroll",
-      () => {
-        if (animationFrame) return;
+      if (visual) {
+        visual.classList.add("is-visible");
+      }
 
-        animationFrame = window.requestAnimationFrame(
-          updateFloatingCards
-        );
-      },
-      { passive: true }
-    );
+      floatCards.forEach(function (card) {
+        card.classList.add("is-visible");
+      });
+    });
+
+    if (sportRotator) {
+      let sportIndex = 0;
+      window.setInterval(function () {
+        sportIndex = (sportIndex + 1) % sports.length;
+        sportRotator.textContent = sports[sportIndex];
+      }, 2200);
+    }
+
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches && visual) {
+      let frame = null;
+
+      function moveVisual(x, y) {
+        if (frame) {
+          window.cancelAnimationFrame(frame);
+        }
+
+        frame = window.requestAnimationFrame(function () {
+          visual.style.setProperty("--hero-move-x", x.toFixed(2) + "px");
+          visual.style.setProperty("--hero-move-y", y.toFixed(2) + "px");
+        });
+      }
+
+      hero.addEventListener("mousemove", function (event) {
+        const rect = hero.getBoundingClientRect();
+        const x = ((event.clientX - rect.left) / rect.width - 0.5) * 16;
+        const y = ((event.clientY - rect.top) / rect.height - 0.5) * 14;
+        moveVisual(x, y);
+      });
+
+      hero.addEventListener("mouseleave", function () {
+        moveVisual(0, 0);
+      });
+    }
   });
 </script>
 {{end}}
