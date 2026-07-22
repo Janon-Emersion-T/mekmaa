@@ -189,6 +189,24 @@ type CalendarDay struct {
 	IsSelected    bool
 }
 
+type SportPage struct {
+	Slug             string
+	Name             string
+	Kicker           string
+	Summary          string
+	ShortDescription string
+	Detail           string
+	Accent           string
+	PrimaryCTA       string
+	PrimaryLabel     string
+	Highlights       []string
+}
+
+type FAQItem struct {
+	Question string
+	Answer   string
+}
+
 type TemplateData struct {
 	Title             string
 	Description       string
@@ -237,6 +255,9 @@ type TemplateData struct {
 	PendingEmail      string
 	OTPCodeLength     int
 	ResendAction      string
+	SportsCatalog     []SportPage
+	SelectedSport     *SportPage
+	FAQItems          []FAQItem
 }
 
 type Stat struct {
@@ -322,16 +343,20 @@ func main() {
 	mux.HandleFunc("/book/request", app.publicBookingRequestHandler)
 	mux.HandleFunc("/booking", app.legacyBookingRedirectHandler)
 	mux.HandleFunc("/contact", app.contactHandler)
+	mux.HandleFunc("/faq", app.faqHandler)
+	mux.HandleFunc("/gallery", app.galleryHandler)
 	mux.HandleFunc("/coaching", app.coachingHandler)
 	mux.HandleFunc("/coaching/", app.legacyCoachingRedirectHandler)
-	mux.HandleFunc("/gallery", app.legacyGalleryRedirectHandler)
+	mux.HandleFunc("/privacy-policy", app.privacyPolicyHandler)
+	mux.HandleFunc("/refund-policy", app.refundPolicyHandler)
 	mux.HandleFunc("/register", app.registerHandler)
 	mux.HandleFunc("/login", app.loginHandler)
+	mux.HandleFunc("/sports", app.sportsHandler)
+	mux.HandleFunc("/sports/", app.sportDetailHandler)
+	mux.HandleFunc("/terms-and-conditions", app.termsHandler)
 	mux.HandleFunc("/verify-email", app.verifyEmailHandler)
 	mux.HandleFunc("/verify-email/resend", app.resendVerificationHandler)
 	mux.HandleFunc("/logout", app.logoutHandler)
-	mux.HandleFunc("/sports", app.legacySportsRedirectHandler)
-	mux.HandleFunc("/sports/", app.legacySportsRedirectHandler)
 	mux.Handle("/dashboard", app.sessionMiddleware(http.HandlerFunc(app.dashboardHandler)))
 	mux.Handle("/editor", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.editorHandler), "editor", "admin", "superadmin")))
 	mux.Handle("/admin", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.adminRedirectHandler), "admin", "superadmin")))
@@ -439,6 +464,39 @@ func (a *App) contactHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *App) sportsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/sports" {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.newTemplateData(w, r, nil)
+	data.Title = "Sports at Mekmaa"
+	data.Description = "Explore cricket nets, futsal, badminton, table tennis and tennis at Mekmaa in Jaffna."
+	data.SportsCatalog = sportsCatalog()
+	a.render(w, "sports", data, http.StatusOK)
+}
+
+func (a *App) sportDetailHandler(w http.ResponseWriter, r *http.Request) {
+	slug := strings.TrimPrefix(r.URL.Path, "/sports/")
+	if slug == "" || strings.Contains(slug, "/") {
+		http.NotFound(w, r)
+		return
+	}
+
+	sport, ok := sportBySlug(slug)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	data := a.newTemplateData(w, r, nil)
+	data.Title = sport.Name + " at Mekmaa"
+	data.Description = sport.Summary
+	data.SportsCatalog = sportsCatalog()
+	data.SelectedSport = &sport
+	a.render(w, "sports", data, http.StatusOK)
+}
+
 func (a *App) coachingHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/coaching" {
 		http.NotFound(w, r)
@@ -450,16 +508,64 @@ func (a *App) coachingHandler(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "coaching", data, http.StatusOK)
 }
 
+func (a *App) galleryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/gallery" {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.newTemplateData(w, r, nil)
+	data.Title = "Gallery"
+	data.Description = "A look at the Mekmaa brand, indoor sports atmosphere and coaching culture."
+	a.render(w, "gallery", data, http.StatusOK)
+}
+
+func (a *App) faqHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/faq" {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.newTemplateData(w, r, nil)
+	data.Title = "Frequently Asked Questions"
+	data.Description = "Answers to common questions about bookings, coaching and indoor sports at Mekmaa."
+	data.FAQItems = homeFAQItems()
+	a.render(w, "faq", data, http.StatusOK)
+}
+
+func (a *App) privacyPolicyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/privacy-policy" {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.newTemplateData(w, r, nil)
+	data.Title = "Privacy Policy"
+	data.Description = "How Mekmaa handles personal information submitted through bookings, contact forms and account access."
+	a.render(w, "privacy-policy", data, http.StatusOK)
+}
+
+func (a *App) termsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/terms-and-conditions" {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.newTemplateData(w, r, nil)
+	data.Title = "Terms and Conditions"
+	data.Description = "Terms and conditions for using the Mekmaa website, facilities and coaching services."
+	a.render(w, "terms-and-conditions", data, http.StatusOK)
+}
+
+func (a *App) refundPolicyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/refund-policy" {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.newTemplateData(w, r, nil)
+	data.Title = "Booking and Refund Policy"
+	data.Description = "Booking, cancellation and refund expectations for sessions reserved with Mekmaa."
+	a.render(w, "refund-policy", data, http.StatusOK)
+}
+
 func (a *App) legacyBookingRedirectHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/book", http.StatusMovedPermanently)
-}
-
-func (a *App) legacySportsRedirectHandler(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/book", http.StatusMovedPermanently)
-}
-
-func (a *App) legacyGalleryRedirectHandler(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/about", http.StatusMovedPermanently)
 }
 
 func (a *App) legacyCoachingRedirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -4093,6 +4199,90 @@ func bookingActivities() []string {
 	return []string{"training", "full_indoor_cricket", "futsal", "badminton", "table_tennis", "cricket_net"}
 }
 
+func sportsCatalog() []SportPage {
+	return []SportPage{
+		{
+			Slug:             "cricket",
+			Name:             "Cricket Nets",
+			Kicker:           "Indoor Cricket",
+			Summary:          "Train with dedicated cricket net sessions at Mekmaa in Jaffna.",
+			ShortDescription: "Practice lanes, repeatable drills and indoor focus for batting and bowling sessions.",
+			Detail:           "Mekmaa gives players a dependable indoor cricket environment for technical repetition, small-group practice and structured improvement sessions.",
+			Accent:           "bg-amber",
+			PrimaryCTA:       "/book",
+			PrimaryLabel:     "Book Cricket",
+			Highlights:       []string{"Net-based repetition", "Indoor weather-proof practice", "Suitable for individual and small-group sessions"},
+		},
+		{
+			Slug:             "futsal",
+			Name:             "Futsal",
+			Kicker:           "Indoor Team Play",
+			Summary:          "Reserve indoor futsal sessions for teams and fast-paced match play at Mekmaa.",
+			ShortDescription: "Clean indoor conditions for training games, competitive sessions and energetic group play.",
+			Detail:           "The Mekmaa futsal setup is designed for teams that want consistent indoor conditions, easier planning and a strong environment for recreational or competitive sessions.",
+			Accent:           "bg-emerald-500",
+			PrimaryCTA:       "/book",
+			PrimaryLabel:     "Book Futsal",
+			Highlights:       []string{"Team-friendly sessions", "Fast indoor play", "Ideal for regular weekly bookings"},
+		},
+		{
+			Slug:             "badminton",
+			Name:             "Badminton",
+			Kicker:           "Indoor Court Sessions",
+			Summary:          "Play badminton in a comfortable indoor environment at Mekmaa.",
+			ShortDescription: "Flexible bookings for casual rallies, match preparation and routine skill work.",
+			Detail:           "Badminton sessions at Mekmaa are suited to players who want dependable indoor court time, whether that means social games, coaching support or repeated technical practice.",
+			Accent:           "bg-aqua",
+			PrimaryCTA:       "/book",
+			PrimaryLabel:     "Book Badminton",
+			Highlights:       []string{"Indoor comfort", "Casual and competitive use", "Strong option for repeated practice"},
+		},
+		{
+			Slug:             "table-tennis",
+			Name:             "Table Tennis",
+			Kicker:           "Reflex and Focus",
+			Summary:          "Book table tennis sessions at Mekmaa for fast, focused indoor play.",
+			ShortDescription: "Indoor tables for quick games, reflex work and flexible training blocks.",
+			Detail:           "Mekmaa supports table tennis sessions that reward concentration, timing and repetition, with an easy path for casual games or more focused improvement work.",
+			Accent:           "bg-blush",
+			PrimaryCTA:       "/book",
+			PrimaryLabel:     "Book Table Tennis",
+			Highlights:       []string{"Flexible session formats", "Good for individuals and pairs", "Strong indoor setup for focus-based training"},
+		},
+		{
+			Slug:             "tennis",
+			Name:             "Tennis",
+			Kicker:           "Tennis at Mekmaa",
+			Summary:          "Explore tennis opportunities through Mekmaa's indoor sports offering in Jaffna.",
+			ShortDescription: "A tennis pathway for players who want structured sport access and want to enquire directly.",
+			Detail:           "Tennis is now part of the public sports catalogue at Mekmaa. For current session formats, availability and coaching-related enquiries, players can contact the team directly.",
+			Accent:           "bg-lime-200",
+			PrimaryCTA:       "/contact?subject=Tennis%20Enquiry",
+			PrimaryLabel:     "Enquire About Tennis",
+			Highlights:       []string{"Included in the sports catalogue", "Direct enquiry path for availability", "Suitable for players seeking structured access"},
+		},
+	}
+}
+
+func sportBySlug(slug string) (SportPage, bool) {
+	for _, sport := range sportsCatalog() {
+		if sport.Slug == slug {
+			return sport, true
+		}
+	}
+	return SportPage{}, false
+}
+
+func homeFAQItems() []FAQItem {
+	return []FAQItem{
+		{Question: "How do I book a session?", Answer: "Use the booking page to review available slots and choose the activity that fits your session. If you need help with a special request, contact the team directly."},
+		{Question: "Which sports are available at Mekmaa?", Answer: "Mekmaa currently features cricket nets, futsal, badminton, table tennis and tennis as part of its public sports offering."},
+		{Question: "Is coaching available for children and teenagers?", Answer: "Yes. Mekmaa Cricket Academy provides structured coaching with a strong focus on skill development, discipline and confidence for kids and teens."},
+		{Question: "Can adults also use the facility?", Answer: "Yes. The facility is positioned as suitable for kids, teens and adults across general bookings and sport sessions."},
+		{Question: "How do I enquire about tennis?", Answer: "Tennis is available inside the sports section. Use the tennis sport page or the contact page to ask about session formats and availability."},
+	}
+}
+
 func bookingHours() []string {
 	var hours []string
 	for hour := 6; hour <= 23; hour++ {
@@ -4884,8 +5074,14 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"book":                     "templates/pages/book.html",
 		"contact":                  "templates/pages/contact.html",
 		"coaching":                 "templates/pages/coaching.html",
+		"faq":                      "templates/pages/faq.html",
+		"gallery":                  "templates/pages/gallery.html",
 		"login":                    "templates/login.html",
+		"privacy-policy":           "templates/pages/privacy-policy.html",
 		"register":                 "templates/register.html",
+		"refund-policy":            "templates/pages/refund-policy.html",
+		"sports":                   "templates/pages/sports.html",
+		"terms-and-conditions":     "templates/pages/terms-and-conditions.html",
 		"verify-email":             "templates/verify-email.html",
 		"dashboard":                "templates/dashboard/dashboard.html",
 		"editor":                   "templates/dashboard/editor.html",

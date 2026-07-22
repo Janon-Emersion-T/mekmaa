@@ -1,0 +1,37 @@
+{{define "gallery"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="bg-cloud">
+  <div class="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:py-20">
+    <div class="max-w-3xl">
+      <p class="inline-flex rounded-full border border-obsidian/10 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-slate">
+        Gallery
+      </p>
+      <h1 class="mt-6 text-4xl font-semibold leading-tight text-obsidian sm:text-5xl lg:text-6xl">
+        Mekmaa visuals,
+        <span class="text-slate/60">branding and atmosphere.</span>
+      </h1>
+      <p class="mt-6 text-base leading-8 text-slate/75 sm:text-lg">
+        A quick look at the Mekmaa brand identity and the indoor sports experience the facility is building for Jaffna.
+      </p>
+    </div>
+
+    <div class="mt-12 grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
+      <div class="overflow-hidden rounded-[2rem] border border-white/80 bg-white p-4 shadow-float">
+        <img src="/images/mekmaa-private-limited.jpeg" alt="Mekmaa Private Limited brand artwork" class="h-full w-full rounded-[1.5rem] object-cover">
+      </div>
+      <div class="grid gap-5">
+        <div class="overflow-hidden rounded-[2rem] border border-white/80 bg-white p-4 shadow-sm">
+          <img src="/images/mekmaa-cricket-academy.jpeg" alt="Mekmaa Cricket Academy brand artwork" class="h-full w-full rounded-[1.5rem] object-cover">
+        </div>
+        <div class="rounded-[2rem] border border-obsidian/8 bg-white p-6 shadow-sm">
+          <h2 class="text-2xl font-semibold text-obsidian">What comes next</h2>
+          <p class="mt-4 text-sm leading-7 text-slate/70">
+            This gallery page is set up to grow as venue photos, coaching moments, team sessions and community events are added to the project.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{{end}}
