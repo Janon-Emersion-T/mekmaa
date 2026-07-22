@@ -1,0 +1,273 @@
+{{define "home-hero"}}
+<section class="relative overflow-hidden">
+  <div class="absolute inset-0 -z-30 bg-[linear-gradient(135deg,#071426_0%,#0b2034_28%,#0a3d33_62%,#071426_100%)]"></div>
+  <div class="absolute inset-0 -z-20 opacity-[0.08]" data-home-grid></div>
+  <div data-glow class="pointer-events-none absolute -left-20 top-20 -z-10 h-64 w-64 rounded-full bg-[var(--hero-bright)]/18 blur-[90px] sm:h-80 sm:w-80"></div>
+  <div data-glow class="pointer-events-none absolute right-0 top-0 -z-10 h-72 w-72 rounded-full bg-[var(--hero-yellow)]/14 blur-[110px] sm:h-[26rem] sm:w-[26rem]"></div>
+  <div data-glow class="pointer-events-none absolute bottom-0 left-1/3 -z-10 h-64 w-64 rounded-full bg-[var(--hero-green)]/20 blur-[95px] sm:h-80 sm:w-80"></div>
+
+  <div class="mx-auto max-w-7xl px-4 pb-14 pt-28 sm:px-6 sm:pb-16 sm:pt-32 lg:px-8 lg:pb-24 lg:pt-36">
+    <div class="grid gap-10 lg:min-h-[calc(100svh-17rem)] lg:grid-cols-[minmax(0,1.02fr)_minmax(0,.98fr)] lg:items-center lg:gap-14">
+      <div class="min-w-0">
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <p
+            data-hero-fade
+            class="inline-flex min-h-11 items-center justify-center rounded-full border border-white/12 bg-white/8 px-4 py-2 text-center text-[0.66rem] font-bold uppercase tracking-[0.3em] text-[var(--hero-soft)] backdrop-blur-xl sm:justify-start"
+          >
+            LEARN - PLAY - ACHIEVE
+          </p>
+          <p
+            data-hero-fade
+            class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[var(--hero-yellow)]/25 bg-[var(--hero-yellow)]/10 px-4 py-2 text-center text-xs font-semibold text-[#fde68a] backdrop-blur-xl sm:justify-start"
+          >
+            <span class="h-2.5 w-2.5 rounded-full bg-[var(--hero-yellow)]"></span>
+            Premium indoor courts and coaching
+          </p>
+        </div>
+
+        <h1
+          id="hero-heading"
+          class="mt-6 max-w-4xl text-[clamp(2.75rem,11vw,6.9rem)] font-black uppercase leading-[0.88] tracking-[-0.065em]"
+        >
+          <span data-hero-line class="block overflow-hidden">
+            <span class="block">Jaffna's Premier</span>
+          </span>
+          <span data-hero-line class="mt-1 block overflow-hidden">
+            <span class="block bg-gradient-to-r from-[var(--hero-yellow)] via-[#fde68a] to-[var(--hero-amber)] bg-clip-text text-transparent">Indoor Sports</span>
+          </span>
+          <span data-hero-line class="mt-1 block overflow-hidden">
+            <span class="block">Destination</span>
+          </span>
+        </h1>
+
+        <p
+          data-hero-fade
+          class="mt-6 max-w-2xl text-base leading-8 text-white/80 sm:text-lg"
+        >
+          Book premium indoor courts, sharpen your skills, and enjoy cricket nets, futsal, badminton, table tennis and tennis in Jaffna, with sports coaching for kids, teens and adults all under one roof.
+        </p>
+
+        <div
+          data-hero-fade
+          class="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap"
+        >
+          <a
+            href="/book"
+            class="group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-gradient-to-r from-[var(--hero-green)] to-[var(--hero-bright)] px-6 py-3.5 text-sm font-bold text-white shadow-[0_18px_48px_rgba(15,138,95,0.35)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_56px_rgba(15,138,95,0.42)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hero-yellow)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-navy)] sm:w-auto"
+          >
+            <svg class="h-5 w-5 text-[var(--hero-yellow)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="3"></rect>
+              <path d="M8 3v4m8-4v4M3 10h18"></path>
+            </svg>
+            Book Your Slot
+          </a>
+          <a
+            href="/sports"
+            class="group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full border border-white/14 bg-white/8 px-6 py-3.5 text-sm font-bold text-white backdrop-blur-xl transition duration-300 hover:-translate-y-0.5 hover:bg-white/14 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-navy)] sm:w-auto"
+          >
+            Explore Sports
+            <svg class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6"></path>
+            </svg>
+          </a>
+          <a
+            href="/coaching"
+            class="inline-flex min-h-12 w-full items-center justify-center text-sm font-semibold text-[#fde68a] underline decoration-white/20 underline-offset-4 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hero-yellow)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-navy)] sm:w-auto"
+          >
+            View Coaching Programmes
+          </a>
+        </div>
+
+        <div
+          data-hero-fade
+          class="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        >
+          <div class="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 backdrop-blur-xl">
+            <p class="text-sm font-semibold text-white">Modern Indoor Facility</p>
+            <p class="mt-1 text-sm text-white/68">Premium indoor setup built for year-round play.</p>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 backdrop-blur-xl">
+            <p class="text-sm font-semibold text-white">Safe & Friendly Environment</p>
+            <p class="mt-1 text-sm text-white/68">Welcoming for families, teams and first-time players.</p>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 backdrop-blur-xl">
+            <p class="text-sm font-semibold text-white">Professional Coaching</p>
+            <p class="mt-1 text-sm text-white/68">Structured development for skill, confidence and discipline.</p>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 backdrop-blur-xl">
+            <p class="text-sm font-semibold text-white">Kids, Teens & Adults</p>
+            <p class="mt-1 text-sm text-white/68">Programmes and court time for every level.</p>
+          </div>
+        </div>
+
+        <div
+          data-hero-fade
+          class="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
+        >
+          <span class="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/8 px-4 py-2 text-sm font-medium text-[var(--hero-soft)] backdrop-blur-xl sm:justify-start">
+            Now featuring
+            <span data-sport-rotator aria-live="polite" class="ml-2 inline-block min-w-[8.75rem] text-left font-bold text-[var(--hero-yellow)]">Cricket Nets</span>
+          </span>
+          <a
+            href="tel:+94772207297"
+            class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--hero-soft)] backdrop-blur-xl transition hover:bg-white/14 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hero-navy)]"
+          >
+            <svg class="h-4 w-4 text-[var(--hero-bright)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M22 16.92V20a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.51 19.51 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3.09a2 2 0 0 1 2 1.72c.12.9.34 1.77.66 2.6a2 2 0 0 1-.45 2.11L8.1 9.91a16 16 0 0 0 6 6l1.48-1.31a2 2 0 0 1 2.11-.45c.83.32 1.7.54 2.6.66A2 2 0 0 1 22 16.92Z"></path>
+            </svg>
+            077 220 7297
+          </a>
+        </div>
+      </div>
+
+      <div class="min-w-0">
+        <div
+          data-hero-panel
+          data-hero-pointer
+          class="relative mx-auto max-w-[34rem] sm:max-w-[38rem]"
+        >
+          <div class="absolute inset-x-10 top-8 -z-10 h-36 rounded-full bg-[var(--hero-bright)]/20 blur-[80px] sm:inset-x-14 sm:h-48 sm:blur-[100px]"></div>
+          <div class="absolute inset-x-16 bottom-8 -z-10 h-28 rounded-full bg-[var(--hero-yellow)]/12 blur-[72px] sm:inset-x-24 sm:h-40 sm:blur-[90px]"></div>
+
+          <div class="relative overflow-hidden rounded-[1.75rem] border border-white/12 bg-white/7 p-2.5 shadow-[0_28px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:rounded-[2.4rem] sm:p-3">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(250,204,21,.16),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(34,197,94,.18),transparent_34%)]"></div>
+            <div class="relative overflow-hidden rounded-[1.3rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02))] sm:rounded-[2rem]">
+              <div class="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[var(--hero-yellow)]/10 to-transparent"></div>
+              <div class="grid gap-4 p-4 sm:gap-5 sm:p-6">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div class="rounded-2xl border border-white/10 bg-[var(--hero-navy)]/72 px-4 py-3 backdrop-blur-xl">
+                    <p class="text-[0.64rem] font-bold uppercase tracking-[0.24em] text-[#fde68a]">All-in-one venue</p>
+                    <p class="mt-2 text-xl font-black uppercase tracking-[-0.04em]">Premium indoor play.</p>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur-xl">
+                    <p class="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-white/58">Suitable for</p>
+                    <p class="mt-1 text-sm font-bold text-white">Kids • Teens • Adults</p>
+                  </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-[1.12fr_.88fr]">
+                  <div class="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[linear-gradient(180deg,rgba(7,20,38,.92),rgba(6,78,59,.88))] p-4 sm:p-5">
+                    <div class="absolute right-0 top-0 h-24 w-24 rounded-full bg-[var(--hero-yellow)]/18 blur-3xl"></div>
+                    <div class="absolute bottom-0 left-0 h-28 w-28 rounded-full bg-[var(--hero-bright)]/18 blur-3xl"></div>
+                    <img
+                      src="/images/mekmaa-private-limited.jpeg"
+                      alt="Mekmaa indoor sports facility featuring cricket, futsal, badminton, table tennis and tennis."
+                      class="relative z-10 mx-auto aspect-square w-full max-w-[13rem] rounded-[1rem] object-cover object-center shadow-[0_18px_46px_rgba(0,0,0,0.34)] sm:max-w-[15rem] lg:max-w-[17rem]"
+                      loading="eager"
+                      fetchpriority="high"
+                    />
+                    <div class="relative z-10 mt-4 grid gap-3 sm:grid-cols-2">
+                      <div class="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 backdrop-blur-xl">
+                        <p class="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-white/60">Contact</p>
+                        <p class="mt-1 text-sm font-bold text-white">077 220 7297</p>
+                      </div>
+                      <div class="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 backdrop-blur-xl">
+                        <p class="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-white/60">Slogan</p>
+                        <p class="mt-1 text-sm font-bold text-white">Learn • Play • Achieve</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="grid gap-4">
+                    <div class="rounded-[1.3rem] border border-white/10 bg-white/8 p-4 backdrop-blur-xl">
+                      <img
+                        src="/images/mekmaa-cricket-academy.jpeg"
+                        alt="Mekmaa Cricket Academy brand"
+                        class="h-24 w-full rounded-[1rem] object-cover shadow-lg sm:h-28"
+                        loading="lazy"
+                      />
+                      <p class="mt-4 text-sm font-bold text-white">Coaching that builds players</p>
+                      <p class="mt-1 text-xs leading-6 text-white/70">Focused sessions for skill, technique, confidence and long-term development.</p>
+                    </div>
+
+                    <div class="rounded-[1.3rem] border border-white/10 bg-[var(--hero-yellow)]/12 p-4 backdrop-blur-xl">
+                      <p class="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-[#fde68a]">Featured sports</p>
+                      <ul class="mt-3 grid gap-2 text-sm font-semibold text-white">
+                        <li>Cricket Nets</li>
+                        <li>Futsal</li>
+                        <li>Badminton</li>
+                        <li>Table Tennis</li>
+                        <li>Tennis</li>
+                      </ul>
+                    </div>
+
+                    <div class="rounded-[1.3rem] border border-white/10 bg-white/8 p-4 backdrop-blur-xl">
+                      <p class="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-white/58">Why players choose Mekmaa</p>
+                      <div class="mt-3 grid gap-2">
+                        <div class="flex items-center gap-2 text-sm font-medium text-white/86">
+                          <span class="h-2.5 w-2.5 rounded-full bg-[var(--hero-bright)]"></span>
+                          Easy indoor bookings
+                        </div>
+                        <div class="flex items-center gap-2 text-sm font-medium text-white/86">
+                          <span class="h-2.5 w-2.5 rounded-full bg-[var(--hero-yellow)]"></span>
+                          Coaching for young athletes
+                        </div>
+                        <div class="flex items-center gap-2 text-sm font-medium text-white/86">
+                          <span class="h-2.5 w-2.5 rounded-full bg-white"></span>
+                          Multi-sport facility in one location
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <article
+            data-float
+            style="--float-delay:0s"
+            class="absolute left-0 top-[14%] hidden max-w-[10rem] -translate-x-4 rounded-[1.2rem] border border-white/12 bg-white/10 p-3.5 shadow-xl backdrop-blur-xl xl:block"
+          >
+            <p class="text-sm font-bold text-white">Cricket Nets</p>
+            <p class="mt-1 text-xs text-white/70">Practice. Improve. Perform.</p>
+          </article>
+          <article
+            data-float
+            style="--float-delay:1.2s"
+            class="absolute right-0 top-[8%] hidden max-w-[10rem] translate-x-4 rounded-[1.2rem] border border-white/12 bg-white/10 p-3.5 shadow-xl backdrop-blur-xl xl:block"
+          >
+            <p class="text-sm font-bold text-white">Futsal</p>
+            <p class="mt-1 text-xs text-white/70">Fast. Fun. Competitive.</p>
+          </article>
+          <article
+            data-float
+            style="--float-delay:2.1s"
+            class="absolute right-0 bottom-[18%] hidden max-w-[10rem] translate-x-3 rounded-[1.2rem] border border-white/12 bg-white/10 p-3.5 shadow-xl backdrop-blur-xl xl:block"
+          >
+            <p class="text-sm font-bold text-white">Badminton</p>
+            <p class="mt-1 text-xs text-white/70">Smash Your Limits.</p>
+          </article>
+        </div>
+
+        <div
+          class="home-scrollbar mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 md:hidden"
+          aria-label="Featured sports"
+          style="-ms-overflow-style:none;scrollbar-width:none;"
+        >
+          <article class="min-w-[84%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 backdrop-blur-xl">
+            <p class="text-sm font-bold text-white">Cricket Nets</p>
+            <p class="mt-1 text-sm text-white/70">Practice. Improve. Perform.</p>
+          </article>
+          <article class="min-w-[84%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 backdrop-blur-xl">
+            <p class="text-sm font-bold text-white">Futsal</p>
+            <p class="mt-1 text-sm text-white/70">Fast. Fun. Competitive.</p>
+          </article>
+          <article class="min-w-[84%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 backdrop-blur-xl">
+            <p class="text-sm font-bold text-white">Badminton</p>
+            <p class="mt-1 text-sm text-white/70">Smash Your Limits.</p>
+          </article>
+          <article class="min-w-[84%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 backdrop-blur-xl">
+            <p class="text-sm font-bold text-white">Table Tennis</p>
+            <p class="mt-1 text-sm text-white/70">Focus. Reflex. Win.</p>
+          </article>
+          <article class="min-w-[84%] max-w-[17rem] snap-start rounded-[1.2rem] border border-white/12 bg-white/10 p-4 backdrop-blur-xl">
+            <p class="text-sm font-bold text-white">Tennis</p>
+            <p class="mt-1 text-sm text-white/70">Train. Compete. Excel.</p>
+          </article>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{{end}}

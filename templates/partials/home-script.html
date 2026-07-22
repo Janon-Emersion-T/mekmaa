@@ -1,0 +1,95 @@
+{{define "home-script"}}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const root = document.querySelector(".hero-home");
+    const panel = document.querySelector("[data-hero-pointer]");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const rotator = document.querySelector("[data-sport-rotator]");
+    const fades = document.querySelectorAll("[data-hero-fade]");
+    const lines = document.querySelectorAll("[data-hero-line]");
+    const floating = document.querySelectorAll("[data-float]");
+    const heroPanel = document.querySelector("[data-hero-panel]");
+    const sports = ["Cricket Nets", "Futsal", "Badminton", "Table Tennis", "Tennis"];
+
+    if (!root) {
+      return;
+    }
+
+    root.classList.add("is-ready");
+
+    if (!reduceMotion.matches) {
+      fades.forEach(function (item, index) {
+        item.style.transitionDelay = 120 + index * 90 + "ms";
+      });
+
+      lines.forEach(function (item, index) {
+        item.style.transitionDelay = 180 + index * 120 + "ms";
+      });
+
+      if (heroPanel) {
+        heroPanel.style.transitionDelay = "260ms";
+      }
+
+      floating.forEach(function (item, index) {
+        item.style.transitionDelay = 420 + index * 120 + "ms";
+      });
+
+      requestAnimationFrame(function () {
+        fades.forEach(function (item) {
+          item.classList.add("is-visible");
+        });
+
+        lines.forEach(function (item) {
+          item.classList.add("is-visible");
+        });
+
+        if (heroPanel) {
+          heroPanel.classList.add("is-visible");
+        }
+
+        floating.forEach(function (item) {
+          item.classList.add("is-visible");
+        });
+      });
+    }
+
+    if (rotator && !reduceMotion.matches) {
+      let index = 0;
+      window.setInterval(function () {
+        index = (index + 1) % sports.length;
+        rotator.textContent = sports[index];
+      }, 2400);
+    }
+
+    if (
+      panel &&
+      !reduceMotion.matches &&
+      window.matchMedia("(hover: hover) and (pointer: fine)").matches
+    ) {
+      let frame = null;
+
+      function movePanel(x, y) {
+        if (frame) {
+          window.cancelAnimationFrame(frame);
+        }
+
+        frame = window.requestAnimationFrame(function () {
+          panel.style.setProperty("--pointer-x", x.toFixed(2) + "px");
+          panel.style.setProperty("--pointer-y", y.toFixed(2) + "px");
+        });
+      }
+
+      root.addEventListener("mousemove", function (event) {
+        const rect = root.getBoundingClientRect();
+        const x = ((event.clientX - rect.left) / rect.width - 0.5) * 10;
+        const y = ((event.clientY - rect.top) / rect.height - 0.5) * 8;
+        movePanel(x, y);
+      });
+
+      root.addEventListener("mouseleave", function () {
+        movePanel(0, 0);
+      });
+    }
+  });
+</script>
+{{end}}

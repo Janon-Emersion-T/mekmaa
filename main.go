@@ -779,7 +779,6 @@ func (a *App) logoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	a.clearCookie(w, sessionCookieName)
 	a.clearCookieWithOptions(w, csrfCookieName, false)
-	a.setFlash(w, "You have been signed out.")
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -4869,6 +4868,14 @@ func buildTemplates() (map[string]*template.Template, error) {
 	publicPartials := []string{
 		"templates/partials/header.html",
 		"templates/partials/footer.html",
+		"templates/partials/home-style.html",
+		"templates/partials/home-hero.html",
+		"templates/partials/home-sports-grid.html",
+		"templates/partials/home-coaching-strip.html",
+		"templates/partials/home-highlights.html",
+		"templates/partials/home-booking-flow.html",
+		"templates/partials/home-cta-band.html",
+		"templates/partials/home-script.html",
 	}
 
 	pages := map[string]string{

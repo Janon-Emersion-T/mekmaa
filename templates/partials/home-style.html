@@ -1,0 +1,102 @@
+{{define "home-style"}}
+<style>
+  .hero-home {
+    --hero-navy: #071426;
+    --hero-deep-green: #064e3b;
+    --hero-green: #0f8a5f;
+    --hero-bright: #22c55e;
+    --hero-yellow: #facc15;
+    --hero-amber: #f59e0b;
+    --hero-soft: #e5e7eb;
+    overflow-x: clip;
+  }
+
+  .hero-home .home-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .hero-home [data-hero-pointer] {
+    transform: translate3d(var(--pointer-x, 0px), var(--pointer-y, 0px), 0);
+  }
+
+  .hero-home [data-home-grid] {
+    background-image:
+      linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px);
+    background-size: 36px 36px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-home.is-ready [data-hero-fade] {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 620ms ease, transform 620ms cubic-bezier(.22,1,.36,1);
+    }
+
+    .hero-home.is-ready [data-hero-line] > span {
+      opacity: 0;
+      transform: translateY(115%);
+      transition: opacity 760ms ease, transform 760ms cubic-bezier(.22,1,.36,1);
+    }
+
+    .hero-home.is-ready [data-hero-panel] {
+      opacity: 0;
+      transform: translateY(18px) scale(.985);
+      transition: opacity 760ms ease, transform 760ms cubic-bezier(.22,1,.36,1);
+    }
+
+    .hero-home.is-ready [data-float] {
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 620ms ease, transform 620ms cubic-bezier(.22,1,.36,1);
+    }
+
+    .hero-home.is-ready [data-glow] {
+      animation: heroGlow 12s ease-in-out infinite;
+    }
+
+    .hero-home.is-ready [data-float].is-visible {
+      animation: heroFloat 6.5s ease-in-out infinite;
+      animation-delay: var(--float-delay, 0s);
+    }
+
+    .hero-home .is-visible[data-hero-fade],
+    .hero-home .is-visible[data-hero-panel],
+    .hero-home .is-visible[data-float],
+    .hero-home .is-visible[data-hero-line] > span {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-home * {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  @keyframes heroFloat {
+    0%, 100% {
+      transform: translate3d(0, 0, 0);
+    }
+
+    50% {
+      transform: translate3d(0, -8px, 0);
+    }
+  }
+
+  @keyframes heroGlow {
+    0%, 100% {
+      transform: scale(1) translate3d(0, 0, 0);
+      opacity: .75;
+    }
+
+    50% {
+      transform: scale(1.04) translate3d(0, -8px, 0);
+      opacity: 1;
+    }
+  }
+</style>
+{{end}}
