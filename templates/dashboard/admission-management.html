@@ -234,6 +234,23 @@
           </div>
 
           <div class="space-y-2">
+            <label for="new-practice-type" class="block text-sm font-semibold text-obsidian">
+              Practice type
+            </label>
+
+            <select
+              id="new-practice-type"
+              name="practice_type"
+              required
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            >
+              <option value="">Select practice type</option>
+              <option value="group_practice">Group practice</option>
+              <option value="one_to_one_practice">One to one practice</option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
             <label for="new-passport-number" class="block text-sm font-semibold text-obsidian">
               P.P. number
             </label>
@@ -501,6 +518,7 @@
             <th scope="col" class="px-5 py-4">Student ID</th>
             <th scope="col" class="px-5 py-4">Date of birth</th>
             <th scope="col" class="px-5 py-4">Gender</th>
+            <th scope="col" class="px-5 py-4">Practice type</th>
             <th scope="col" class="px-5 py-4">School</th>
             <th scope="col" class="px-5 py-4">Guardian</th>
             <th scope="col" class="px-5 py-4">Contact</th>
@@ -542,6 +560,12 @@
             <td class="px-5 py-5">
               <span class="inline-flex rounded-full border border-slate/10 bg-white px-2.5 py-1 text-xs font-medium capitalize text-slate/70">
                 {{.Gender}}
+              </span>
+            </td>
+
+            <td class="px-5 py-5">
+              <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-2.5 py-1 text-xs font-medium text-slate/70">
+                {{practiceTypeLabel .PracticeType}}
               </span>
             </td>
 
@@ -605,7 +629,7 @@
 
           {{else}}
           <tr>
-            <td colspan="8" class="px-6 py-16">
+              <td colspan="9" class="px-6 py-16">
               <div class="flex flex-col items-center justify-center text-center">
                 <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-cloud text-slate/45">
                   <svg
@@ -693,6 +717,16 @@
 
               <dd class="mt-1 truncate font-medium text-obsidian">
                 {{.PassportNumber}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-medium uppercase tracking-[0.12em] text-slate/45">
+                Practice type
+              </dt>
+
+              <dd class="mt-1 font-medium text-obsidian">
+                {{practiceTypeLabel .PracticeType}}
               </dd>
             </div>
 
@@ -928,6 +962,16 @@
 
               <dd class="mt-2 text-sm font-medium capitalize text-obsidian">
                 {{.SelectedAdmission.Gender}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Practice type
+              </dt>
+
+              <dd class="mt-2 text-sm font-medium text-obsidian">
+                {{practiceTypeLabel .SelectedAdmission.PracticeType}}
               </dd>
             </div>
 
@@ -1222,6 +1266,26 @@
 
               <option value="female" {{if eq .SelectedAdmission.Gender "female"}}selected{{end}}>
                 Female
+              </option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <label for="edit-practice-type" class="block text-sm font-semibold text-obsidian">
+              Practice type
+            </label>
+
+            <select
+              id="edit-practice-type"
+              name="practice_type"
+              required
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            >
+              <option value="group_practice" {{if eq .SelectedAdmission.PracticeType "group_practice"}}selected{{end}}>
+                Group practice
+              </option>
+              <option value="one_to_one_practice" {{if eq .SelectedAdmission.PracticeType "one_to_one_practice"}}selected{{end}}>
+                One to one practice
               </option>
             </select>
           </div>

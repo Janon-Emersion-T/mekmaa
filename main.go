@@ -94,6 +94,7 @@ type Admission struct {
 	FullName                 string
 	DateOfBirth              string
 	Gender                   string
+	PracticeType             string
 	Address                  string
 	PassportNumber           string
 	School                   string
@@ -158,6 +159,14 @@ type PricingSettings struct {
 	PeakEndHour   string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+type AdmissionPricing struct {
+	ID           int64
+	PracticeType string
+	Price        float64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type AttendanceRecord struct {
@@ -239,6 +248,7 @@ type TemplateData struct {
 	DraftSchedule     *SpaceSchedule
 	ScheduleMode      string
 	Pricings          []PricingRule
+	AdmissionPricings []AdmissionPricing
 	PricingSettings   *PricingSettings
 	SelectedPricing   *PricingRule
 	PricingMode       string
@@ -389,6 +399,7 @@ func main() {
 	mux.Handle("/admin/pricing/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePricingHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deletePricingHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/settings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePricingSettingsHandler), "pricing.manage")))
+	mux.Handle("/admin/pricing/admissions/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAdmissionPricingHandler), "pricing.manage")))
 
 	log.Printf("server listening on %s", addr)
 	if err := http.ListenAndServe(addr, app.securityHeaders(mux)); err != nil {
@@ -1117,11 +1128,18 @@ func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	admissionPricings, err := a.listAdmissionPricings()
+	if err != nil {
+		log.Printf("list admission pricing: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Pricing"
 	data.Description = "Manage booking pricing."
 	data.Pricings = pricings
+	data.AdmissionPricings = admissionPricings
 	data.PricingSettings = settings
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
@@ -1170,6 +1188,45 @@ func (a *App) updatePricingSettingsHandler(w http.ResponseWriter, r *http.Reques
 
 	a.setFlash(w, "Pricing settings updated.")
 	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
+func (a *App) saveAdmissionPricingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	groupPrice, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("group_practice_price")), 64)
+	if err != nil || groupPrice < 0 {
+		http.Error(w, "valid group practice price is required", http.StatusBadRequest)
+		return
+	}
+	oneToOnePrice, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("one_to_one_practice_price")), 64)
+	if err != nil || oneToOnePrice < 0 {
+		http.Error(w, "valid one to one practice price is required", http.StatusBadRequest)
+		return
+	}
+
+	pricings := []AdmissionPricing{
+		{PracticeType: "group_practice", Price: groupPrice},
+		{PracticeType: "one_to_one_practice", Price: oneToOnePrice},
+	}
+	if err := a.saveAdmissionPricings(pricings); err != nil {
+		log.Printf("save admission pricing: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Admission pricing updated.")
+	http.Redirect(w, r, "/admin/pricing#admission-pricing", http.StatusSeeOther)
 }
 
 func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
@@ -2678,7 +2735,7 @@ func (a *App) deleteSessionsForUser(userID int64) error {
 
 func (a *App) listAdmissions() ([]Admission, error) {
 	rows, err := a.db.Query(`
-		SELECT id, student_id, full_name, date_of_birth, gender, address, passport_number, school,
+		SELECT id, student_id, full_name, date_of_birth, gender, practice_type, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 		       medical_information, created_at
 		FROM admissions
@@ -2698,6 +2755,7 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			&admission.FullName,
 			&admission.DateOfBirth,
 			&admission.Gender,
+			&admission.PracticeType,
 			&admission.Address,
 			&admission.PassportNumber,
 			&admission.School,
@@ -2886,6 +2944,34 @@ func (a *App) listPricingRules() ([]PricingRule, error) {
 	return rules, rows.Err()
 }
 
+func (a *App) listAdmissionPricings() ([]AdmissionPricing, error) {
+	rows, err := a.db.Query(`
+		SELECT id, practice_type, price, created_at, updated_at
+		FROM admission_pricing
+		ORDER BY practice_type ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pricings []AdmissionPricing
+	for rows.Next() {
+		var pricing AdmissionPricing
+		if err := rows.Scan(
+			&pricing.ID,
+			&pricing.PracticeType,
+			&pricing.Price,
+			&pricing.CreatedAt,
+			&pricing.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		pricings = append(pricings, pricing)
+	}
+	return pricings, rows.Err()
+}
+
 func (a *App) getPricingSettings() (*PricingSettings, error) {
 	row := a.db.QueryRow(`
 		SELECT id, peak_start_hour, peak_end_hour, created_at, updated_at
@@ -3035,7 +3121,7 @@ func (a *App) schedulesForSlot(slotDate, slotHour string, excludeID int64) ([]Sp
 
 func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 	rows, err := a.db.Query(`
-		SELECT a.id, a.student_id, a.full_name, a.date_of_birth, a.gender, a.address, a.passport_number, a.school,
+		SELECT a.id, a.student_id, a.full_name, a.date_of_birth, a.gender, a.practice_type, a.address, a.passport_number, a.school,
 		       a.guardian_name, a.guardian_relationship, a.guardian_contact_number, a.guardian_alternative_contact_number,
 		       a.medical_information, a.created_at
 		FROM admissions a
@@ -3057,6 +3143,7 @@ func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 			&admission.FullName,
 			&admission.DateOfBirth,
 			&admission.Gender,
+			&admission.PracticeType,
 			&admission.Address,
 			&admission.PassportNumber,
 			&admission.School,
@@ -3077,15 +3164,16 @@ func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 func (a *App) createAdmission(admission Admission) error {
 	_, err := a.db.Exec(`
 		INSERT INTO admissions (
-			student_id, full_name, date_of_birth, gender, address, passport_number, school,
+			student_id, full_name, date_of_birth, gender, practice_type, address, passport_number, school,
 			guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 			medical_information, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		admission.StudentID,
 		admission.FullName,
 		admission.DateOfBirth,
 		admission.Gender,
+		admission.PracticeType,
 		admission.Address,
 		admission.PassportNumber,
 		admission.School,
@@ -3215,6 +3303,33 @@ func (a *App) createPricingRule(rule PricingRule) error {
 	return err
 }
 
+func (a *App) saveAdmissionPricings(pricings []AdmissionPricing) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, pricing := range pricings {
+		if _, err := tx.Exec(`
+			INSERT INTO admission_pricing (practice_type, price, created_at, updated_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(practice_type) DO UPDATE SET
+				price = excluded.price,
+				updated_at = excluded.updated_at
+		`,
+			pricing.PracticeType,
+			pricing.Price,
+			time.Now().UTC(),
+			time.Now().UTC(),
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 func (a *App) createPublicBookingRequest(schedule SpaceSchedule) error {
 	existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, 0)
 	if err != nil {
@@ -3258,7 +3373,7 @@ func (a *App) createPublicBookingRequest(schedule SpaceSchedule) error {
 func (a *App) updateAdmission(admission Admission) error {
 	_, err := a.db.Exec(`
 		UPDATE admissions
-		SET student_id = ?, full_name = ?, date_of_birth = ?, gender = ?, address = ?, passport_number = ?, school = ?,
+		SET student_id = ?, full_name = ?, date_of_birth = ?, gender = ?, practice_type = ?, address = ?, passport_number = ?, school = ?,
 		    guardian_name = ?, guardian_relationship = ?, guardian_contact_number = ?, guardian_alternative_contact_number = ?,
 		    medical_information = ?, updated_at = ?
 		WHERE id = ?
@@ -3267,6 +3382,7 @@ func (a *App) updateAdmission(admission Admission) error {
 		admission.FullName,
 		admission.DateOfBirth,
 		admission.Gender,
+		admission.PracticeType,
 		admission.Address,
 		admission.PassportNumber,
 		admission.School,
@@ -3409,7 +3525,7 @@ func (a *App) deletePricingRule(pricingID int64) error {
 
 func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 	row := a.db.QueryRow(`
-		SELECT id, student_id, full_name, date_of_birth, gender, address, passport_number, school,
+		SELECT id, student_id, full_name, date_of_birth, gender, practice_type, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 		       medical_information, created_at
 		FROM admissions
@@ -3423,6 +3539,7 @@ func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 		&admission.FullName,
 		&admission.DateOfBirth,
 		&admission.Gender,
+		&admission.PracticeType,
 		&admission.Address,
 		&admission.PassportNumber,
 		&admission.School,
@@ -3612,6 +3729,7 @@ func runMigrations(db *sql.DB) error {
 			full_name TEXT NOT NULL,
 			date_of_birth TEXT NOT NULL,
 			gender TEXT NOT NULL,
+			practice_type TEXT NOT NULL DEFAULT 'group_practice',
 			address TEXT NOT NULL,
 			passport_number TEXT NOT NULL,
 			school TEXT NOT NULL,
@@ -3668,6 +3786,13 @@ func runMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS admission_pricing (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			practice_type TEXT NOT NULL UNIQUE,
+			price REAL NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS space_schedules (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			slot_date TEXT NOT NULL,
@@ -3697,8 +3822,10 @@ func runMigrations(db *sql.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_group_student_date ON attendance_records(group_id, admission_id, attendance_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_attendance_group_date ON attendance_records(group_id, attendance_date)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_rules_option ON pricing_rules(activity, quantity)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_admission_pricing_type ON admission_pricing(practice_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
+		`ALTER TABLE admissions ADD COLUMN practice_type TEXT NOT NULL DEFAULT 'group_practice'`,
 	}
 
 	for _, stmt := range statements {
@@ -3707,6 +3834,9 @@ func runMigrations(db *sql.DB) error {
 		}
 	}
 	if _, err := db.Exec(`UPDATE admissions SET student_id = 'STD-' || printf('%05d', id) WHERE student_id IS NULL OR TRIM(student_id) = ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE admissions SET practice_type = 'group_practice' WHERE practice_type IS NULL OR TRIM(practice_type) = ''`); err != nil {
 		return err
 	}
 
@@ -3749,6 +3879,9 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 	if err := seedPricingRules(db); err != nil {
+		return err
+	}
+	if err := seedAdmissionPricing(db); err != nil {
 		return err
 	}
 	if err := seedPricingSettings(db); err != nil {
@@ -3823,6 +3956,23 @@ func seedPricingRules(db *sql.DB) error {
 			)
 			VALUES (?, ?, 0, 0, 0, 0, ?, ?)
 		`, option.Activity, option.Quantity, time.Now().UTC(), time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func seedAdmissionPricing(db *sql.DB) error {
+	now := time.Now().UTC()
+	defaults := []AdmissionPricing{
+		{PracticeType: "group_practice", Price: 0},
+		{PracticeType: "one_to_one_practice", Price: 0},
+	}
+	for _, pricing := range defaults {
+		if _, err := db.Exec(`
+			INSERT OR IGNORE INTO admission_pricing (practice_type, price, created_at, updated_at)
+			VALUES (?, ?, ?, ?)
+		`, pricing.PracticeType, pricing.Price, now, now); err != nil {
 			return err
 		}
 	}
@@ -4196,7 +4346,7 @@ func normalizeAdmissionIDs(values []string) []int64 {
 }
 
 func bookingActivities() []string {
-	return []string{"training", "full_indoor_cricket", "futsal", "badminton", "table_tennis", "cricket_net"}
+	return []string{"training", "full_indoor_cricket", "futsal", "badminton", "table_tennis", "cricket_net", "tennis"}
 }
 
 func sportsCatalog() []SportPage {
@@ -4297,6 +4447,7 @@ func admissionFromRequest(r *http.Request) Admission {
 		FullName:                 strings.TrimSpace(r.FormValue("full_name")),
 		DateOfBirth:              strings.TrimSpace(r.FormValue("date_of_birth")),
 		Gender:                   strings.ToLower(strings.TrimSpace(r.FormValue("gender"))),
+		PracticeType:             strings.ToLower(strings.TrimSpace(r.FormValue("practice_type"))),
 		Address:                  strings.TrimSpace(r.FormValue("address")),
 		PassportNumber:           strings.TrimSpace(r.FormValue("passport_number")),
 		School:                   strings.TrimSpace(r.FormValue("school")),
@@ -4397,6 +4548,8 @@ func validateAdmission(admission Admission) error {
 		return errors.New("date of birth is required")
 	case admission.Gender != "male" && admission.Gender != "female":
 		return errors.New("gender is required")
+	case admission.PracticeType != "group_practice" && admission.PracticeType != "one_to_one_practice":
+		return errors.New("practice type is required")
 	case admission.Address == "":
 		return errors.New("address is required")
 	case admission.PassportNumber == "":
@@ -4488,7 +4641,7 @@ func validateSpaceScheduleInput(schedule SpaceSchedule) error {
 		if schedule.Quantity != 1 {
 			return errors.New("training quantity must be 1")
 		}
-	case "full_indoor_cricket", "futsal", "badminton":
+	case "full_indoor_cricket", "futsal", "badminton", "tennis":
 		if schedule.Quantity != 1 {
 			return errors.New("selected activity supports only quantity 1")
 		}
@@ -4516,6 +4669,7 @@ func validateSpaceScheduleSlot(existing []SpaceSchedule, candidate SpaceSchedule
 	var badminton int
 	var tableTennis int
 	var cricketNets int
+	var tennis int
 
 	for _, schedule := range schedules {
 		switch schedule.Activity {
@@ -4531,32 +4685,37 @@ func validateSpaceScheduleSlot(existing []SpaceSchedule, candidate SpaceSchedule
 			tableTennis += schedule.Quantity
 		case "cricket_net":
 			cricketNets += schedule.Quantity
+		case "tennis":
+			tennis += schedule.Quantity
 		}
 	}
 
 	if trainings > 0 {
-		if len(schedules) > 1 || fullIndoorCricket > 0 || futsal > 0 || badminton > 0 || tableTennis > 0 || cricketNets > 0 {
+		if len(schedules) > 1 || fullIndoorCricket > 0 || futsal > 0 || badminton > 0 || tableTennis > 0 || cricketNets > 0 || tennis > 0 {
 			return errors.New("training time blocks the full slot")
 		}
 		return nil
 	}
 
-	if fullIndoorCricket == 1 && futsal == 0 && badminton == 0 && tableTennis == 0 && cricketNets == 0 {
+	if fullIndoorCricket == 1 && futsal == 0 && badminton == 0 && tableTennis == 0 && cricketNets == 0 && tennis == 0 {
 		return nil
 	}
-	if futsal == 1 && fullIndoorCricket == 0 && badminton == 0 && tableTennis == 0 && cricketNets == 0 {
+	if futsal == 1 && fullIndoorCricket == 0 && badminton == 0 && tableTennis == 0 && cricketNets == 0 && tennis == 0 {
 		return nil
 	}
-	if badminton == 1 && cricketNets == 1 && fullIndoorCricket == 0 && futsal == 0 && tableTennis == 0 {
+	if badminton == 1 && cricketNets == 1 && fullIndoorCricket == 0 && futsal == 0 && tableTennis == 0 && tennis == 0 {
 		return nil
 	}
-	if tableTennis >= 1 && tableTennis <= 2 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && cricketNets == 0 {
+	if tableTennis >= 1 && tableTennis <= 2 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && cricketNets == 0 && tennis == 0 {
 		return nil
 	}
-	if badminton == 1 && tableTennis == 1 && fullIndoorCricket == 0 && futsal == 0 && cricketNets == 0 {
+	if badminton == 1 && tableTennis == 1 && fullIndoorCricket == 0 && futsal == 0 && cricketNets == 0 && tennis == 0 {
 		return nil
 	}
-	if cricketNets == 3 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && tableTennis == 0 {
+	if cricketNets == 3 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && tableTennis == 0 && tennis == 0 {
+		return nil
+	}
+	if tennis == 1 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && tableTennis == 0 && cricketNets == 0 {
 		return nil
 	}
 
@@ -4572,6 +4731,7 @@ func bookingOptionCatalog() []BookingOption {
 		{Activity: "table_tennis", Quantity: 2, Label: "Table Tennis x2"},
 		{Activity: "cricket_net", Quantity: 1, Label: "Cricket Net x1"},
 		{Activity: "cricket_net", Quantity: 3, Label: "Cricket Nets x3"},
+		{Activity: "tennis", Quantity: 1, Label: "Tennis"},
 	}
 }
 
@@ -4731,6 +4891,8 @@ func scheduleSummary(schedule SpaceSchedule) string {
 			return fmt.Sprintf("Cricket Nets x%d", schedule.Quantity)
 		}
 		return "Cricket Net"
+	case "tennis":
+		return "Tennis"
 	default:
 		return schedule.Activity
 	}
@@ -4838,6 +5000,17 @@ func money(value float64) string {
 	return fmt.Sprintf("LKR %.2f", value)
 }
 
+func practiceTypeLabel(value string) string {
+	switch value {
+	case "group_practice":
+		return "Group practice"
+	case "one_to_one_practice":
+		return "One to one practice"
+	default:
+		return "Unknown"
+	}
+}
+
 func scheduleToneClasses(schedule SpaceSchedule) string {
 	switch schedule.Activity {
 	case "training":
@@ -4852,6 +5025,8 @@ func scheduleToneClasses(schedule SpaceSchedule) string {
 		return "border-cyan-200 bg-cyan-50 text-cyan-900"
 	case "cricket_net":
 		return "border-lime-200 bg-lime-50 text-lime-900"
+	case "tennis":
+		return "border-emerald-200 bg-emerald-50 text-emerald-900"
 	default:
 		return "border-slate/10 bg-white text-slate"
 	}
@@ -4871,6 +5046,8 @@ func scheduleBadgeClasses(schedule SpaceSchedule) string {
 		return "bg-cyan-100 text-cyan-800"
 	case "cricket_net":
 		return "bg-lime-100 text-lime-800"
+	case "tennis":
+		return "bg-emerald-100 text-emerald-800"
 	default:
 		return "bg-slate-100 text-slate-800"
 	}
@@ -4935,6 +5112,7 @@ func isIgnorableMigrationError(err error, stmt string) bool {
 	lowerErr := strings.ToLower(err.Error())
 	return (strings.Contains(stmt, "ALTER TABLE users ADD COLUMN email_verified_at") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN student_id") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN practice_type") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_name") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_email") ||
@@ -5030,6 +5208,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"pricingForOption":         pricingForOption,
 		"pricingForSchedule":       pricingForSchedule,
 		"pricingTierLabel":         pricingTierLabel,
+		"practiceTypeLabel":        practiceTypeLabel,
 		"money":                    money,
 		"scheduleToneClasses":      scheduleToneClasses,
 		"scheduleBadgeClasses":     scheduleBadgeClasses,

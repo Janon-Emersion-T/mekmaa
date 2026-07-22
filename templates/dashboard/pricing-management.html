@@ -42,6 +42,34 @@
       </div>
       {{end}}
 
+      <div id="admission-pricing" class="mt-6 rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-obsidian">Admission pricing</h3>
+            <p class="mt-2 text-sm text-slate/68">Set the admission fee for each practice format. These prices are separate from hourly sports booking rates.</p>
+          </div>
+          <div class="rounded-2xl bg-white px-4 py-3 text-right shadow-sm">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Types</p>
+            <p class="mt-1 text-2xl font-semibold text-obsidian">{{len .AdmissionPricings}}</p>
+          </div>
+        </div>
+
+        <form action="/admin/pricing/admissions/save" method="post" class="mt-5 grid gap-4 md:grid-cols-2">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <label class="grid gap-2">
+            <span class="text-sm font-medium text-obsidian">Group practice</span>
+            <input type="number" step="0.01" min="0" name="group_practice_price" value="{{range .AdmissionPricings}}{{if eq .PracticeType "group_practice"}}{{printf "%.2f" .Price}}{{end}}{{end}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
+          <label class="grid gap-2">
+            <span class="text-sm font-medium text-obsidian">One to one practice</span>
+            <input type="number" step="0.01" min="0" name="one_to_one_practice_price" value="{{range .AdmissionPricings}}{{if eq .PracticeType "one_to_one_practice"}}{{printf "%.2f" .Price}}{{end}}{{end}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
+          <div class="md:col-span-2">
+            <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save admission pricing</button>
+          </div>
+        </form>
+      </div>
+
       {{if eq .PricingMode "new"}}
       <div id="pricing-form" class="mt-6">
         <div class="flex items-center justify-between gap-3">
@@ -57,6 +85,7 @@
             <option value="badminton">Badminton</option>
             <option value="table_tennis">Table Tennis</option>
             <option value="cricket_net">Cricket Net</option>
+            <option value="tennis">Tennis</option>
           </select>
           <input type="number" name="quantity" min="1" max="3" placeholder="Quantity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
           <input type="number" step="0.01" min="0" name="weekday_offpeak_price" placeholder="Weekday off-peak" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
@@ -120,6 +149,7 @@
               <option value="badminton" {{if eq .SelectedPricing.Activity "badminton"}}selected{{end}}>Badminton</option>
               <option value="table_tennis" {{if eq .SelectedPricing.Activity "table_tennis"}}selected{{end}}>Table Tennis</option>
               <option value="cricket_net" {{if eq .SelectedPricing.Activity "cricket_net"}}selected{{end}}>Cricket Net</option>
+              <option value="tennis" {{if eq .SelectedPricing.Activity "tennis"}}selected{{end}}>Tennis</option>
             </select>
           </label>
           <label class="grid gap-2">
