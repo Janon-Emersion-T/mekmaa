@@ -107,7 +107,7 @@
     {{else}}
     {{template "public-header" .}}
 
-    <main class="mx-auto max-w-6xl px-6 pb-16 lg:px-8">
+    <main class="mx-auto max-w-6xl px-6 {{if eq .CurrentPath "/"}}pb-0{{else}}pb-16{{end}} lg:px-8">
       {{if .Flash}}
       <div class="mb-6 rounded-2xl border border-aqua/30 bg-white/85 px-5 py-4 text-sm shadow-sm">{{.Flash}}</div>
       {{end}}
