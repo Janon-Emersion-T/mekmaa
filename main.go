@@ -92,6 +92,7 @@ type Admission struct {
 	ID                       int64
 	StudentID                string
 	FullName                 string
+	AdmissionDate            string
 	DateOfBirth              string
 	Gender                   string
 	PracticeType             string
@@ -2735,11 +2736,11 @@ func (a *App) deleteSessionsForUser(userID int64) error {
 
 func (a *App) listAdmissions() ([]Admission, error) {
 	rows, err := a.db.Query(`
-		SELECT id, student_id, full_name, date_of_birth, gender, practice_type, address, passport_number, school,
+		SELECT id, student_id, full_name, admission_date, date_of_birth, gender, practice_type, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 		       medical_information, created_at
 		FROM admissions
-		ORDER BY created_at DESC, id DESC
+		ORDER BY admission_date DESC, created_at DESC, id DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -2753,6 +2754,7 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			&admission.ID,
 			&admission.StudentID,
 			&admission.FullName,
+			&admission.AdmissionDate,
 			&admission.DateOfBirth,
 			&admission.Gender,
 			&admission.PracticeType,
@@ -3121,7 +3123,7 @@ func (a *App) schedulesForSlot(slotDate, slotHour string, excludeID int64) ([]Sp
 
 func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 	rows, err := a.db.Query(`
-		SELECT a.id, a.student_id, a.full_name, a.date_of_birth, a.gender, a.practice_type, a.address, a.passport_number, a.school,
+		SELECT a.id, a.student_id, a.full_name, a.admission_date, a.date_of_birth, a.gender, a.practice_type, a.address, a.passport_number, a.school,
 		       a.guardian_name, a.guardian_relationship, a.guardian_contact_number, a.guardian_alternative_contact_number,
 		       a.medical_information, a.created_at
 		FROM admissions a
@@ -3141,6 +3143,7 @@ func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 			&admission.ID,
 			&admission.StudentID,
 			&admission.FullName,
+			&admission.AdmissionDate,
 			&admission.DateOfBirth,
 			&admission.Gender,
 			&admission.PracticeType,
@@ -3164,13 +3167,14 @@ func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 func (a *App) createAdmission(admission Admission) error {
 	_, err := a.db.Exec(`
 		INSERT INTO admissions (
-			student_id, full_name, date_of_birth, gender, practice_type, address, passport_number, school,
+			student_id, full_name, admission_date, date_of_birth, gender, practice_type, address, passport_number, school,
 			guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 			medical_information, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		admission.StudentID,
 		admission.FullName,
+		admission.AdmissionDate,
 		admission.DateOfBirth,
 		admission.Gender,
 		admission.PracticeType,
@@ -3373,13 +3377,14 @@ func (a *App) createPublicBookingRequest(schedule SpaceSchedule) error {
 func (a *App) updateAdmission(admission Admission) error {
 	_, err := a.db.Exec(`
 		UPDATE admissions
-		SET student_id = ?, full_name = ?, date_of_birth = ?, gender = ?, practice_type = ?, address = ?, passport_number = ?, school = ?,
+		SET student_id = ?, full_name = ?, admission_date = ?, date_of_birth = ?, gender = ?, practice_type = ?, address = ?, passport_number = ?, school = ?,
 		    guardian_name = ?, guardian_relationship = ?, guardian_contact_number = ?, guardian_alternative_contact_number = ?,
 		    medical_information = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		admission.StudentID,
 		admission.FullName,
+		admission.AdmissionDate,
 		admission.DateOfBirth,
 		admission.Gender,
 		admission.PracticeType,
@@ -3525,7 +3530,7 @@ func (a *App) deletePricingRule(pricingID int64) error {
 
 func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 	row := a.db.QueryRow(`
-		SELECT id, student_id, full_name, date_of_birth, gender, practice_type, address, passport_number, school,
+		SELECT id, student_id, full_name, admission_date, date_of_birth, gender, practice_type, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
 		       medical_information, created_at
 		FROM admissions
@@ -3537,6 +3542,7 @@ func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 		&admission.ID,
 		&admission.StudentID,
 		&admission.FullName,
+		&admission.AdmissionDate,
 		&admission.DateOfBirth,
 		&admission.Gender,
 		&admission.PracticeType,
@@ -3727,6 +3733,7 @@ func runMigrations(db *sql.DB) error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			student_id TEXT NOT NULL UNIQUE,
 			full_name TEXT NOT NULL,
+			admission_date TEXT NOT NULL,
 			date_of_birth TEXT NOT NULL,
 			gender TEXT NOT NULL,
 			practice_type TEXT NOT NULL DEFAULT 'group_practice',
@@ -3815,6 +3822,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_admissions_admission_date ON admissions(admission_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_admissions_created_at ON admissions(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
@@ -3825,6 +3833,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_admission_pricing_type ON admission_pricing(practice_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
+		`ALTER TABLE admissions ADD COLUMN admission_date TEXT`,
 		`ALTER TABLE admissions ADD COLUMN practice_type TEXT NOT NULL DEFAULT 'group_practice'`,
 	}
 
@@ -3834,6 +3843,9 @@ func runMigrations(db *sql.DB) error {
 		}
 	}
 	if _, err := db.Exec(`UPDATE admissions SET student_id = 'STD-' || printf('%05d', id) WHERE student_id IS NULL OR TRIM(student_id) = ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE admissions SET admission_date = DATE(created_at) WHERE admission_date IS NULL OR TRIM(admission_date) = ''`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`UPDATE admissions SET practice_type = 'group_practice' WHERE practice_type IS NULL OR TRIM(practice_type) = ''`); err != nil {
@@ -4445,6 +4457,7 @@ func admissionFromRequest(r *http.Request) Admission {
 	return Admission{
 		StudentID:                strings.ToUpper(strings.TrimSpace(r.FormValue("student_id"))),
 		FullName:                 strings.TrimSpace(r.FormValue("full_name")),
+		AdmissionDate:            strings.TrimSpace(r.FormValue("admission_date")),
 		DateOfBirth:              strings.TrimSpace(r.FormValue("date_of_birth")),
 		Gender:                   strings.ToLower(strings.TrimSpace(r.FormValue("gender"))),
 		PracticeType:             strings.ToLower(strings.TrimSpace(r.FormValue("practice_type"))),
@@ -4544,6 +4557,8 @@ func validateAdmission(admission Admission) error {
 		return errors.New("student id is required")
 	case admission.FullName == "":
 		return errors.New("full name is required")
+	case admission.AdmissionDate == "":
+		return errors.New("admission date is required")
 	case admission.DateOfBirth == "":
 		return errors.New("date of birth is required")
 	case admission.Gender != "male" && admission.Gender != "female":
@@ -5130,6 +5145,7 @@ func isIgnorableMigrationError(err error, stmt string) bool {
 	lowerErr := strings.ToLower(err.Error())
 	return (strings.Contains(stmt, "ALTER TABLE users ADD COLUMN email_verified_at") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN student_id") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN admission_date") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN practice_type") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_name") ||
