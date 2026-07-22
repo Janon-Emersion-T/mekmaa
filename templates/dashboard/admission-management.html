@@ -217,6 +217,21 @@
           </div>
 
           <div class="space-y-2">
+            <label for="new-age" class="block text-sm font-semibold text-obsidian">
+              Age
+            </label>
+
+            <input
+              id="new-age"
+              type="text"
+              value="Auto calculated"
+              readonly
+              tabindex="-1"
+              class="h-12 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm font-medium text-slate shadow-sm outline-none"
+            />
+          </div>
+
+          <div class="space-y-2">
             <label for="new-gender" class="block text-sm font-semibold text-obsidian">
               Gender
             </label>
@@ -554,7 +569,10 @@
             </td>
 
             <td class="whitespace-nowrap px-5 py-5 text-slate/70">
-              {{.DateOfBirth}}
+              <div class="space-y-1">
+                <p>{{.DateOfBirth}}</p>
+                <p class="text-xs font-medium text-slate/50">Age {{admissionAge .DateOfBirth}}</p>
+              </div>
             </td>
 
             <td class="px-5 py-5">
@@ -707,6 +725,10 @@
 
               <dd class="mt-1 font-medium text-obsidian">
                 {{.DateOfBirth}}
+              </dd>
+
+              <dd class="mt-1 text-xs font-medium text-slate/50">
+                Age {{admissionAge .DateOfBirth}}
               </dd>
             </div>
 
@@ -952,6 +974,16 @@
 
               <dd class="mt-2 text-sm font-medium text-obsidian">
                 {{.SelectedAdmission.DateOfBirth}}
+              </dd>
+            </div>
+
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                Age
+              </dt>
+
+              <dd class="mt-2 text-sm font-medium text-obsidian">
+                {{admissionAge .SelectedAdmission.DateOfBirth}}
               </dd>
             </div>
 
@@ -1250,6 +1282,21 @@
           </div>
 
           <div class="space-y-2">
+            <label for="edit-age" class="block text-sm font-semibold text-obsidian">
+              Age
+            </label>
+
+            <input
+              id="edit-age"
+              type="text"
+              value="{{admissionAge .SelectedAdmission.DateOfBirth}}"
+              readonly
+              tabindex="-1"
+              class="h-12 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm font-medium text-slate shadow-sm outline-none"
+            />
+          </div>
+
+          <div class="space-y-2">
             <label for="edit-gender" class="block text-sm font-semibold text-obsidian">
               Gender
             </label>
@@ -1512,4 +1559,42 @@
   </section>
   {{end}}
 </section>
+<script>
+  (() => {
+    const calculateAge = (value) => {
+      if (!value) return "Auto calculated";
+
+      const birthDate = new Date(`${value}T00:00:00`);
+      if (Number.isNaN(birthDate.getTime())) return "Auto calculated";
+
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      const hasBirthdayPassed =
+        monthDiff > 0 || (monthDiff === 0 && today.getDate() >= birthDate.getDate());
+
+      if (!hasBirthdayPassed) age -= 1;
+      if (age < 0) return "Auto calculated";
+
+      return String(age);
+    };
+
+    const bindAgeField = (birthSelector, ageSelector) => {
+      const birthInput = document.querySelector(birthSelector);
+      const ageInput = document.querySelector(ageSelector);
+      if (!birthInput || !ageInput) return;
+
+      const syncAge = () => {
+        ageInput.value = calculateAge(birthInput.value);
+      };
+
+      syncAge();
+      birthInput.addEventListener("input", syncAge);
+      birthInput.addEventListener("change", syncAge);
+    };
+
+    bindAgeField("#new-date-of-birth", "#new-age");
+    bindAgeField("#edit-date-of-birth", "#edit-age");
+  })();
+</script>
 {{end}}

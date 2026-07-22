@@ -5011,6 +5011,24 @@ func practiceTypeLabel(value string) string {
 	}
 }
 
+func admissionAge(dateOfBirth string) string {
+	dob, err := time.Parse("2006-01-02", strings.TrimSpace(dateOfBirth))
+	if err != nil {
+		return "—"
+	}
+
+	now := time.Now()
+	age := now.Year() - dob.Year()
+	if now.Month() < dob.Month() || (now.Month() == dob.Month() && now.Day() < dob.Day()) {
+		age--
+	}
+	if age < 0 {
+		return "—"
+	}
+
+	return strconv.Itoa(age)
+}
+
 func scheduleToneClasses(schedule SpaceSchedule) string {
 	switch schedule.Activity {
 	case "training":
@@ -5198,6 +5216,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 			return containsPermission(user.Permissions, permission)
 		},
 		"admissionSelected":        admissionSelected,
+		"admissionAge":             admissionAge,
 		"attendanceCount":          attendanceCount,
 		"attendanceRecordFor":      attendanceRecordFor,
 		"attendanceStatus":         attendanceStatus,
