@@ -393,6 +393,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
+	mux.Handle("/event-images/", http.StripPrefix("/event-images/", http.FileServer(http.Dir("uploads/events"))))
 	mux.HandleFunc("/", app.homeHandler)
 	mux.HandleFunc("/about", app.aboutHandler)
 	mux.HandleFunc("/book", app.publicBookingHandler)
@@ -6025,7 +6026,8 @@ func uploadedEventImagePath(r *http.Request) (string, error) {
 		return "", errors.New("unable to process uploaded event image")
 	}
 
-	if err := os.MkdirAll("static/images/events", 0o755); err != nil {
+	if err := os.MkdirAll("uploads/events", 0o755); err != nil {
+		log.Printf("prepare event image storage: %v", err)
 		return "", errors.New("unable to prepare event image storage")
 	}
 
@@ -6034,7 +6036,7 @@ func uploadedEventImagePath(r *http.Request) (string, error) {
 		return "", errors.New("unable to generate event image filename")
 	}
 	filename := "event-" + strings.ToLower(token) + ext
-	targetPath := filepath.Join("static", "images", "events", filename)
+	targetPath := filepath.Join("uploads", "events", filename)
 
 	dst, err := os.Create(targetPath)
 	if err != nil {
@@ -6046,7 +6048,7 @@ func uploadedEventImagePath(r *http.Request) (string, error) {
 		return "", errors.New("unable to save uploaded event image")
 	}
 
-	return "/images/events/" + filename, nil
+	return "/event-images/" + filename, nil
 }
 
 func eventImageExtension(contentType string) (string, bool) {
@@ -6066,10 +6068,10 @@ func eventImageExtension(contentType string) (string, bool) {
 
 func deleteUploadedEventImage(imagePath string) {
 	trimmed := strings.TrimSpace(imagePath)
-	if trimmed == "" || !strings.HasPrefix(trimmed, "/images/events/") {
+	if trimmed == "" || !strings.HasPrefix(trimmed, "/event-images/") {
 		return
 	}
-	localPath := filepath.Join("static", "images", "events", filepath.Base(trimmed))
+	localPath := filepath.Join("uploads", "events", filepath.Base(trimmed))
 	if err := os.Remove(localPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Printf("delete event image %s: %v", localPath, err)
 	}
