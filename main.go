@@ -40,7 +40,7 @@ var (
 	passwordPattern = regexp.MustCompile(`^.{10,}$`)
 	otpPattern      = regexp.MustCompile(`^\d{6}$`)
 	allRoles        = []string{"superadmin", "admin", "editor", "customer"}
-	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"}
+	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "events.manage"}
 )
 
 type contextKey string
@@ -104,7 +104,26 @@ type Admission struct {
 	GuardianContactNumber    string
 	GuardianAlternativePhone string
 	MedicalInformation       string
+	PaymentCollected         bool
+	PaymentCollectedAt       time.Time
+	AdmissionPaymentAmount   float64
+	FinanceTransactionID     int64
 	CreatedAt                time.Time
+}
+
+type FinanceTransaction struct {
+	ID             int64
+	ReceiptNumber  string
+	Category       string
+	ReferenceType  string
+	ReferenceID    int64
+	PersonName     string
+	Description    string
+	PaymentMethod  string
+	Amount         float64
+	RecordedByUser int64
+	RecordedAt     time.Time
+	CreatedAt      time.Time
 }
 
 type StudentGroup struct {
@@ -171,6 +190,22 @@ type AdmissionPricing struct {
 	UpdatedAt    time.Time
 }
 
+type Event struct {
+	ID        int64
+	Title     string
+	Category  string
+	EventDate string
+	StartTime string
+	EndTime   string
+	Venue     string
+	Summary   string
+	CTALabel  string
+	CTALink   string
+	Published bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type AttendanceRecord struct {
 	ID             int64
 	GroupID        int64
@@ -219,57 +254,63 @@ type FAQItem struct {
 }
 
 type TemplateData struct {
-	Title             string
-	Description       string
-	CurrentPath       string
-	User              *User
-	Viewer            *User
-	HideChrome        bool
-	CSRFToken         string
-	Flash             string
-	Error             string
-	Stats             []Stat
-	Features          []Feature
-	Users             []User
-	Available         []string
-	Roles             []Role
-	Permissions       []string
-	Admissions        []Admission
-	SelectedAdmission *Admission
-	AdmissionMode     string
-	StudentGroups     []StudentGroup
-	SelectedGroup     *StudentGroup
-	GroupMode         string
-	AttendanceRecords []AttendanceRecord
-	AttendanceDate    string
-	RecentDates       []string
-	Schedules         []SpaceSchedule
-	DaySchedules      []SpaceSchedule
-	PendingSchedules  []SpaceSchedule
-	SelectedSchedule  *SpaceSchedule
-	DraftSchedule     *SpaceSchedule
-	ScheduleMode      string
-	Pricings          []PricingRule
-	AdmissionPricings []AdmissionPricing
-	PricingSettings   *PricingSettings
-	SelectedPricing   *PricingRule
-	PricingMode       string
-	BookingSlots      []BookingSlotAvailability
-	WeekDays          []CalendarDay
-	BookingOptions    []BookingOption
-	Activities        []string
-	Hours             []string
-	CalendarDate      string
-	PreviousDate      string
-	NextDate          string
-	TodayDate         string
-	DailyStats        []Stat
-	PendingEmail      string
-	OTPCodeLength     int
-	ResendAction      string
-	SportsCatalog     []SportPage
-	SelectedSport     *SportPage
-	FAQItems          []FAQItem
+	Title               string
+	Description         string
+	CurrentPath         string
+	User                *User
+	Viewer              *User
+	HideChrome          bool
+	CSRFToken           string
+	Flash               string
+	Error               string
+	Stats               []Stat
+	Features            []Feature
+	Users               []User
+	Available           []string
+	Roles               []Role
+	Permissions         []string
+	Admissions          []Admission
+	SelectedAdmission   *Admission
+	AdmissionMode       string
+	StudentGroups       []StudentGroup
+	SelectedGroup       *StudentGroup
+	GroupMode           string
+	AttendanceRecords   []AttendanceRecord
+	AttendanceDate      string
+	RecentDates         []string
+	Schedules           []SpaceSchedule
+	DaySchedules        []SpaceSchedule
+	PendingSchedules    []SpaceSchedule
+	SelectedSchedule    *SpaceSchedule
+	DraftSchedule       *SpaceSchedule
+	ScheduleMode        string
+	Pricings            []PricingRule
+	AdmissionPricings   []AdmissionPricing
+	PricingSettings     *PricingSettings
+	SelectedPricing     *PricingRule
+	PricingMode         string
+	Events              []Event
+	SelectedEvent       *Event
+	EventMode           string
+	FinanceTransactions []FinanceTransaction
+	SelectedFinance     *FinanceTransaction
+	ReceiptAdmission    *Admission
+	BookingSlots        []BookingSlotAvailability
+	WeekDays            []CalendarDay
+	BookingOptions      []BookingOption
+	Activities          []string
+	Hours               []string
+	CalendarDate        string
+	PreviousDate        string
+	NextDate            string
+	TodayDate           string
+	DailyStats          []Stat
+	PendingEmail        string
+	OTPCodeLength       int
+	ResendAction        string
+	SportsCatalog       []SportPage
+	SelectedSport       *SportPage
+	FAQItems            []FAQItem
 }
 
 type Stat struct {
@@ -356,6 +397,7 @@ func main() {
 	mux.HandleFunc("/booking", app.legacyBookingRedirectHandler)
 	mux.HandleFunc("/contact", app.contactHandler)
 	mux.HandleFunc("/faq", app.faqHandler)
+	mux.HandleFunc("/events", app.eventsHandler)
 	mux.HandleFunc("/gallery", app.galleryHandler)
 	mux.HandleFunc("/coaching", app.coachingHandler)
 	mux.HandleFunc("/coaching/", app.legacyCoachingRedirectHandler)
@@ -402,6 +444,12 @@ func main() {
 	mux.Handle("/admin/pricing/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deletePricingHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/settings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePricingSettingsHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/admissions/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAdmissionPricingHandler), "pricing.manage")))
+	mux.Handle("/admin/events", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.eventManagementHandler), "events.manage")))
+	mux.Handle("/admin/events/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createEventHandler), "events.manage")))
+	mux.Handle("/admin/events/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEventHandler), "events.manage")))
+	mux.Handle("/admin/events/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEventHandler), "events.manage")))
+	mux.Handle("/admin/finance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.manage")))
+	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage")))
 
 	log.Printf("server listening on %s", addr)
 	if err := http.ListenAndServe(addr, app.securityHeaders(mux)); err != nil {
@@ -418,6 +466,13 @@ func (a *App) homeHandler(w http.ResponseWriter, r *http.Request) {
 	data := a.newTemplateData(w, r, nil)
 	data.Title = "Mekmaa | Indoor Sports and Coaching in Jaffna"
 	data.Description = "Book cricket nets, futsal, badminton, table tennis and tennis at Mekmaa in Jaffna, with coaching programmes for kids, teens and adults."
+	events, err := a.listPublishedEvents()
+	if err != nil {
+		log.Printf("list published events for home: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.Events = upcomingEvents(events, 3)
 
 	a.render(w, "home", data, http.StatusOK)
 }
@@ -507,7 +562,12 @@ func (a *App) sportDetailHandler(w http.ResponseWriter, r *http.Request) {
 	data.Description = sport.Summary
 	data.SportsCatalog = sportsCatalog()
 	data.SelectedSport = &sport
-	a.render(w, "sports", data, http.StatusOK)
+	tmplName, ok := sportTemplateNameBySlug(slug)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	a.render(w, tmplName, data, http.StatusOK)
 }
 
 func (a *App) coachingHandler(w http.ResponseWriter, r *http.Request) {
@@ -542,6 +602,24 @@ func (a *App) faqHandler(w http.ResponseWriter, r *http.Request) {
 	data.Description = "Answers to common questions about bookings, coaching and indoor sports at Mekmaa."
 	data.FAQItems = homeFAQItems()
 	a.render(w, "faq", data, http.StatusOK)
+}
+
+func (a *App) eventsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/events" {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.newTemplateData(w, r, nil)
+	data.Title = "Events at Mekmaa"
+	data.Description = "Explore upcoming sports, coaching and community events at Mekmaa."
+	events, err := a.listPublishedEvents()
+	if err != nil {
+		log.Printf("list published events: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.Events = events
+	a.render(w, "events", data, http.StatusOK)
 }
 
 func (a *App) privacyPolicyHandler(w http.ResponseWriter, r *http.Request) {
@@ -982,11 +1060,18 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	admissionPricings, err := a.listAdmissionPricings()
+	if err != nil {
+		log.Printf("list admission pricing for admissions: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Admissions Management"
 	data.Description = "Manage admissions."
 	data.Admissions = admissions
+	data.AdmissionPricings = admissionPricings
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -1002,6 +1087,51 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	a.render(w, "admission-management", data, http.StatusOK)
+}
+
+func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	financeTransactions, err := a.listFinanceTransactions()
+	if err != nil {
+		log.Printf("list finance transactions: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Finance"
+	data.Description = "Track collected payments and receipt history."
+	data.FinanceTransactions = financeTransactions
+	data.Stats = buildFinanceStats(financeTransactions)
+	a.render(w, "finance-management", data, http.StatusOK)
+}
+
+func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	transactionID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("transaction_id")), 10, 64)
+	if err != nil || transactionID <= 0 {
+		http.Error(w, "invalid transaction id", http.StatusBadRequest)
+		return
+	}
+
+	transaction, err := a.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		http.Error(w, "receipt not found", http.StatusNotFound)
+		return
+	}
+
+	var receiptAdmission *Admission
+	if transaction.ReferenceType == "admission" && transaction.ReferenceID > 0 {
+		receiptAdmission, _ = a.findAdmissionByID(transaction.ReferenceID)
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Admission Receipt"
+	data.Description = "Printable receipt."
+	data.HideChrome = true
+	data.SelectedFinance = transaction
+	data.ReceiptAdmission = receiptAdmission
+	a.render(w, "finance-receipt", data, http.StatusOK)
 }
 
 func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -1158,6 +1288,36 @@ func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.render(w, "pricing-management", data, http.StatusOK)
+}
+
+func (a *App) eventManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	events, err := a.listEvents()
+	if err != nil {
+		log.Printf("list events: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Events"
+	data.Description = "Manage public events."
+	data.Events = events
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "view", "edit":
+		data.EventMode = mode
+	}
+	if data.EventMode == "view" || data.EventMode == "edit" {
+		eventID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && eventID > 0 {
+			selectedEvent, err := a.findEventByID(eventID)
+			if err == nil {
+				data.SelectedEvent = selectedEvent
+			}
+		}
+	}
+	a.render(w, "events-management", data, http.StatusOK)
 }
 
 func (a *App) updatePricingSettingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -1414,6 +1574,100 @@ func (a *App) deletePricingHandler(w http.ResponseWriter, r *http.Request) {
 
 	a.setFlash(w, "Pricing deleted.")
 	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
+func (a *App) createEventHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	event := eventFromRequest(r)
+	if err := validateEvent(event); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createEvent(event); err != nil {
+		log.Printf("create event: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Event created.")
+	http.Redirect(w, r, "/admin/events", http.StatusSeeOther)
+}
+
+func (a *App) updateEventHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	eventID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("event_id")), 10, 64)
+	if err != nil || eventID <= 0 {
+		http.Error(w, "invalid event id", http.StatusBadRequest)
+		return
+	}
+
+	event := eventFromRequest(r)
+	event.ID = eventID
+	if err := validateEvent(event); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateEvent(event); err != nil {
+		log.Printf("update event: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Event updated.")
+	http.Redirect(w, r, "/admin/events", http.StatusSeeOther)
+}
+
+func (a *App) deleteEventHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	eventID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("event_id")), 10, 64)
+	if err != nil || eventID <= 0 {
+		http.Error(w, "invalid event id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteEvent(eventID); err != nil {
+		log.Printf("delete event: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Event deleted.")
+	http.Redirect(w, r, "/admin/events", http.StatusSeeOther)
 }
 
 func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, user *User) (TemplateData, error) {
@@ -1741,16 +1995,27 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	admission := admissionFromRequest(r)
+	collectPayment := r.FormValue("payment_collected") == "true"
 	if err := validateAdmission(admission); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.createAdmission(admission); err != nil {
+	currentUser, _ := a.currentUser(r.Context())
+	recordedByUserID := int64(0)
+	if currentUser != nil {
+		recordedByUserID = currentUser.ID
+	}
+	_, financeTransactionID, err := a.createAdmissionWithOptionalPayment(admission, collectPayment, recordedByUserID)
+	if err != nil {
 		log.Printf("create admission: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
+	if collectPayment && financeTransactionID > 0 {
+		http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(financeTransactionID, 10), http.StatusSeeOther)
+		return
+	}
 	a.setFlash(w, "Admission created.")
 	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
 }
@@ -1777,16 +2042,27 @@ func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 
 	admission := admissionFromRequest(r)
 	admission.ID = admissionID
+	collectPayment := r.FormValue("payment_collected") == "true"
 	if err := validateAdmission(admission); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.updateAdmission(admission); err != nil {
+	currentUser, _ := a.currentUser(r.Context())
+	recordedByUserID := int64(0)
+	if currentUser != nil {
+		recordedByUserID = currentUser.ID
+	}
+	financeTransactionID, err := a.updateAdmissionWithOptionalPayment(admission, collectPayment, recordedByUserID)
+	if err != nil {
 		log.Printf("update admission: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
+	if collectPayment && financeTransactionID > 0 {
+		http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(financeTransactionID, 10), http.StatusSeeOther)
+		return
+	}
 	a.setFlash(w, "Admission updated.")
 	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
 }
@@ -2749,7 +3025,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 	rows, err := a.db.Query(`
 		SELECT id, student_id, full_name, COALESCE(admission_date, ''), date_of_birth, gender, practice_type, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
-		       medical_information, created_at
+		       medical_information, COALESCE(payment_collected, 0), payment_collected_at, COALESCE(admission_payment_amount, 0),
+		       COALESCE(finance_transaction_id, 0), created_at
 		FROM admissions
 		ORDER BY admission_date DESC, created_at DESC, id DESC
 	`)
@@ -2761,6 +3038,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 	var admissions []Admission
 	for rows.Next() {
 		var admission Admission
+		var paymentCollected int
+		var paymentCollectedAt sql.NullTime
 		if err := rows.Scan(
 			&admission.ID,
 			&admission.StudentID,
@@ -2777,13 +3056,100 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			&admission.GuardianContactNumber,
 			&admission.GuardianAlternativePhone,
 			&admission.MedicalInformation,
+			&paymentCollected,
+			&paymentCollectedAt,
+			&admission.AdmissionPaymentAmount,
+			&admission.FinanceTransactionID,
 			&admission.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
+		admission.PaymentCollected = paymentCollected == 1
+		if paymentCollectedAt.Valid {
+			admission.PaymentCollectedAt = paymentCollectedAt.Time
+		}
 		admissions = append(admissions, admission)
 	}
 	return admissions, rows.Err()
+}
+
+func (a *App) listEvents() ([]Event, error) {
+	rows, err := a.db.Query(`
+		SELECT id, title, category, event_date, start_time, end_time, venue, summary,
+		       cta_label, cta_link, published, created_at, updated_at
+		FROM events
+		ORDER BY event_date ASC, start_time ASC, id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		var event Event
+		var published int
+		if err := rows.Scan(
+			&event.ID,
+			&event.Title,
+			&event.Category,
+			&event.EventDate,
+			&event.StartTime,
+			&event.EndTime,
+			&event.Venue,
+			&event.Summary,
+			&event.CTALabel,
+			&event.CTALink,
+			&published,
+			&event.CreatedAt,
+			&event.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		event.Published = published == 1
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+func (a *App) listPublishedEvents() ([]Event, error) {
+	rows, err := a.db.Query(`
+		SELECT id, title, category, event_date, start_time, end_time, venue, summary,
+		       cta_label, cta_link, published, created_at, updated_at
+		FROM events
+		WHERE published = 1
+		ORDER BY event_date ASC, start_time ASC, id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		var event Event
+		var published int
+		if err := rows.Scan(
+			&event.ID,
+			&event.Title,
+			&event.Category,
+			&event.EventDate,
+			&event.StartTime,
+			&event.EndTime,
+			&event.Venue,
+			&event.Summary,
+			&event.CTALabel,
+			&event.CTALink,
+			&published,
+			&event.CreatedAt,
+			&event.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		event.Published = published == 1
+		events = append(events, event)
+	}
+	return events, rows.Err()
 }
 
 func (a *App) listStudentGroups() ([]StudentGroup, error) {
@@ -2986,6 +3352,42 @@ func (a *App) listAdmissionPricings() ([]AdmissionPricing, error) {
 	return pricings, rows.Err()
 }
 
+func (a *App) listFinanceTransactions() ([]FinanceTransaction, error) {
+	rows, err := a.db.Query(`
+		SELECT id, receipt_number, category, reference_type, COALESCE(reference_id, 0), person_name, description,
+		       payment_method, amount, COALESCE(recorded_by_user_id, 0), recorded_at, created_at
+		FROM finance_transactions
+		ORDER BY recorded_at DESC, id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var transactions []FinanceTransaction
+	for rows.Next() {
+		var transaction FinanceTransaction
+		if err := rows.Scan(
+			&transaction.ID,
+			&transaction.ReceiptNumber,
+			&transaction.Category,
+			&transaction.ReferenceType,
+			&transaction.ReferenceID,
+			&transaction.PersonName,
+			&transaction.Description,
+			&transaction.PaymentMethod,
+			&transaction.Amount,
+			&transaction.RecordedByUser,
+			&transaction.RecordedAt,
+			&transaction.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		transactions = append(transactions, transaction)
+	}
+	return transactions, rows.Err()
+}
+
 func (a *App) getPricingSettings() (*PricingSettings, error) {
 	row := a.db.QueryRow(`
 		SELECT id, peak_start_hour, peak_end_hour, created_at, updated_at
@@ -3177,30 +3579,7 @@ func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 }
 
 func (a *App) createAdmission(admission Admission) error {
-	_, err := a.db.Exec(`
-		INSERT INTO admissions (
-			student_id, full_name, admission_date, date_of_birth, gender, practice_type, address, passport_number, school,
-			guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
-			medical_information, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		admission.StudentID,
-		admission.FullName,
-		admission.AdmissionDate,
-		admission.DateOfBirth,
-		admission.Gender,
-		admission.PracticeType,
-		admission.Address,
-		admission.PassportNumber,
-		admission.School,
-		admission.GuardianName,
-		admission.GuardianRelationship,
-		admission.GuardianContactNumber,
-		admission.GuardianAlternativePhone,
-		admission.MedicalInformation,
-		time.Now().UTC(),
-		time.Now().UTC(),
-	)
+	_, _, err := a.createAdmissionWithOptionalPayment(admission, false, 0)
 	return err
 }
 
@@ -3319,6 +3698,30 @@ func (a *App) createPricingRule(rule PricingRule) error {
 	return err
 }
 
+func (a *App) createEvent(event Event) error {
+	_, err := a.db.Exec(`
+		INSERT INTO events (
+			title, category, event_date, start_time, end_time, venue, summary,
+			cta_label, cta_link, published, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		event.Title,
+		event.Category,
+		event.EventDate,
+		event.StartTime,
+		event.EndTime,
+		event.Venue,
+		event.Summary,
+		event.CTALabel,
+		event.CTALink,
+		boolToInt(event.Published),
+		time.Now().UTC(),
+		time.Now().UTC(),
+	)
+	return err
+}
+
 func (a *App) saveAdmissionPricings(pricings []AdmissionPricing) error {
 	tx, err := a.db.Begin()
 	if err != nil {
@@ -3416,6 +3819,114 @@ func (a *App) updateAdmission(admission Admission) error {
 	return err
 }
 
+func (a *App) createAdmissionWithOptionalPayment(admission Admission, collectPayment bool, recordedByUserID int64) (int64, int64, error) {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	result, err := tx.Exec(`
+		INSERT INTO admissions (
+			student_id, full_name, admission_date, date_of_birth, gender, practice_type, address, passport_number, school,
+			guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
+			medical_information, payment_collected, payment_collected_at, admission_payment_amount, finance_transaction_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, 0, NULL, ?, ?)
+	`,
+		admission.StudentID,
+		admission.FullName,
+		admission.AdmissionDate,
+		admission.DateOfBirth,
+		admission.Gender,
+		admission.PracticeType,
+		admission.Address,
+		admission.PassportNumber,
+		admission.School,
+		admission.GuardianName,
+		admission.GuardianRelationship,
+		admission.GuardianContactNumber,
+		admission.GuardianAlternativePhone,
+		admission.MedicalInformation,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	admissionID, err := result.LastInsertId()
+	if err != nil {
+		return 0, 0, err
+	}
+	admission.ID = admissionID
+
+	var financeTransactionID int64
+	if collectPayment {
+		financeTransactionID, err = a.collectAdmissionPaymentTx(tx, admission, recordedByUserID)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	return admissionID, financeTransactionID, nil
+}
+
+func (a *App) updateAdmissionWithOptionalPayment(admission Admission, collectPayment bool, recordedByUserID int64) (int64, error) {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	existing, err := a.findAdmissionByIDTx(tx, admission.ID)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`
+		UPDATE admissions
+		SET student_id = ?, full_name = ?, admission_date = ?, date_of_birth = ?, gender = ?, practice_type = ?, address = ?, passport_number = ?, school = ?,
+		    guardian_name = ?, guardian_relationship = ?, guardian_contact_number = ?, guardian_alternative_contact_number = ?,
+		    medical_information = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		admission.StudentID,
+		admission.FullName,
+		admission.AdmissionDate,
+		admission.DateOfBirth,
+		admission.Gender,
+		admission.PracticeType,
+		admission.Address,
+		admission.PassportNumber,
+		admission.School,
+		admission.GuardianName,
+		admission.GuardianRelationship,
+		admission.GuardianContactNumber,
+		admission.GuardianAlternativePhone,
+		admission.MedicalInformation,
+		time.Now().UTC(),
+		admission.ID,
+	); err != nil {
+		return 0, err
+	}
+
+	var financeTransactionID int64
+	if collectPayment && !existing.PaymentCollected {
+		financeTransactionID, err = a.collectAdmissionPaymentTx(tx, admission, recordedByUserID)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return financeTransactionID, nil
+}
+
 func (a *App) updateStudentGroup(group StudentGroup, admissionIDs []int64) error {
 	tx, err := a.db.Begin()
 	if err != nil {
@@ -3488,6 +3999,29 @@ func (a *App) updatePricingRule(rule PricingRule) error {
 	return err
 }
 
+func (a *App) updateEvent(event Event) error {
+	_, err := a.db.Exec(`
+		UPDATE events
+		SET title = ?, category = ?, event_date = ?, start_time = ?, end_time = ?, venue = ?, summary = ?,
+		    cta_label = ?, cta_link = ?, published = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		event.Title,
+		event.Category,
+		event.EventDate,
+		event.StartTime,
+		event.EndTime,
+		event.Venue,
+		event.Summary,
+		event.CTALabel,
+		event.CTALink,
+		boolToInt(event.Published),
+		time.Now().UTC(),
+		event.ID,
+	)
+	return err
+}
+
 func (a *App) updatePricingSettings(settings PricingSettings) error {
 	_, err := a.db.Exec(`
 		UPDATE pricing_settings
@@ -3542,16 +4076,24 @@ func (a *App) deletePricingRule(pricingID int64) error {
 	return err
 }
 
+func (a *App) deleteEvent(eventID int64) error {
+	_, err := a.db.Exec(`DELETE FROM events WHERE id = ?`, eventID)
+	return err
+}
+
 func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 	row := a.db.QueryRow(`
 		SELECT id, student_id, full_name, COALESCE(admission_date, ''), date_of_birth, gender, practice_type, address, passport_number, school,
 		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
-		       medical_information, created_at
+		       medical_information, COALESCE(payment_collected, 0), payment_collected_at, COALESCE(admission_payment_amount, 0),
+		       COALESCE(finance_transaction_id, 0), created_at
 		FROM admissions
 		WHERE id = ?
 	`, admissionID)
 
 	var admission Admission
+	var paymentCollected int
+	var paymentCollectedAt sql.NullTime
 	if err := row.Scan(
 		&admission.ID,
 		&admission.StudentID,
@@ -3568,11 +4110,173 @@ func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 		&admission.GuardianContactNumber,
 		&admission.GuardianAlternativePhone,
 		&admission.MedicalInformation,
+		&paymentCollected,
+		&paymentCollectedAt,
+		&admission.AdmissionPaymentAmount,
+		&admission.FinanceTransactionID,
 		&admission.CreatedAt,
 	); err != nil {
 		return nil, err
 	}
+	admission.PaymentCollected = paymentCollected == 1
+	if paymentCollectedAt.Valid {
+		admission.PaymentCollectedAt = paymentCollectedAt.Time
+	}
 	return &admission, nil
+}
+
+func (a *App) findAdmissionByIDTx(tx *sql.Tx, admissionID int64) (*Admission, error) {
+	row := tx.QueryRow(`
+		SELECT id, student_id, full_name, COALESCE(admission_date, ''), date_of_birth, gender, practice_type, address, passport_number, school,
+		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
+		       medical_information, COALESCE(payment_collected, 0), payment_collected_at, COALESCE(admission_payment_amount, 0),
+		       COALESCE(finance_transaction_id, 0), created_at
+		FROM admissions
+		WHERE id = ?
+	`, admissionID)
+
+	var admission Admission
+	var paymentCollected int
+	var paymentCollectedAt sql.NullTime
+	if err := row.Scan(
+		&admission.ID,
+		&admission.StudentID,
+		&admission.FullName,
+		&admission.AdmissionDate,
+		&admission.DateOfBirth,
+		&admission.Gender,
+		&admission.PracticeType,
+		&admission.Address,
+		&admission.PassportNumber,
+		&admission.School,
+		&admission.GuardianName,
+		&admission.GuardianRelationship,
+		&admission.GuardianContactNumber,
+		&admission.GuardianAlternativePhone,
+		&admission.MedicalInformation,
+		&paymentCollected,
+		&paymentCollectedAt,
+		&admission.AdmissionPaymentAmount,
+		&admission.FinanceTransactionID,
+		&admission.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	admission.PaymentCollected = paymentCollected == 1
+	if paymentCollectedAt.Valid {
+		admission.PaymentCollectedAt = paymentCollectedAt.Time
+	}
+	return &admission, nil
+}
+
+func (a *App) findFinanceTransactionByID(transactionID int64) (*FinanceTransaction, error) {
+	row := a.db.QueryRow(`
+		SELECT id, receipt_number, category, reference_type, COALESCE(reference_id, 0), person_name, description,
+		       payment_method, amount, COALESCE(recorded_by_user_id, 0), recorded_at, created_at
+		FROM finance_transactions
+		WHERE id = ?
+	`, transactionID)
+
+	var transaction FinanceTransaction
+	if err := row.Scan(
+		&transaction.ID,
+		&transaction.ReceiptNumber,
+		&transaction.Category,
+		&transaction.ReferenceType,
+		&transaction.ReferenceID,
+		&transaction.PersonName,
+		&transaction.Description,
+		&transaction.PaymentMethod,
+		&transaction.Amount,
+		&transaction.RecordedByUser,
+		&transaction.RecordedAt,
+		&transaction.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &transaction, nil
+}
+
+func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recordedByUserID int64) (int64, error) {
+	pricing, err := admissionPricingByPracticeTypeTx(tx, admission.PracticeType)
+	if err != nil {
+		return 0, err
+	}
+
+	now := time.Now().UTC()
+	receiptNumber := fmt.Sprintf("ADM-%s-%06d", now.Format("20060102150405"), admission.ID)
+	description := fmt.Sprintf("Admission payment for %s", admission.FullName)
+	result, err := tx.Exec(`
+		INSERT INTO finance_transactions (
+			receipt_number, category, reference_type, reference_id, person_name, description,
+			payment_method, amount, recorded_by_user_id, recorded_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		receiptNumber,
+		"admission_payment",
+		"admission",
+		admission.ID,
+		admission.FullName,
+		description,
+		"cash",
+		pricing.Price,
+		recordedByUserID,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	transactionID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.Exec(`
+		UPDATE admissions
+		SET payment_collected = 1,
+		    payment_collected_at = ?,
+		    admission_payment_amount = ?,
+		    finance_transaction_id = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`,
+		now,
+		pricing.Price,
+		transactionID,
+		now,
+		admission.ID,
+	); err != nil {
+		return 0, err
+	}
+
+	return transactionID, nil
+}
+
+func admissionPricingByPracticeTypeTx(tx *sql.Tx, practiceType string) (*AdmissionPricing, error) {
+	row := tx.QueryRow(`
+		SELECT id, practice_type, price, COALESCE(monthly_fee, 0), created_at, updated_at
+		FROM admission_pricing
+		WHERE practice_type = ?
+		LIMIT 1
+	`, practiceType)
+
+	var pricing AdmissionPricing
+	if err := row.Scan(
+		&pricing.ID,
+		&pricing.PracticeType,
+		&pricing.Price,
+		&pricing.MonthlyFee,
+		&pricing.CreatedAt,
+		&pricing.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("admission pricing is not configured for the selected practice type")
+		}
+		return nil, err
+	}
+	return &pricing, nil
 }
 
 func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
@@ -3651,6 +4355,37 @@ func (a *App) findPricingRuleByID(pricingID int64) (*PricingRule, error) {
 		return nil, err
 	}
 	return &rule, nil
+}
+
+func (a *App) findEventByID(eventID int64) (*Event, error) {
+	row := a.db.QueryRow(`
+		SELECT id, title, category, event_date, start_time, end_time, venue, summary,
+		       cta_label, cta_link, published, created_at, updated_at
+		FROM events
+		WHERE id = ?
+	`, eventID)
+
+	var event Event
+	var published int
+	if err := row.Scan(
+		&event.ID,
+		&event.Title,
+		&event.Category,
+		&event.EventDate,
+		&event.StartTime,
+		&event.EndTime,
+		&event.Venue,
+		&event.Summary,
+		&event.CTALabel,
+		&event.CTALink,
+		&published,
+		&event.CreatedAt,
+		&event.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	event.Published = published == 1
+	return &event, nil
 }
 
 func (a *App) deleteSessionByToken(token string) error {
@@ -3759,6 +4494,10 @@ func runMigrations(db *sql.DB) error {
 			guardian_contact_number TEXT NOT NULL,
 			guardian_alternative_contact_number TEXT NOT NULL,
 			medical_information TEXT NOT NULL,
+			payment_collected INTEGER NOT NULL DEFAULT 0,
+			payment_collected_at DATETIME,
+			admission_payment_amount REAL NOT NULL DEFAULT 0,
+			finance_transaction_id INTEGER,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
@@ -3815,6 +4554,35 @@ func runMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS finance_transactions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			receipt_number TEXT NOT NULL UNIQUE,
+			category TEXT NOT NULL,
+			reference_type TEXT NOT NULL,
+			reference_id INTEGER,
+			person_name TEXT NOT NULL,
+			description TEXT NOT NULL,
+			payment_method TEXT NOT NULL DEFAULT 'cash',
+			amount REAL NOT NULL DEFAULT 0,
+			recorded_by_user_id INTEGER,
+			recorded_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			category TEXT NOT NULL,
+			event_date TEXT NOT NULL,
+			start_time TEXT NOT NULL,
+			end_time TEXT NOT NULL,
+			venue TEXT NOT NULL,
+			summary TEXT NOT NULL,
+			cta_label TEXT NOT NULL DEFAULT '',
+			cta_link TEXT NOT NULL DEFAULT '',
+			published INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS space_schedules (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			slot_date TEXT NOT NULL,
@@ -3845,10 +4613,18 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_attendance_group_date ON attendance_records(group_id, attendance_date)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_rules_option ON pricing_rules(activity, quantity)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_admission_pricing_type ON admission_pricing(practice_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_recorded_at ON finance_transactions(recorded_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_reference ON finance_transactions(reference_type, reference_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date, start_time)`,
+		`CREATE INDEX IF NOT EXISTS idx_events_published ON events(published, event_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
 		`ALTER TABLE admissions ADD COLUMN admission_date TEXT`,
 		`ALTER TABLE admissions ADD COLUMN practice_type TEXT NOT NULL DEFAULT 'group_practice'`,
+		`ALTER TABLE admissions ADD COLUMN payment_collected INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE admissions ADD COLUMN payment_collected_at DATETIME`,
+		`ALTER TABLE admissions ADD COLUMN admission_payment_amount REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE admissions ADD COLUMN finance_transaction_id INTEGER`,
 	}
 
 	for _, stmt := range statements {
@@ -3868,6 +4644,12 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 	if _, err := db.Exec(`UPDATE admissions SET practice_type = 'group_practice' WHERE practice_type IS NULL OR TRIM(practice_type) = ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE admissions SET payment_collected = 0 WHERE payment_collected IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE admissions SET admission_payment_amount = 0 WHERE admission_payment_amount IS NULL`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admissions_admission_date ON admissions(admission_date)`); err != nil {
@@ -3976,8 +4758,8 @@ func seedRoles(db *sql.DB) error {
 	rolePermissions := map[string][]string{
 		"customer":   {"dashboard.view"},
 		"editor":     {"dashboard.view", "editor.access"},
-		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"},
-		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage"},
+		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "events.manage"},
+		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "events.manage"},
 	}
 	for roleName, permissions := range rolePermissions {
 		roleID, err := queryRoleID(db, roleName)
@@ -4469,6 +5251,23 @@ func sportBySlug(slug string) (SportPage, bool) {
 	return SportPage{}, false
 }
 
+func sportTemplateNameBySlug(slug string) (string, bool) {
+	switch slug {
+	case "cricket":
+		return "sports-cricket", true
+	case "futsal":
+		return "sports-futsal", true
+	case "badminton":
+		return "sports-badminton", true
+	case "table-tennis":
+		return "sports-table-tennis", true
+	case "tennis":
+		return "sports-tennis", true
+	default:
+		return "", false
+	}
+}
+
 func homeFAQItems() []FAQItem {
 	return []FAQItem{
 		{Question: "How do I book a session?", Answer: "Use the booking page to review available slots and choose the activity that fits your session. If you need help with a special request, contact the team directly."},
@@ -4557,6 +5356,21 @@ func pricingRuleFromRequest(r *http.Request) (PricingRule, error) {
 		WeekendOffPeak: weekendOffPeak,
 		WeekendPeak:    weekendPeak,
 	}, nil
+}
+
+func eventFromRequest(r *http.Request) Event {
+	return Event{
+		Title:     strings.TrimSpace(r.FormValue("title")),
+		Category:  strings.TrimSpace(r.FormValue("category")),
+		EventDate: strings.TrimSpace(r.FormValue("event_date")),
+		StartTime: strings.TrimSpace(r.FormValue("start_time")),
+		EndTime:   strings.TrimSpace(r.FormValue("end_time")),
+		Venue:     strings.TrimSpace(r.FormValue("venue")),
+		Summary:   strings.TrimSpace(r.FormValue("summary")),
+		CTALabel:  strings.TrimSpace(r.FormValue("cta_label")),
+		CTALink:   strings.TrimSpace(r.FormValue("cta_link")),
+		Published: r.FormValue("published") == "true",
+	}
 }
 
 func prefillPublicBookingDraft(r *http.Request, viewer *User, calendarDate string) *SpaceSchedule {
@@ -4662,6 +5476,42 @@ func validatePricingSettings(settings PricingSettings) error {
 	}
 	if !start.Before(end) {
 		return errors.New("peak end hour must be after peak start hour")
+	}
+	return nil
+}
+
+func validateEvent(event Event) error {
+	switch {
+	case event.Title == "":
+		return errors.New("title is required")
+	case event.Category == "":
+		return errors.New("category is required")
+	case event.Venue == "":
+		return errors.New("venue is required")
+	case event.Summary == "":
+		return errors.New("summary is required")
+	}
+
+	eventDate, err := time.Parse("2006-01-02", event.EventDate)
+	if err != nil {
+		return errors.New("valid event date is required")
+	}
+	startTime, err := time.Parse("15:04", event.StartTime)
+	if err != nil {
+		return errors.New("valid start time is required")
+	}
+	endTime, err := time.Parse("15:04", event.EndTime)
+	if err != nil {
+		return errors.New("valid end time is required")
+	}
+	if !startTime.Before(endTime) {
+		return errors.New("end time must be after start time")
+	}
+	if eventDate.Year() < 2000 {
+		return errors.New("valid event date is required")
+	}
+	if (event.CTALabel == "") != (event.CTALink == "") {
+		return errors.New("cta label and cta link must both be provided")
 	}
 	return nil
 }
@@ -5049,6 +5899,72 @@ func money(value float64) string {
 	return fmt.Sprintf("LKR %.2f", value)
 }
 
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func financeCategoryLabel(value string) string {
+	switch value {
+	case "admission_payment":
+		return "Admission payment"
+	default:
+		return "Transaction"
+	}
+}
+
+func formatDateTime(value time.Time) string {
+	if value.IsZero() {
+		return "—"
+	}
+	return value.In(time.Local).Format("2006-01-02 15:04")
+}
+
+func formatCalendarDate(value string) string {
+	parsed, err := time.Parse("2006-01-02", strings.TrimSpace(value))
+	if err != nil {
+		return value
+	}
+	return parsed.Format("02 Jan 2006")
+}
+
+func formatClockTime(value string) string {
+	parsed, err := time.Parse("15:04", strings.TrimSpace(value))
+	if err != nil {
+		return value
+	}
+	return parsed.Format("3:04 PM")
+}
+
+func isPastEventDate(value string) bool {
+	parsed, err := time.Parse("2006-01-02", strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return parsed.Before(today)
+}
+
+func upcomingEvents(events []Event, limit int) []Event {
+	var filtered []Event
+	for _, event := range events {
+		if !isPastEventDate(event.EventDate) {
+			filtered = append(filtered, event)
+		}
+	}
+	if limit > 0 && len(filtered) > limit {
+		return filtered[:limit]
+	}
+	return filtered
+}
+
+func hasTime(value time.Time) bool {
+	return !value.IsZero()
+}
+
 func practiceTypeLabel(value string) string {
 	switch value {
 	case "group_practice":
@@ -5162,6 +6078,29 @@ func buildDailyBookingStats(schedules []SpaceSchedule, hours []string) []Stat {
 	}
 }
 
+func buildFinanceStats(transactions []FinanceTransaction) []Stat {
+	totalIncome := 0.0
+	admissionPayments := 0
+	todayCount := 0
+	today := time.Now().Format("2006-01-02")
+
+	for _, transaction := range transactions {
+		totalIncome += transaction.Amount
+		if transaction.Category == "admission_payment" {
+			admissionPayments++
+		}
+		if transaction.RecordedAt.Format("2006-01-02") == today {
+			todayCount++
+		}
+	}
+
+	return []Stat{
+		{Label: "Total income", Value: money(totalIncome)},
+		{Label: "Admission payments", Value: strconv.Itoa(admissionPayments)},
+		{Label: "Collected today", Value: strconv.Itoa(todayCount)},
+	}
+}
+
 func normalizeRoleName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
@@ -5181,6 +6120,10 @@ func isIgnorableMigrationError(err error, stmt string) bool {
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN student_id") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN admission_date") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN practice_type") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN payment_collected") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN payment_collected_at") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN admission_payment_amount") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN finance_transaction_id") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_name") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_email") ||
@@ -5278,6 +6221,12 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"pricingForSchedule":       pricingForSchedule,
 		"pricingTierLabel":         pricingTierLabel,
 		"practiceTypeLabel":        practiceTypeLabel,
+		"financeCategoryLabel":     financeCategoryLabel,
+		"formatDateTime":           formatDateTime,
+		"formatCalendarDate":       formatCalendarDate,
+		"formatClockTime":          formatClockTime,
+		"hasTime":                  hasTime,
+		"isPastEventDate":          isPastEventDate,
 		"money":                    money,
 		"scheduleToneClasses":      scheduleToneClasses,
 		"scheduleBadgeClasses":     scheduleBadgeClasses,
@@ -5309,8 +6258,10 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"templates/partials/home-style.html",
 		"templates/partials/home-hero.html",
 		"templates/partials/home-sports-grid.html",
+		"templates/partials/sport-detail-content.html",
 		"templates/partials/home-coaching-strip.html",
 		"templates/partials/home-highlights.html",
+		"templates/partials/home-events-strip.html",
 		"templates/partials/home-booking-flow.html",
 		"templates/partials/home-cta-band.html",
 		"templates/partials/home-script.html",
@@ -5324,11 +6275,17 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"coaching":                 "templates/pages/coaching.html",
 		"faq":                      "templates/pages/faq.html",
 		"gallery":                  "templates/pages/gallery.html",
+		"events":                   "templates/pages/events.html",
 		"login":                    "templates/login.html",
 		"privacy-policy":           "templates/pages/privacy-policy.html",
 		"register":                 "templates/register.html",
 		"refund-policy":            "templates/pages/refund-policy.html",
 		"sports":                   "templates/pages/sports.html",
+		"sports-cricket":           "templates/pages/sports-cricket.html",
+		"sports-futsal":            "templates/pages/sports-futsal.html",
+		"sports-badminton":         "templates/pages/sports-badminton.html",
+		"sports-table-tennis":      "templates/pages/sports-table-tennis.html",
+		"sports-tennis":            "templates/pages/sports-tennis.html",
 		"terms-and-conditions":     "templates/pages/terms-and-conditions.html",
 		"verify-email":             "templates/verify-email.html",
 		"dashboard":                "templates/dashboard/dashboard.html",
@@ -5341,6 +6298,9 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"booking-management":       "templates/dashboard/booking-management.html",
 		"booking-requests":         "templates/dashboard/booking-requests.html",
 		"pricing-management":       "templates/dashboard/pricing-management.html",
+		"events-management":        "templates/dashboard/events-management.html",
+		"finance-management":       "templates/dashboard/finance-management.html",
+		"finance-receipt":          "templates/dashboard/finance-receipt.html",
 		"forbidden":                "templates/dashboard/forbidden.html",
 	}
 	dashboardPartials := []string{

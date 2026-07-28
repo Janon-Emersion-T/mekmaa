@@ -1,0 +1,95 @@
+{{define "finance-receipt"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="w-full max-w-none">
+  <style>
+    @page {
+      size: 5in auto;
+      margin: 0.12in;
+    }
+
+    @media print {
+      body {
+        background: #fff !important;
+      }
+
+      .receipt-actions {
+        display: none !important;
+      }
+    }
+  </style>
+
+  <div class="mx-auto w-full max-w-[5in] rounded-[1.5rem] border border-slate/10 bg-white p-6 shadow-sm">
+    <div class="border-b border-dashed border-slate/20 pb-4 text-center">
+      <p class="text-xs font-semibold uppercase tracking-[0.32em] text-slate/50">MEKMAA</p>
+      <h1 class="mt-3 text-xl font-semibold text-obsidian">Payment Receipt</h1>
+      <p class="mt-2 text-sm leading-6 text-slate/60">No. 64, Temple Road, Jaffna - 40000, Sri Lanka</p>
+    </div>
+
+    <dl class="grid gap-4 border-b border-dashed border-slate/20 py-5 text-sm">
+      <div class="flex items-start justify-between gap-3">
+        <dt class="text-slate/50">Receipt no</dt>
+        <dd class="font-mono font-semibold text-obsidian">{{.SelectedFinance.ReceiptNumber}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-3">
+        <dt class="text-slate/50">Category</dt>
+        <dd class="font-medium text-obsidian">{{financeCategoryLabel .SelectedFinance.Category}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-3">
+        <dt class="text-slate/50">Collected on</dt>
+        <dd class="font-medium text-obsidian">{{formatDateTime .SelectedFinance.RecordedAt}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-3">
+        <dt class="text-slate/50">Payment method</dt>
+        <dd class="font-medium uppercase text-obsidian">{{.SelectedFinance.PaymentMethod}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-3">
+        <dt class="text-slate/50">Student</dt>
+        <dd class="text-right font-medium text-obsidian">{{.SelectedFinance.PersonName}}</dd>
+      </div>
+      {{if .ReceiptAdmission}}
+      <div class="flex items-start justify-between gap-3">
+        <dt class="text-slate/50">Student ID</dt>
+        <dd class="font-medium text-obsidian">{{.ReceiptAdmission.StudentID}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-3">
+        <dt class="text-slate/50">Practice type</dt>
+        <dd class="font-medium text-obsidian">{{practiceTypeLabel .ReceiptAdmission.PracticeType}}</dd>
+      </div>
+      {{end}}
+      <div class="flex items-start justify-between gap-3">
+        <dt class="text-slate/50">Description</dt>
+        <dd class="text-right font-medium text-obsidian">{{.SelectedFinance.Description}}</dd>
+      </div>
+    </dl>
+
+    <div class="py-5 text-center">
+      <p class="text-xs uppercase tracking-[0.24em] text-slate/50">Amount collected</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{money .SelectedFinance.Amount}}</p>
+    </div>
+
+    <div class="border-t border-dashed border-slate/20 pt-4 text-center text-xs leading-6 text-slate/55">
+      <p>This receipt was generated automatically from the admissions payment workflow.</p>
+      <p class="mt-2">Keep this copy for finance reconciliation and student records.</p>
+    </div>
+  </div>
+
+  <div class="receipt-actions mx-auto mt-5 flex max-w-[5in] flex-col gap-3 sm:flex-row">
+    <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">
+      Print again
+    </button>
+    <a href="/admin/admissions" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
+      Back to admissions
+    </a>
+    <a href="/admin/finance" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
+      Open finance
+    </a>
+  </div>
+
+  <script>
+    window.addEventListener("load", () => {
+      window.print();
+    });
+  </script>
+</section>
+{{end}}

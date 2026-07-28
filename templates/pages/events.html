@@ -1,0 +1,76 @@
+{{define "events"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="relative overflow-hidden bg-cloud">
+  <div class="pointer-events-none absolute inset-0 -z-10">
+    <div class="absolute -left-24 top-14 h-72 w-72 rounded-full bg-aqua/18 blur-3xl"></div>
+    <div class="absolute right-0 top-36 h-96 w-96 rounded-full bg-mint/60 blur-3xl"></div>
+  </div>
+
+  <div class="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:py-20">
+    <div class="max-w-3xl">
+      <p class="inline-flex rounded-full border border-obsidian/10 bg-white/85 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-slate">
+        Events
+      </p>
+      <h1 class="mt-6 text-4xl font-semibold leading-tight text-obsidian sm:text-5xl lg:text-6xl">
+        Sports, coaching and community
+        <span class="text-slate/60">events at Mekmaa.</span>
+      </h1>
+      <p class="mt-6 max-w-2xl text-base leading-8 text-slate/75 sm:text-lg">
+        Browse published event dates for academy activities, competitions, special coaching sessions and other public happenings at Mekmaa.
+      </p>
+    </div>
+
+    <div class="mt-12 grid gap-5 xl:grid-cols-2">
+      {{range .Events}}
+      <article class="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-[0_24px_70px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:p-7">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/55">{{.Category}}</p>
+            <h2 class="mt-3 text-2xl font-semibold text-obsidian sm:text-3xl">{{.Title}}</h2>
+          </div>
+          <span class="inline-flex rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] {{if isPastEventDate .EventDate}}bg-slate/10 text-slate{{else}}bg-mint text-obsidian{{end}}">
+            {{if isPastEventDate .EventDate}}Past event{{else}}Upcoming{{end}}
+          </span>
+        </div>
+
+        <div class="mt-6 grid gap-4 sm:grid-cols-3">
+          <div class="rounded-[1.4rem] bg-cloud px-4 py-4">
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Date</p>
+            <p class="mt-2 text-sm font-semibold text-obsidian">{{formatCalendarDate .EventDate}}</p>
+          </div>
+          <div class="rounded-[1.4rem] bg-cloud px-4 py-4">
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Time</p>
+            <p class="mt-2 text-sm font-semibold text-obsidian">{{formatClockTime .StartTime}} to {{formatClockTime .EndTime}}</p>
+          </div>
+          <div class="rounded-[1.4rem] bg-cloud px-4 py-4">
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Venue</p>
+            <p class="mt-2 text-sm font-semibold text-obsidian">{{.Venue}}</p>
+          </div>
+        </div>
+
+        <p class="mt-6 text-sm leading-7 text-slate/72">{{.Summary}}</p>
+
+        {{if and .CTALabel .CTALink}}
+        <div class="mt-6">
+          <a
+            href="{{.CTALink}}"
+            class="inline-flex min-h-12 items-center justify-center rounded-full bg-obsidian px-6 py-3 text-sm font-semibold text-cloud transition hover:bg-slate"
+          >
+            {{.CTALabel}}
+          </a>
+        </div>
+        {{end}}
+      </article>
+      {{else}}
+      <div class="xl:col-span-2 rounded-[2rem] border border-dashed border-slate/15 bg-white/80 px-6 py-14 text-center shadow-sm">
+        <h2 class="text-3xl font-semibold text-obsidian">No published events right now</h2>
+        <p class="mt-4 text-sm leading-7 text-slate/65">
+          Check back soon for new Mekmaa event announcements.
+        </p>
+      </div>
+      {{end}}
+    </div>
+  </div>
+</section>
+{{end}}

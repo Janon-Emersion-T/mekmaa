@@ -1,0 +1,184 @@
+{{define "events-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold sm:text-3xl">Events</h1>
+        <p class="mt-2 text-sm text-slate/70">Create and publish public-facing events for the landing page and events listing page.</p>
+      </div>
+      <a href="/admin/events?action=new#event-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add event</a>
+    </div>
+  </div>
+
+  <div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+    <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-xl font-semibold sm:text-2xl">Publishing overview</h2>
+          <p class="mt-2 text-sm text-slate/70">Published events appear on the public landing page and the dedicated events page.</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-3 text-right">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Events</p>
+          <p class="mt-1 text-2xl font-semibold text-obsidian">{{len .Events}}</p>
+        </div>
+      </div>
+
+      {{if eq .EventMode "new"}}
+      <div id="event-form" class="mt-6">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-lg font-semibold">Create event</h3>
+          <a href="/admin/events" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
+        </div>
+        <form action="/admin/events/create" method="post" class="mt-5 grid gap-4">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <input type="text" name="title" placeholder="Event title" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="text" name="category" placeholder="Category" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <div class="grid gap-4 md:grid-cols-3">
+            <input type="date" name="event_date" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            <input type="time" name="start_time" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            <input type="time" name="end_time" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </div>
+          <input type="text" name="venue" placeholder="Venue" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <textarea name="summary" rows="5" placeholder="Summary" required class="rounded-2xl border border-slate/10 bg-white px-4 py-4 text-sm outline-none focus:border-aqua"></textarea>
+          <div class="grid gap-4 md:grid-cols-2">
+            <input type="text" name="cta_label" placeholder="CTA label (optional)" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            <input type="url" name="cta_link" placeholder="CTA link (optional)" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </div>
+          <label class="inline-flex items-center gap-3 rounded-2xl bg-cloud px-4 py-3 text-sm font-medium text-obsidian">
+            <input type="checkbox" name="published" value="true" checked class="h-4 w-4 rounded border-slate/20 text-obsidian focus:ring-aqua" />
+            Publish on public pages
+          </label>
+          <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create event</button>
+        </form>
+      </div>
+      {{end}}
+
+      {{if and (eq .EventMode "view") .SelectedEvent}}
+      <div id="event-view" class="mt-6 space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-lg font-semibold">Event details</h3>
+          <a href="/admin/events" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Title</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{.SelectedEvent.Title}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Category</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{.SelectedEvent.Category}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Date</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{formatCalendarDate .SelectedEvent.EventDate}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Time</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{formatClockTime .SelectedEvent.StartTime}} to {{formatClockTime .SelectedEvent.EndTime}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Venue</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{.SelectedEvent.Venue}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Status</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{if .SelectedEvent.Published}}Published{{else}}Draft{{end}}</p>
+          </div>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Summary</p>
+          <p class="mt-2 text-sm leading-7 text-slate/75">{{.SelectedEvent.Summary}}</p>
+        </div>
+      </div>
+      {{end}}
+
+      {{if and (eq .EventMode "edit") .SelectedEvent}}
+      <div id="event-edit" class="mt-6">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-lg font-semibold">Edit event</h3>
+          <a href="/admin/events" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
+        </div>
+        <form action="/admin/events/update" method="post" class="mt-5 grid gap-4">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <input type="hidden" name="event_id" value="{{.SelectedEvent.ID}}" />
+          <input type="text" name="title" value="{{.SelectedEvent.Title}}" placeholder="Event title" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="text" name="category" value="{{.SelectedEvent.Category}}" placeholder="Category" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <div class="grid gap-4 md:grid-cols-3">
+            <input type="date" name="event_date" value="{{.SelectedEvent.EventDate}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            <input type="time" name="start_time" value="{{.SelectedEvent.StartTime}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            <input type="time" name="end_time" value="{{.SelectedEvent.EndTime}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </div>
+          <input type="text" name="venue" value="{{.SelectedEvent.Venue}}" placeholder="Venue" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <textarea name="summary" rows="5" placeholder="Summary" required class="rounded-2xl border border-slate/10 bg-white px-4 py-4 text-sm outline-none focus:border-aqua">{{.SelectedEvent.Summary}}</textarea>
+          <div class="grid gap-4 md:grid-cols-2">
+            <input type="text" name="cta_label" value="{{.SelectedEvent.CTALabel}}" placeholder="CTA label (optional)" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            <input type="url" name="cta_link" value="{{.SelectedEvent.CTALink}}" placeholder="CTA link (optional)" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </div>
+          <label class="inline-flex items-center gap-3 rounded-2xl bg-cloud px-4 py-3 text-sm font-medium text-obsidian">
+            <input type="checkbox" name="published" value="true" {{if .SelectedEvent.Published}}checked{{end}} class="h-4 w-4 rounded border-slate/20 text-obsidian focus:ring-aqua" />
+            Publish on public pages
+          </label>
+          <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Update event</button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+
+    <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
+      <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
+        <h2 class="text-xl font-semibold sm:text-2xl">Event list</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+            <tr>
+              <th class="px-5 py-4 font-medium sm:px-6">Event</th>
+              <th class="px-5 py-4 font-medium">Date</th>
+              <th class="px-5 py-4 font-medium">Venue</th>
+              <th class="px-5 py-4 font-medium">Status</th>
+              <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate/10">
+            {{range .Events}}
+            <tr class="bg-white/70 align-top">
+              <td class="px-5 py-4 sm:px-6 text-slate/75">
+                <p class="font-medium text-obsidian">{{.Title}}</p>
+                <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/50">{{.Category}}</p>
+              </td>
+              <td class="px-5 py-4 text-slate/75">
+                <p>{{formatCalendarDate .EventDate}}</p>
+                <p class="mt-1 text-xs text-slate/55">{{formatClockTime .StartTime}} to {{formatClockTime .EndTime}}</p>
+              </td>
+              <td class="px-5 py-4 text-slate/75">{{.Venue}}</td>
+              <td class="px-5 py-4 text-slate/75">
+                <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {{if .Published}}bg-mint text-obsidian{{else}}bg-slate/10 text-slate{{end}}">
+                  {{if .Published}}Published{{else}}Draft{{end}}
+                </span>
+              </td>
+              <td class="px-5 py-4 sm:px-6">
+                <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
+                  <a href="/admin/events?action=view&id={{.ID}}#event-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                  <a href="/admin/events?action=edit&id={{.ID}}#event-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+                  <form action="/admin/events/delete" method="post">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <input type="hidden" name="event_id" value="{{.ID}}" />
+                    <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50">Delete</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {{else}}
+            <tr>
+              <td colspan="5" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No events created yet.</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+{{end}}
