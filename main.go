@@ -393,7 +393,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
-	mux.Handle("/event-images/", http.StripPrefix("/event-images/", http.FileServer(http.Dir("uploads/events"))))
+	mux.Handle("/event-images/", http.StripPrefix("/event-images/", http.FileServer(http.Dir(eventUploadsDir()))))
 	mux.HandleFunc("/", app.homeHandler)
 	mux.HandleFunc("/about", app.aboutHandler)
 	mux.HandleFunc("/book", app.publicBookingHandler)
@@ -6026,9 +6026,10 @@ func uploadedEventImagePath(r *http.Request) (string, error) {
 		return "", errors.New("unable to process uploaded event image")
 	}
 
-	if err := os.MkdirAll("uploads/events", 0o755); err != nil {
-		log.Printf("prepare event image storage: %v", err)
-		return "", errors.New("unable to prepare event image storage")
+	uploadsDir := eventUploadsDir()
+	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
+		log.Printf("prepare event image storage %s: %v", uploadsDir, err)
+		return "", fmt.Errorf("unable to prepare event image storage: %v", err)
 	}
 
 	token, err := generateToken(18)
@@ -6036,16 +6037,16 @@ func uploadedEventImagePath(r *http.Request) (string, error) {
 		return "", errors.New("unable to generate event image filename")
 	}
 	filename := "event-" + strings.ToLower(token) + ext
-	targetPath := filepath.Join("uploads", "events", filename)
+	targetPath := filepath.Join(uploadsDir, filename)
 
 	dst, err := os.Create(targetPath)
 	if err != nil {
-		return "", errors.New("unable to save uploaded event image")
+		return "", fmt.Errorf("unable to save uploaded event image: %v", err)
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, file); err != nil {
-		return "", errors.New("unable to save uploaded event image")
+		return "", fmt.Errorf("unable to save uploaded event image: %v", err)
 	}
 
 	return "/event-images/" + filename, nil
@@ -6071,10 +6072,20 @@ func deleteUploadedEventImage(imagePath string) {
 	if trimmed == "" || !strings.HasPrefix(trimmed, "/event-images/") {
 		return
 	}
-	localPath := filepath.Join("uploads", "events", filepath.Base(trimmed))
+	localPath := filepath.Join(eventUploadsDir(), filepath.Base(trimmed))
 	if err := os.Remove(localPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Printf("delete event image %s: %v", localPath, err)
 	}
+}
+
+func eventUploadsDir() string {
+	if wd, err := os.Getwd(); err == nil && wd != "" {
+		return filepath.Join(wd, "uploads", "events")
+	}
+	if exe, err := os.Executable(); err == nil && exe != "" {
+		return filepath.Join(filepath.Dir(exe), "uploads", "events")
+	}
+	return filepath.Join("uploads", "events")
 }
 
 func financeCategoryLabel(value string) string {
