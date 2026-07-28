@@ -17,6 +17,7 @@ import (
 	"net/smtp"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -191,19 +192,21 @@ type AdmissionPricing struct {
 }
 
 type Event struct {
-	ID        int64
-	Title     string
-	Category  string
-	EventDate string
-	StartTime string
-	EndTime   string
-	Venue     string
-	Summary   string
-	CTALabel  string
-	CTALink   string
-	Published bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID                   int64
+	Title                string
+	Category             string
+	EventDate            string
+	StartTime            string
+	EndTime              string
+	RegistrationDeadline string
+	Venue                string
+	Summary              string
+	ImagePath            string
+	CTALabel             string
+	CTALink              string
+	Published            bool
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type AttendanceRecord struct {
@@ -1581,21 +1584,27 @@ func (a *App) createEventHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
 	if err := a.verifyCSRF(r); err != nil {
 		http.Error(w, "invalid csrf token", http.StatusForbidden)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form submission", http.StatusBadRequest)
+
+	event, err := eventFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	event := eventFromRequest(r)
 	if err := validateEvent(event); err != nil {
+		deleteUploadedEventImage(event.ImagePath)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := a.createEvent(event); err != nil {
+		deleteUploadedEventImage(event.ImagePath)
 		log.Printf("create event: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -1610,12 +1619,12 @@ func (a *App) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := a.verifyCSRF(r); err != nil {
-		http.Error(w, "invalid csrf token", http.StatusForbidden)
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form submission", http.StatusBadRequest)
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
 		return
 	}
 
@@ -1625,16 +1634,47 @@ func (a *App) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	event := eventFromRequest(r)
+	existingEvent, err := a.findEventByID(eventID)
+	if err != nil {
+		http.Error(w, "event not found", http.StatusNotFound)
+		return
+	}
+
+	event, err := eventFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	event.ID = eventID
+	uploadedReplacement := event.ImagePath
+	if event.ImagePath == "" {
+		event.ImagePath = existingEvent.ImagePath
+	}
+	deleteOldImage := false
+	if r.FormValue("remove_image") == "true" {
+		event.ImagePath = ""
+		deleteOldImage = true
+	}
 	if err := validateEvent(event); err != nil {
+		if uploadedReplacement != "" {
+			deleteUploadedEventImage(uploadedReplacement)
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := a.updateEvent(event); err != nil {
+		if uploadedReplacement != "" {
+			deleteUploadedEventImage(uploadedReplacement)
+		}
 		log.Printf("update event: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
+	}
+	if uploadedReplacement != "" && existingEvent.ImagePath != "" && existingEvent.ImagePath != uploadedReplacement {
+		deleteUploadedEventImage(existingEvent.ImagePath)
+	}
+	if deleteOldImage && existingEvent.ImagePath != "" && uploadedReplacement == "" {
+		deleteUploadedEventImage(existingEvent.ImagePath)
 	}
 
 	a.setFlash(w, "Event updated.")
@@ -1660,10 +1700,14 @@ func (a *App) deleteEventHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid event id", http.StatusBadRequest)
 		return
 	}
+	existingEvent, _ := a.findEventByID(eventID)
 	if err := a.deleteEvent(eventID); err != nil {
 		log.Printf("delete event: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
+	}
+	if existingEvent != nil {
+		deleteUploadedEventImage(existingEvent.ImagePath)
 	}
 
 	a.setFlash(w, "Event deleted.")
@@ -3075,7 +3119,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 
 func (a *App) listEvents() ([]Event, error) {
 	rows, err := a.db.Query(`
-		SELECT id, title, category, event_date, start_time, end_time, venue, summary,
+		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
+		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
 		       cta_label, cta_link, published, created_at, updated_at
 		FROM events
 		ORDER BY event_date ASC, start_time ASC, id DESC
@@ -3096,8 +3141,10 @@ func (a *App) listEvents() ([]Event, error) {
 			&event.EventDate,
 			&event.StartTime,
 			&event.EndTime,
+			&event.RegistrationDeadline,
 			&event.Venue,
 			&event.Summary,
+			&event.ImagePath,
 			&event.CTALabel,
 			&event.CTALink,
 			&published,
@@ -3114,7 +3161,8 @@ func (a *App) listEvents() ([]Event, error) {
 
 func (a *App) listPublishedEvents() ([]Event, error) {
 	rows, err := a.db.Query(`
-		SELECT id, title, category, event_date, start_time, end_time, venue, summary,
+		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
+		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
 		       cta_label, cta_link, published, created_at, updated_at
 		FROM events
 		WHERE published = 1
@@ -3136,8 +3184,10 @@ func (a *App) listPublishedEvents() ([]Event, error) {
 			&event.EventDate,
 			&event.StartTime,
 			&event.EndTime,
+			&event.RegistrationDeadline,
 			&event.Venue,
 			&event.Summary,
+			&event.ImagePath,
 			&event.CTALabel,
 			&event.CTALink,
 			&published,
@@ -3701,18 +3751,20 @@ func (a *App) createPricingRule(rule PricingRule) error {
 func (a *App) createEvent(event Event) error {
 	_, err := a.db.Exec(`
 		INSERT INTO events (
-			title, category, event_date, start_time, end_time, venue, summary,
-			cta_label, cta_link, published, created_at, updated_at
+			title, category, event_date, start_time, end_time, registration_deadline, venue, summary,
+			image_path, cta_label, cta_link, published, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		event.Title,
 		event.Category,
 		event.EventDate,
 		event.StartTime,
 		event.EndTime,
+		nullIfBlank(event.RegistrationDeadline),
 		event.Venue,
 		event.Summary,
+		event.ImagePath,
 		event.CTALabel,
 		event.CTALink,
 		boolToInt(event.Published),
@@ -4002,8 +4054,8 @@ func (a *App) updatePricingRule(rule PricingRule) error {
 func (a *App) updateEvent(event Event) error {
 	_, err := a.db.Exec(`
 		UPDATE events
-		SET title = ?, category = ?, event_date = ?, start_time = ?, end_time = ?, venue = ?, summary = ?,
-		    cta_label = ?, cta_link = ?, published = ?, updated_at = ?
+		SET title = ?, category = ?, event_date = ?, start_time = ?, end_time = ?, registration_deadline = ?, venue = ?, summary = ?,
+		    image_path = ?, cta_label = ?, cta_link = ?, published = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		event.Title,
@@ -4011,8 +4063,10 @@ func (a *App) updateEvent(event Event) error {
 		event.EventDate,
 		event.StartTime,
 		event.EndTime,
+		nullIfBlank(event.RegistrationDeadline),
 		event.Venue,
 		event.Summary,
+		event.ImagePath,
 		event.CTALabel,
 		event.CTALink,
 		boolToInt(event.Published),
@@ -4359,7 +4413,8 @@ func (a *App) findPricingRuleByID(pricingID int64) (*PricingRule, error) {
 
 func (a *App) findEventByID(eventID int64) (*Event, error) {
 	row := a.db.QueryRow(`
-		SELECT id, title, category, event_date, start_time, end_time, venue, summary,
+		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
+		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
 		       cta_label, cta_link, published, created_at, updated_at
 		FROM events
 		WHERE id = ?
@@ -4374,8 +4429,10 @@ func (a *App) findEventByID(eventID int64) (*Event, error) {
 		&event.EventDate,
 		&event.StartTime,
 		&event.EndTime,
+		&event.RegistrationDeadline,
 		&event.Venue,
 		&event.Summary,
+		&event.ImagePath,
 		&event.CTALabel,
 		&event.CTALink,
 		&published,
@@ -4573,10 +4630,12 @@ func runMigrations(db *sql.DB) error {
 			title TEXT NOT NULL,
 			category TEXT NOT NULL,
 			event_date TEXT NOT NULL,
-			start_time TEXT NOT NULL,
-			end_time TEXT NOT NULL,
+			start_time TEXT,
+			end_time TEXT,
+			registration_deadline TEXT,
 			venue TEXT NOT NULL,
 			summary TEXT NOT NULL,
+			image_path TEXT NOT NULL DEFAULT '',
 			cta_label TEXT NOT NULL DEFAULT '',
 			cta_link TEXT NOT NULL DEFAULT '',
 			published INTEGER NOT NULL DEFAULT 1,
@@ -4618,6 +4677,8 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date, start_time)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_published ON events(published, event_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
+		`ALTER TABLE events ADD COLUMN registration_deadline TEXT`,
+		`ALTER TABLE events ADD COLUMN image_path TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
 		`ALTER TABLE admissions ADD COLUMN admission_date TEXT`,
 		`ALTER TABLE admissions ADD COLUMN practice_type TEXT NOT NULL DEFAULT 'group_practice'`,
@@ -5358,19 +5419,25 @@ func pricingRuleFromRequest(r *http.Request) (PricingRule, error) {
 	}, nil
 }
 
-func eventFromRequest(r *http.Request) Event {
-	return Event{
-		Title:     strings.TrimSpace(r.FormValue("title")),
-		Category:  strings.TrimSpace(r.FormValue("category")),
-		EventDate: strings.TrimSpace(r.FormValue("event_date")),
-		StartTime: strings.TrimSpace(r.FormValue("start_time")),
-		EndTime:   strings.TrimSpace(r.FormValue("end_time")),
-		Venue:     strings.TrimSpace(r.FormValue("venue")),
-		Summary:   strings.TrimSpace(r.FormValue("summary")),
-		CTALabel:  strings.TrimSpace(r.FormValue("cta_label")),
-		CTALink:   strings.TrimSpace(r.FormValue("cta_link")),
-		Published: r.FormValue("published") == "true",
+func eventFromRequest(r *http.Request) (Event, error) {
+	imagePath, err := uploadedEventImagePath(r)
+	if err != nil {
+		return Event{}, err
 	}
+	return Event{
+		Title:                strings.TrimSpace(r.FormValue("title")),
+		Category:             strings.TrimSpace(r.FormValue("category")),
+		EventDate:            strings.TrimSpace(r.FormValue("event_date")),
+		StartTime:            strings.TrimSpace(r.FormValue("start_time")),
+		EndTime:              strings.TrimSpace(r.FormValue("end_time")),
+		RegistrationDeadline: strings.TrimSpace(r.FormValue("registration_deadline")),
+		Venue:                strings.TrimSpace(r.FormValue("venue")),
+		Summary:              strings.TrimSpace(r.FormValue("summary")),
+		ImagePath:            imagePath,
+		CTALabel:             strings.TrimSpace(r.FormValue("cta_label")),
+		CTALink:              strings.TrimSpace(r.FormValue("cta_link")),
+		Published:            r.FormValue("published") == "true",
+	}, nil
 }
 
 func prefillPublicBookingDraft(r *http.Request, viewer *User, calendarDate string) *SpaceSchedule {
@@ -5496,19 +5563,35 @@ func validateEvent(event Event) error {
 	if err != nil {
 		return errors.New("valid event date is required")
 	}
-	startTime, err := time.Parse("15:04", event.StartTime)
-	if err != nil {
-		return errors.New("valid start time is required")
-	}
-	endTime, err := time.Parse("15:04", event.EndTime)
-	if err != nil {
-		return errors.New("valid end time is required")
-	}
-	if !startTime.Before(endTime) {
-		return errors.New("end time must be after start time")
-	}
 	if eventDate.Year() < 2000 {
 		return errors.New("valid event date is required")
+	}
+	if event.StartTime != "" {
+		if _, err := time.Parse("15:04", event.StartTime); err != nil {
+			return errors.New("valid start time is required")
+		}
+	}
+	if event.EndTime != "" {
+		endTime, err := time.Parse("15:04", event.EndTime)
+		if err != nil {
+			return errors.New("valid end time is required")
+		}
+		if event.StartTime == "" {
+			return errors.New("start time is required when end time is provided")
+		}
+		startTime, _ := time.Parse("15:04", event.StartTime)
+		if !startTime.Before(endTime) {
+			return errors.New("end time must be after start time")
+		}
+	}
+	if event.RegistrationDeadline != "" {
+		deadline, err := time.Parse("2006-01-02", event.RegistrationDeadline)
+		if err != nil {
+			return errors.New("valid registration before date is required")
+		}
+		if deadline.After(eventDate) {
+			return errors.New("registration before date cannot be after the event date")
+		}
 	}
 	if (event.CTALabel == "") != (event.CTALink == "") {
 		return errors.New("cta label and cta link must both be provided")
@@ -5906,6 +5989,92 @@ func boolToInt(value bool) int {
 	return 0
 }
 
+func nullIfBlank(value string) any {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return trimmed
+}
+
+func uploadedEventImagePath(r *http.Request) (string, error) {
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		if errors.Is(err, http.ErrMissingFile) {
+			return "", nil
+		}
+		return "", errors.New("invalid event image upload")
+	}
+	defer file.Close()
+
+	if header.Size > 8<<20 {
+		return "", errors.New("event image must be 8MB or smaller")
+	}
+
+	buf := make([]byte, 512)
+	n, err := io.ReadFull(file, buf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", errors.New("unable to read uploaded event image")
+	}
+	contentType := http.DetectContentType(buf[:n])
+	ext, ok := eventImageExtension(contentType)
+	if !ok {
+		return "", errors.New("event image must be a JPG, PNG, GIF or WebP file")
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", errors.New("unable to process uploaded event image")
+	}
+
+	if err := os.MkdirAll("static/images/events", 0o755); err != nil {
+		return "", errors.New("unable to prepare event image storage")
+	}
+
+	token, err := generateToken(18)
+	if err != nil {
+		return "", errors.New("unable to generate event image filename")
+	}
+	filename := "event-" + strings.ToLower(token) + ext
+	targetPath := filepath.Join("static", "images", "events", filename)
+
+	dst, err := os.Create(targetPath)
+	if err != nil {
+		return "", errors.New("unable to save uploaded event image")
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		return "", errors.New("unable to save uploaded event image")
+	}
+
+	return "/images/events/" + filename, nil
+}
+
+func eventImageExtension(contentType string) (string, bool) {
+	switch contentType {
+	case "image/jpeg":
+		return ".jpg", true
+	case "image/png":
+		return ".png", true
+	case "image/gif":
+		return ".gif", true
+	case "image/webp":
+		return ".webp", true
+	default:
+		return "", false
+	}
+}
+
+func deleteUploadedEventImage(imagePath string) {
+	trimmed := strings.TrimSpace(imagePath)
+	if trimmed == "" || !strings.HasPrefix(trimmed, "/images/events/") {
+		return
+	}
+	localPath := filepath.Join("static", "images", "events", filepath.Base(trimmed))
+	if err := os.Remove(localPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("delete event image %s: %v", localPath, err)
+	}
+}
+
 func financeCategoryLabel(value string) string {
 	switch value {
 	case "admission_payment":
@@ -5931,11 +6100,48 @@ func formatCalendarDate(value string) string {
 }
 
 func formatClockTime(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "Time to be announced"
+	}
 	parsed, err := time.Parse("15:04", strings.TrimSpace(value))
 	if err != nil {
 		return value
 	}
 	return parsed.Format("3:04 PM")
+}
+
+func formatEventTiming(event Event) string {
+	switch {
+	case event.StartTime != "" && event.EndTime != "":
+		return formatClockTime(event.StartTime) + " to " + formatClockTime(event.EndTime)
+	case event.StartTime != "":
+		return "Starts at " + formatClockTime(event.StartTime)
+	default:
+		return "Date only"
+	}
+}
+
+func eventScheduleLabel(event Event) string {
+	base := formatCalendarDate(event.EventDate)
+	switch {
+	case event.StartTime != "" && event.EndTime != "":
+		return base + " • " + formatClockTime(event.StartTime) + " to " + formatClockTime(event.EndTime)
+	case event.StartTime != "":
+		return base + " • " + formatClockTime(event.StartTime)
+	default:
+		return base
+	}
+}
+
+func hasRegistrationDeadline(event Event) bool {
+	return strings.TrimSpace(event.RegistrationDeadline) != ""
+}
+
+func registrationDeadlineLabel(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return "Register before " + formatCalendarDate(value)
 }
 
 func isPastEventDate(value string) bool {
@@ -6117,6 +6323,8 @@ func isSystemRole(name string) bool {
 func isIgnorableMigrationError(err error, stmt string) bool {
 	lowerErr := strings.ToLower(err.Error())
 	return (strings.Contains(stmt, "ALTER TABLE users ADD COLUMN email_verified_at") ||
+		strings.Contains(stmt, "ALTER TABLE events ADD COLUMN registration_deadline") ||
+		strings.Contains(stmt, "ALTER TABLE events ADD COLUMN image_path") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN student_id") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN admission_date") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN practice_type") ||
@@ -6208,30 +6416,34 @@ func buildTemplates() (map[string]*template.Template, error) {
 			}
 			return containsPermission(user.Permissions, permission)
 		},
-		"admissionSelected":        admissionSelected,
-		"admissionAge":             admissionAge,
-		"attendanceCount":          attendanceCount,
-		"attendanceRecordFor":      attendanceRecordFor,
-		"attendanceStatus":         attendanceStatus,
-		"activityLabel":            activityLabel,
-		"bookingProductLabel":      bookingProductLabel,
-		"optionSummary":            optionSummary,
-		"bookingOptionSelected":    bookingOptionSelected,
-		"pricingForOption":         pricingForOption,
-		"pricingForSchedule":       pricingForSchedule,
-		"pricingTierLabel":         pricingTierLabel,
-		"practiceTypeLabel":        practiceTypeLabel,
-		"financeCategoryLabel":     financeCategoryLabel,
-		"formatDateTime":           formatDateTime,
-		"formatCalendarDate":       formatCalendarDate,
-		"formatClockTime":          formatClockTime,
-		"hasTime":                  hasTime,
-		"isPastEventDate":          isPastEventDate,
-		"money":                    money,
-		"scheduleToneClasses":      scheduleToneClasses,
-		"scheduleBadgeClasses":     scheduleBadgeClasses,
-		"schedulesForCalendarSlot": schedulesForCalendarSlot,
-		"scheduleSummary":          scheduleSummary,
+		"admissionSelected":         admissionSelected,
+		"admissionAge":              admissionAge,
+		"attendanceCount":           attendanceCount,
+		"attendanceRecordFor":       attendanceRecordFor,
+		"attendanceStatus":          attendanceStatus,
+		"activityLabel":             activityLabel,
+		"bookingProductLabel":       bookingProductLabel,
+		"optionSummary":             optionSummary,
+		"bookingOptionSelected":     bookingOptionSelected,
+		"pricingForOption":          pricingForOption,
+		"pricingForSchedule":        pricingForSchedule,
+		"pricingTierLabel":          pricingTierLabel,
+		"practiceTypeLabel":         practiceTypeLabel,
+		"financeCategoryLabel":      financeCategoryLabel,
+		"formatDateTime":            formatDateTime,
+		"formatCalendarDate":        formatCalendarDate,
+		"formatClockTime":           formatClockTime,
+		"formatEventTiming":         formatEventTiming,
+		"eventScheduleLabel":        eventScheduleLabel,
+		"hasTime":                   hasTime,
+		"hasRegistrationDeadline":   hasRegistrationDeadline,
+		"isPastEventDate":           isPastEventDate,
+		"money":                     money,
+		"registrationDeadlineLabel": registrationDeadlineLabel,
+		"scheduleToneClasses":       scheduleToneClasses,
+		"scheduleBadgeClasses":      scheduleBadgeClasses,
+		"schedulesForCalendarSlot":  schedulesForCalendarSlot,
+		"scheduleSummary":           scheduleSummary,
 		"seq": func(n int) []int {
 			if n <= 0 {
 				return nil

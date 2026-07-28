@@ -31,14 +31,42 @@
           <h3 class="text-lg font-semibold">Create event</h3>
           <a href="/admin/events" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
         </div>
-        <form action="/admin/events/create" method="post" class="mt-5 grid gap-4">
+        <form action="/admin/events/create" method="post" enctype="multipart/form-data" class="mt-5 grid gap-5">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-          <input type="text" name="title" placeholder="Event title" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-          <input type="text" name="category" placeholder="Category" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-          <div class="grid gap-4 md:grid-cols-3">
-            <input type="date" name="event_date" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-            <input type="time" name="start_time" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-            <input type="time" name="end_time" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <div class="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
+            <div class="grid gap-4">
+              <input type="text" name="title" placeholder="Event title" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+              <input type="text" name="category" placeholder="Category" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+              <div class="grid gap-4 md:grid-cols-2">
+                <label class="grid gap-2">
+                  <span class="text-sm font-medium text-obsidian">Event date</span>
+                  <input type="date" name="event_date" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+                </label>
+                <label class="grid gap-2">
+                  <span class="text-sm font-medium text-obsidian">Register before</span>
+                  <input type="date" name="registration_deadline" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+                </label>
+              </div>
+              <div class="grid gap-4 md:grid-cols-2">
+                <label class="grid gap-2">
+                  <span class="text-sm font-medium text-obsidian">Start time</span>
+                  <input type="time" name="start_time" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+                  <span class="text-xs text-slate/55">Leave blank for a date-only event.</span>
+                </label>
+                <label class="grid gap-2">
+                  <span class="text-sm font-medium text-obsidian">End time</span>
+                  <input type="time" name="end_time" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+                  <span class="text-xs text-slate/55">Optional. Use only when you want to show a time range.</span>
+                </label>
+              </div>
+            </div>
+            <div class="grid gap-3 rounded-3xl border border-slate/10 bg-cloud/60 p-4">
+              <div>
+                <h4 class="text-sm font-semibold text-obsidian">Event visual</h4>
+                <p class="mt-1 text-xs leading-6 text-slate/60">Upload a hero image for the landing page and the event listing. JPG, PNG, GIF or WebP up to 8MB.</p>
+              </div>
+              <input type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp" class="block w-full rounded-2xl border border-dashed border-slate/20 bg-white px-4 py-4 text-sm text-slate file:mr-4 file:rounded-full file:border-0 file:bg-obsidian file:px-4 file:py-2 file:text-sm file:font-medium file:text-cloud hover:file:bg-slate" />
+            </div>
           </div>
           <input type="text" name="venue" placeholder="Venue" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
           <textarea name="summary" rows="5" placeholder="Summary" required class="rounded-2xl border border-slate/10 bg-white px-4 py-4 text-sm outline-none focus:border-aqua"></textarea>
@@ -61,6 +89,11 @@
           <h3 class="text-lg font-semibold">Event details</h3>
           <a href="/admin/events" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
         </div>
+        {{if .SelectedEvent.ImagePath}}
+        <div class="overflow-hidden rounded-[1.8rem] border border-white/80 bg-white shadow-sm">
+          <img src="{{.SelectedEvent.ImagePath}}" alt="{{.SelectedEvent.Title}}" class="h-64 w-full object-cover" />
+        </div>
+        {{end}}
         <div class="grid gap-3 sm:grid-cols-2">
           <div class="rounded-2xl bg-cloud px-4 py-4">
             <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Title</p>
@@ -76,7 +109,7 @@
           </div>
           <div class="rounded-2xl bg-cloud px-4 py-4">
             <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Time</p>
-            <p class="mt-2 text-base font-semibold text-obsidian">{{formatClockTime .SelectedEvent.StartTime}} to {{formatClockTime .SelectedEvent.EndTime}}</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{formatEventTiming .SelectedEvent}}</p>
           </div>
           <div class="rounded-2xl bg-cloud px-4 py-4">
             <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Venue</p>
@@ -85,6 +118,10 @@
           <div class="rounded-2xl bg-cloud px-4 py-4">
             <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Status</p>
             <p class="mt-2 text-base font-semibold text-obsidian">{{if .SelectedEvent.Published}}Published{{else}}Draft{{end}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4 sm:col-span-2">
+            <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Registration</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">{{if hasRegistrationDeadline .SelectedEvent}}{{registrationDeadlineLabel .SelectedEvent.RegistrationDeadline}}{{else}}No registration cutoff{{end}}</p>
           </div>
         </div>
         <div class="rounded-2xl bg-cloud px-4 py-4">
@@ -100,15 +137,50 @@
           <h3 class="text-lg font-semibold">Edit event</h3>
           <a href="/admin/events" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
         </div>
-        <form action="/admin/events/update" method="post" class="mt-5 grid gap-4">
+        <form action="/admin/events/update" method="post" enctype="multipart/form-data" class="mt-5 grid gap-5">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
           <input type="hidden" name="event_id" value="{{.SelectedEvent.ID}}" />
-          <input type="text" name="title" value="{{.SelectedEvent.Title}}" placeholder="Event title" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-          <input type="text" name="category" value="{{.SelectedEvent.Category}}" placeholder="Category" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-          <div class="grid gap-4 md:grid-cols-3">
-            <input type="date" name="event_date" value="{{.SelectedEvent.EventDate}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-            <input type="time" name="start_time" value="{{.SelectedEvent.StartTime}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-            <input type="time" name="end_time" value="{{.SelectedEvent.EndTime}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <div class="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
+            <div class="grid gap-4">
+              <input type="text" name="title" value="{{.SelectedEvent.Title}}" placeholder="Event title" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+              <input type="text" name="category" value="{{.SelectedEvent.Category}}" placeholder="Category" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+              <div class="grid gap-4 md:grid-cols-2">
+                <label class="grid gap-2">
+                  <span class="text-sm font-medium text-obsidian">Event date</span>
+                  <input type="date" name="event_date" value="{{.SelectedEvent.EventDate}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+                </label>
+                <label class="grid gap-2">
+                  <span class="text-sm font-medium text-obsidian">Register before</span>
+                  <input type="date" name="registration_deadline" value="{{.SelectedEvent.RegistrationDeadline}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+                </label>
+              </div>
+              <div class="grid gap-4 md:grid-cols-2">
+                <label class="grid gap-2">
+                  <span class="text-sm font-medium text-obsidian">Start time</span>
+                  <input type="time" name="start_time" value="{{.SelectedEvent.StartTime}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+                  <span class="text-xs text-slate/55">Leave blank when the event should show date only.</span>
+                </label>
+                <label class="grid gap-2">
+                  <span class="text-sm font-medium text-obsidian">End time</span>
+                  <input type="time" name="end_time" value="{{.SelectedEvent.EndTime}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+                  <span class="text-xs text-slate/55">Optional. Keep blank to show only the starting time.</span>
+                </label>
+              </div>
+            </div>
+            <div class="grid gap-3 rounded-3xl border border-slate/10 bg-cloud/60 p-4">
+              <div>
+                <h4 class="text-sm font-semibold text-obsidian">Event visual</h4>
+                <p class="mt-1 text-xs leading-6 text-slate/60">Replace the current image or remove it entirely.</p>
+              </div>
+              {{if .SelectedEvent.ImagePath}}
+              <img src="{{.SelectedEvent.ImagePath}}" alt="{{.SelectedEvent.Title}}" class="h-40 w-full rounded-2xl object-cover shadow-sm" />
+              <label class="inline-flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm font-medium text-obsidian">
+                <input type="checkbox" name="remove_image" value="true" class="h-4 w-4 rounded border-slate/20 text-obsidian focus:ring-aqua" />
+                Remove current image
+              </label>
+              {{end}}
+              <input type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp" class="block w-full rounded-2xl border border-dashed border-slate/20 bg-white px-4 py-4 text-sm text-slate file:mr-4 file:rounded-full file:border-0 file:bg-obsidian file:px-4 file:py-2 file:text-sm file:font-medium file:text-cloud hover:file:bg-slate" />
+            </div>
           </div>
           <input type="text" name="venue" value="{{.SelectedEvent.Venue}}" placeholder="Venue" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
           <textarea name="summary" rows="5" placeholder="Summary" required class="rounded-2xl border border-slate/10 bg-white px-4 py-4 text-sm outline-none focus:border-aqua">{{.SelectedEvent.Summary}}</textarea>
@@ -145,12 +217,22 @@
             {{range .Events}}
             <tr class="bg-white/70 align-top">
               <td class="px-5 py-4 sm:px-6 text-slate/75">
-                <p class="font-medium text-obsidian">{{.Title}}</p>
-                <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/50">{{.Category}}</p>
+                <div class="flex items-start gap-3">
+                  {{if .ImagePath}}
+                  <img src="{{.ImagePath}}" alt="{{.Title}}" class="h-14 w-14 rounded-2xl object-cover shadow-sm" />
+                  {{end}}
+                  <div>
+                    <p class="font-medium text-obsidian">{{.Title}}</p>
+                    <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/50">{{.Category}}</p>
+                  </div>
+                </div>
               </td>
               <td class="px-5 py-4 text-slate/75">
                 <p>{{formatCalendarDate .EventDate}}</p>
-                <p class="mt-1 text-xs text-slate/55">{{formatClockTime .StartTime}} to {{formatClockTime .EndTime}}</p>
+                <p class="mt-1 text-xs text-slate/55">{{formatEventTiming .}}</p>
+                {{if hasRegistrationDeadline .}}
+                <p class="mt-1 text-xs text-emerald-700">{{registrationDeadlineLabel .RegistrationDeadline}}</p>
+                {{end}}
               </td>
               <td class="px-5 py-4 text-slate/75">{{.Venue}}</td>
               <td class="px-5 py-4 text-slate/75">
