@@ -1188,9 +1188,16 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 	data.Title = "Attendance"
 	data.Description = "Manage student attendance by group."
 	data.StudentGroups = groups
+	data.TodayDate = time.Now().Format("2006-01-02")
 	data.AttendanceDate = strings.TrimSpace(r.URL.Query().Get("date"))
 	if data.AttendanceDate == "" {
-		data.AttendanceDate = time.Now().Format("2006-01-02")
+		data.AttendanceDate = data.TodayDate
+	} else if parsedDate, err := time.Parse("2006-01-02", data.AttendanceDate); err != nil {
+		data.AttendanceDate = data.TodayDate
+	} else if parsedDate.Format("2006-01-02") > data.TodayDate {
+		data.AttendanceDate = data.TodayDate
+	} else {
+		data.AttendanceDate = parsedDate.Format("2006-01-02")
 	}
 
 	groupID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("group_id")), 10, 64)
@@ -2265,8 +2272,14 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	attendanceDate := strings.TrimSpace(r.FormValue("attendance_date"))
-	if _, err := time.Parse("2006-01-02", attendanceDate); err != nil {
+	parsedAttendanceDate, err := time.Parse("2006-01-02", attendanceDate)
+	if err != nil {
 		http.Error(w, "invalid attendance date", http.StatusBadRequest)
+		return
+	}
+	today := time.Now().Format("2006-01-02")
+	if parsedAttendanceDate.Format("2006-01-02") > today {
+		http.Error(w, "attendance date cannot be in the future", http.StatusBadRequest)
 		return
 	}
 
