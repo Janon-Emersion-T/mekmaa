@@ -7,15 +7,214 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+func testUploadFile(t *testing.T, content []byte, originalName string) (multipart.File, *multipart.FileHeader) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "upload")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { file.Close() })
+	return file, &multipart.FileHeader{Filename: originalName, Size: int64(len(content))}
+}
+
+func TestUploadStorageConfigurationAndCreation(t *testing.T) {
+	defaultRoot, err := resolveUploadRoot("")
+	if err != nil {
+		t.Fatalf("resolve default upload root: %v", err)
+	}
+	expectedDefault, err := filepath.Abs(defaultUploadDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultRoot != expectedDefault {
+		t.Fatalf("default upload root = %q, want %q", defaultRoot, expectedDefault)
+	}
+
+	configured := filepath.Join(t.TempDir(), "mekmaa-uploads")
+	t.Setenv("UPLOAD_DIR", configured)
+	storage, err := prepareUploadStorage(os.Getenv("UPLOAD_DIR"))
+	if err != nil {
+		t.Fatalf("prepare configured upload storage: %v", err)
+	}
+	expectedConfigured, _ := filepath.Abs(configured)
+	if storage.Root != expectedConfigured || storage.EventDir != filepath.Join(expectedConfigured, "events") {
+		t.Fatalf("unexpected configured storage: %#v", storage)
+	}
+	for _, directory := range []string{storage.Root, storage.EventDir} {
+		info, err := os.Stat(directory)
+		if err != nil {
+			t.Fatalf("stat created directory %s: %v", directory, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("%s is not a directory", directory)
+		}
+	}
+	if _, err := prepareUploadStorage(os.Getenv("UPLOAD_DIR")); err != nil {
+		t.Fatalf("idempotent storage preparation failed: %v", err)
+	}
+}
+
+func TestEventImageFilenameAndPublicPathSafety(t *testing.T) {
+	filename, err := newEventImageFilename(".jpg")
+	if err != nil {
+		t.Fatalf("generate filename: %v", err)
+	}
+	if !regexp.MustCompile(`^event-[a-z0-9_-]+\.jpg$`).MatchString(filename) {
+		t.Fatalf("unsafe generated filename %q", filename)
+	}
+	publicPath, err := eventImagePublicPath(filename)
+	if err != nil {
+		t.Fatalf("generate public path: %v", err)
+	}
+	if publicPath != "/uploads/events/"+filename {
+		t.Fatalf("public path = %q", publicPath)
+	}
+	for _, unsafe := range []string{"../event-abcdefghijkl.jpg", "event-abcdefghijkl.gif", "/tmp/event-abcdefghijkl.jpg"} {
+		if _, err := eventImagePublicPath(unsafe); err == nil {
+			t.Fatalf("expected unsafe filename %q to be rejected", unsafe)
+		}
+	}
+}
+
+func TestEventImageSupportedAndUnsupportedTypes(t *testing.T) {
+	storage, err := prepareUploadStorage(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	supported := []struct {
+		name    string
+		content []byte
+		ext     string
+	}{
+		{name: "photo.txt", content: append([]byte{0xff, 0xd8, 0xff, 0xe0}, []byte("jpeg-content")...), ext: ".jpg"},
+		{name: "photo.bin", content: append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, []byte("png-content")...), ext: ".png"},
+		{name: "photo.jpg", content: []byte{'R', 'I', 'F', 'F', 0x04, 0, 0, 0, 'W', 'E', 'B', 'P', 'V', 'P', '8', ' '}, ext: ".webp"},
+	}
+	for _, test := range supported {
+		file, header := testUploadFile(t, test.content, "../../"+test.name)
+		publicPath, err := storage.saveEventImage(file, header)
+		if err != nil {
+			t.Fatalf("save detected %s image: %v", test.ext, err)
+		}
+		if !strings.HasPrefix(publicPath, "/uploads/events/event-") || !strings.HasSuffix(publicPath, test.ext) {
+			t.Fatalf("unexpected public path %q", publicPath)
+		}
+		filename := strings.TrimPrefix(publicPath, "/uploads/events/")
+		saved, err := os.ReadFile(filepath.Join(storage.EventDir, filename))
+		if err != nil {
+			t.Fatalf("read saved image: %v", err)
+		}
+		if !bytes.Equal(saved, test.content) {
+			t.Fatalf("saved %s content changed", test.ext)
+		}
+	}
+
+	for _, unsupported := range [][]byte{
+		[]byte("plain text pretending to be an image"),
+		append([]byte("GIF89a"), make([]byte, 32)...),
+	} {
+		file, header := testUploadFile(t, unsupported, "photo.jpg")
+		if _, err := storage.saveEventImage(file, header); err == nil {
+			t.Fatal("unsupported detected MIME type was accepted")
+		}
+	}
+}
+
+func TestEventImageSizeTraversalDeleteAndReplace(t *testing.T) {
+	storage, err := prepareUploadStorage(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	oversized := append([]byte{0xff, 0xd8, 0xff, 0xe0}, make([]byte, maxEventImageSize)...)
+	file, header := testUploadFile(t, oversized, "large.jpg")
+	header.Size = 0 // Ensure the streaming limit, not only metadata, rejects it.
+	if _, err := storage.saveEventImage(file, header); err == nil {
+		t.Fatal("oversized streaming upload was accepted")
+	}
+	entries, err := os.ReadDir(storage.EventDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed upload left %d incomplete file(s)", len(entries))
+	}
+
+	firstFile, firstHeader := testUploadFile(t, append([]byte{0xff, 0xd8, 0xff}, []byte("first")...), "../../escape.jpg")
+	firstPath, err := storage.saveEventImage(firstFile, firstHeader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondFile, secondHeader := testUploadFile(t, append([]byte{0xff, 0xd8, 0xff}, []byte("replacement")...), "replacement.jpg")
+	secondPath, err := storage.saveEventImage(secondFile, secondHeader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstName := strings.TrimPrefix(firstPath, "/uploads/events/")
+	secondName := strings.TrimPrefix(secondPath, "/uploads/events/")
+	if err := storage.deleteEventImage("/uploads/events/../" + firstName); err == nil {
+		t.Fatal("path traversal deletion was not rejected")
+	}
+	if _, err := os.Stat(filepath.Join(storage.EventDir, firstName)); err != nil {
+		t.Fatalf("traversal attempt affected original image: %v", err)
+	}
+	if err := storage.deleteEventImage(firstPath); err != nil {
+		t.Fatalf("delete replaced image: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(storage.EventDir, firstName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("replaced image still exists: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(storage.EventDir, secondName)); err != nil {
+		t.Fatalf("replacement image missing: %v", err)
+	}
+	if err := storage.deleteEventImage("/event-images/" + secondName); err != nil {
+		t.Fatalf("delete legacy public path: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(storage.EventDir, secondName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy-path deletion did not remove image: %v", err)
+	}
+}
+
+func TestEventImageHTTPServing(t *testing.T) {
+	storage, err := prepareUploadStorage(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := append([]byte{0xff, 0xd8, 0xff, 0xe0}, []byte("served-image")...)
+	file, header := testUploadFile(t, content, "served.jpg")
+	publicPath, err := storage.saveEventImage(file, header)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	registerUploadRoutes(mux, storage)
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, publicPath, nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("serve uploaded image status = %d", recorder.Code)
+	}
+	if !bytes.Equal(recorder.Body.Bytes(), content) {
+		t.Fatal("served upload content differs from saved content")
+	}
+}
 
 func newAuthorizationTestApp(t *testing.T) *App {
 	t.Helper()

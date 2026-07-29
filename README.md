@@ -37,6 +37,7 @@ Target Go version: `1.26.5`
 
 - `ADDR` server bind address, default `:8080`
 - `DB_PATH` SQLite database path, default `app.db`
+- `UPLOAD_DIR` writable upload root, default `./data/uploads`
 - `COOKIE_SECURE` set to `true` behind HTTPS
 - `SMTP_HOST` SMTP host, default `smtp.gmail.com`
 - `SMTP_PORT` SMTP port, default `587`

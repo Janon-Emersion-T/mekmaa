@@ -15,6 +15,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"mime/multipart"
 	"net/http"
 	"net/smtp"
 	"net/url"
@@ -36,6 +37,9 @@ const (
 	flashCookieName   = "mekmaa3_flash"
 	sessionTTL        = 24 * time.Hour
 	otpTTL            = 10 * time.Minute
+	maxEventImageSize = 8 << 20
+	maxEventFormSize  = maxEventImageSize + (1 << 20)
+	defaultUploadDir  = "./data/uploads"
 )
 
 var (
@@ -44,6 +48,8 @@ var (
 	otpPattern          = regexp.MustCompile(`^\d{6}$`)
 	referralCodePattern = regexp.MustCompile(`^[A-Z0-9_-]{3,24}$`)
 	roleNamePattern     = regexp.MustCompile(`^[a-z][a-z0-9_-]{2,31}$`)
+	eventImagePattern   = regexp.MustCompile(`^event-[a-z0-9_-]{12,64}\.(jpg|png|webp)$`)
+	storedEventPattern  = regexp.MustCompile(`^event-[a-z0-9_-]{12,64}\.(jpg|png|gif|webp)$`)
 	allRoles            = []string{"superadmin", "admin", "editor", "customer"}
 	allPermissions      = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"}
 )
@@ -86,6 +92,12 @@ type App struct {
 	cookieSecure bool
 	smtp         SMTPConfig
 	sms          SMSConfig
+	uploads      UploadStorage
+}
+
+type UploadStorage struct {
+	Root     string
+	EventDir string
 }
 
 type SMTPConfig struct {
@@ -565,6 +577,11 @@ func main() {
 	addr := envOrDefault("ADDR", ":8080")
 	dbPath := envOrDefault("DB_PATH", "app.db")
 	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
+	uploadStorage, err := prepareUploadStorage(os.Getenv("UPLOAD_DIR"))
+	if err != nil {
+		log.Fatalf("prepare upload storage: %v", err)
+	}
+	log.Printf("event upload storage=%s", uploadStorage.EventDir)
 
 	smtpConfig := SMTPConfig{
 		Host:     envOrDefault("SMTP_HOST", "smtp.gmail.com"),
@@ -615,11 +632,12 @@ func main() {
 		cookieSecure: cookieSecure,
 		smtp:         smtpConfig,
 		sms:          smsConfig,
+		uploads:      uploadStorage,
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
-	mux.Handle("/event-images/", http.StripPrefix("/event-images/", http.FileServer(http.Dir(eventUploadsDir()))))
+	registerUploadRoutes(mux, uploadStorage)
 	mux.HandleFunc("/", app.homeHandler)
 	mux.HandleFunc("/about", app.aboutHandler)
 	mux.HandleFunc("/book", app.publicBookingHandler)
@@ -2364,27 +2382,31 @@ func (a *App) createEventHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := r.ParseMultipartForm(16 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, maxEventFormSize)
+	if err := r.ParseMultipartForm(maxEventImageSize); err != nil {
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
 	}
 	if err := a.verifyCSRF(r); err != nil {
 		http.Error(w, "invalid csrf token", http.StatusForbidden)
 		return
 	}
 
-	event, err := eventFromRequest(r)
+	event, err := a.eventFromRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := validateEvent(event); err != nil {
-		deleteUploadedEventImage(event.ImagePath)
+		a.removeUploadedEventImage(event.ImagePath)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := a.createEvent(event); err != nil {
-		deleteUploadedEventImage(event.ImagePath)
+		a.removeUploadedEventImage(event.ImagePath)
 		log.Printf("create event: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -2399,9 +2421,13 @@ func (a *App) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := r.ParseMultipartForm(16 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, maxEventFormSize)
+	if err := r.ParseMultipartForm(maxEventImageSize); err != nil {
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
 	}
 	if err := a.verifyCSRF(r); err != nil {
 		http.Error(w, "invalid csrf token", http.StatusForbidden)
@@ -2420,7 +2446,7 @@ func (a *App) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	event, err := eventFromRequest(r)
+	event, err := a.eventFromRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -2431,30 +2457,30 @@ func (a *App) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 		event.ImagePath = existingEvent.ImagePath
 	}
 	deleteOldImage := false
-	if r.FormValue("remove_image") == "true" {
+	if r.FormValue("remove_image") == "true" && uploadedReplacement == "" {
 		event.ImagePath = ""
 		deleteOldImage = true
 	}
 	if err := validateEvent(event); err != nil {
 		if uploadedReplacement != "" {
-			deleteUploadedEventImage(uploadedReplacement)
+			a.removeUploadedEventImage(uploadedReplacement)
 		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := a.updateEvent(event); err != nil {
 		if uploadedReplacement != "" {
-			deleteUploadedEventImage(uploadedReplacement)
+			a.removeUploadedEventImage(uploadedReplacement)
 		}
 		log.Printf("update event: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if uploadedReplacement != "" && existingEvent.ImagePath != "" && existingEvent.ImagePath != uploadedReplacement {
-		deleteUploadedEventImage(existingEvent.ImagePath)
+		a.removeUploadedEventImage(existingEvent.ImagePath)
 	}
 	if deleteOldImage && existingEvent.ImagePath != "" && uploadedReplacement == "" {
-		deleteUploadedEventImage(existingEvent.ImagePath)
+		a.removeUploadedEventImage(existingEvent.ImagePath)
 	}
 
 	a.setFlash(w, "Event updated.")
@@ -2487,7 +2513,7 @@ func (a *App) deleteEventHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existingEvent != nil {
-		deleteUploadedEventImage(existingEvent.ImagePath)
+		a.removeUploadedEventImage(existingEvent.ImagePath)
 	}
 
 	a.setFlash(w, "Event deleted.")
@@ -7227,8 +7253,8 @@ func pricingRuleFromRequest(r *http.Request) (PricingRule, error) {
 	}, nil
 }
 
-func eventFromRequest(r *http.Request) (Event, error) {
-	imagePath, err := uploadedEventImagePath(r)
+func (a *App) eventFromRequest(r *http.Request) (Event, error) {
+	imagePath, err := a.uploadedEventImagePath(r)
 	if err != nil {
 		return Event{}, err
 	}
@@ -8067,7 +8093,57 @@ func nullIfZero(value int64) any {
 	return value
 }
 
-func uploadedEventImagePath(r *http.Request) (string, error) {
+func prepareUploadStorage(configuredRoot string) (UploadStorage, error) {
+	resolvedRoot, err := resolveUploadRoot(configuredRoot)
+	if err != nil {
+		return UploadStorage{}, err
+	}
+
+	storage := UploadStorage{
+		Root:     resolvedRoot,
+		EventDir: filepath.Join(resolvedRoot, "events"),
+	}
+	if err := os.MkdirAll(storage.Root, 0o755); err != nil {
+		return UploadStorage{}, fmt.Errorf("create upload directory %s: %w", storage.Root, err)
+	}
+	if err := os.MkdirAll(storage.EventDir, 0o755); err != nil {
+		return UploadStorage{}, fmt.Errorf("create event upload directory %s: %w", storage.EventDir, err)
+	}
+
+	probe, err := os.CreateTemp(storage.EventDir, ".mekmaa-write-check-*")
+	if err != nil {
+		return UploadStorage{}, fmt.Errorf("event upload directory is not writable %s: %w", storage.EventDir, err)
+	}
+	probeName := probe.Name()
+	if err := probe.Close(); err != nil {
+		_ = os.Remove(probeName)
+		return UploadStorage{}, fmt.Errorf("close event upload write check %s: %w", probeName, err)
+	}
+	if err := os.Remove(probeName); err != nil {
+		return UploadStorage{}, fmt.Errorf("remove event upload write check %s: %w", probeName, err)
+	}
+	return storage, nil
+}
+
+func registerUploadRoutes(mux *http.ServeMux, storage UploadStorage) {
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(storage.Root))))
+	// Keep previously persisted /event-images/ paths available during migration.
+	mux.Handle("/event-images/", http.StripPrefix("/event-images/", http.FileServer(http.Dir(storage.EventDir))))
+}
+
+func resolveUploadRoot(configuredRoot string) (string, error) {
+	root := strings.TrimSpace(configuredRoot)
+	if root == "" {
+		root = defaultUploadDir
+	}
+	resolvedRoot, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return "", fmt.Errorf("resolve upload directory %q: %w", root, err)
+	}
+	return resolvedRoot, nil
+}
+
+func (a *App) uploadedEventImagePath(r *http.Request) (string, error) {
 	file, header, err := r.FormFile("image")
 	if err != nil {
 		if errors.Is(err, http.ErrMissingFile) {
@@ -8077,48 +8153,94 @@ func uploadedEventImagePath(r *http.Request) (string, error) {
 	}
 	defer file.Close()
 
-	if header.Size > 8<<20 {
+	return a.uploads.saveEventImage(file, header)
+}
+
+func (s UploadStorage) saveEventImage(file multipart.File, header *multipart.FileHeader) (string, error) {
+	if header != nil && header.Size > maxEventImageSize {
 		return "", errors.New("event image must be 8MB or smaller")
 	}
 
 	buf := make([]byte, 512)
 	n, err := io.ReadFull(file, buf)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return "", errors.New("unable to read uploaded event image")
+		return "", fmt.Errorf("read uploaded event image: %w", err)
+	}
+	if n == 0 {
+		return "", errors.New("event image is empty")
 	}
 	contentType := http.DetectContentType(buf[:n])
 	ext, ok := eventImageExtension(contentType)
 	if !ok {
-		return "", errors.New("event image must be a JPG, PNG, GIF or WebP file")
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return "", errors.New("unable to process uploaded event image")
+		return "", errors.New("event image must be a JPEG, PNG or WebP file")
 	}
 
-	uploadsDir := eventUploadsDir()
-	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
-		log.Printf("prepare event image storage %s: %v", uploadsDir, err)
-		return "", fmt.Errorf("unable to prepare event image storage: %v", err)
+	if err := os.MkdirAll(s.EventDir, 0o755); err != nil {
+		return "", fmt.Errorf("prepare event image directory %s: %w", s.EventDir, err)
 	}
 
+	filename, err := newEventImageFilename(ext)
+	if err != nil {
+		return "", err
+	}
+	targetPath := filepath.Join(s.EventDir, filename)
+
+	dst, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return "", fmt.Errorf("create uploaded event image %s: %w", targetPath, err)
+	}
+	complete := false
+	closed := false
+	defer func() {
+		if !closed {
+			_ = dst.Close()
+		}
+		if !complete {
+			_ = os.Remove(targetPath)
+		}
+	}()
+
+	if _, err := dst.Write(buf[:n]); err != nil {
+		return "", fmt.Errorf("write uploaded event image %s: %w", targetPath, err)
+	}
+	remaining := int64(maxEventImageSize - n)
+	copied, err := io.Copy(dst, io.LimitReader(file, remaining+1))
+	if err != nil {
+		return "", fmt.Errorf("copy uploaded event image %s: %w", targetPath, err)
+	}
+	if int64(n)+copied > maxEventImageSize {
+		return "", errors.New("event image must be 8MB or smaller")
+	}
+	if err := dst.Close(); err != nil {
+		closed = true
+		return "", fmt.Errorf("close uploaded event image %s: %w", targetPath, err)
+	}
+	closed = true
+	complete = true
+
+	return eventImagePublicPath(filename)
+}
+
+func newEventImageFilename(extension string) (string, error) {
+	if extension != ".jpg" && extension != ".png" && extension != ".webp" {
+		return "", errors.New("unsupported event image extension")
+	}
 	token, err := generateToken(18)
 	if err != nil {
-		return "", errors.New("unable to generate event image filename")
+		return "", fmt.Errorf("generate event image filename: %w", err)
 	}
-	filename := "event-" + strings.ToLower(token) + ext
-	targetPath := filepath.Join(uploadsDir, filename)
-
-	dst, err := os.Create(targetPath)
-	if err != nil {
-		return "", fmt.Errorf("unable to save uploaded event image: %v", err)
+	filename := "event-" + strings.ToLower(token) + extension
+	if !eventImagePattern.MatchString(filename) {
+		return "", errors.New("generated event image filename is invalid")
 	}
-	defer dst.Close()
+	return filename, nil
+}
 
-	if _, err := io.Copy(dst, file); err != nil {
-		return "", fmt.Errorf("unable to save uploaded event image: %v", err)
+func eventImagePublicPath(filename string) (string, error) {
+	if !eventImagePattern.MatchString(filename) || filepath.Base(filename) != filename {
+		return "", errors.New("invalid event image filename")
 	}
-
-	return "/event-images/" + filename, nil
+	return "/uploads/events/" + filename, nil
 }
 
 func eventImageExtension(contentType string) (string, bool) {
@@ -8127,8 +8249,6 @@ func eventImageExtension(contentType string) (string, bool) {
 		return ".jpg", true
 	case "image/png":
 		return ".png", true
-	case "image/gif":
-		return ".gif", true
 	case "image/webp":
 		return ".webp", true
 	default:
@@ -8136,25 +8256,36 @@ func eventImageExtension(contentType string) (string, bool) {
 	}
 }
 
-func deleteUploadedEventImage(imagePath string) {
+func (s UploadStorage) deleteEventImage(imagePath string) error {
 	trimmed := strings.TrimSpace(imagePath)
-	if trimmed == "" || !strings.HasPrefix(trimmed, "/event-images/") {
-		return
+	if trimmed == "" {
+		return nil
 	}
-	localPath := filepath.Join(eventUploadsDir(), filepath.Base(trimmed))
+
+	filename := ""
+	for _, prefix := range []string{"/uploads/events/", "/event-images/"} {
+		if strings.HasPrefix(trimmed, prefix) {
+			filename = strings.TrimPrefix(trimmed, prefix)
+			break
+		}
+	}
+	if filename == "" {
+		return nil
+	}
+	if !storedEventPattern.MatchString(filename) || filepath.Base(filename) != filename {
+		return errors.New("invalid event image path")
+	}
+	localPath := filepath.Join(s.EventDir, filename)
 	if err := os.Remove(localPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.Printf("delete event image %s: %v", localPath, err)
+		return fmt.Errorf("delete event image %s: %w", localPath, err)
 	}
+	return nil
 }
 
-func eventUploadsDir() string {
-	if wd, err := os.Getwd(); err == nil && wd != "" {
-		return filepath.Join(wd, "uploads", "events")
+func (a *App) removeUploadedEventImage(imagePath string) {
+	if err := a.uploads.deleteEventImage(imagePath); err != nil {
+		log.Printf("remove uploaded event image: %v", err)
 	}
-	if exe, err := os.Executable(); err == nil && exe != "" {
-		return filepath.Join(filepath.Dir(exe), "uploads", "events")
-	}
-	return filepath.Join("uploads", "events")
 }
 
 func financeCategoryLabel(value string) string {
