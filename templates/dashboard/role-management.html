@@ -168,19 +168,26 @@
             </span>
           </div>
 
-          <div class="mt-3 rounded-2xl border border-slate/10 bg-cloud/55 p-4 sm:p-5">
-            <div class="flex flex-wrap gap-2.5">
+          <div class="mt-3 space-y-4 rounded-2xl border border-slate/10 bg-cloud/55 p-4 sm:p-5">
+            {{range .PermissionGroups}}
+            <section class="rounded-2xl border border-slate/10 bg-white/75 p-4">
+              <div class="mb-3">
+                <h3 class="text-sm font-semibold text-obsidian">{{.Name}}</h3>
+                <p class="mt-1 text-xs leading-5 text-slate/50">{{.Description}}</p>
+              </div>
+              <div class="grid gap-2 sm:grid-cols-2">
               {{range .Permissions}}
-              <label class="group relative cursor-pointer">
+              <label class="group relative cursor-pointer rounded-xl border border-slate/10 bg-white p-3 transition hover:border-obsidian/25">
                 <input
                   type="checkbox"
                   name="permissions"
-                  value="{{.}}"
+                  value="{{.Key}}"
+                  {{if and .Sensitive (not (hasRole $.User "superadmin"))}}disabled{{end}}
                   class="peer sr-only"
                 />
 
-                <span class="inline-flex min-h-10 items-center gap-2 rounded-full border border-obsidian/10 bg-white px-4 py-2 text-sm font-medium text-slate shadow-sm transition group-hover:border-obsidian/25 group-hover:bg-cloud peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud peer-focus-visible:ring-4 peer-focus-visible:ring-aqua/25">
-                  <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-current/30">
+                <span class="flex items-start gap-3 text-slate transition peer-checked:text-obsidian {{if and .Sensitive (not (hasRole $.User "superadmin"))}}cursor-not-allowed opacity-45{{end}}">
+                  <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate/25 bg-white peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud">
                     <svg
                       aria-hidden="true"
                       viewBox="0 0 20 20"
@@ -195,17 +202,16 @@
                     </svg>
                   </span>
 
-                  <span class="break-all">{{.}}</span>
+                  <span>
+                    <span class="block text-sm font-semibold">{{.Label}}{{if .Sensitive}} <span class="text-[0.6rem] uppercase tracking-wider text-amber-700">Privileged</span>{{end}}</span>
+                    <span class="mt-1 block text-xs leading-5 text-slate/50">{{.Description}}</span>
+                  </span>
                 </span>
               </label>
-              {{else}}
-              <div class="w-full rounded-xl border border-dashed border-slate/20 bg-white/60 px-4 py-6 text-center">
-                <p class="text-sm font-medium text-slate/60">
-                  No permissions are currently available.
-                </p>
-              </div>
               {{end}}
-            </div>
+              </div>
+            </section>
+            {{end}}
           </div>
         </fieldset>
       </div>
@@ -263,6 +269,8 @@
         {{range .Roles}}
         {{$role := .}}
         {{$systemRole := isSystemRole .Name}}
+        {{$selfAssigned := contains $.User.Roles .Name}}
+        {{$canEditRole := and (not $systemRole) (or (hasRole $.User "superadmin") (not $selfAssigned))}}
 
         <article
           class="group overflow-hidden rounded-[1.5rem] border border-slate/10 bg-cloud/65 transition duration-200 hover:border-slate/20 hover:bg-cloud hover:shadow-[0_16px_45px_rgba(11,18,21,0.08)]"
@@ -367,8 +375,8 @@
                       <circle cx="12" cy="12" r="9" />
                     </svg>
 
-                    System role names are protected and cannot be renamed or
-                    deleted.
+                    System roles are protected. Their names and permissions
+                    cannot be changed or deleted.
                   </p>
                   {{else}}
                   <p class="mt-3 text-xs leading-5 text-slate/50">
@@ -390,20 +398,24 @@
                     </span>
                   </div>
 
-                  <div class="mt-3 rounded-2xl border border-slate/10 bg-white/55 p-4 sm:p-5">
-                    <div class="flex flex-wrap gap-2.5">
-                      {{range $.Permissions}}
-                      <label class="group/permission relative cursor-pointer">
+                  <div class="mt-3 space-y-3 rounded-2xl border border-slate/10 bg-white/55 p-4 sm:p-5">
+                    {{range $.PermissionGroups}}
+                    <section>
+                      <h4 class="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate/45">{{.Name}}</h4>
+                      <div class="grid gap-2 sm:grid-cols-2">
+                      {{range .Permissions}}
+                      <label class="group/permission relative {{if $systemRole}}cursor-not-allowed opacity-70{{else}}cursor-pointer{{end}} rounded-xl border border-slate/10 bg-white p-3">
                         <input
                           type="checkbox"
                           name="permissions"
-                          value="{{.}}"
-                          {{if containsPermission $role.Permissions .}}checked{{end}}
+                          value="{{.Key}}"
+                          {{if containsPermission $role.Permissions .Key}}checked{{end}}
+                          {{if or $systemRole (not $canEditRole)}}disabled{{end}}
                           class="peer sr-only"
                         />
 
-                        <span class="inline-flex min-h-10 items-center gap-2 rounded-full border border-obsidian/10 bg-white px-3.5 py-2 text-sm font-medium text-slate shadow-sm transition group-hover/permission:border-obsidian/25 group-hover/permission:bg-cloud peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud peer-focus-visible:ring-4 peer-focus-visible:ring-aqua/25">
-                          <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-current/30">
+                        <span class="flex items-start gap-2.5 text-slate peer-checked:text-obsidian">
+                          <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-current/30 peer-checked:bg-obsidian peer-checked:text-cloud">
                             <svg
                               aria-hidden="true"
                               viewBox="0 0 20 20"
@@ -418,17 +430,16 @@
                             </svg>
                           </span>
 
-                          <span class="break-all">{{.}}</span>
+                          <span>
+                            <span class="block text-sm font-semibold">{{.Label}}</span>
+                            <span class="mt-0.5 block text-[0.68rem] leading-4 text-slate/45">{{.Key}}</span>
+                          </span>
                         </span>
                       </label>
-                      {{else}}
-                      <div class="w-full rounded-xl border border-dashed border-slate/20 px-4 py-6 text-center">
-                        <p class="text-sm font-medium text-slate/60">
-                          No permissions are currently available.
-                        </p>
-                      </div>
                       {{end}}
-                    </div>
+                      </div>
+                    </section>
+                    {{end}}
                   </div>
                 </fieldset>
               </div>
@@ -440,6 +451,7 @@
                 role.
               </p>
 
+              {{if $canEditRole}}
               <button
                 type="submit"
                 class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud shadow-sm transition hover:bg-slate focus:outline-none focus:ring-4 focus:ring-aqua/25 sm:w-auto"
@@ -461,10 +473,13 @@
 
                 Save changes
               </button>
+              {{else}}
+              <span class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-cloud px-4 text-sm font-semibold text-slate/45">{{if $systemRole}}Protected role{{else}}Assigned to your account{{end}}</span>
+              {{end}}
             </div>
           </form>
 
-          {{if not $systemRole}}
+          {{if and (not $systemRole) (eq .UserCount 0)}}
           <div class="border-t border-red-100 bg-red-50/55 px-4 py-4 sm:px-5 lg:px-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -510,6 +525,10 @@
                 </button>
               </form>
             </div>
+          </div>
+          {{else if and (not $systemRole) (gt .UserCount 0)}}
+          <div class="border-t border-slate/10 bg-white/55 px-4 py-3 text-xs text-slate/50 sm:px-5 lg:px-6">
+            Assigned to {{.UserCount}} user(s). Remove those assignments before deleting this role.
           </div>
           {{end}}
         </article>

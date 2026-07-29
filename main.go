@@ -43,9 +43,38 @@ var (
 	passwordPattern     = regexp.MustCompile(`^.{10,}$`)
 	otpPattern          = regexp.MustCompile(`^\d{6}$`)
 	referralCodePattern = regexp.MustCompile(`^[A-Z0-9_-]{3,24}$`)
+	roleNamePattern     = regexp.MustCompile(`^[a-z][a-z0-9_-]{2,31}$`)
 	allRoles            = []string{"superadmin", "admin", "editor", "customer"}
 	allPermissions      = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"}
 )
+
+var permissionGroups = []PermissionGroup{
+	{Name: "Workspace", Description: "Core authenticated workspace access.", Permissions: []PermissionDefinition{
+		{Key: "dashboard.view", Label: "View dashboard", Description: "Open the authenticated dashboard and account overview."},
+		{Key: "editor.access", Label: "Access editor", Description: "Open the protected content editor workspace."},
+	}},
+	{Name: "Administration", Description: "High-trust identity and authorization controls.", Permissions: []PermissionDefinition{
+		{Key: "users.manage", Label: "Manage users", Description: "Create accounts and change user role assignments.", Sensitive: true},
+		{Key: "roles.manage", Label: "Manage roles", Description: "Create, update, and remove custom authorization roles.", Sensitive: true},
+	}},
+	{Name: "Students", Description: "Student intake, grouping, attendance, and billing operations.", Permissions: []PermissionDefinition{
+		{Key: "admissions.manage", Label: "Manage admissions", Description: "Create, update, archive, and collect admission payments."},
+		{Key: "student_groups.manage", Label: "Manage student groups", Description: "Create groups and maintain student memberships."},
+		{Key: "attendance.manage", Label: "Manage attendance", Description: "Record and update daily attendance registers."},
+	}},
+	{Name: "Bookings", Description: "Facility schedule and customer booking operations.", Permissions: []PermissionDefinition{
+		{Key: "space_bookings.manage", Label: "Manage booking calendar", Description: "Create, update, and remove facility schedule entries."},
+		{Key: "booking_requests.manage", Label: "Manage booking requests", Description: "Review, confirm, and reject customer booking requests."},
+	}},
+	{Name: "Finance", Description: "Pricing, collections, ledger, referrals, and reporting.", Permissions: []PermissionDefinition{
+		{Key: "pricing.manage", Label: "Manage pricing", Description: "Maintain booking, admission, and monthly payment prices."},
+		{Key: "finance.manage", Label: "Manage finance", Description: "Manage payments, expenses, receipts, referrals, and exports."},
+		{Key: "reports.view", Label: "View and export reports", Description: "Open operational reports and export report data."},
+	}},
+	{Name: "Content", Description: "Public website content operations.", Permissions: []PermissionDefinition{
+		{Key: "events.manage", Label: "Manage events", Description: "Create, publish, update, and remove public events."},
+	}},
+}
 
 type contextKey string
 
@@ -90,6 +119,20 @@ type Role struct {
 	Name        string
 	Permissions []string
 	System      bool
+	UserCount   int
+}
+
+type PermissionDefinition struct {
+	Key         string
+	Label       string
+	Description string
+	Sensitive   bool
+}
+
+type PermissionGroup struct {
+	Name        string
+	Description string
+	Permissions []PermissionDefinition
 }
 
 type Admission struct {
@@ -429,6 +472,7 @@ type TemplateData struct {
 	Available           []string
 	Roles               []Role
 	Permissions         []string
+	PermissionGroups    []PermissionGroup
 	Admissions          []Admission
 	SelectedAdmission   *Admission
 	AdmissionMode       string
@@ -509,6 +553,8 @@ var (
 	ErrStudentPaymentAlreadyCollected = errors.New("student payment already collected")
 	ErrStudentNotAdmittedForMonth     = errors.New("student was not admitted for the selected month")
 	ErrBookingPaymentAlreadyCollected = errors.New("booking payment already collected")
+	ErrRoleAssigned                   = errors.New("role is assigned to one or more users")
+	ErrSystemRoleProtected            = errors.New("system roles are protected")
 )
 
 func main() {
@@ -595,16 +641,16 @@ func main() {
 	mux.HandleFunc("/verify-email", app.verifyEmailHandler)
 	mux.HandleFunc("/verify-email/resend", app.resendVerificationHandler)
 	mux.HandleFunc("/logout", app.logoutHandler)
-	mux.Handle("/dashboard", app.sessionMiddleware(http.HandlerFunc(app.dashboardHandler)))
-	mux.Handle("/editor", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.editorHandler), "editor", "admin", "superadmin")))
-	mux.Handle("/admin", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.adminRedirectHandler), "admin", "superadmin")))
-	mux.Handle("/admin/users", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.userManagementHandler), "admin", "superadmin")))
-	mux.Handle("/admin/roles", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.roleManagementHandler), "admin", "superadmin")))
-	mux.Handle("/admin/users/create", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.createManagedUserHandler), "admin", "superadmin")))
-	mux.Handle("/admin/users/roles", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.updateRolesHandler), "admin", "superadmin")))
-	mux.Handle("/admin/roles/create", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.createRoleHandler), "admin", "superadmin")))
-	mux.Handle("/admin/roles/update", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.updateRoleHandler), "admin", "superadmin")))
-	mux.Handle("/admin/roles/delete", app.sessionMiddleware(app.requireRoles(http.HandlerFunc(app.deleteRoleHandler), "admin", "superadmin")))
+	mux.Handle("/dashboard", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.dashboardHandler), "dashboard.view")))
+	mux.Handle("/editor", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.editorHandler), "editor.access")))
+	mux.Handle("/admin", app.sessionMiddleware(http.HandlerFunc(app.adminRedirectHandler)))
+	mux.Handle("/admin/users", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.userManagementHandler), "users.manage")))
+	mux.Handle("/admin/roles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.roleManagementHandler), "roles.manage")))
+	mux.Handle("/admin/users/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createManagedUserHandler), "users.manage")))
+	mux.Handle("/admin/users/roles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateRolesHandler), "users.manage")))
+	mux.Handle("/admin/roles/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createRoleHandler), "roles.manage")))
+	mux.Handle("/admin/roles/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateRoleHandler), "roles.manage")))
+	mux.Handle("/admin/roles/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteRoleHandler), "roles.manage")))
 	mux.Handle("/admin/admissions", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.admissionManagementHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateAdmissionHandler), "admissions.manage")))
@@ -1229,7 +1275,30 @@ func (a *App) editorHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) adminRedirectHandler(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
+	user, _ := a.currentUser(r.Context())
+	destinations := []struct {
+		permission string
+		path       string
+	}{
+		{"users.manage", "/admin/users"},
+		{"roles.manage", "/admin/roles"},
+		{"admissions.manage", "/admin/admissions"},
+		{"student_groups.manage", "/admin/student-groups"},
+		{"attendance.manage", "/admin/attendance"},
+		{"space_bookings.manage", "/admin/bookings"},
+		{"booking_requests.manage", "/admin/booking-requests"},
+		{"finance.manage", "/admin/finance"},
+		{"pricing.manage", "/admin/pricing"},
+		{"reports.view", "/admin/reports"},
+		{"events.manage", "/admin/events"},
+	}
+	for _, destination := range destinations {
+		if containsPermission(user.Permissions, destination.permission) {
+			http.Redirect(w, r, destination.path, http.StatusSeeOther)
+			return
+		}
+	}
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 
 func (a *App) userManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -1251,7 +1320,12 @@ func (a *App) userManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Title = "User Management"
 	data.Description = "Manage users."
 	data.Users = users
-	data.Available = allRoles
+	for _, role := range roles {
+		if isPrivilegedRole(role.Name) && !containsRole(user.Roles, "superadmin") {
+			continue
+		}
+		data.Available = append(data.Available, role.Name)
+	}
 	data.Roles = roles
 	a.render(w, "user-management", data, http.StatusOK)
 }
@@ -1270,6 +1344,7 @@ func (a *App) roleManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Description = "Manage roles."
 	data.Roles = roles
 	data.Permissions = allPermissions
+	data.PermissionGroups = permissionGroups
 	a.render(w, "role-management", data, http.StatusOK)
 }
 
@@ -2566,8 +2641,12 @@ func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("name"))
 	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	password := r.FormValue("password")
-	roles := normalizeRoles(r.Form["roles"])
+	roles, err := a.normalizeExistingRoles(r.Form["roles"])
 	verified := r.FormValue("verified") == "true"
+	if err != nil {
+		http.Error(w, "one or more selected roles are invalid", http.StatusBadRequest)
+		return
+	}
 
 	if name == "" || !emailPattern.MatchString(email) || !passwordPattern.MatchString(password) {
 		http.Error(w, "invalid user fields", http.StatusBadRequest)
@@ -2575,6 +2654,11 @@ func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(roles) == 0 {
 		http.Error(w, "at least one role must be selected", http.StatusBadRequest)
+		return
+	}
+	current, _ := a.currentUser(r.Context())
+	if containsPrivilegedRole(roles) && !containsRole(current.Roles, "superadmin") {
+		http.Error(w, "only a superadmin can assign administrator roles", http.StatusForbidden)
 		return
 	}
 
@@ -2608,15 +2692,24 @@ func (a *App) createRoleHandler(w http.ResponseWriter, r *http.Request) {
 
 	name := normalizeRoleName(r.FormValue("name"))
 	permissions := normalizePermissions(r.Form["permissions"])
-	if name == "" {
-		http.Error(w, "role name is required", http.StatusBadRequest)
+	if !roleNamePattern.MatchString(name) || isSystemRole(name) {
+		http.Error(w, "role name must be 3-32 lowercase letters, numbers, hyphens, or underscores and cannot be a system role", http.StatusBadRequest)
 		return
 	}
 	if len(permissions) == 0 {
 		http.Error(w, "at least one permission must be selected", http.StatusBadRequest)
 		return
 	}
+	current, _ := a.currentUser(r.Context())
+	if containsSensitivePermission(permissions) && !containsRole(current.Roles, "superadmin") {
+		http.Error(w, "only a superadmin can grant identity administration permissions", http.StatusForbidden)
+		return
+	}
 	if err := a.createRole(name, permissions); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "a role with this name already exists", http.StatusConflict)
+			return
+		}
 		log.Printf("create role: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -2647,13 +2740,38 @@ func (a *App) updateRoleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	name := normalizeRoleName(r.FormValue("name"))
 	permissions := normalizePermissions(r.Form["permissions"])
-	if name == "" {
-		http.Error(w, "role name is required", http.StatusBadRequest)
+	if !roleNamePattern.MatchString(name) || isSystemRole(name) {
+		http.Error(w, "role name must be 3-32 lowercase letters, numbers, hyphens, or underscores and cannot be a system role", http.StatusBadRequest)
 		return
 	}
 	if len(permissions) == 0 {
 		http.Error(w, "at least one permission must be selected", http.StatusBadRequest)
 		return
+	}
+	role, err := a.findRoleByID(roleID)
+	if err != nil {
+		http.Error(w, "role not found", http.StatusNotFound)
+		return
+	}
+	if role.System {
+		http.Error(w, "system roles are protected and cannot be changed", http.StatusForbidden)
+		return
+	}
+	current, _ := a.currentUser(r.Context())
+	if containsSensitivePermission(permissions) && !containsRole(current.Roles, "superadmin") {
+		http.Error(w, "only a superadmin can grant identity administration permissions", http.StatusForbidden)
+		return
+	}
+	if !containsRole(current.Roles, "superadmin") {
+		assigned, err := a.userHasRole(current.ID, role.Name)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if assigned {
+			http.Error(w, "you cannot change a role assigned to your own account", http.StatusForbidden)
+			return
+		}
 	}
 
 	if err := a.updateRole(roleID, name, permissions); err != nil {
@@ -2686,6 +2804,10 @@ func (a *App) deleteRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.deleteRole(roleID); err != nil {
+		if errors.Is(err, ErrRoleAssigned) || errors.Is(err, ErrSystemRoleProtected) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		log.Printf("delete role: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -2715,19 +2837,29 @@ func (a *App) updateRolesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	roles := normalizeRoles(r.Form["roles"])
+	roles, err := a.normalizeExistingRoles(r.Form["roles"])
+	if err != nil {
+		http.Error(w, "one or more selected roles are invalid", http.StatusBadRequest)
+		return
+	}
 	if len(roles) == 0 {
 		http.Error(w, "at least one role must be selected", http.StatusBadRequest)
 		return
 	}
 
 	current, _ := a.currentUser(r.Context())
-	if current != nil && current.ID == targetID && containsRole(current.Roles, "superadmin") && !containsRole(roles, "superadmin") {
-		http.Error(w, "you cannot remove your own superadmin access", http.StatusBadRequest)
+	if current.ID == targetID {
+		http.Error(w, "you cannot change roles on your own account", http.StatusForbidden)
 		return
 	}
-	if current != nil && current.ID == targetID && containsRole(current.Roles, "admin") && !containsRole(roles, "admin") && !containsRole(current.Roles, "superadmin") {
-		http.Error(w, "you cannot remove your own admin access", http.StatusBadRequest)
+	target, err := a.findUserByID(targetID)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+	currentIsSuperadmin := containsRole(current.Roles, "superadmin")
+	if (containsPrivilegedRole(target.Roles) || containsPrivilegedRole(roles)) && !currentIsSuperadmin {
+		http.Error(w, "only a superadmin can manage administrator accounts", http.StatusForbidden)
 		return
 	}
 
@@ -3719,7 +3851,13 @@ func (a *App) rolesForUser(userID int64) ([]string, error) {
 }
 
 func (a *App) listRoles() ([]Role, error) {
-	rows, err := a.db.Query(`SELECT id, name FROM roles ORDER BY name ASC`)
+	rows, err := a.db.Query(`
+		SELECT r.id, r.name, COUNT(ur.user_id)
+		FROM roles r
+		LEFT JOIN user_roles ur ON ur.role_id = r.id
+		GROUP BY r.id, r.name
+		ORDER BY r.name ASC
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -3728,7 +3866,7 @@ func (a *App) listRoles() ([]Role, error) {
 	var roles []Role
 	for rows.Next() {
 		var role Role
-		if err := rows.Scan(&role.ID, &role.Name); err != nil {
+		if err := rows.Scan(&role.ID, &role.Name, &role.UserCount); err != nil {
 			return nil, err
 		}
 		role.System = isSystemRole(role.Name)
@@ -3749,6 +3887,37 @@ func (a *App) listRoles() ([]Role, error) {
 		roles[i].Permissions = permissions
 	}
 	return roles, nil
+}
+
+func (a *App) findRoleByID(roleID int64) (*Role, error) {
+	var role Role
+	if err := a.db.QueryRow(`
+		SELECT r.id, r.name, COUNT(ur.user_id)
+		FROM roles r
+		LEFT JOIN user_roles ur ON ur.role_id = r.id
+		WHERE r.id = ?
+		GROUP BY r.id, r.name
+	`, roleID).Scan(&role.ID, &role.Name, &role.UserCount); err != nil {
+		return nil, err
+	}
+	role.System = isSystemRole(role.Name)
+	permissions, err := a.permissionsForRole(role.ID)
+	if err != nil {
+		return nil, err
+	}
+	role.Permissions = permissions
+	return &role, nil
+}
+
+func (a *App) userHasRole(userID int64, roleName string) (bool, error) {
+	var count int
+	err := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM user_roles ur
+		JOIN roles r ON r.id = ur.role_id
+		WHERE ur.user_id = ? AND r.name = ?
+	`, userID, roleName).Scan(&count)
+	return count > 0, err
 }
 
 func (a *App) permissionsForUser(userID int64) ([]string, error) {
@@ -3833,7 +4002,7 @@ func (a *App) updateRole(roleID int64, name string, permissions []string) error 
 		return err
 	}
 	if isSystemRole(currentName) {
-		name = currentName
+		return ErrSystemRoleProtected
 	}
 
 	if _, err := tx.Exec(`UPDATE roles SET name = ? WHERE id = ?`, name, roleID); err != nil {
@@ -3862,12 +4031,16 @@ func (a *App) deleteRole(roleID int64) error {
 		return err
 	}
 	if isSystemRole(roleName) {
-		return errors.New("system role cannot be deleted")
+		return ErrSystemRoleProtected
 	}
-	if _, err := tx.Exec(`DELETE FROM role_permissions WHERE role_id = ?`, roleID); err != nil {
+	var userCount int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM user_roles WHERE role_id = ?`, roleID).Scan(&userCount); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM user_roles WHERE role_id = ?`, roleID); err != nil {
+	if userCount > 0 {
+		return ErrRoleAssigned
+	}
+	if _, err := tx.Exec(`DELETE FROM role_permissions WHERE role_id = ?`, roleID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM roles WHERE id = ?`, roleID); err != nil {
@@ -6763,17 +6936,21 @@ func containsRole(roles []string, target string) bool {
 	return false
 }
 
-func normalizeRoles(roles []string) []string {
-	allowed := make(map[string]struct{}, len(allRoles))
-	for _, role := range allRoles {
-		allowed[role] = struct{}{}
+func containsPrivilegedRole(roles []string) bool {
+	for _, role := range roles {
+		if isPrivilegedRole(role) {
+			return true
+		}
 	}
+	return false
+}
 
+func normalizeRoleNames(roles []string) []string {
 	seen := map[string]struct{}{}
 	var normalized []string
 	for _, role := range roles {
-		role = strings.ToLower(strings.TrimSpace(role))
-		if _, ok := allowed[role]; !ok {
+		role = normalizeRoleName(role)
+		if role == "" {
 			continue
 		}
 		if _, ok := seen[role]; ok {
@@ -6784,6 +6961,40 @@ func normalizeRoles(roles []string) []string {
 	}
 	sort.Strings(normalized)
 	return normalized
+}
+
+func (a *App) normalizeExistingRoles(roles []string) ([]string, error) {
+	normalized := normalizeRoleNames(roles)
+	if len(normalized) == 0 {
+		return nil, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(normalized)), ",")
+	args := make([]any, len(normalized))
+	for i, role := range normalized {
+		args[i] = role
+	}
+	rows, err := a.db.Query(`SELECT name FROM roles WHERE name IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	existing := make(map[string]struct{}, len(normalized))
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, err
+		}
+		existing[role] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(existing) != len(normalized) {
+		return nil, errors.New("unknown role")
+	}
+	return normalized, nil
 }
 
 func normalizePermissions(permissions []string) []string {
@@ -6807,6 +7018,10 @@ func normalizePermissions(permissions []string) []string {
 	}
 	sort.Strings(normalized)
 	return normalized
+}
+
+func containsSensitivePermission(permissions []string) bool {
+	return containsPermission(permissions, "users.manage") || containsPermission(permissions, "roles.manage")
 }
 
 func normalizeAdmissionIDs(values []string) []int64 {
@@ -8573,6 +8788,10 @@ func isSystemRole(name string) bool {
 	default:
 		return false
 	}
+}
+
+func isPrivilegedRole(name string) bool {
+	return name == "admin" || name == "superadmin"
 }
 
 func isIgnorableMigrationError(err error, stmt string) bool {

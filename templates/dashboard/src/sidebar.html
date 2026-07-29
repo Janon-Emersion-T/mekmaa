@@ -119,16 +119,20 @@
     </div>
     {{end}}
 
-    {{if hasAnyRole .User "admin" "superadmin"}}
+    {{if or (hasPermission .User "users.manage") (hasPermission .User "roles.manage")}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Administration</p>
       <div class="space-y-1">
+        {{if hasPermission .User "users.manage"}}
         <a href="/admin/users" class="{{if isCurrentPath .CurrentPath "/admin/users"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Users</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Access</span>
         </a>
+        {{end}}
+        {{if hasPermission .User "roles.manage"}}
         <a href="/admin/roles" class="{{if isCurrentPath .CurrentPath "/admin/roles"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Roles & permissions</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">RBAC</span>
         </a>
+        {{end}}
       </div>
     </div>
     {{end}}

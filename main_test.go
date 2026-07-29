@@ -2,17 +2,181 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+func newAuthorizationTestApp(t *testing.T) *App {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+strings.ReplaceAll(t.Name(), "/", "-")+"?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	if err := seedRoles(db); err != nil {
+		t.Fatalf("seed roles: %v", err)
+	}
+	return &App{db: db}
+}
+
+func TestCustomRolesCanBeAssignedAndAuthorizeRoutes(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+	if err := app.createRole("finance-officer", []string{"dashboard.view", "finance.manage"}); err != nil {
+		t.Fatalf("create custom role: %v", err)
+	}
+	roles, err := app.normalizeExistingRoles([]string{"finance-officer"})
+	if err != nil {
+		t.Fatalf("normalize custom role: %v", err)
+	}
+	user, err := app.createManagedUser("Finance Officer", "finance@example.com", "password-123", roles, true)
+	if err != nil {
+		t.Fatalf("create custom-role user: %v", err)
+	}
+	if !containsRole(user.Roles, "finance-officer") || !containsPermission(user.Permissions, "finance.manage") {
+		t.Fatalf("custom role was not applied: %#v", user)
+	}
+
+	called := false
+	protected := app.requirePermission(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	}), "finance.manage")
+	request := httptest.NewRequest(http.MethodGet, "/admin/finance", nil)
+	request = request.WithContext(context.WithValue(request.Context(), userContextKey, user))
+	protected.ServeHTTP(httptest.NewRecorder(), request)
+	if !called {
+		t.Fatal("custom role permission did not authorize protected route")
+	}
+}
+
+func TestProtectedRolesCannotBeChangedOrDeleted(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+	adminID, err := queryRoleID(app.db, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.updateRole(adminID, "admin", []string{"dashboard.view"}); !errors.Is(err, ErrSystemRoleProtected) {
+		t.Fatalf("expected protected system role error, got %v", err)
+	}
+
+	if err := app.createRole("coach", []string{"attendance.manage"}); err != nil {
+		t.Fatal(err)
+	}
+	user, err := app.createManagedUser("Coach", "coach@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = user
+	role, err := app.dbRoleByName("coach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.deleteRole(role.ID); !errors.Is(err, ErrRoleAssigned) {
+		t.Fatalf("expected assigned role error, got %v", err)
+	}
+}
+
+func TestNonSuperadminCannotGrantAdministratorRoles(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+	actor, err := app.createManagedUser("Admin", "admin@example.com", "password-123", []string{"admin"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, privilegedRole := range []string{"admin", "superadmin"} {
+		target, err := app.createManagedUser(
+			"Customer",
+			fmt.Sprintf("customer-%d@example.com", i),
+			"password-123",
+			[]string{"customer"},
+			true,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		form := url.Values{
+			"csrf_token": {"test-csrf"},
+			"user_id":    {fmt.Sprintf("%d", target.ID)},
+			"roles":      {privilegedRole},
+		}
+		request := httptest.NewRequest(http.MethodPost, "/admin/users/roles", strings.NewReader(form.Encode()))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf"})
+		request = request.WithContext(context.WithValue(request.Context(), userContextKey, actor))
+		recorder := httptest.NewRecorder()
+		app.updateRolesHandler(recorder, request)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("expected forbidden %s escalation response, got %d", privilegedRole, recorder.Code)
+		}
+		roles, err := app.rolesForUser(target.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if containsRole(roles, privilegedRole) {
+			t.Fatalf("non-superadmin granted the %s role", privilegedRole)
+		}
+	}
+}
+
+func TestAuthorizationCatalogAndManagementTemplates(t *testing.T) {
+	var catalogKeys []string
+	for _, group := range permissionGroups {
+		for _, permission := range group.Permissions {
+			catalogKeys = append(catalogKeys, permission.Key)
+		}
+	}
+	if fmt.Sprint(normalizePermissions(catalogKeys)) != fmt.Sprint(normalizePermissions(allPermissions)) {
+		t.Fatalf("permission catalog does not match enforced permissions: catalog=%v enforced=%v", catalogKeys, allPermissions)
+	}
+
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	admin := &User{ID: 1, Name: "Super Admin", Email: "admin@example.com", Roles: []string{"superadmin"}, Permissions: allPermissions, Verified: true}
+	roles := []Role{
+		{ID: 1, Name: "admin", System: true, Permissions: allPermissions, UserCount: 1},
+		{ID: 2, Name: "coach", Permissions: []string{"attendance.manage"}, UserCount: 2},
+	}
+	common := TemplateData{
+		User:             admin,
+		CSRFToken:        "test-token",
+		Roles:            roles,
+		Available:        []string{"admin", "coach", "superadmin"},
+		Permissions:      allPermissions,
+		PermissionGroups: permissionGroups,
+		Users: []User{
+			{ID: 1, Name: "Super Admin", Email: "admin@example.com", Roles: []string{"superadmin"}, Verified: true},
+			{ID: 2, Name: "Coach", Email: "coach@example.com", Roles: []string{"coach"}, Verified: true},
+		},
+	}
+	for _, name := range []string{"role-management", "user-management"} {
+		if err := templates[name].ExecuteTemplate(io.Discard, "base", common); err != nil {
+			t.Fatalf("render %s: %v", name, err)
+		}
+	}
+}
+
+func (a *App) dbRoleByName(name string) (*Role, error) {
+	var roleID int64
+	if err := a.db.QueryRow(`SELECT id FROM roles WHERE name = ?`, name).Scan(&roleID); err != nil {
+		return nil, err
+	}
+	return a.findRoleByID(roleID)
+}
 
 func TestCollectStudentMonthlyPayment(t *testing.T) {
 	templates, err := buildTemplates()

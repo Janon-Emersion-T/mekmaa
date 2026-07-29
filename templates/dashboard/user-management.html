@@ -318,6 +318,8 @@
       <div class="space-y-4">
         {{range .Users}}
         {{$user := .}}
+        {{$targetPrivileged := or (contains .Roles "admin") (contains .Roles "superadmin")}}
+        {{$canEditUser := and (ne $.User.ID .ID) (or (hasRole $.User "superadmin") (not $targetPrivileged))}}
 
         <form
           action="/admin/users/roles"
@@ -395,12 +397,13 @@
 
                 <div class="mt-3 flex flex-wrap gap-2">
                   {{range $role := $.Available}}
-                  <label class="group/role relative cursor-pointer">
+                  <label class="group/role relative {{if $canEditUser}}cursor-pointer{{else}}cursor-not-allowed opacity-55{{end}}">
                     <input
                       type="checkbox"
                       name="roles"
                       value="{{$role}}"
                       {{if contains $user.Roles $role}}checked{{end}}
+                      {{if not $canEditUser}}disabled{{end}}
                       class="peer sr-only"
                     />
 
@@ -436,7 +439,8 @@
 
             <button
               type="submit"
-              class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud shadow-sm transition hover:bg-slate focus:outline-none focus:ring-4 focus:ring-aqua/25 sm:w-auto"
+              {{if not $canEditUser}}disabled{{end}}
+              class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-4 focus:ring-aqua/25 sm:w-auto {{if $canEditUser}}bg-obsidian text-cloud hover:bg-slate{{else}}cursor-not-allowed border border-slate/10 bg-cloud text-slate/40{{end}}"
             >
               <svg
                 aria-hidden="true"
@@ -453,7 +457,7 @@
                 />
               </svg>
 
-              Save roles
+              {{if eq $.User.ID .ID}}Your account{{else if $targetPrivileged}}Protected account{{else}}Save roles{{end}}
             </button>
           </div>
         </form>
