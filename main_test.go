@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -175,6 +176,20 @@ func TestBookingSystemTemplatesRender(t *testing.T) {
 		}
 		if err := templates[name].ExecuteTemplate(io.Discard, "base", data); err != nil {
 			t.Fatalf("render %s template: %v", name, err)
+		}
+	}
+
+	selected := common
+	selected.User = nil
+	selected.DraftSchedule = &request
+	var rendered bytes.Buffer
+	if err := templates["book"].ExecuteTemplate(&rendered, "base", selected); err != nil {
+		t.Fatalf("render selected booking template: %v", err)
+	}
+	html := rendered.String()
+	for _, marker := range []string{`id="public-booking-form"`, `form="public-booking-form"`, `data-booking-progress`, `fixed inset-x-0 bottom-0`} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("selected booking experience is missing %q", marker)
 		}
 	}
 }

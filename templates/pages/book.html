@@ -1,7 +1,7 @@
 {{define "book"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
-<section class="mx-auto max-w-7xl pb-10 pt-5 sm:pb-16 sm:pt-8">
+<section class="mx-auto max-w-7xl pb-10 pt-5 sm:pb-16 sm:pt-8 {{if and .DraftSchedule .DraftSchedule.SlotHour .DraftSchedule.Activity}}max-xl:pb-28{{end}}">
   <div class="relative overflow-hidden rounded-[2rem] bg-obsidian px-5 py-7 text-cloud shadow-[0_32px_100px_rgba(11,18,21,0.2)] sm:px-8 sm:py-10 lg:px-12">
     <div class="pointer-events-none absolute -right-28 -top-36 h-96 w-96 rounded-full border-[58px] border-aqua/10"></div>
     <div class="pointer-events-none absolute bottom-0 left-1/2 h-40 w-72 -translate-x-1/2 translate-y-1/2 rounded-full bg-aqua/10 blur-3xl"></div>
@@ -152,17 +152,26 @@
           <div class="bg-emerald-50 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800/50">Rate</p><p class="mt-1 text-sm font-bold text-emerald-900">{{pricingForSchedule .Pricings .PricingSettings .DraftSchedule}}</p></div>
         </div>
 
-        <form action="/book/request" method="post" class="grid gap-3 p-5">
+        <div class="hidden border-b border-slate/10 bg-white p-4 xl:block">
+          <button type="submit" form="public-booking-form" class="flex h-12 w-full items-center justify-between rounded-2xl bg-aqua px-4 text-sm font-bold text-obsidian transition hover:bg-mint">
+            <span data-booking-submit-label>Complete details to request</span>
+            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10h12m-5-5 5 5-5 5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <p data-booking-progress aria-live="polite" class="mt-2 text-center text-[0.65rem] text-slate/45">Complete the required contact details below.</p>
+        </div>
+
+        <form id="public-booking-form" action="/book/request" method="post" class="grid scroll-mt-28 gap-3 p-5">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
           <input type="hidden" name="entry_type" value="booking" />
           <input type="hidden" name="slot_date" value="{{.DraftSchedule.SlotDate}}" />
           <input type="hidden" name="slot_hour" value="{{.DraftSchedule.SlotHour}}" />
           <input type="hidden" name="activity" value="{{.DraftSchedule.Activity}}" />
           <input type="hidden" name="quantity" value="{{.DraftSchedule.Quantity}}" />
+          <div class="mb-1 flex items-center justify-between gap-3"><p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Booking details</p><p data-booking-progress aria-live="polite" class="text-[0.65rem] font-semibold text-emerald-700">0 of 4 complete</p></div>
           <label><span class="mb-1.5 block text-xs font-semibold text-slate/60">Booking name or team</span><input type="text" name="title" value="{{.DraftSchedule.Title}}" placeholder="e.g. Friday Night XI" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
           <label><span class="mb-1.5 block text-xs font-semibold text-slate/60">Contact name</span><input type="text" name="requester_name" value="{{if .DraftSchedule.RequesterName}}{{.DraftSchedule.RequesterName}}{{else if .Viewer}}{{.Viewer.Name}}{{end}}" autocomplete="name" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
-          <label><span class="mb-1.5 block text-xs font-semibold text-slate/60">Email address</span><input type="email" name="requester_email" value="{{if .DraftSchedule.RequesterEmail}}{{.DraftSchedule.RequesterEmail}}{{else if .Viewer}}{{.Viewer.Email}}{{end}}" autocomplete="email" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
-          <label><span class="mb-1.5 block text-xs font-semibold text-slate/60">Mobile number</span><input type="tel" name="requester_phone" value="{{.DraftSchedule.RequesterPhone}}" autocomplete="tel" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
+          <label><span class="mb-1.5 block text-xs font-semibold text-slate/60">Email address</span><input type="email" name="requester_email" value="{{if .DraftSchedule.RequesterEmail}}{{.DraftSchedule.RequesterEmail}}{{else if .Viewer}}{{.Viewer.Email}}{{end}}" autocomplete="email" inputmode="email" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
+          <label><span class="mb-1.5 block text-xs font-semibold text-slate/60">Mobile number</span><input type="tel" name="requester_phone" value="{{.DraftSchedule.RequesterPhone}}" autocomplete="tel" inputmode="tel" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
           <label class="rounded-xl border border-aqua/25 bg-mint/35 p-3">
             <span class="block text-xs font-semibold text-slate/70">Referral code <span class="font-normal text-slate/40">(optional)</span></span>
             <input type="text" name="referral_code" value="{{.DraftSchedule.ReferralCode}}" placeholder="e.g. COACH-JAYA" autocapitalize="characters" class="mt-2 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 font-mono text-sm uppercase outline-none focus:border-aqua" />
@@ -172,6 +181,19 @@
           <button class="mt-1 h-12 rounded-2xl bg-aqua text-sm font-bold text-obsidian transition hover:bg-mint">Request this booking</button>
           <p class="text-center text-[0.68rem] leading-5 text-slate/45">No payment is taken now. The team confirms availability before your booking is final.</p>
         </form>
+
+        <div class="fixed inset-x-0 bottom-0 z-30 border-t border-white/80 bg-white/95 px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_50px_rgba(11,18,21,0.16)] backdrop-blur-xl xl:hidden">
+          <div class="mx-auto flex max-w-2xl items-center gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-xs font-bold text-obsidian">{{scheduleSummary .DraftSchedule}} · {{.DraftSchedule.SlotHour}}</p>
+              <p class="mt-1 text-[0.65rem] font-semibold text-emerald-700">{{pricingForSchedule .Pricings .PricingSettings .DraftSchedule}}</p>
+            </div>
+            <button type="submit" form="public-booking-form" class="inline-flex h-12 shrink-0 items-center gap-2 rounded-2xl bg-obsidian px-5 text-xs font-bold text-cloud shadow-lg">
+              <span data-booking-submit-label>Complete details</span>
+              <svg class="h-4 w-4 text-aqua" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10h12m-5-5 5 5-5 5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
         {{else}}
         <div class="p-5">
           <div class="rounded-[1.4rem] border border-dashed border-slate/20 bg-cloud/55 px-5 py-9 text-center">
@@ -193,6 +215,7 @@
     const buttons = Array.from(document.querySelectorAll("[data-activity-filter]"));
     const options = Array.from(document.querySelectorAll("[data-booking-option]"));
     const empty = document.querySelector("[data-filter-empty]");
+    const bookingForm = document.getElementById("public-booking-form");
 
     buttons.forEach((button) => {
       button.addEventListener("click", () => {
@@ -218,6 +241,37 @@
         empty.hidden = visible > 0;
       });
     });
+
+    if (bookingForm) {
+      const requiredFields = Array.from(bookingForm.querySelectorAll("[required]"));
+      const progressLabels = Array.from(document.querySelectorAll("[data-booking-progress]"));
+      const submitLabels = Array.from(document.querySelectorAll("[data-booking-submit-label]"));
+      const refreshProgress = () => {
+        const complete = requiredFields.filter((field) => field.value.trim() !== "" && field.checkValidity()).length;
+        progressLabels.forEach((label) => {
+          label.textContent = `${complete} of ${requiredFields.length} required details complete`;
+        });
+        submitLabels.forEach((label) => {
+          label.textContent = complete === requiredFields.length ? "Request booking" : "Complete details";
+        });
+      };
+      requiredFields.forEach((field) => {
+        field.addEventListener("input", refreshProgress);
+      });
+      document.querySelectorAll('[form="public-booking-form"]').forEach((button) => {
+        button.addEventListener("click", (event) => {
+          const firstInvalid = requiredFields.find((field) => !field.checkValidity());
+          if (!firstInvalid) return;
+          event.preventDefault();
+          firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+          setTimeout(() => {
+            firstInvalid.focus({ preventScroll: true });
+            firstInvalid.reportValidity();
+          }, 250);
+        });
+      });
+      refreshProgress();
+    }
   })();
 </script>
 {{end}}
