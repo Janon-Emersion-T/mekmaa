@@ -13,6 +13,13 @@
         </div>
         <h1 class="mt-5 text-3xl font-semibold leading-[1.08] tracking-tight sm:text-5xl">Your next game starts with the right slot.</h1>
         <p class="mt-4 max-w-2xl text-sm leading-7 text-cloud/65 sm:text-base">Choose a date and available facility. We lock the request details, show the exact rate, and send it to the Mekmaa team for confirmation.</p>
+        <div class="mt-6 flex flex-wrap items-center gap-3">
+          <a href="#available-sessions" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-aqua px-6 text-sm font-bold text-obsidian transition hover:-translate-y-0.5 hover:bg-white">
+            Book a slot
+            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10h12m-5-5 5 5-5 5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <span class="text-xs font-medium text-cloud/45">No payment required to request</span>
+        </div>
       </div>
       <div class="grid grid-cols-3 gap-2 rounded-[1.5rem] border border-white/10 bg-white/8 p-2.5">
         <div class="rounded-2xl bg-white/8 px-3 py-3 text-center">
@@ -70,7 +77,7 @@
 
   <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_23rem]">
     <div class="min-w-0">
-      <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
+      <div id="available-sessions" class="scroll-mt-28 rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
         <div class="flex flex-col gap-4 border-b border-slate/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p class="text-xs font-bold uppercase tracking-[0.24em] text-slate/45">Step 2 · Choose a facility</p>
@@ -106,6 +113,10 @@
                     <p class="mt-1 text-[0.68rem] opacity-50">{{pricingTierLabel $.PricingSettings $.CalendarDate $slot.Hour}}</p>
                   </div>
                   <p class="{{if bookingOptionSelected $.DraftSchedule $slot.Hour .Activity .Quantity}}text-aqua{{else}}text-emerald-700{{end}} shrink-0 text-sm font-bold">{{pricingForOption $.Pricings $.PricingSettings $.CalendarDate $slot.Hour .Activity .Quantity}}</p>
+                </div>
+                <div class="{{if bookingOptionSelected $.DraftSchedule $slot.Hour .Activity .Quantity}}border-white/10 text-aqua{{else}}border-slate/8 text-obsidian group-hover:border-aqua{{end}} mt-3 flex items-center justify-between border-t pt-3 text-xs font-bold">
+                  <span>{{if bookingOptionSelected $.DraftSchedule $slot.Hour .Activity .Quantity}}Selected{{else}}Book this slot{{end}}</span>
+                  <svg class="h-4 w-4 transition group-hover:translate-x-0.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10h12m-5-5 5 5-5 5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </div>
               </a>
               {{end}}
@@ -152,7 +163,7 @@
           <label><span class="mb-1.5 block text-xs font-semibold text-slate/60">Email address</span><input type="email" name="requester_email" value="{{if .DraftSchedule.RequesterEmail}}{{.DraftSchedule.RequesterEmail}}{{else if .Viewer}}{{.Viewer.Email}}{{end}}" autocomplete="email" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
           <label><span class="mb-1.5 block text-xs font-semibold text-slate/60">Mobile number</span><input type="tel" name="requester_phone" value="{{.DraftSchedule.RequesterPhone}}" autocomplete="tel" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
           <label><span class="mb-1.5 block text-xs font-semibold text-slate/60">Notes <span class="font-normal text-slate/40">(optional)</span></span><textarea name="notes" rows="3" placeholder="Access needs or anything we should know" class="w-full rounded-xl border border-slate/10 bg-white px-3 py-3 text-sm outline-none focus:border-aqua">{{.DraftSchedule.Notes}}</textarea></label>
-          <button class="mt-1 h-12 rounded-2xl bg-aqua text-sm font-bold text-obsidian transition hover:bg-mint">Submit booking request</button>
+          <button class="mt-1 h-12 rounded-2xl bg-aqua text-sm font-bold text-obsidian transition hover:bg-mint">Request this booking</button>
           <p class="text-center text-[0.68rem] leading-5 text-slate/45">No payment is taken now. The team confirms availability before your booking is final.</p>
         </form>
         {{else}}
