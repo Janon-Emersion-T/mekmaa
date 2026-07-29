@@ -69,7 +69,7 @@
     </div>
 
     <div class="border-t border-dashed border-slate/20 pt-4 text-center text-xs leading-6 text-slate/55">
-      <p>This receipt was generated automatically from the admissions payment workflow.</p>
+      <p>This receipt was generated automatically from the Mekmaa payment workflow.</p>
       <p class="mt-2">Keep this copy for finance reconciliation and student records.</p>
     </div>
   </div>
@@ -78,8 +78,8 @@
     <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">
       Print again
     </button>
-    <a href="/admin/admissions" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
-      Back to admissions
+    <a href="{{if eq .SelectedFinance.Category "student_monthly_payment"}}/admin/student-payments{{else}}/admin/admissions{{end}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
+      {{if eq .SelectedFinance.Category "student_monthly_payment"}}Back to student payments{{else}}Back to admissions{{end}}
     </a>
     <a href="/admin/finance" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
       Open finance

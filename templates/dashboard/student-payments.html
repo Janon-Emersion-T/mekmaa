@@ -1,0 +1,165 @@
+{{define "student-payments"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="relative overflow-hidden rounded-[2rem] bg-obsidian p-6 text-cloud shadow-[0_24px_80px_rgba(11,18,21,0.18)] sm:p-8">
+    <div class="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full border-[42px] border-aqua/10"></div>
+    <div class="pointer-events-none absolute bottom-0 right-1/3 h-28 w-28 translate-y-1/2 rounded-full bg-aqua/10 blur-2xl"></div>
+    <div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <div class="max-w-2xl">
+        <p class="text-xs font-semibold uppercase tracking-[0.28em] text-aqua">Monthly collections</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Student payments</h1>
+        <p class="mt-3 max-w-xl text-sm leading-6 text-cloud/68">Every admitted student is billed individually, including students who train in group practice.</p>
+      </div>
+      <form action="/admin/student-payments" method="get" class="flex w-full max-w-md flex-col gap-2 rounded-3xl border border-white/10 bg-white/8 p-3 sm:flex-row">
+        <label class="sr-only" for="payment-month">Payment month</label>
+        <input id="payment-month" type="month" name="month" value="{{.PaymentMonth}}" max="{{.TodayDate}}" required class="h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-white px-4 text-sm font-semibold text-obsidian outline-none focus:border-aqua" />
+        <button class="h-12 rounded-2xl bg-aqua px-5 text-sm font-semibold text-obsidian transition hover:bg-white">Open month</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <article class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Expected</p>
+      <p class="mt-3 text-2xl font-semibold text-obsidian">{{money .PaymentTotalDue}}</p>
+      <p class="mt-2 text-xs text-slate/55">{{len .StudentPaymentRows}} admitted students</p>
+    </article>
+    <article class="rounded-[1.5rem] border border-emerald-200/70 bg-emerald-50/80 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700/70">Collected</p>
+      <p class="mt-3 text-2xl font-semibold text-emerald-900">{{money .PaymentCollected}}</p>
+      <p class="mt-2 text-xs text-emerald-800/65">{{.PaymentPaidCount}} payments complete</p>
+    </article>
+    <article class="rounded-[1.5rem] border border-amber-200/70 bg-amber-50/80 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700/70">Outstanding</p>
+      <p class="mt-3 text-2xl font-semibold text-amber-950">{{money .PaymentOutstanding}}</p>
+      <p class="mt-2 text-xs text-amber-800/65">{{.PaymentPendingCount}} payments pending</p>
+    </article>
+    <article class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Collection month</p>
+      <p class="mt-3 text-2xl font-semibold text-obsidian">{{.PaymentMonthLabel}}</p>
+      <a href="/admin/pricing#admission-pricing" class="mt-2 inline-block text-xs font-semibold text-slate/55 underline decoration-aqua decoration-2 underline-offset-4">Manage monthly rates</a>
+    </article>
+  </div>
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/85 p-4 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <h2 class="text-xl font-semibold text-obsidian">{{.PaymentMonthLabel}} register</h2>
+        <p class="mt-1 text-sm text-slate/60">Amounts come directly from admission pricing and are saved as a payment snapshot when collected.</p>
+      </div>
+      <div class="grid gap-2 sm:grid-cols-2 lg:w-[34rem]">
+        <label class="relative">
+          <span class="sr-only">Search students</span>
+          <svg class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate/40" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4" stroke-linecap="round"/></svg>
+          <input type="search" data-payment-search placeholder="Search name or student ID" class="h-12 w-full rounded-2xl border border-slate/10 bg-cloud/70 pl-11 pr-4 text-sm outline-none focus:border-aqua" />
+        </label>
+        <label>
+          <span class="sr-only">Filter payment status</span>
+          <select data-payment-filter class="h-12 w-full rounded-2xl border border-slate/10 bg-cloud/70 px-4 text-sm outline-none focus:border-aqua">
+            <option value="all">All payment statuses</option>
+            <option value="pending">Pending only</option>
+            <option value="paid">Paid only</option>
+            <option value="group_practice">Group practice</option>
+            <option value="one_to_one_practice">One to one practice</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div data-payment-list class="mt-6 grid gap-4">
+      {{range .StudentPaymentRows}}
+      <article data-payment-row data-search="{{.Admission.FullName}} {{.Admission.StudentID}}" data-status="{{if .Payment}}paid{{else}}pending{{end}}" data-practice="{{.Admission.PracticeType}}" class="rounded-[1.5rem] border {{if .Payment}}border-emerald-200/70 bg-emerald-50/45{{else}}border-slate/10 bg-cloud/45{{end}} p-4 sm:p-5">
+        <div class="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,.8fr)_minmax(19rem,1fr)] xl:items-center">
+          <div class="flex min-w-0 items-start gap-4">
+            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl {{if .Payment}}bg-emerald-900 text-white{{else}}bg-obsidian text-aqua{{end}} text-sm font-semibold">
+              {{printf "%.1s" .Admission.FullName}}
+            </div>
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="truncate text-base font-semibold text-obsidian">{{.Admission.FullName}}</h3>
+                {{if .Payment}}
+                <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-emerald-800">Paid</span>
+                {{else}}
+                <span class="rounded-full bg-amber-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-amber-800">Pending</span>
+                {{end}}
+              </div>
+              <p class="mt-1 font-mono text-xs font-semibold text-slate/50">{{.Admission.StudentID}}</p>
+              <p class="mt-2 text-xs text-slate/60">{{practiceTypeLabel .Admission.PracticeType}} · Admitted {{.Admission.AdmissionDate}}</p>
+            </div>
+          </div>
+
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">{{if .Payment}}Amount collected{{else}}Amount due{{end}}</p>
+            <p class="mt-2 text-2xl font-semibold text-obsidian">{{if .Payment}}{{money .Payment.Amount}}{{else}}{{money .MonthlyFee}}{{end}}</p>
+            {{if eq .MonthlyFee 0.0}}
+            <p class="mt-1 text-xs font-medium text-amber-700">Monthly fee is not configured</p>
+            {{end}}
+          </div>
+
+          {{if .Payment}}
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="text-sm font-medium text-emerald-900">{{formatDateTime .Payment.CollectedAt}}</p>
+              <p class="mt-1 text-xs uppercase tracking-[0.14em] text-emerald-800/60">{{.Payment.PaymentMethod}}</p>
+            </div>
+            <a href="/admin/finance/receipt?transaction_id={{.Payment.FinanceTransactionID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">View receipt</a>
+          </div>
+          {{else}}
+          <form action="/admin/student-payments/collect" method="post" class="flex flex-col gap-2 sm:flex-row" onsubmit="return confirm('Collect {{money .MonthlyFee}} from {{.Admission.FullName}} for {{$.PaymentMonthLabel}}?')">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+            <input type="hidden" name="admission_id" value="{{.Admission.ID}}" />
+            <input type="hidden" name="payment_month" value="{{$.PaymentMonth}}" />
+            <label class="sr-only" for="method-{{.Admission.ID}}">Payment method</label>
+            <select id="method-{{.Admission.ID}}" name="payment_method" class="h-11 min-w-0 flex-1 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="bank_transfer">Bank transfer</option>
+            </select>
+            <button type="submit" {{if eq .MonthlyFee 0.0}}disabled title="Configure this monthly fee in Pricing first"{{end}} class="h-11 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate disabled:cursor-not-allowed disabled:opacity-35">Collect payment</button>
+          </form>
+          {{end}}
+        </div>
+      </article>
+      {{else}}
+      <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-14 text-center">
+        <p class="text-base font-semibold text-obsidian">No students were admitted by this month.</p>
+        <p class="mt-2 text-sm text-slate/55">Add students through Admissions, then return to this register.</p>
+      </div>
+      {{end}}
+    </div>
+
+    <div data-payment-empty hidden class="mt-6 rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-12 text-center text-sm text-slate/55">
+      No students match the current search and filter.
+    </div>
+  </div>
+</section>
+
+<script>
+  (() => {
+    const search = document.querySelector("[data-payment-search]");
+    const filter = document.querySelector("[data-payment-filter]");
+    const rows = Array.from(document.querySelectorAll("[data-payment-row]"));
+    const empty = document.querySelector("[data-payment-empty]");
+
+    const refresh = () => {
+      const query = search.value.trim().toLowerCase();
+      const selected = filter.value;
+      let visible = 0;
+
+      rows.forEach((row) => {
+        const matchesQuery = row.dataset.search.toLowerCase().includes(query);
+        const matchesFilter = selected === "all" || row.dataset.status === selected || row.dataset.practice === selected;
+        const show = matchesQuery && matchesFilter;
+        row.hidden = !show;
+        if (show) visible += 1;
+      });
+
+      empty.hidden = visible !== 0 || rows.length === 0;
+    };
+
+    search?.addEventListener("input", refresh);
+    filter?.addEventListener("change", refresh);
+  })();
+</script>
+{{end}}

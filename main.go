@@ -127,6 +127,24 @@ type FinanceTransaction struct {
 	CreatedAt      time.Time
 }
 
+type StudentMonthlyPayment struct {
+	ID                   int64
+	AdmissionID          int64
+	PaymentMonth         string
+	Amount               float64
+	PaymentMethod        string
+	FinanceTransactionID int64
+	CollectedByUserID    int64
+	CollectedAt          time.Time
+	CreatedAt            time.Time
+}
+
+type StudentPaymentRow struct {
+	Admission  Admission
+	MonthlyFee float64
+	Payment    *StudentMonthlyPayment
+}
+
 type StudentGroup struct {
 	ID           int64
 	Name         string
@@ -298,6 +316,14 @@ type TemplateData struct {
 	FinanceTransactions []FinanceTransaction
 	SelectedFinance     *FinanceTransaction
 	ReceiptAdmission    *Admission
+	StudentPaymentRows  []StudentPaymentRow
+	PaymentMonth        string
+	PaymentMonthLabel   string
+	PaymentTotalDue     float64
+	PaymentCollected    float64
+	PaymentOutstanding  float64
+	PaymentPaidCount    int
+	PaymentPendingCount int
 	BookingSlots        []BookingSlotAvailability
 	WeekDays            []CalendarDay
 	BookingOptions      []BookingOption
@@ -327,8 +353,11 @@ type Feature struct {
 }
 
 var (
-	ErrEmailTaken = errors.New("email already exists")
-	ErrInvalidOTP = errors.New("invalid verification code")
+	ErrEmailTaken                     = errors.New("email already exists")
+	ErrInvalidOTP                     = errors.New("invalid verification code")
+	ErrMonthlyFeeNotConfigured        = errors.New("monthly fee is not configured for this practice type")
+	ErrStudentPaymentAlreadyCollected = errors.New("student payment already collected")
+	ErrStudentNotAdmittedForMonth     = errors.New("student was not admitted for the selected month")
 )
 
 func main() {
@@ -453,7 +482,9 @@ func main() {
 	mux.Handle("/admin/events/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEventHandler), "events.manage")))
 	mux.Handle("/admin/events/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEventHandler), "events.manage")))
 	mux.Handle("/admin/finance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.manage")))
-	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage")))
+	mux.Handle("/admin/student-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentPaymentsHandler), "finance.manage")))
+	mux.Handle("/admin/student-payments/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStudentPaymentHandler), "finance.manage")))
+	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage")))
 
 	log.Printf("server listening on %s", addr)
 	if err := http.ListenAndServe(addr, app.securityHeaders(mux)); err != nil {
@@ -1108,6 +1139,42 @@ func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.FinanceTransactions = financeTransactions
 	data.Stats = buildFinanceStats(financeTransactions)
 	a.render(w, "finance-management", data, http.StatusOK)
+}
+
+func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	paymentMonth := strings.TrimSpace(r.URL.Query().Get("month"))
+	currentMonth := time.Now().Format("2006-01")
+	if _, err := parsePaymentMonth(paymentMonth); err != nil || paymentMonth > currentMonth {
+		paymentMonth = time.Now().Format("2006-01")
+	}
+
+	rows, err := a.listStudentPaymentRows(paymentMonth)
+	if err != nil {
+		log.Printf("list student payments: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Student Payments"
+	data.Description = "Collect and track individual monthly student payments."
+	data.StudentPaymentRows = rows
+	data.PaymentMonth = paymentMonth
+	data.PaymentMonthLabel = paymentMonthLabel(paymentMonth)
+	data.TodayDate = time.Now().Format("2006-01")
+	for _, row := range rows {
+		if row.Payment != nil {
+			data.PaymentTotalDue += row.Payment.Amount
+			data.PaymentCollected += row.Payment.Amount
+			data.PaymentPaidCount++
+		} else {
+			data.PaymentTotalDue += row.MonthlyFee
+			data.PaymentOutstanding += row.MonthlyFee
+			data.PaymentPendingCount++
+		}
+	}
+	a.render(w, "student-payments", data, http.StatusOK)
 }
 
 func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
@@ -2119,6 +2186,69 @@ func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
 }
 
+func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	admissionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("admission_id")), 10, 64)
+	if err != nil || admissionID <= 0 {
+		http.Error(w, "invalid admission id", http.StatusBadRequest)
+		return
+	}
+	paymentMonth := strings.TrimSpace(r.FormValue("payment_month"))
+	monthDate, err := parsePaymentMonth(paymentMonth)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if paymentMonth > time.Now().Format("2006-01") {
+		http.Error(w, "payments cannot be collected for a future month", http.StatusBadRequest)
+		return
+	}
+	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
+	if !validPaymentMethod(paymentMethod) {
+		http.Error(w, "invalid payment method", http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	recordedByUserID := int64(0)
+	if currentUser != nil {
+		recordedByUserID = currentUser.ID
+	}
+	transactionID, err := a.collectStudentMonthlyPayment(admissionID, paymentMonth, monthDate, paymentMethod, recordedByUserID)
+	if err != nil {
+		if errors.Is(err, ErrStudentPaymentAlreadyCollected) {
+			a.setFlash(w, "That student's payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")
+			http.Redirect(w, r, "/admin/student-payments?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+			return
+		}
+		if errors.Is(err, ErrStudentNotAdmittedForMonth) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, ErrMonthlyFeeNotConfigured) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("collect student monthly payment: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
 func (a *App) deleteAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2485,6 +2615,34 @@ func (a *App) requirePermission(next http.Handler, permission string) http.Handl
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+func (a *App) requireAnyPermission(next http.Handler, required ...string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := a.currentUser(r.Context())
+		if !ok {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		permissions, err := a.permissionsForUser(user.ID)
+		if err != nil {
+			log.Printf("permissions for user: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		for _, permission := range required {
+			if containsPermission(permissions, permission) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		data := a.newTemplateData(w, r, user)
+		data.Title = "Forbidden"
+		data.Description = "You do not have permission to view this page."
+		data.Error = "You do not have permission to view this page."
+		a.render(w, "forbidden", data, http.StatusForbidden)
 	})
 }
 
@@ -3452,6 +3610,85 @@ func (a *App) listFinanceTransactions() ([]FinanceTransaction, error) {
 	return transactions, rows.Err()
 }
 
+func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, error) {
+	monthDate, err := parsePaymentMonth(paymentMonth)
+	if err != nil {
+		return nil, err
+	}
+	monthEnd := monthDate.AddDate(0, 1, -1).Format("2006-01-02")
+	rows, err := a.db.Query(`
+		SELECT
+			a.id, a.student_id, a.full_name, COALESCE(a.admission_date, ''), a.date_of_birth, a.gender,
+			a.practice_type, a.address, a.passport_number, a.school, a.guardian_name, a.guardian_relationship,
+			a.guardian_contact_number, a.guardian_alternative_contact_number, a.medical_information,
+			COALESCE(a.payment_collected, 0), a.payment_collected_at, COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0), a.created_at,
+			COALESCE(ap.monthly_fee, 0),
+			smp.id, smp.amount, smp.payment_method, smp.finance_transaction_id,
+			COALESCE(smp.collected_by_user_id, 0), smp.collected_at, smp.created_at
+		FROM admissions a
+		LEFT JOIN admission_pricing ap ON ap.practice_type = a.practice_type
+		LEFT JOIN student_monthly_payments smp
+			ON smp.admission_id = a.id AND smp.payment_month = ?
+		WHERE a.admission_date <= ?
+		ORDER BY
+			CASE WHEN smp.id IS NULL THEN 0 ELSE 1 END,
+			a.full_name COLLATE NOCASE,
+			a.id
+	`, paymentMonth, monthEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paymentRows []StudentPaymentRow
+	for rows.Next() {
+		var (
+			row               StudentPaymentRow
+			admissionPaid     int
+			admissionPaidAt   sql.NullTime
+			paymentID         sql.NullInt64
+			paymentAmount     sql.NullFloat64
+			paymentMethod     sql.NullString
+			transactionID     sql.NullInt64
+			collectedByUserID sql.NullInt64
+			collectedAt       sql.NullTime
+			paymentCreatedAt  sql.NullTime
+		)
+		if err := rows.Scan(
+			&row.Admission.ID, &row.Admission.StudentID, &row.Admission.FullName, &row.Admission.AdmissionDate,
+			&row.Admission.DateOfBirth, &row.Admission.Gender, &row.Admission.PracticeType, &row.Admission.Address,
+			&row.Admission.PassportNumber, &row.Admission.School, &row.Admission.GuardianName,
+			&row.Admission.GuardianRelationship, &row.Admission.GuardianContactNumber,
+			&row.Admission.GuardianAlternativePhone, &row.Admission.MedicalInformation, &admissionPaid,
+			&admissionPaidAt, &row.Admission.AdmissionPaymentAmount, &row.Admission.FinanceTransactionID,
+			&row.Admission.CreatedAt, &row.MonthlyFee, &paymentID, &paymentAmount, &paymentMethod,
+			&transactionID, &collectedByUserID, &collectedAt, &paymentCreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		row.Admission.PaymentCollected = admissionPaid == 1
+		if admissionPaidAt.Valid {
+			row.Admission.PaymentCollectedAt = admissionPaidAt.Time
+		}
+		if paymentID.Valid {
+			row.Payment = &StudentMonthlyPayment{
+				ID:                   paymentID.Int64,
+				AdmissionID:          row.Admission.ID,
+				PaymentMonth:         paymentMonth,
+				Amount:               paymentAmount.Float64,
+				PaymentMethod:        paymentMethod.String,
+				FinanceTransactionID: transactionID.Int64,
+				CollectedByUserID:    collectedByUserID.Int64,
+				CollectedAt:          collectedAt.Time,
+				CreatedAt:            paymentCreatedAt.Time,
+			}
+		}
+		paymentRows = append(paymentRows, row)
+	}
+	return paymentRows, rows.Err()
+}
+
 func (a *App) getPricingSettings() (*PricingSettings, error) {
 	row := a.db.QueryRow(`
 		SELECT id, peak_start_hour, peak_end_hour, created_at, updated_at
@@ -4347,6 +4584,88 @@ func admissionPricingByPracticeTypeTx(tx *sql.Tx, practiceType string) (*Admissi
 	return &pricing, nil
 }
 
+func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth string, monthDate time.Time, paymentMethod string, recordedByUserID int64) (int64, error) {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	admission, err := a.findAdmissionByIDTx(tx, admissionID)
+	if err != nil {
+		return 0, err
+	}
+	if admission.AdmissionDate > monthDate.AddDate(0, 1, -1).Format("2006-01-02") {
+		return 0, ErrStudentNotAdmittedForMonth
+	}
+
+	var existingID int64
+	err = tx.QueryRow(`
+		SELECT id
+		FROM student_monthly_payments
+		WHERE admission_id = ? AND payment_month = ?
+	`, admissionID, paymentMonth).Scan(&existingID)
+	if err == nil {
+		return 0, ErrStudentPaymentAlreadyCollected
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+
+	pricing, err := admissionPricingByPracticeTypeTx(tx, admission.PracticeType)
+	if err != nil {
+		return 0, err
+	}
+	if pricing.MonthlyFee <= 0 {
+		return 0, ErrMonthlyFeeNotConfigured
+	}
+	now := time.Now().UTC()
+	receiptNumber := fmt.Sprintf("STU-%s-%06d-%s", strings.ReplaceAll(paymentMonth, "-", ""), admission.ID, now.Format("150405"))
+	description := fmt.Sprintf("%s monthly payment for %s", paymentMonthLabel(paymentMonth), admission.FullName)
+	result, err := tx.Exec(`
+		INSERT INTO finance_transactions (
+			receipt_number, category, reference_type, reference_id, person_name, description,
+			payment_method, amount, recorded_by_user_id, recorded_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		receiptNumber,
+		"student_monthly_payment",
+		"admission",
+		admission.ID,
+		admission.FullName,
+		description,
+		paymentMethod,
+		pricing.MonthlyFee,
+		recordedByUserID,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	transactionID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.Exec(`
+		INSERT INTO student_monthly_payments (
+			admission_id, payment_month, amount, payment_method, finance_transaction_id,
+			collected_by_user_id, collected_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, admission.ID, paymentMonth, pricing.MonthlyFee, paymentMethod, transactionID, recordedByUserID, now, now); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return 0, ErrStudentPaymentAlreadyCollected
+		}
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return transactionID, nil
+}
+
 func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
 	row := a.db.QueryRow(`
 		SELECT id, name, code, description, created_at
@@ -4639,6 +4958,19 @@ func runMigrations(db *sql.DB) error {
 			recorded_at DATETIME NOT NULL,
 			created_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS student_monthly_payments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			admission_id INTEGER NOT NULL,
+			payment_month TEXT NOT NULL,
+			amount REAL NOT NULL DEFAULT 0,
+			payment_method TEXT NOT NULL DEFAULT 'cash',
+			finance_transaction_id INTEGER NOT NULL,
+			collected_by_user_id INTEGER,
+			collected_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL,
+			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
+			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title TEXT NOT NULL,
@@ -4688,6 +5020,8 @@ func runMigrations(db *sql.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_admission_pricing_type ON admission_pricing(practice_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_recorded_at ON finance_transactions(recorded_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_reference ON finance_transactions(reference_type, reference_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_student_month ON student_monthly_payments(admission_id, payment_month)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_month ON student_monthly_payments(payment_month, collected_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date, start_time)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_published ON events(published, event_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
@@ -6105,8 +6439,38 @@ func financeCategoryLabel(value string) string {
 	switch value {
 	case "admission_payment":
 		return "Admission payment"
+	case "student_monthly_payment":
+		return "Student monthly payment"
 	default:
 		return "Transaction"
+	}
+}
+
+func parsePaymentMonth(value string) (time.Time, error) {
+	if len(value) != 7 {
+		return time.Time{}, errors.New("a valid payment month is required")
+	}
+	parsed, err := time.Parse("2006-01", value)
+	if err != nil || parsed.Format("2006-01") != value {
+		return time.Time{}, errors.New("a valid payment month is required")
+	}
+	return parsed, nil
+}
+
+func paymentMonthLabel(value string) string {
+	parsed, err := parsePaymentMonth(value)
+	if err != nil {
+		return value
+	}
+	return parsed.Format("January 2006")
+}
+
+func validPaymentMethod(value string) bool {
+	switch value {
+	case "cash", "card", "bank_transfer":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -6313,6 +6677,7 @@ func buildDailyBookingStats(schedules []SpaceSchedule, hours []string) []Stat {
 func buildFinanceStats(transactions []FinanceTransaction) []Stat {
 	totalIncome := 0.0
 	admissionPayments := 0
+	studentPayments := 0
 	todayCount := 0
 	today := time.Now().Format("2006-01-02")
 
@@ -6320,6 +6685,9 @@ func buildFinanceStats(transactions []FinanceTransaction) []Stat {
 		totalIncome += transaction.Amount
 		if transaction.Category == "admission_payment" {
 			admissionPayments++
+		}
+		if transaction.Category == "student_monthly_payment" {
+			studentPayments++
 		}
 		if transaction.RecordedAt.Format("2006-01-02") == today {
 			todayCount++
@@ -6329,6 +6697,7 @@ func buildFinanceStats(transactions []FinanceTransaction) []Stat {
 	return []Stat{
 		{Label: "Total income", Value: money(totalIncome)},
 		{Label: "Admission payments", Value: strconv.Itoa(admissionPayments)},
+		{Label: "Student payments", Value: strconv.Itoa(studentPayments)},
 		{Label: "Collected today", Value: strconv.Itoa(todayCount)},
 	}
 }
@@ -6456,6 +6825,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"pricingTierLabel":          pricingTierLabel,
 		"practiceTypeLabel":         practiceTypeLabel,
 		"financeCategoryLabel":      financeCategoryLabel,
+		"paymentMonthLabel":         paymentMonthLabel,
 		"formatDateTime":            formatDateTime,
 		"formatCalendarDate":        formatCalendarDate,
 		"formatClockTime":           formatClockTime,
@@ -6539,6 +6909,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"events-management":        "templates/dashboard/events-management.html",
 		"finance-management":       "templates/dashboard/finance-management.html",
 		"finance-receipt":          "templates/dashboard/finance-receipt.html",
+		"student-payments":         "templates/dashboard/student-payments.html",
 		"forbidden":                "templates/dashboard/forbidden.html",
 	}
 	dashboardPartials := []string{
