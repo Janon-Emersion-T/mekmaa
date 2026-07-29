@@ -2,64 +2,195 @@
 
 {{define "content"}}
 <section class="space-y-6">
-  <div class="relative overflow-hidden rounded-[2rem] bg-obsidian p-6 text-cloud shadow-[0_24px_80px_rgba(11,18,21,0.18)] sm:p-8">
-    <div class="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[42px] border-aqua/10"></div>
-    <div class="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-      <div><p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Referral finance</p><h1 class="mt-3 text-3xl font-semibold sm:text-4xl">Referral commissions</h1><p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/65">Commissions are earned after booking confirmation and recorded as a finance expense when paid.</p></div>
-      <a href="/admin/pricing#referral-pricing" class="inline-flex h-11 items-center justify-center rounded-2xl bg-aqua px-4 text-sm font-bold text-obsidian">Manage partners & rate</a>
+  <header class="relative overflow-hidden rounded-[2rem] bg-obsidian p-6 text-cloud shadow-[0_28px_90px_rgba(11,18,21,0.2)] sm:p-8">
+    <div class="pointer-events-none absolute -right-24 -top-32 h-80 w-80 rounded-full border-[52px] border-aqua/10"></div>
+    <div class="pointer-events-none absolute bottom-0 left-1/3 h-32 w-80 translate-y-1/2 rounded-full bg-aqua/10 blur-3xl"></div>
+    <div class="relative grid gap-7 xl:grid-cols-[1fr_22rem] xl:items-end">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Referral programme</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Partners, earnings, and payouts.</h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/60">Every active partner earns the same commission for each confirmed referred booking. One rate, one partner directory, one auditable payout ledger.</p>
+        <div class="mt-5 flex flex-wrap gap-2 text-xs font-semibold">
+          <a href="#partners" class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-cloud">Manage partners</a>
+          <a href="#commissions" class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-cloud">Review commissions</a>
+        </div>
+      </div>
+      <form id="programme-settings" action="/admin/referrals/settings" method="post" class="rounded-[1.5rem] border border-white/10 bg-white/8 p-4 backdrop-blur">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <label class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-cloud/45">Shared commission per confirmed booking</label>
+        <div class="mt-3 flex items-center gap-2">
+          <span class="text-sm font-bold text-aqua">LKR</span>
+          <input type="number" name="referral_commission_amount" min="0" step="0.01" value="{{if .PricingSettings}}{{printf "%.2f" .PricingSettings.ReferralCommissionAmount}}{{else}}0.00{{end}}" required class="h-12 min-w-0 flex-1 rounded-xl border border-white/10 bg-white px-3 text-base font-bold text-obsidian outline-none focus:border-aqua">
+          <button class="h-12 rounded-xl bg-aqua px-4 text-xs font-bold text-obsidian transition hover:bg-white">Save rate</button>
+        </div>
+        <p class="mt-3 text-[0.65rem] leading-5 text-cloud/40">Applies equally to every partner on new bookings. Existing commissions keep their original recorded amount.</p>
+      </form>
     </div>
-  </div>
+  </header>
 
   <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
     {{range $index, $stat := .ReferralStats}}
-    <article class="rounded-[1.5rem] border {{if eq $index 2}}border-amber-200 bg-amber-50/80{{else}}border-white/80 bg-white/85{{end}} p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">{{$stat.Label}}</p><p class="mt-3 text-2xl font-semibold text-obsidian">{{$stat.Value}}</p></article>
+    <article class="rounded-[1.5rem] border {{if eq $index 2}}border-amber-200 bg-amber-50{{else if eq $index 3}}border-emerald-100 bg-emerald-50{{else}}border-white/80 bg-white/90{{end}} p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">{{$stat.Label}}</p>
+      <p class="mt-3 text-2xl font-semibold text-obsidian">{{$stat.Value}}</p>
+    </article>
     {{end}}
   </div>
 
-  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div class="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
-        <button type="button" data-referral-filter="payable" class="whitespace-nowrap rounded-full bg-obsidian px-4 py-2.5 text-xs font-bold text-cloud">Ready to pay</button>
-        <button type="button" data-referral-filter="all" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">All referrals</button>
-        <button type="button" data-referral-filter="pending" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Awaiting booking</button>
-        <button type="button" data-referral-filter="paid" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Paid</button>
-        <button type="button" data-referral-filter="void" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Void</button>
+  <section id="partners" class="scroll-mt-24 rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Partner directory</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Referral partners</h2>
+        <p class="mt-2 text-sm text-slate/55">{{len .ReferralPartnerRows}} registered partners. Codes remain attached to historical bookings even after deactivation.</p>
       </div>
-      <input type="search" data-referral-search placeholder="Search partner, code or booking" class="h-11 rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm outline-none focus:border-aqua lg:w-80" />
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <input type="search" data-partner-search placeholder="Search name, code, phone" class="h-11 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
+        <button type="button" data-partner-create-open class="h-11 rounded-2xl bg-obsidian px-5 text-sm font-bold text-cloud">Add partner</button>
+      </div>
     </div>
 
-    <div class="mt-6 grid gap-3">
+    <form data-partner-create hidden action="/admin/referrals/partners/create" method="post" class="mt-5 grid gap-3 rounded-[1.5rem] border border-aqua/25 bg-mint/35 p-4 sm:grid-cols-2 xl:grid-cols-[1fr_.75fr_.8fr_1fr_auto] xl:items-end">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <label class="text-xs font-semibold text-slate/60">Partner name<input name="name" required maxlength="120" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"></label>
+      <label class="text-xs font-semibold text-slate/60">Referral code<input name="code" required pattern="[A-Za-z0-9_-]{3,24}" maxlength="24" placeholder="COACH-JAYA" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 font-mono text-sm uppercase outline-none focus:border-aqua"></label>
+      <label class="text-xs font-semibold text-slate/60">Phone<input name="phone" type="tel" required maxlength="40" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"></label>
+      <label class="text-xs font-semibold text-slate/60">Email <span class="font-normal text-slate/40">(optional)</span><input name="email" type="email" maxlength="160" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"></label>
+      <div class="flex gap-2"><button class="h-11 flex-1 rounded-xl bg-obsidian px-5 text-xs font-bold text-cloud">Create</button><button type="button" data-partner-create-close class="h-11 rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold text-slate">Cancel</button></div>
+    </form>
+
+    <div class="mt-5 grid gap-4 lg:grid-cols-2">
+      {{range .ReferralPartnerRows}}
+      <article data-partner-card data-search="{{.Partner.Name}} {{.Partner.Code}} {{.Partner.Phone}} {{.Partner.Email}}" class="rounded-[1.5rem] border {{if .Partner.Active}}border-slate/10 bg-cloud/45{{else}}border-slate/10 bg-slate/5 opacity-75{{end}} p-4 sm:p-5">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="truncate font-semibold text-obsidian">{{.Partner.Name}}</h3>
+              <span class="{{if .Partner.Active}}bg-emerald-100 text-emerald-800{{else}}bg-slate/10 text-slate/55{{end}} rounded-full px-2.5 py-1 text-[0.58rem] font-bold uppercase tracking-wider">{{if .Partner.Active}}Active{{else}}Inactive{{end}}</span>
+            </div>
+            <p class="mt-2 font-mono text-sm font-bold text-emerald-800">{{.Partner.Code}}</p>
+            <p class="mt-1 text-xs text-slate/50">{{.Partner.Phone}}{{if .Partner.Email}} · {{.Partner.Email}}{{end}}</p>
+          </div>
+          <div class="rounded-xl bg-white px-3 py-2 text-right shadow-sm">
+            <p class="text-[0.55rem] font-bold uppercase tracking-wider text-slate/40">Referrals</p>
+            <p class="mt-1 text-lg font-semibold">{{.ReferralCount}}</p>
+          </div>
+        </div>
+
+        <dl class="mt-4 grid grid-cols-3 gap-2">
+          <div class="rounded-xl bg-white/80 p-3"><dt class="text-[0.58rem] uppercase text-slate/40">Pending</dt><dd class="mt-1 font-semibold">{{.PendingCount}}</dd></div>
+          <div class="rounded-xl bg-amber-50 p-3"><dt class="text-[0.58rem] uppercase text-amber-700/55">Payable</dt><dd class="mt-1 font-semibold text-amber-950">{{money .PayableAmount}}</dd></div>
+          <div class="rounded-xl bg-emerald-50 p-3"><dt class="text-[0.58rem] uppercase text-emerald-700/55">Paid</dt><dd class="mt-1 font-semibold text-emerald-950">{{money .PaidAmount}}</dd></div>
+        </dl>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          {{if .Partner.Active}}
+          <a href="/book?ref={{.Partner.Code}}" target="_blank" rel="noreferrer" class="inline-flex h-9 items-center rounded-xl bg-obsidian px-3 text-xs font-bold text-cloud">Open link</a>
+          <button type="button" data-copy-referral="/book?ref={{.Partner.Code}}" class="h-9 rounded-xl border border-slate/10 bg-white px-3 text-xs font-bold text-slate">Copy link</button>
+          {{end}}
+          <button type="button" data-partner-edit-open="{{.Partner.ID}}" class="h-9 rounded-xl border border-slate/10 bg-white px-3 text-xs font-bold text-slate">Edit</button>
+          <form action="/admin/referrals/partners/toggle" method="post" onsubmit="return confirm('{{if .Partner.Active}}Deactivate this partner code? Existing booking history will be preserved.{{else}}Reactivate this partner code?{{end}}')">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="partner_id" value="{{.Partner.ID}}">
+            <button class="h-9 rounded-xl border border-slate/10 bg-white px-3 text-xs font-bold {{if .Partner.Active}}text-rose-700{{else}}text-emerald-700{{end}}">{{if .Partner.Active}}Deactivate{{else}}Reactivate{{end}}</button>
+          </form>
+        </div>
+
+        <form data-partner-edit="{{.Partner.ID}}" hidden action="/admin/referrals/partners/update" method="post" class="mt-4 grid gap-3 border-t border-slate/10 pt-4 sm:grid-cols-2">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="partner_id" value="{{.Partner.ID}}">
+          <label class="text-xs font-semibold text-slate/55">Name<input name="name" value="{{.Partner.Name}}" required class="mt-1.5 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm"></label>
+          <label class="text-xs font-semibold text-slate/55">Code<input name="code" value="{{.Partner.Code}}" pattern="[A-Za-z0-9_-]{3,24}" required class="mt-1.5 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 font-mono text-sm uppercase"></label>
+          <label class="text-xs font-semibold text-slate/55">Phone<input name="phone" value="{{.Partner.Phone}}" required class="mt-1.5 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm"></label>
+          <label class="text-xs font-semibold text-slate/55">Email<input name="email" type="email" value="{{.Partner.Email}}" class="mt-1.5 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm"></label>
+          <div class="flex gap-2 sm:col-span-2"><button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-bold text-cloud">Save changes</button><button type="button" data-partner-edit-close="{{.Partner.ID}}" class="h-10 rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold text-slate">Cancel</button></div>
+        </form>
+      </article>
+      {{else}}
+      <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/40 px-6 py-14 text-center lg:col-span-2"><p class="font-semibold text-obsidian">No referral partners yet.</p><p class="mt-2 text-sm text-slate/50">Add the first partner to generate a trackable booking link.</p></div>
+      {{end}}
+    </div>
+    <div data-partner-empty hidden class="mt-5 rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/40 px-6 py-10 text-center text-sm text-slate/50">No partners match that search.</div>
+  </section>
+
+  <section id="commissions" class="scroll-mt-24 rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Commission ledger</p><h2 class="mt-2 text-2xl font-semibold">Earnings and payouts</h2><p class="mt-2 text-sm text-slate/55">Commission is earned only when the referred booking is confirmed.</p></div>
+      <input type="search" data-referral-search placeholder="Search partner, code or booking" class="h-11 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua lg:w-80">
+    </div>
+    <div class="mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+      <button type="button" data-referral-filter="payable" class="whitespace-nowrap rounded-full bg-obsidian px-4 py-2.5 text-xs font-bold text-cloud">Ready to pay</button>
+      <button type="button" data-referral-filter="all" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">All</button>
+      <button type="button" data-referral-filter="pending" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Awaiting booking</button>
+      <button type="button" data-referral-filter="paid" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Paid</button>
+      <button type="button" data-referral-filter="void" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Void</button>
+    </div>
+
+    <div class="mt-5 grid gap-3">
       {{range .BookingReferrals}}
       {{$state := "pending"}}{{if .Paid}}{{$state = "paid"}}{{else if eq .BookingStatus "confirmed"}}{{$state = "payable"}}{{else if eq .BookingStatus "rejected"}}{{$state = "void"}}{{end}}
-      <article data-referral-row data-state="{{$state}}" data-search="{{.PartnerName}} {{.PartnerCode}} {{.BookingReference}} {{.BookingTitle}}" class="rounded-[1.5rem] border {{if eq $state "payable"}}border-amber-200 bg-amber-50/55{{else if eq $state "paid"}}border-emerald-200 bg-emerald-50/45{{else}}border-slate/10 bg-cloud/40{{end}} p-4 sm:p-5">
-        <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,.75fr)_minmax(17rem,.8fr)] xl:items-center">
-          <div><div class="flex flex-wrap items-center gap-2"><h2 class="text-base font-semibold text-obsidian">{{.PartnerName}}</h2><span class="rounded-full bg-white px-2.5 py-1 font-mono text-[0.62rem] font-bold text-emerald-800">{{.PartnerCode}}</span><span class="rounded-full border border-current/10 bg-white/60 px-2.5 py-1 text-[0.58rem] font-bold uppercase tracking-wider">{{$state}}</span></div><p class="mt-2 text-sm text-slate/65">{{.BookingTitle}}</p><p class="mt-1 font-mono text-xs text-slate/45">{{.BookingReference}} · {{formatCalendarDate .SlotDate}}</p></div>
-          <div><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Commission</p><p class="mt-2 text-2xl font-semibold text-obsidian">{{money .CommissionAmount}}</p><p class="mt-1 text-xs text-slate/45">Booking status: {{.BookingStatus}}</p></div>
+      <article data-referral-row data-state="{{$state}}" data-search="{{.PartnerName}} {{.PartnerCode}} {{.BookingReference}} {{.BookingTitle}}" class="rounded-[1.5rem] border {{if eq $state "payable"}}border-amber-200 bg-amber-50/60{{else if eq $state "paid"}}border-emerald-200 bg-emerald-50/45{{else}}border-slate/10 bg-cloud/40{{end}} p-4 sm:p-5">
+        <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,.7fr)_minmax(17rem,.8fr)] xl:items-center">
+          <div><div class="flex flex-wrap items-center gap-2"><h3 class="font-semibold">{{.PartnerName}}</h3><span class="rounded-full bg-white px-2.5 py-1 font-mono text-[0.62rem] font-bold text-emerald-800">{{.PartnerCode}}</span><span class="rounded-full bg-white/70 px-2.5 py-1 text-[0.58rem] font-bold uppercase">{{$state}}</span></div><p class="mt-2 text-sm text-slate/65">{{.BookingTitle}}</p><p class="mt-1 font-mono text-xs text-slate/45">{{.BookingReference}} · {{formatCalendarDate .SlotDate}}</p></div>
+          <div><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Commission snapshot</p><p class="mt-2 text-2xl font-semibold">{{money .CommissionAmount}}</p><p class="mt-1 text-xs text-slate/45">Booking: {{.BookingStatus}}</p></div>
           {{if eq $state "payable"}}
           <form action="/admin/referrals/pay" method="post" class="flex flex-col gap-2 sm:flex-row" onsubmit="return confirm('Record this referral commission as paid?')">
-            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" /><input type="hidden" name="referral_id" value="{{.ID}}" />
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="referral_id" value="{{.ID}}">
             <select name="payment_method" class="h-11 min-w-0 flex-1 rounded-xl border border-slate/10 bg-white px-3 text-sm"><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option></select>
             <button class="h-11 rounded-xl bg-obsidian px-4 text-sm font-bold text-cloud">Pay commission</button>
           </form>
           {{else if .Paid}}
-          <div class="text-left xl:text-right"><p class="text-sm font-semibold text-emerald-900">Paid {{formatDateTime .PaidAt}}</p><p class="mt-1 text-xs uppercase tracking-wider text-emerald-800/55">{{.PaymentMethod}}</p>{{if .FinanceTransactionID}}<a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="mt-2 inline-block text-xs font-bold underline underline-offset-4">View receipt</a>{{end}}</div>
-          {{else if eq .BookingStatus "rejected"}}
-          <p class="text-sm text-slate/50 xl:text-right">No commission is owed because the booking was rejected.</p>
-          {{else}}
-          <p class="text-sm text-slate/50 xl:text-right">Waiting for the booking team to confirm this request.</p>
-          {{end}}
+          <div class="xl:text-right"><p class="text-sm font-semibold text-emerald-900">Paid {{formatDateTime .PaidAt}}</p><p class="mt-1 text-xs uppercase text-emerald-800/55">{{.PaymentMethod}}</p>{{if .FinanceTransactionID}}<a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="mt-2 inline-block text-xs font-bold underline underline-offset-4">View receipt</a>{{end}}</div>
+          {{else if eq .BookingStatus "rejected"}}<p class="text-sm text-slate/50 xl:text-right">No commission owed for a rejected booking.</p>
+          {{else}}<p class="text-sm text-slate/50 xl:text-right">Waiting for booking confirmation.</p>{{end}}
         </div>
       </article>
       {{else}}
-      <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/40 px-6 py-16 text-center"><p class="font-semibold text-obsidian">No referred bookings yet.</p><p class="mt-2 text-sm text-slate/50">Bookings submitted with an active partner code will appear here.</p></div>
+      <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/40 px-6 py-14 text-center"><p class="font-semibold">No referred bookings yet.</p><p class="mt-2 text-sm text-slate/50">Bookings submitted through an active partner link will appear here.</p></div>
       {{end}}
     </div>
-    <div data-referral-empty hidden class="mt-6 rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/40 px-6 py-12 text-center text-sm text-slate/50">No referral commissions match this filter.</div>
-  </div>
+    <div data-referral-empty hidden class="mt-5 rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/40 px-6 py-10 text-center text-sm text-slate/50">No commissions match this filter.</div>
+  </section>
 </section>
 
 <script>
   (() => {
+    const createForm = document.querySelector("[data-partner-create]");
+    document.querySelector("[data-partner-create-open]")?.addEventListener("click", () => {
+      createForm.hidden = false;
+      createForm.querySelector("input[name='name']")?.focus();
+    });
+    document.querySelector("[data-partner-create-close]")?.addEventListener("click", () => { createForm.hidden = true; });
+
+    document.querySelectorAll("[data-partner-edit-open]").forEach((button) => button.addEventListener("click", () => {
+      document.querySelector(`[data-partner-edit="${button.dataset.partnerEditOpen}"]`).hidden = false;
+    }));
+    document.querySelectorAll("[data-partner-edit-close]").forEach((button) => button.addEventListener("click", () => {
+      document.querySelector(`[data-partner-edit="${button.dataset.partnerEditClose}"]`).hidden = true;
+    }));
+    document.querySelectorAll("[data-copy-referral]").forEach((button) => button.addEventListener("click", async () => {
+      const label = button.textContent;
+      try {
+        await navigator.clipboard.writeText(new URL(button.dataset.copyReferral, window.location.origin).toString());
+        button.textContent = "Copied";
+        setTimeout(() => { button.textContent = label; }, 1600);
+      } catch (_) {
+        window.prompt("Copy referral link", new URL(button.dataset.copyReferral, window.location.origin).toString());
+      }
+    }));
+
+    const partnerSearch = document.querySelector("[data-partner-search]");
+    const partnerCards = Array.from(document.querySelectorAll("[data-partner-card]"));
+    const partnerEmpty = document.querySelector("[data-partner-empty]");
+    partnerSearch?.addEventListener("input", () => {
+      const query = partnerSearch.value.trim().toLowerCase();
+      let visible = 0;
+      partnerCards.forEach((card) => {
+        const show = card.dataset.search.toLowerCase().includes(query);
+        card.hidden = !show;
+        if (show) visible++;
+      });
+      partnerEmpty.hidden = visible !== 0;
+    });
+
     const buttons = Array.from(document.querySelectorAll("[data-referral-filter]"));
     const search = document.querySelector("[data-referral-search]");
     const rows = Array.from(document.querySelectorAll("[data-referral-row]"));
@@ -79,9 +210,12 @@
       state = button.dataset.referralFilter;
       buttons.forEach((item) => {
         const active = item === button;
-        item.classList.toggle("bg-obsidian", active); item.classList.toggle("text-cloud", active);
-        item.classList.toggle("border", !active); item.classList.toggle("border-slate/10", !active);
-        item.classList.toggle("bg-white", !active); item.classList.toggle("text-slate", !active);
+        item.classList.toggle("bg-obsidian", active);
+        item.classList.toggle("text-cloud", active);
+        item.classList.toggle("border", !active);
+        item.classList.toggle("border-slate/10", !active);
+        item.classList.toggle("bg-white", !active);
+        item.classList.toggle("text-slate", !active);
       });
       refresh();
     }));

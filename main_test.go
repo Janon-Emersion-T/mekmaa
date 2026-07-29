@@ -236,7 +236,7 @@ func TestBookingRequestsPreventPastAndConflictingSlots(t *testing.T) {
 	}
 }
 
-func TestPublicBookingShowsVacantSlotsWithoutConfiguredPricing(t *testing.T) {
+func TestPublicBookingShowsVacantSlotsWithConfiguredPrices(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:public-booking-availability-test?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatal(err)
@@ -245,6 +245,14 @@ func TestPublicBookingShowsVacantSlotsWithoutConfiguredPricing(t *testing.T) {
 	db.SetMaxOpenConns(1)
 	if err := runMigrations(db); err != nil {
 		t.Fatalf("run migrations: %v", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 2500, weekday_peak_price = 2500,
+		    weekend_offpeak_price = 2500, weekend_peak_price = 2500
+		WHERE activity = 'full_indoor_cricket' AND quantity = 1
+	`); err != nil {
+		t.Fatalf("configure public booking price: %v", err)
 	}
 
 	futureDate := time.Now().AddDate(0, 0, 2).Format("2006-01-02")
@@ -259,12 +267,33 @@ func TestPublicBookingShowsVacantSlotsWithoutConfiguredPricing(t *testing.T) {
 		t.Fatalf("expected all operating hours, got %d", len(data.BookingSlots))
 	}
 	for _, slot := range data.BookingSlots {
-		if len(slot.Options) == 0 {
-			t.Fatalf("vacant slot %s was hidden because pricing is not configured", slot.Hour)
+		if len(slot.Options) != 1 || slot.Options[0].Activity != "full_indoor_cricket" {
+			t.Fatalf("vacant slot %s did not expose its configured option: %#v", slot.Hour, slot.Options)
+		}
+		if price := pricingForOption(data.Pricings, data.PricingSettings, futureDate, slot.Hour, "full_indoor_cricket", 1); price != "LKR 2500.00" {
+			t.Fatalf("slot %s did not use admin pricing: %s", slot.Hour, price)
 		}
 	}
 	if bookingOpenHourCount(data.BookingSlots) != len(bookingHours()) {
 		t.Fatalf("expected every vacant hour to be bookable")
+	}
+}
+
+func TestStandalonePartialFacilityBookingsAreValid(t *testing.T) {
+	badminton := SpaceSchedule{EntryType: "booking", Activity: "badminton", Quantity: 1}
+	net := SpaceSchedule{EntryType: "booking", Activity: "cricket_net", Quantity: 1}
+	if err := validateSpaceScheduleSlot(nil, badminton); err != nil {
+		t.Fatalf("standalone badminton should be bookable: %v", err)
+	}
+	if err := validateSpaceScheduleSlot(nil, net); err != nil {
+		t.Fatalf("standalone cricket net should be bookable: %v", err)
+	}
+	if err := validateSpaceScheduleSlot([]SpaceSchedule{badminton}, net); err != nil {
+		t.Fatalf("badminton and one cricket net should share capacity: %v", err)
+	}
+	fullFacility := SpaceSchedule{EntryType: "booking", Activity: "full_indoor_cricket", Quantity: 1}
+	if err := validateSpaceScheduleSlot([]SpaceSchedule{badminton}, fullFacility); err == nil {
+		t.Fatal("full facility booking should not overlap a partial booking")
 	}
 }
 
@@ -356,15 +385,95 @@ func TestReferralCommissionLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	partners, err := app.listReferralPartners(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := app.getPricingSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
 	data := TemplateData{
-		User:             &User{Name: "Admin", Email: "admin@example.com", Roles: []string{"admin"}, Permissions: allPermissions},
-		BookingReferrals: referrals,
-		ReferralStats:    buildReferralStats(referrals),
-		CSRFToken:        "test-token",
+		User:                &User{Name: "Admin", Email: "admin@example.com", Roles: []string{"admin"}, Permissions: allPermissions},
+		BookingReferrals:    referrals,
+		ReferralPartners:    partners,
+		ReferralPartnerRows: buildReferralPartnerSummaries(partners, referrals),
+		ReferralStats:       buildReferralStats(referrals),
+		PricingSettings:     settings,
+		CSRFToken:           "test-token",
 	}
 	if err := templates["referral-commissions"].ExecuteTemplate(io.Discard, "base", data); err != nil {
 		t.Fatalf("render referral commissions: %v", err)
 	}
+}
+
+func TestReferralPartnerManagementUsesSharedRate(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:referral-partner-management-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	app := &App{db: db}
+	if err := app.updateReferralCommissionAmount(750); err != nil {
+		t.Fatalf("set shared commission: %v", err)
+	}
+	for _, partner := range []ReferralPartner{
+		{Name: "Partner One", Code: "PARTNER-ONE", Phone: "0700000001"},
+		{Name: "Partner Two", Code: "PARTNER-TWO", Phone: "0700000002"},
+	} {
+		if err := app.createReferralPartner(partner); err != nil {
+			t.Fatalf("create partner: %v", err)
+		}
+	}
+	partners, err := app.listReferralPartners(false)
+	if err != nil || len(partners) != 2 {
+		t.Fatalf("unexpected partners: %#v err=%v", partners, err)
+	}
+	settings, err := app.getPricingSettings()
+	if err != nil || settings.ReferralCommissionAmount != 750 {
+		t.Fatalf("shared rate was not persisted: %#v err=%v", settings, err)
+	}
+	first := partners[0]
+	first.Name = "Updated Partner"
+	first.Code = "UPDATED-CODE"
+	first.Email = "partner@example.com"
+	if err := app.updateReferralPartner(first); err != nil {
+		t.Fatalf("update partner: %v", err)
+	}
+	if err := app.toggleReferralPartner(first.ID); err != nil {
+		t.Fatalf("deactivate partner: %v", err)
+	}
+	partners, err = app.listReferralPartners(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var updated *ReferralPartner
+	for i := range partners {
+		if partners[i].ID == first.ID {
+			updated = &partners[i]
+		}
+	}
+	if updated == nil || updated.Name != "Updated Partner" || updated.Code != "UPDATED-CODE" || updated.Active {
+		t.Fatalf("partner changes were not persisted: %#v", updated)
+	}
+
+	summaries := buildReferralPartnerSummaries(partners, []BookingReferral{
+		{PartnerID: first.ID, BookingStatus: "confirmed", CommissionAmount: 750},
+		{PartnerID: first.ID, BookingStatus: "confirmed", CommissionAmount: 750, Paid: true},
+	})
+	for _, summary := range summaries {
+		if summary.Partner.ID == first.ID {
+			if summary.ReferralCount != 2 || summary.PayableAmount != 750 || summary.PaidAmount != 750 {
+				t.Fatalf("unexpected partner summary: %#v", summary)
+			}
+			return
+		}
+	}
+	t.Fatal("updated partner summary not found")
 }
 
 func TestFinanceBookingAndManualTransactionLifecycle(t *testing.T) {

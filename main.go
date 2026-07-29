@@ -309,6 +309,16 @@ type ReferralPartner struct {
 	UpdatedAt time.Time
 }
 
+type ReferralPartnerSummary struct {
+	Partner       ReferralPartner
+	ReferralCount int
+	PendingCount  int
+	PayableCount  int
+	PaidCount     int
+	PayableAmount float64
+	PaidAmount    float64
+}
+
 type BookingReferral struct {
 	ID                   int64
 	ScheduleID           int64
@@ -439,6 +449,7 @@ type TemplateData struct {
 	AdmissionPricings   []AdmissionPricing
 	PricingSettings     *PricingSettings
 	ReferralPartners    []ReferralPartner
+	ReferralPartnerRows []ReferralPartnerSummary
 	BookingReferrals    []BookingReferral
 	ReferralStats       []Stat
 	SelectedPricing     *PricingRule
@@ -617,9 +628,6 @@ func main() {
 	mux.Handle("/admin/pricing/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deletePricingHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/settings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePricingSettingsHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/admissions/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAdmissionPricingHandler), "pricing.manage")))
-	mux.Handle("/admin/pricing/referrals/settings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateReferralSettingsHandler), "pricing.manage")))
-	mux.Handle("/admin/pricing/referrals/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createReferralPartnerHandler), "pricing.manage")))
-	mux.Handle("/admin/pricing/referrals/toggle", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.toggleReferralPartnerHandler), "pricing.manage")))
 	mux.Handle("/admin/events", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.eventManagementHandler), "events.manage")))
 	mux.Handle("/admin/events/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createEventHandler), "events.manage")))
 	mux.Handle("/admin/events/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEventHandler), "events.manage")))
@@ -631,6 +639,10 @@ func main() {
 	mux.Handle("/admin/reports", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsHandler), "reports.view")))
 	mux.Handle("/admin/reports/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsExportHandler), "reports.view")))
 	mux.Handle("/admin/referrals", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.referralCommissionsHandler), "finance.manage")))
+	mux.Handle("/admin/referrals/settings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateReferralSettingsHandler), "finance.manage")))
+	mux.Handle("/admin/referrals/partners/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createReferralPartnerHandler), "finance.manage")))
+	mux.Handle("/admin/referrals/partners/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateReferralPartnerHandler), "finance.manage")))
+	mux.Handle("/admin/referrals/partners/toggle", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.toggleReferralPartnerHandler), "finance.manage")))
 	mux.Handle("/admin/referrals/pay", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payReferralCommissionHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentPaymentsHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStudentPaymentHandler), "finance.manage")))
@@ -909,9 +921,11 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	rule := pricingRuleForOption(pricings, schedule.Activity, schedule.Quantity)
-	if rule != nil {
-		schedule.QuotedPrice = priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour)
+	if rule == nil || priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour) <= 0 {
+		a.writePublicBookingError(w, r, &schedule, "This session does not currently have a configured online price. Please choose another available option.", http.StatusBadRequest)
+		return
 	}
+	schedule.QuotedPrice = priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour)
 	requestID, err := a.createPublicBookingRequest(schedule)
 	if err != nil {
 		a.writePublicBookingError(w, r, &schedule, err.Error(), http.StatusBadRequest)
@@ -1550,13 +1564,21 @@ func (a *App) referralCommissionsHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		log.Printf("get referral settings: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	data := a.newTemplateData(w, r, user)
-	data.Title = "Referral Commissions"
-	data.Description = "Track earned and paid booking referral commissions."
+	data.Title = "Referral Management"
+	data.Description = "Manage the shared commission rate, referral partners, earnings, and payouts."
 	data.BookingReferrals = referrals
 	data.ReferralPartners = partners
+	data.ReferralPartnerRows = buildReferralPartnerSummaries(partners, referrals)
 	data.ReferralStats = buildReferralStats(referrals)
+	data.PricingSettings = settings
 	a.render(w, "referral-commissions", data, http.StatusOK)
 }
 
@@ -1776,19 +1798,11 @@ func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	referralPartners, err := a.listReferralPartners(false)
-	if err != nil {
-		log.Printf("list referral partners: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Pricing"
 	data.Description = "Manage booking pricing."
 	data.Pricings = pricings
 	data.AdmissionPricings = admissionPricings
-	data.ReferralPartners = referralPartners
 	data.PricingSettings = settings
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
@@ -1893,7 +1907,7 @@ func (a *App) updateReferralSettingsHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	a.setFlash(w, "Referral commission updated.")
-	http.Redirect(w, r, "/admin/pricing#referral-pricing", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/referrals#programme-settings", http.StatusSeeOther)
 }
 
 func (a *App) createReferralPartnerHandler(w http.ResponseWriter, r *http.Request) {
@@ -1930,7 +1944,49 @@ func (a *App) createReferralPartnerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	a.setFlash(w, "Referral partner created.")
-	http.Redirect(w, r, "/admin/pricing#referral-pricing", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/referrals#partners", http.StatusSeeOther)
+}
+
+func (a *App) updateReferralPartnerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	partnerID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("partner_id")), 10, 64)
+	if err != nil || partnerID <= 0 {
+		http.Error(w, "invalid referral partner", http.StatusBadRequest)
+		return
+	}
+	partner := ReferralPartner{
+		ID:    partnerID,
+		Name:  strings.TrimSpace(r.FormValue("name")),
+		Code:  strings.ToUpper(strings.TrimSpace(r.FormValue("code"))),
+		Email: strings.ToLower(strings.TrimSpace(r.FormValue("email"))),
+		Phone: strings.TrimSpace(r.FormValue("phone")),
+	}
+	if err := validateReferralPartner(partner); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateReferralPartner(partner); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "that referral code is already in use", http.StatusConflict)
+			return
+		}
+		log.Printf("update referral partner: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Referral partner updated.")
+	http.Redirect(w, r, "/admin/referrals#partners", http.StatusSeeOther)
 }
 
 func (a *App) toggleReferralPartnerHandler(w http.ResponseWriter, r *http.Request) {
@@ -1957,7 +2013,7 @@ func (a *App) toggleReferralPartnerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	a.setFlash(w, "Referral partner status updated.")
-	http.Redirect(w, r, "/admin/pricing#referral-pricing", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/referrals#partners", http.StatusSeeOther)
 }
 
 func (a *App) payReferralCommissionHandler(w http.ResponseWriter, r *http.Request) {
@@ -2456,8 +2512,8 @@ func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, vie
 	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
 	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
 	data.CalendarCanGoBack = data.CalendarDate > data.TodayDate
-	data.BookingSlots = buildBookingSlotAvailability(schedules, data.CalendarDate, data.Hours)
-	data.WeekDays = buildBookingWeekDays(schedules, selectedDate, data.Hours)
+	data.BookingSlots = filterPricedBookingSlots(buildBookingSlotAvailability(schedules, data.CalendarDate, data.Hours), data.CalendarDate, pricings, settings)
+	data.WeekDays = buildPricedBookingWeekDays(schedules, selectedDate, data.Hours, pricings, settings)
 	data.DraftSchedule = prefillPublicBookingDraft(r, viewer, data.CalendarDate)
 	return data, nil
 }
@@ -5190,6 +5246,25 @@ func (a *App) createReferralPartner(partner ReferralPartner) error {
 	return err
 }
 
+func (a *App) updateReferralPartner(partner ReferralPartner) error {
+	result, err := a.db.Exec(`
+		UPDATE referral_partners
+		SET name = ?, code = ?, email = ?, phone = ?, updated_at = ?
+		WHERE id = ?
+	`, partner.Name, partner.Code, partner.Email, partner.Phone, time.Now().UTC(), partner.ID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("referral partner not found")
+	}
+	return nil
+}
+
 func (a *App) toggleReferralPartner(partnerID int64) error {
 	result, err := a.db.Exec(`
 		UPDATE referral_partners
@@ -7230,17 +7305,19 @@ func validateSpaceScheduleSlot(existing []SpaceSchedule, candidate SpaceSchedule
 	if futsal == 1 && fullIndoorCricket == 0 && badminton == 0 && tableTennis == 0 && cricketNets == 0 && tennis == 0 {
 		return nil
 	}
-	if badminton == 1 && cricketNets == 1 && fullIndoorCricket == 0 && futsal == 0 && tableTennis == 0 && tennis == 0 {
-		return nil
-	}
-	if tableTennis >= 1 && tableTennis <= 2 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && cricketNets == 0 && tennis == 0 {
-		return nil
-	}
-	if badminton == 1 && tableTennis == 1 && fullIndoorCricket == 0 && futsal == 0 && cricketNets == 0 && tennis == 0 {
-		return nil
-	}
-	if cricketNets == 3 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && tableTennis == 0 && tennis == 0 {
-		return nil
+	if fullIndoorCricket == 0 && futsal == 0 && tennis == 0 {
+		if badminton == 0 && tableTennis == 0 && cricketNets >= 1 && cricketNets <= 3 {
+			return nil
+		}
+		if badminton == 0 && cricketNets == 0 && tableTennis >= 1 && tableTennis <= 2 {
+			return nil
+		}
+		if badminton == 1 && tableTennis == 0 && cricketNets >= 0 && cricketNets <= 1 {
+			return nil
+		}
+		if badminton == 1 && cricketNets == 0 && tableTennis >= 0 && tableTennis <= 1 {
+			return nil
+		}
 	}
 	if tennis == 1 && fullIndoorCricket == 0 && futsal == 0 && badminton == 0 && tableTennis == 0 && cricketNets == 0 {
 		return nil
@@ -7514,6 +7591,34 @@ func buildReferralStats(referrals []BookingReferral) []Stat {
 	}
 }
 
+func buildReferralPartnerSummaries(partners []ReferralPartner, referrals []BookingReferral) []ReferralPartnerSummary {
+	summaries := make([]ReferralPartnerSummary, len(partners))
+	positions := make(map[int64]int, len(partners))
+	for i, partner := range partners {
+		summaries[i].Partner = partner
+		positions[partner.ID] = i
+	}
+	for _, referral := range referrals {
+		position, ok := positions[referral.PartnerID]
+		if !ok {
+			continue
+		}
+		summary := &summaries[position]
+		summary.ReferralCount++
+		switch {
+		case referral.Paid:
+			summary.PaidCount++
+			summary.PaidAmount += referral.CommissionAmount
+		case referral.BookingStatus == "confirmed":
+			summary.PayableCount++
+			summary.PayableAmount += referral.CommissionAmount
+		case referral.BookingStatus == "pending":
+			summary.PendingCount++
+		}
+	}
+	return summaries
+}
+
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
 		if permission == target {
@@ -7682,10 +7787,10 @@ func pricingRuleForOption(pricings []PricingRule, activity string, quantity int)
 func pricingForOption(pricings []PricingRule, settings *PricingSettings, slotDate, slotHour, activity string, quantity int) string {
 	rule := pricingRuleForOption(pricings, activity, quantity)
 	if rule == nil {
-		return "Price on confirmation"
+		return "Unavailable"
 	}
 	if rule.WeekdayOffPeak == 0 && rule.WeekdayPeak == 0 && rule.WeekendOffPeak == 0 && rule.WeekendPeak == 0 {
-		return "Price on confirmation"
+		return "Unavailable"
 	}
 	return money(priceForRuleSlot(*rule, settings, slotDate, slotHour))
 }
