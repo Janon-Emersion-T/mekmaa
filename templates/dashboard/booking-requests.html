@@ -43,7 +43,8 @@
 
     <div class="mt-6 grid gap-4" data-request-list>
       {{range .BookingRequests}}
-      <article data-request-row data-status="{{.Status}}" data-search="{{bookingReference .ID}} {{.RequesterName}} {{.RequesterEmail}} {{.RequesterPhone}} {{.Title}} {{.Activity}}" class="overflow-hidden rounded-[1.6rem] border {{bookingStatusTone .Status}}">
+      {{$referral := bookingReferralFor $.BookingReferrals .ID}}
+      <article data-request-row data-status="{{.Status}}" data-search="{{bookingReference .ID}} {{.RequesterName}} {{.RequesterEmail}} {{.RequesterPhone}} {{.Title}} {{.Activity}}{{if $referral}} {{$referral.PartnerName}} {{$referral.PartnerCode}}{{end}}" class="overflow-hidden rounded-[1.6rem] border {{bookingStatusTone .Status}}">
         <div class="grid lg:grid-cols-[9.5rem_minmax(0,1fr)]">
           <div class="{{if eq .Status "pending"}}bg-amber-100/70{{else if eq .Status "confirmed"}}bg-emerald-100/65{{else}}bg-red-100/55{{end}} p-4 sm:p-5">
             <div class="flex items-start justify-between gap-3 lg:block">
@@ -63,12 +64,14 @@
                 <div class="flex flex-wrap items-center gap-2">
                   <h2 class="text-lg font-semibold text-obsidian">{{.Title}}</h2>
                   <span class="rounded-full bg-cloud px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-slate/55">{{scheduleSummary .}}</span>
+                  {{if $referral}}<span class="rounded-full bg-aqua/20 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800">Referral · {{$referral.PartnerCode}}</span>{{end}}
                 </div>
                 <div class="mt-4 grid grid-cols-2 gap-2">
                   <div class="rounded-xl bg-cloud/70 p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Quoted rate</p><p class="mt-1 text-sm font-bold text-emerald-800">{{pricingForSchedule $.Pricings $.PricingSettings .}}</p></div>
                   <div class="rounded-xl bg-cloud/70 p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Submitted</p><p class="mt-1 text-sm font-semibold text-obsidian">{{relativeTime .CreatedAt}}</p></div>
                 </div>
                 {{if .Notes}}<p class="mt-3 rounded-xl border border-slate/8 bg-cloud/45 px-3 py-2.5 text-xs leading-5 text-slate/65">{{.Notes}}</p>{{end}}
+                {{if $referral}}<p class="mt-2 text-xs font-semibold text-emerald-800">Commission: {{money $referral.CommissionAmount}} for {{$referral.PartnerName}}</p>{{end}}
               </div>
 
               <div>

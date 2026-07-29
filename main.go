@@ -6,12 +6,14 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"log"
+	"math"
 	"math/big"
 	"net/http"
 	"net/smtp"
@@ -37,11 +39,12 @@ const (
 )
 
 var (
-	emailPattern    = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
-	passwordPattern = regexp.MustCompile(`^.{10,}$`)
-	otpPattern      = regexp.MustCompile(`^\d{6}$`)
-	allRoles        = []string{"superadmin", "admin", "editor", "customer"}
-	allPermissions  = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "events.manage"}
+	emailPattern        = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+	passwordPattern     = regexp.MustCompile(`^.{10,}$`)
+	otpPattern          = regexp.MustCompile(`^\d{6}$`)
+	referralCodePattern = regexp.MustCompile(`^[A-Z0-9_-]{3,24}$`)
+	allRoles            = []string{"superadmin", "admin", "editor", "customer"}
+	allPermissions      = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"}
 )
 
 type contextKey string
@@ -127,6 +130,98 @@ type FinanceTransaction struct {
 	CreatedAt      time.Time
 }
 
+type FinanceFilter struct {
+	From      string
+	To        string
+	Direction string
+	Category  string
+	Search    string
+}
+
+type FinanceSummary struct {
+	GrossIncome        float64
+	TotalExpenses      float64
+	NetCash            float64
+	OutstandingBooking float64
+	OutstandingMonthly float64
+	PayableReferrals   float64
+}
+
+type BookingFinancial struct {
+	ID                   int64
+	ScheduleID           int64
+	QuotedAmount         float64
+	Paid                 bool
+	PaidAt               time.Time
+	PaymentMethod        string
+	FinanceTransactionID int64
+	SlotDate             string
+	SlotHour             string
+	Activity             string
+	Quantity             int
+	Status               string
+	RequesterName        string
+	RequesterEmail       string
+}
+
+type ReportPeriod struct {
+	Kind         string
+	Anchor       string
+	Start        string
+	End          string
+	Label        string
+	PreviousDate string
+	NextDate     string
+}
+
+type ReportSummary struct {
+	Income             float64
+	Expenses           float64
+	NetCash            float64
+	BookingRevenue     float64
+	StudentRevenue     float64
+	AdmissionRevenue   float64
+	ConfirmedBookings  int
+	PendingBookings    int
+	NewAdmissions      int
+	StudentPayments    int
+	AttendancePresent  int
+	AttendanceTotal    int
+	AttendanceRate     float64
+	OccupiedSlotHours  int
+	AvailableSlotHours int
+	UtilizationRate    float64
+}
+
+type ReportSeriesPoint struct {
+	Date       string
+	Label      string
+	Income     float64
+	Expenses   float64
+	NetCash    float64
+	Bookings   int
+	Admissions int
+	Present    int
+	Attendance int
+}
+
+type ReportBreakdown struct {
+	Key    string
+	Label  string
+	Count  int
+	Amount float64
+}
+
+type OperationalReport struct {
+	Period           ReportPeriod
+	Summary          ReportSummary
+	Series           []ReportSeriesPoint
+	FinanceBreakdown []ReportBreakdown
+	BookingBreakdown []ReportBreakdown
+	Transactions     []FinanceTransaction
+	MaxDailyCash     float64
+}
+
 type StudentMonthlyPayment struct {
 	ID                   int64
 	AdmissionID          int64
@@ -170,6 +265,8 @@ type SpaceSchedule struct {
 	RequesterPhone  string
 	RequestedByUser int64
 	ReviewNote      string
+	ReferralCode    string
+	QuotedPrice     float64
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
@@ -193,11 +290,41 @@ type PricingRule struct {
 }
 
 type PricingSettings struct {
-	ID            int64
-	PeakStartHour string
-	PeakEndHour   string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                       int64
+	PeakStartHour            string
+	PeakEndHour              string
+	ReferralCommissionAmount float64
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+}
+
+type ReferralPartner struct {
+	ID        int64
+	Name      string
+	Code      string
+	Email     string
+	Phone     string
+	Active    bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type BookingReferral struct {
+	ID                   int64
+	ScheduleID           int64
+	PartnerID            int64
+	PartnerName          string
+	PartnerCode          string
+	CommissionAmount     float64
+	BookingStatus        string
+	BookingReference     string
+	BookingTitle         string
+	SlotDate             string
+	Paid                 bool
+	PaidAt               time.Time
+	PaymentMethod        string
+	FinanceTransactionID int64
+	CreatedAt            time.Time
 }
 
 type AdmissionPricing struct {
@@ -311,6 +438,9 @@ type TemplateData struct {
 	Pricings            []PricingRule
 	AdmissionPricings   []AdmissionPricing
 	PricingSettings     *PricingSettings
+	ReferralPartners    []ReferralPartner
+	BookingReferrals    []BookingReferral
+	ReferralStats       []Stat
 	SelectedPricing     *PricingRule
 	PricingMode         string
 	Events              []Event
@@ -318,6 +448,10 @@ type TemplateData struct {
 	EventMode           string
 	FinanceTransactions []FinanceTransaction
 	SelectedFinance     *FinanceTransaction
+	FinanceFilter       FinanceFilter
+	FinanceSummary      FinanceSummary
+	BookingFinancials   []BookingFinancial
+	Report              *OperationalReport
 	ReceiptAdmission    *Admission
 	StudentPaymentRows  []StudentPaymentRow
 	PaymentMonth        string
@@ -363,6 +497,7 @@ var (
 	ErrMonthlyFeeNotConfigured        = errors.New("monthly fee is not configured for this practice type")
 	ErrStudentPaymentAlreadyCollected = errors.New("student payment already collected")
 	ErrStudentNotAdmittedForMonth     = errors.New("student was not admitted for the selected month")
+	ErrBookingPaymentAlreadyCollected = errors.New("booking payment already collected")
 )
 
 func main() {
@@ -482,11 +617,21 @@ func main() {
 	mux.Handle("/admin/pricing/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deletePricingHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/settings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePricingSettingsHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/admissions/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAdmissionPricingHandler), "pricing.manage")))
+	mux.Handle("/admin/pricing/referrals/settings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateReferralSettingsHandler), "pricing.manage")))
+	mux.Handle("/admin/pricing/referrals/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createReferralPartnerHandler), "pricing.manage")))
+	mux.Handle("/admin/pricing/referrals/toggle", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.toggleReferralPartnerHandler), "pricing.manage")))
 	mux.Handle("/admin/events", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.eventManagementHandler), "events.manage")))
 	mux.Handle("/admin/events/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createEventHandler), "events.manage")))
 	mux.Handle("/admin/events/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEventHandler), "events.manage")))
 	mux.Handle("/admin/events/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEventHandler), "events.manage")))
 	mux.Handle("/admin/finance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.manage")))
+	mux.Handle("/admin/finance/transactions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransactionHandler), "finance.manage")))
+	mux.Handle("/admin/finance/bookings/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance.manage")))
+	mux.Handle("/admin/finance/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeExportHandler), "finance.manage")))
+	mux.Handle("/admin/reports", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsHandler), "reports.view")))
+	mux.Handle("/admin/reports/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsExportHandler), "reports.view")))
+	mux.Handle("/admin/referrals", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.referralCommissionsHandler), "finance.manage")))
+	mux.Handle("/admin/referrals/pay", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payReferralCommissionHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentPaymentsHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStudentPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage")))
@@ -724,6 +869,7 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 	schedule.RequesterName = strings.TrimSpace(r.FormValue("requester_name"))
 	schedule.RequesterEmail = strings.ToLower(strings.TrimSpace(r.FormValue("requester_email")))
 	schedule.RequesterPhone = strings.TrimSpace(r.FormValue("requester_phone"))
+	schedule.ReferralCode = strings.ToUpper(strings.TrimSpace(r.FormValue("referral_code")))
 	if viewer != nil {
 		schedule.RequestedByUser = viewer.ID
 		if schedule.RequesterName == "" {
@@ -763,9 +909,8 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	rule := pricingRuleForOption(pricings, schedule.Activity, schedule.Quantity)
-	if rule == nil || priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour) <= 0 {
-		a.writePublicBookingError(w, r, &schedule, "Online pricing is not configured for this session. Please choose another option or contact Mekmaa.", http.StatusBadRequest)
-		return
+	if rule != nil {
+		schedule.QuotedPrice = priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour)
 	}
 	requestID, err := a.createPublicBookingRequest(schedule)
 	if err != nil {
@@ -1153,19 +1298,266 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 
 func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	financeTransactions, err := a.listFinanceTransactions()
+	filter := financeFilterFromRequest(r)
+	financeTransactions, err := a.listFinanceTransactionsFiltered(filter)
 	if err != nil {
 		log.Printf("list finance transactions: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	allTransactions, err := a.listFinanceTransactions()
+	if err != nil {
+		log.Printf("list finance summary transactions: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	bookingFinancials, err := a.listOutstandingBookingFinancials()
+	if err != nil {
+		log.Printf("list booking receivables: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	monthlyRows, err := a.listStudentPaymentRows(time.Now().Format("2006-01"))
+	if err != nil {
+		log.Printf("list monthly receivables: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	referrals, err := a.listBookingReferrals()
+	if err != nil {
+		log.Printf("list referral payables: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Finance"
-	data.Description = "Track collected payments and receipt history."
+	data.Description = "Monitor cash flow, receivables, expenses, and payment history."
 	data.FinanceTransactions = financeTransactions
-	data.Stats = buildFinanceStats(financeTransactions)
+	data.FinanceFilter = filter
+	data.BookingFinancials = bookingFinancials
+	data.FinanceSummary = buildFinanceSummary(allTransactions, bookingFinancials, monthlyRows, referrals)
+	data.Stats = buildFinanceStats(allTransactions)
+	data.TodayDate = time.Now().Format("2006-01-02")
 	a.render(w, "finance-management", data, http.StatusOK)
+}
+
+func (a *App) createFinanceTransactionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	direction := strings.ToLower(strings.TrimSpace(r.FormValue("direction")))
+	category := strings.ToLower(strings.TrimSpace(r.FormValue("category")))
+	if !validManualFinanceCategory(direction, category) {
+		http.Error(w, "invalid finance category", http.StatusBadRequest)
+		return
+	}
+	amount, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
+	if err != nil || amount <= 0 {
+		http.Error(w, "amount must be greater than zero", http.StatusBadRequest)
+		return
+	}
+	personName := strings.TrimSpace(r.FormValue("person_name"))
+	description := strings.TrimSpace(r.FormValue("description"))
+	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
+	if personName == "" || description == "" || !validPaymentMethod(paymentMethod) {
+		http.Error(w, "person, description, and valid payment method are required", http.StatusBadRequest)
+		return
+	}
+	recordedAt := time.Now()
+	if value := strings.TrimSpace(r.FormValue("recorded_date")); value != "" {
+		recordedAt, err = time.ParseInLocation("2006-01-02", value, time.Local)
+		if err != nil || recordedAt.After(time.Now().Add(24*time.Hour)) {
+			http.Error(w, "invalid recorded date", http.StatusBadRequest)
+			return
+		}
+	}
+	if direction == "expense" {
+		amount = -amount
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	recordedBy := int64(0)
+	if currentUser != nil {
+		recordedBy = currentUser.ID
+	}
+	transactionID, err := a.createManualFinanceTransaction(category, personName, description, paymentMethod, amount, recordedAt, recordedBy)
+	if err != nil {
+		log.Printf("create manual finance transaction: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
+	if err != nil || scheduleID <= 0 || !validPaymentMethod(paymentMethod) {
+		http.Error(w, "valid booking and payment method are required", http.StatusBadRequest)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	recordedBy := int64(0)
+	if currentUser != nil {
+		recordedBy = currentUser.ID
+	}
+	transactionID, err := a.collectBookingPayment(scheduleID, paymentMethod, recordedBy)
+	if err != nil {
+		a.setFlash(w, "Booking payment could not be collected: "+err.Error())
+		http.Redirect(w, r, "/admin/finance#booking-receivables", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) financeExportHandler(w http.ResponseWriter, r *http.Request) {
+	transactions, err := a.listFinanceTransactionsFiltered(financeFilterFromRequest(r))
+	if err != nil {
+		http.Error(w, "could not export finance transactions", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="mekmaa-finance.csv"`)
+	writer := csv.NewWriter(w)
+	_ = writer.Write([]string{"Receipt", "Date", "Direction", "Category", "Person", "Description", "Payment method", "Amount (LKR)"})
+	for _, transaction := range transactions {
+		direction := "Income"
+		if transaction.Amount < 0 {
+			direction = "Expense"
+		}
+		_ = writer.Write([]string{
+			csvSafeCell(transaction.ReceiptNumber), transaction.RecordedAt.Format("2006-01-02 15:04"), direction,
+			financeCategoryLabel(transaction.Category), csvSafeCell(transaction.PersonName), csvSafeCell(transaction.Description),
+			csvSafeCell(transaction.PaymentMethod), strconv.FormatFloat(transaction.Amount, 'f', 2, 64),
+		})
+	}
+	writer.Flush()
+}
+
+func (a *App) reportsHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	period := reportPeriodFromRequest(r)
+	report, err := a.buildOperationalReport(period)
+	if err != nil {
+		log.Printf("build operational report: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Reports"
+	data.Description = "Daily, weekly, and monthly performance reporting."
+	data.Report = report
+	a.render(w, "reports", data, http.StatusOK)
+}
+
+func (a *App) reportsExportHandler(w http.ResponseWriter, r *http.Request) {
+	period := reportPeriodFromRequest(r)
+	report, err := a.buildOperationalReport(period)
+	if err != nil {
+		http.Error(w, "could not export report", http.StatusInternalServerError)
+		return
+	}
+	filename := fmt.Sprintf("mekmaa-%s-report-%s.csv", period.Kind, period.Anchor)
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	writer := csv.NewWriter(w)
+	_ = writer.Write([]string{"Mekmaa operational report", report.Period.Label})
+	_ = writer.Write([]string{"Period", report.Period.Start, report.Period.End})
+	_ = writer.Write([]string{})
+	_ = writer.Write([]string{"SUMMARY", "VALUE"})
+	summaryRows := [][]string{
+		{"Gross income (LKR)", formatReportNumber(report.Summary.Income)},
+		{"Expenses (LKR)", formatReportNumber(report.Summary.Expenses)},
+		{"Net cash (LKR)", formatReportNumber(report.Summary.NetCash)},
+		{"Confirmed bookings", strconv.Itoa(report.Summary.ConfirmedBookings)},
+		{"Pending bookings", strconv.Itoa(report.Summary.PendingBookings)},
+		{"New admissions", strconv.Itoa(report.Summary.NewAdmissions)},
+		{"Student payments", strconv.Itoa(report.Summary.StudentPayments)},
+		{"Attendance rate", fmt.Sprintf("%.1f%%", report.Summary.AttendanceRate)},
+		{"Facility utilization", fmt.Sprintf("%.1f%%", report.Summary.UtilizationRate)},
+	}
+	for _, row := range summaryRows {
+		_ = writer.Write(row)
+	}
+	_ = writer.Write([]string{})
+	_ = writer.Write([]string{"DAILY TREND", "DATE", "INCOME", "EXPENSES", "NET CASH", "BOOKINGS", "ADMISSIONS", "PRESENT", "ATTENDANCE RECORDS"})
+	for _, point := range report.Series {
+		_ = writer.Write([]string{
+			"", point.Date, formatReportNumber(point.Income), formatReportNumber(point.Expenses),
+			formatReportNumber(point.NetCash), strconv.Itoa(point.Bookings), strconv.Itoa(point.Admissions),
+			strconv.Itoa(point.Present), strconv.Itoa(point.Attendance),
+		})
+	}
+	_ = writer.Write([]string{})
+	_ = writer.Write([]string{"FINANCE BREAKDOWN", "CATEGORY", "TRANSACTIONS", "AMOUNT"})
+	for _, item := range report.FinanceBreakdown {
+		_ = writer.Write([]string{"", item.Label, strconv.Itoa(item.Count), formatReportNumber(item.Amount)})
+	}
+	_ = writer.Write([]string{})
+	_ = writer.Write([]string{"BOOKING MIX", "ACTIVITY", "CONFIRMED BOOKINGS"})
+	for _, item := range report.BookingBreakdown {
+		_ = writer.Write([]string{"", item.Label, strconv.Itoa(item.Count)})
+	}
+	_ = writer.Write([]string{})
+	_ = writer.Write([]string{"TRANSACTIONS", "RECEIPT", "DATE", "DIRECTION", "CATEGORY", "PARTY", "DESCRIPTION", "METHOD", "AMOUNT"})
+	for _, transaction := range report.Transactions {
+		direction := "Income"
+		if transaction.Amount < 0 {
+			direction = "Expense"
+		}
+		_ = writer.Write([]string{
+			"", csvSafeCell(transaction.ReceiptNumber), transaction.RecordedAt.Format("2006-01-02 15:04"),
+			direction, financeCategoryLabel(transaction.Category), csvSafeCell(transaction.PersonName),
+			csvSafeCell(transaction.Description), csvSafeCell(transaction.PaymentMethod), formatReportNumber(transaction.Amount),
+		})
+	}
+	writer.Flush()
+}
+
+func (a *App) referralCommissionsHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	referrals, err := a.listBookingReferrals()
+	if err != nil {
+		log.Printf("list booking referrals: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	partners, err := a.listReferralPartners(false)
+	if err != nil {
+		log.Printf("list referral partners: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Referral Commissions"
+	data.Description = "Track earned and paid booking referral commissions."
+	data.BookingReferrals = referrals
+	data.ReferralPartners = partners
+	data.ReferralStats = buildReferralStats(referrals)
+	a.render(w, "referral-commissions", data, http.StatusOK)
 }
 
 func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
@@ -1217,6 +1609,10 @@ func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "receipt not found", http.StatusNotFound)
 		return
 	}
+	if user == nil || (!containsPermission(user.Permissions, "finance.manage") && transaction.Category != "admission_payment") {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	var receiptAdmission *Admission
 	if transaction.ReferenceType == "admission" && transaction.ReferenceID > 0 {
@@ -1224,7 +1620,7 @@ func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := a.newTemplateData(w, r, user)
-	data.Title = "Admission Receipt"
+	data.Title = "Payment Receipt"
 	data.Description = "Printable receipt."
 	data.HideChrome = true
 	data.SelectedFinance = transaction
@@ -1380,12 +1776,19 @@ func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	referralPartners, err := a.listReferralPartners(false)
+	if err != nil {
+		log.Printf("list referral partners: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Pricing"
 	data.Description = "Manage booking pricing."
 	data.Pricings = pricings
 	data.AdmissionPricings = admissionPricings
+	data.ReferralPartners = referralPartners
 	data.PricingSettings = settings
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
@@ -1464,6 +1867,134 @@ func (a *App) updatePricingSettingsHandler(w http.ResponseWriter, r *http.Reques
 
 	a.setFlash(w, "Pricing settings updated.")
 	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
+func (a *App) updateReferralSettingsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	amount, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("referral_commission_amount")), 64)
+	if err != nil || amount < 0 {
+		http.Error(w, "a valid referral commission amount is required", http.StatusBadRequest)
+		return
+	}
+	if err := a.updateReferralCommissionAmount(amount); err != nil {
+		log.Printf("update referral commission: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Referral commission updated.")
+	http.Redirect(w, r, "/admin/pricing#referral-pricing", http.StatusSeeOther)
+}
+
+func (a *App) createReferralPartnerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	partner := ReferralPartner{
+		Name:   strings.TrimSpace(r.FormValue("name")),
+		Code:   strings.ToUpper(strings.TrimSpace(r.FormValue("code"))),
+		Email:  strings.ToLower(strings.TrimSpace(r.FormValue("email"))),
+		Phone:  strings.TrimSpace(r.FormValue("phone")),
+		Active: true,
+	}
+	if err := validateReferralPartner(partner); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createReferralPartner(partner); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			http.Error(w, "that referral code is already in use", http.StatusConflict)
+			return
+		}
+		log.Printf("create referral partner: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Referral partner created.")
+	http.Redirect(w, r, "/admin/pricing#referral-pricing", http.StatusSeeOther)
+}
+
+func (a *App) toggleReferralPartnerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	partnerID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("partner_id")), 10, 64)
+	if err != nil || partnerID <= 0 {
+		http.Error(w, "invalid referral partner", http.StatusBadRequest)
+		return
+	}
+	if err := a.toggleReferralPartner(partnerID); err != nil {
+		log.Printf("toggle referral partner: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Referral partner status updated.")
+	http.Redirect(w, r, "/admin/pricing#referral-pricing", http.StatusSeeOther)
+}
+
+func (a *App) payReferralCommissionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	referralID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("referral_id")), 10, 64)
+	if err != nil || referralID <= 0 {
+		http.Error(w, "invalid referral commission", http.StatusBadRequest)
+		return
+	}
+	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
+	if paymentMethod != "cash" && paymentMethod != "bank_transfer" {
+		http.Error(w, "invalid payment method", http.StatusBadRequest)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	recordedBy := int64(0)
+	if currentUser != nil {
+		recordedBy = currentUser.ID
+	}
+	transactionID, err := a.payReferralCommission(referralID, paymentMethod, recordedBy)
+	if err != nil {
+		a.setFlash(w, "Commission could not be paid: "+err.Error())
+		http.Redirect(w, r, "/admin/referrals", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
 }
 
 func (a *App) saveAdmissionPricingHandler(w http.ResponseWriter, r *http.Request) {
@@ -1849,6 +2380,10 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	if err != nil {
 		return TemplateData{}, err
 	}
+	bookingReferrals, err := a.listBookingReferrals()
+	if err != nil {
+		return TemplateData{}, err
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Booking Manager"
@@ -1859,6 +2394,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	data.BookingRequestStats = buildBookingRequestStats(data.BookingRequests)
 	data.Pricings = pricings
 	data.PricingSettings = settings
+	data.BookingReferrals = bookingReferrals
 	data.Activities = bookingActivities()
 	data.Hours = bookingHours()
 	data.TodayDate = time.Now().Format("2006-01-02")
@@ -1920,8 +2456,8 @@ func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, vie
 	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
 	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
 	data.CalendarCanGoBack = data.CalendarDate > data.TodayDate
-	data.BookingSlots = filterPricedBookingSlots(buildBookingSlotAvailability(schedules, data.CalendarDate, data.Hours), data.CalendarDate, pricings, settings)
-	data.WeekDays = buildPricedBookingWeekDays(schedules, selectedDate, data.Hours, pricings, settings)
+	data.BookingSlots = buildBookingSlotAvailability(schedules, data.CalendarDate, data.Hours)
+	data.WeekDays = buildBookingWeekDays(schedules, selectedDate, data.Hours)
 	data.DraftSchedule = prefillPublicBookingDraft(r, viewer, data.CalendarDate)
 	return data, nil
 }
@@ -2518,6 +3054,14 @@ func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
 		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if schedule.EntryType == "booking" {
+		quotedPrice, err := a.bookingQuote(schedule)
+		if err != nil {
+			a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
+			return
+		}
+		schedule.QuotedPrice = quotedPrice
 	}
 	if err := a.createSpaceSchedule(schedule); err != nil {
 		log.Printf("create booking: %v", err)
@@ -3642,12 +4186,42 @@ func (a *App) listAdmissionPricings() ([]AdmissionPricing, error) {
 }
 
 func (a *App) listFinanceTransactions() ([]FinanceTransaction, error) {
-	rows, err := a.db.Query(`
+	return a.listFinanceTransactionsFiltered(FinanceFilter{})
+}
+
+func (a *App) listFinanceTransactionsFiltered(filter FinanceFilter) ([]FinanceTransaction, error) {
+	query := `
 		SELECT id, receipt_number, category, reference_type, COALESCE(reference_id, 0), person_name, description,
 		       payment_method, amount, COALESCE(recorded_by_user_id, 0), recorded_at, created_at
 		FROM finance_transactions
-		ORDER BY recorded_at DESC, id DESC
-	`)
+		WHERE 1 = 1`
+	args := make([]any, 0, 6)
+	if filter.From != "" {
+		query += ` AND SUBSTR(TRIM(CAST(recorded_at AS TEXT)), 1, 10) >= ?`
+		args = append(args, filter.From)
+	}
+	if filter.To != "" {
+		query += ` AND SUBSTR(TRIM(CAST(recorded_at AS TEXT)), 1, 10) <= ?`
+		args = append(args, filter.To)
+	}
+	switch filter.Direction {
+	case "income":
+		query += ` AND amount > 0`
+	case "expense":
+		query += ` AND amount < 0`
+	}
+	if filter.Category != "" {
+		query += ` AND category = ?`
+		args = append(args, filter.Category)
+	}
+	if filter.Search != "" {
+		query += ` AND (LOWER(receipt_number) LIKE ? OR LOWER(person_name) LIKE ? OR LOWER(description) LIKE ?)`
+		term := "%" + strings.ToLower(filter.Search) + "%"
+		args = append(args, term, term, term)
+	}
+	query += ` ORDER BY recorded_at DESC, id DESC`
+
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -3675,6 +4249,43 @@ func (a *App) listFinanceTransactions() ([]FinanceTransaction, error) {
 		transactions = append(transactions, transaction)
 	}
 	return transactions, rows.Err()
+}
+
+func (a *App) listOutstandingBookingFinancials() ([]BookingFinancial, error) {
+	rows, err := a.db.Query(`
+		SELECT bf.id, bf.schedule_id, bf.quoted_amount, bf.paid, bf.paid_at,
+		       bf.payment_method, COALESCE(bf.finance_transaction_id, 0),
+		       s.slot_date, s.slot_hour, s.activity, s.quantity, s.status,
+		       COALESCE(s.requester_name, ''), COALESCE(s.requester_email, '')
+		FROM booking_financials bf
+		JOIN space_schedules s ON s.id = bf.schedule_id
+		WHERE bf.paid = 0 AND bf.quoted_amount > 0 AND s.status = 'confirmed'
+		ORDER BY s.slot_date ASC, s.slot_hour ASC, bf.id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var financials []BookingFinancial
+	for rows.Next() {
+		var financial BookingFinancial
+		var paid int
+		var paidAt sql.NullTime
+		if err := rows.Scan(
+			&financial.ID, &financial.ScheduleID, &financial.QuotedAmount, &paid, &paidAt,
+			&financial.PaymentMethod, &financial.FinanceTransactionID, &financial.SlotDate,
+			&financial.SlotHour, &financial.Activity, &financial.Quantity, &financial.Status,
+			&financial.RequesterName, &financial.RequesterEmail,
+		); err != nil {
+			return nil, err
+		}
+		financial.Paid = paid == 1
+		if paidAt.Valid {
+			financial.PaidAt = paidAt.Time
+		}
+		financials = append(financials, financial)
+	}
+	return financials, rows.Err()
 }
 
 func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, error) {
@@ -3758,7 +4369,7 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 
 func (a *App) getPricingSettings() (*PricingSettings, error) {
 	row := a.db.QueryRow(`
-		SELECT id, peak_start_hour, peak_end_hour, created_at, updated_at
+		SELECT id, peak_start_hour, peak_end_hour, COALESCE(referral_commission_amount, 0), created_at, updated_at
 		FROM pricing_settings
 		ORDER BY id ASC
 		LIMIT 1
@@ -3769,12 +4380,81 @@ func (a *App) getPricingSettings() (*PricingSettings, error) {
 		&settings.ID,
 		&settings.PeakStartHour,
 		&settings.PeakEndHour,
+		&settings.ReferralCommissionAmount,
 		&settings.CreatedAt,
 		&settings.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
 	return &settings, nil
+}
+
+func (a *App) listReferralPartners(activeOnly bool) ([]ReferralPartner, error) {
+	query := `
+		SELECT id, name, code, email, phone, active, created_at, updated_at
+		FROM referral_partners
+	`
+	if activeOnly {
+		query += ` WHERE active = 1`
+	}
+	query += ` ORDER BY active DESC, name COLLATE NOCASE, id`
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var partners []ReferralPartner
+	for rows.Next() {
+		var partner ReferralPartner
+		var active int
+		if err := rows.Scan(&partner.ID, &partner.Name, &partner.Code, &partner.Email, &partner.Phone, &active, &partner.CreatedAt, &partner.UpdatedAt); err != nil {
+			return nil, err
+		}
+		partner.Active = active == 1
+		partners = append(partners, partner)
+	}
+	return partners, rows.Err()
+}
+
+func (a *App) listBookingReferrals() ([]BookingReferral, error) {
+	rows, err := a.db.Query(`
+		SELECT br.id, br.schedule_id, br.partner_id, rp.name, rp.code, br.commission_amount,
+		       s.status, s.title, s.slot_date, br.paid, br.paid_at, br.payment_method,
+		       COALESCE(br.finance_transaction_id, 0), br.created_at
+		FROM booking_referrals br
+		JOIN referral_partners rp ON rp.id = br.partner_id
+		JOIN space_schedules s ON s.id = br.schedule_id
+		ORDER BY
+			CASE WHEN s.status = 'confirmed' AND br.paid = 0 THEN 0 WHEN s.status = 'pending' THEN 1 ELSE 2 END,
+			br.created_at DESC, br.id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var referrals []BookingReferral
+	for rows.Next() {
+		var referral BookingReferral
+		var paid int
+		var paidAt sql.NullTime
+		if err := rows.Scan(
+			&referral.ID, &referral.ScheduleID, &referral.PartnerID, &referral.PartnerName,
+			&referral.PartnerCode, &referral.CommissionAmount, &referral.BookingStatus,
+			&referral.BookingTitle, &referral.SlotDate, &paid, &paidAt, &referral.PaymentMethod,
+			&referral.FinanceTransactionID, &referral.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		referral.BookingReference = bookingReference(referral.ScheduleID)
+		referral.Paid = paid == 1
+		if paidAt.Valid {
+			referral.PaidAt = paidAt.Time
+		}
+		referrals = append(referrals, referral)
+	}
+	return referrals, rows.Err()
 }
 
 func (a *App) listActiveSpaceSchedules() ([]SpaceSchedule, error) {
@@ -4034,7 +4714,7 @@ func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
 		return err
 	}
 
-	_, err = tx.Exec(`
+	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
 			slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 			requester_name, requester_email, requester_phone, requested_by_user_id, review_note, created_at, updated_at
@@ -4059,6 +4739,19 @@ func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
 	)
 	if err != nil {
 		return err
+	}
+	scheduleID, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+	if schedule.EntryType == "booking" {
+		if _, err := tx.Exec(`
+			INSERT INTO booking_financials (
+				schedule_id, quoted_amount, paid, payment_method, created_at, updated_at
+			) VALUES (?, ?, 0, '', ?, ?)
+		`, scheduleID, schedule.QuotedPrice, time.Now().UTC(), time.Now().UTC()); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -4187,6 +4880,41 @@ func (a *App) createPublicBookingRequest(schedule SpaceSchedule) (int64, error) 
 	requestID, err := result.LastInsertId()
 	if err != nil {
 		return 0, err
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO booking_financials (
+			schedule_id, quoted_amount, paid, payment_method, created_at, updated_at
+		) VALUES (?, ?, 0, '', ?, ?)
+	`, requestID, schedule.QuotedPrice, time.Now().UTC(), time.Now().UTC()); err != nil {
+		return 0, err
+	}
+	if schedule.ReferralCode != "" {
+		var partnerID int64
+		if err := tx.QueryRow(`
+			SELECT id
+			FROM referral_partners
+			WHERE code = ? AND active = 1
+		`, schedule.ReferralCode).Scan(&partnerID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return 0, errors.New("the referral code is invalid or inactive")
+			}
+			return 0, err
+		}
+		var commissionAmount float64
+		if err := tx.QueryRow(`SELECT COALESCE(referral_commission_amount, 0) FROM pricing_settings WHERE id = 1`).Scan(&commissionAmount); err != nil {
+			return 0, err
+		}
+		if commissionAmount <= 0 {
+			return 0, errors.New("referral commission is not configured")
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO booking_referrals (
+				schedule_id, partner_id, commission_amount, paid, paid_at,
+				payment_method, finance_transaction_id, created_at
+			) VALUES (?, ?, ?, 0, NULL, '', NULL, ?)
+		`, requestID, partnerID, commissionAmount, time.Now().UTC()); err != nil {
+			return 0, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
@@ -4443,6 +5171,200 @@ func (a *App) updatePricingSettings(settings PricingSettings) error {
 		WHERE id = 1
 	`, settings.PeakStartHour, settings.PeakEndHour, time.Now().UTC())
 	return err
+}
+
+func (a *App) updateReferralCommissionAmount(amount float64) error {
+	_, err := a.db.Exec(`
+		UPDATE pricing_settings
+		SET referral_commission_amount = ?, updated_at = ?
+		WHERE id = 1
+	`, amount, time.Now().UTC())
+	return err
+}
+
+func (a *App) createReferralPartner(partner ReferralPartner) error {
+	_, err := a.db.Exec(`
+		INSERT INTO referral_partners (name, code, email, phone, active, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 1, ?, ?)
+	`, partner.Name, partner.Code, partner.Email, partner.Phone, time.Now().UTC(), time.Now().UTC())
+	return err
+}
+
+func (a *App) toggleReferralPartner(partnerID int64) error {
+	result, err := a.db.Exec(`
+		UPDATE referral_partners
+		SET active = CASE active WHEN 1 THEN 0 ELSE 1 END, updated_at = ?
+		WHERE id = ?
+	`, time.Now().UTC(), partnerID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("referral partner not found")
+	}
+	return nil
+}
+
+func (a *App) payReferralCommission(referralID int64, paymentMethod string, recordedByUserID int64) (int64, error) {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var referral BookingReferral
+	var paid int
+	if err := tx.QueryRow(`
+		SELECT br.id, br.schedule_id, rp.name, br.commission_amount, s.status, br.paid
+		FROM booking_referrals br
+		JOIN referral_partners rp ON rp.id = br.partner_id
+		JOIN space_schedules s ON s.id = br.schedule_id
+		WHERE br.id = ?
+	`, referralID).Scan(
+		&referral.ID, &referral.ScheduleID, &referral.PartnerName,
+		&referral.CommissionAmount, &referral.BookingStatus, &paid,
+	); err != nil {
+		return 0, err
+	}
+	if referral.BookingStatus != "confirmed" {
+		return 0, errors.New("commission is not earned until the booking is confirmed")
+	}
+	if paid == 1 {
+		return 0, errors.New("commission has already been paid")
+	}
+	if referral.CommissionAmount <= 0 {
+		return 0, errors.New("commission amount is invalid")
+	}
+
+	now := time.Now().UTC()
+	receiptNumber := fmt.Sprintf("REF-%s-%06d", now.Format("20060102150405"), referral.ID)
+	description := fmt.Sprintf("Referral commission for %s", bookingReference(referral.ScheduleID))
+	result, err := tx.Exec(`
+		INSERT INTO finance_transactions (
+			receipt_number, category, reference_type, reference_id, person_name, description,
+			payment_method, amount, recorded_by_user_id, recorded_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, receiptNumber, "referral_commission_payment", "booking_referral", referral.ID, referral.PartnerName,
+		description, paymentMethod, -referral.CommissionAmount, recordedByUserID, now, now)
+	if err != nil {
+		return 0, err
+	}
+	transactionID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	updateResult, err := tx.Exec(`
+		UPDATE booking_referrals
+		SET paid = 1, paid_at = ?, payment_method = ?, finance_transaction_id = ?
+		WHERE id = ? AND paid = 0
+	`, now, paymentMethod, transactionID, referral.ID)
+	if err != nil {
+		return 0, err
+	}
+	affected, err := updateResult.RowsAffected()
+	if err != nil || affected != 1 {
+		return 0, errors.New("commission payment could not be finalized")
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return transactionID, nil
+}
+
+func (a *App) createManualFinanceTransaction(category, personName, description, paymentMethod string, amount float64, recordedAt time.Time, recordedByUserID int64) (int64, error) {
+	now := time.Now().UTC()
+	prefix := "INC"
+	if amount < 0 {
+		prefix = "EXP"
+	}
+	receiptNumber := fmt.Sprintf("%s-%s-%09d", prefix, now.Format("20060102150405"), now.Nanosecond())
+	result, err := a.db.Exec(`
+		INSERT INTO finance_transactions (
+			receipt_number, category, reference_type, reference_id, person_name, description,
+			payment_method, amount, recorded_by_user_id, recorded_at, created_at
+		) VALUES (?, ?, 'manual', NULL, ?, ?, ?, ?, ?, ?, ?)
+	`, receiptNumber, category, personName, description, paymentMethod, amount, nullIfZero(recordedByUserID), recordedAt.UTC(), now)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, recordedByUserID int64) (int64, error) {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var financial BookingFinancial
+	var paid int
+	if err := tx.QueryRow(`
+		SELECT bf.id, bf.quoted_amount, bf.paid, s.status, COALESCE(s.requester_name, ''), s.activity, s.quantity
+		FROM booking_financials bf
+		JOIN space_schedules s ON s.id = bf.schedule_id
+		WHERE bf.schedule_id = ?
+	`, scheduleID).Scan(
+		&financial.ID, &financial.QuotedAmount, &paid, &financial.Status,
+		&financial.RequesterName, &financial.Activity, &financial.Quantity,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, errors.New("booking receivable was not found")
+		}
+		return 0, err
+	}
+	if financial.Status != "confirmed" {
+		return 0, errors.New("only confirmed bookings can be paid")
+	}
+	if paid == 1 {
+		return 0, ErrBookingPaymentAlreadyCollected
+	}
+	if financial.QuotedAmount <= 0 {
+		return 0, errors.New("booking has no collectible price")
+	}
+	personName := financial.RequesterName
+	if personName == "" {
+		personName = "Booking customer"
+	}
+	now := time.Now().UTC()
+	receiptNumber := fmt.Sprintf("BKG-%s-%06d", now.Format("20060102150405"), scheduleID)
+	description := fmt.Sprintf("%s payment for %s", bookingProductLabel(financial.Activity, financial.Quantity), bookingReference(scheduleID))
+	result, err := tx.Exec(`
+		INSERT INTO finance_transactions (
+			receipt_number, category, reference_type, reference_id, person_name, description,
+			payment_method, amount, recorded_by_user_id, recorded_at, created_at
+		) VALUES (?, 'booking_payment', 'space_schedule', ?, ?, ?, ?, ?, ?, ?, ?)
+	`, receiptNumber, scheduleID, personName, description, paymentMethod, financial.QuotedAmount, nullIfZero(recordedByUserID), now, now)
+	if err != nil {
+		return 0, err
+	}
+	transactionID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	update, err := tx.Exec(`
+		UPDATE booking_financials
+		SET paid = 1, paid_at = ?, payment_method = ?, finance_transaction_id = ?, updated_at = ?
+		WHERE id = ? AND paid = 0
+	`, now, paymentMethod, transactionID, now, financial.ID)
+	if err != nil {
+		return 0, err
+	}
+	affected, err := update.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if affected != 1 {
+		return 0, ErrBookingPaymentAlreadyCollected
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return transactionID, nil
 }
 
 func (a *App) updateBookingRequestStatus(scheduleID int64, status, reviewNote string) error {
@@ -5073,6 +5995,7 @@ func runMigrations(db *sql.DB) error {
 			id INTEGER PRIMARY KEY,
 			peak_start_hour TEXT NOT NULL,
 			peak_end_hour TEXT NOT NULL,
+			referral_commission_amount REAL NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
@@ -5128,6 +6051,16 @@ func runMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS referral_partners (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			code TEXT NOT NULL UNIQUE,
+			email TEXT NOT NULL DEFAULT '',
+			phone TEXT NOT NULL,
+			active INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS space_schedules (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			slot_date TEXT NOT NULL,
@@ -5145,6 +6078,32 @@ func runMigrations(db *sql.DB) error {
 			review_note TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS booking_referrals (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			schedule_id INTEGER NOT NULL UNIQUE,
+			partner_id INTEGER NOT NULL,
+			commission_amount REAL NOT NULL,
+			paid INTEGER NOT NULL DEFAULT 0,
+			paid_at DATETIME,
+			payment_method TEXT NOT NULL DEFAULT '',
+			finance_transaction_id INTEGER,
+			created_at DATETIME NOT NULL,
+			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
+			FOREIGN KEY (partner_id) REFERENCES referral_partners(id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS booking_financials (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			schedule_id INTEGER NOT NULL UNIQUE,
+			quoted_amount REAL NOT NULL DEFAULT 0,
+			paid INTEGER NOT NULL DEFAULT 0,
+			paid_at DATETIME,
+			payment_method TEXT NOT NULL DEFAULT '',
+			finance_transaction_id INTEGER,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
+			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`,
@@ -5165,6 +6124,8 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date, start_time)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_published ON events(published, event_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_referrals_partner ON booking_referrals(partner_id, paid)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_financials_paid ON booking_financials(paid, schedule_id)`,
 		`ALTER TABLE events ADD COLUMN registration_deadline TEXT`,
 		`ALTER TABLE events ADD COLUMN image_path TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
@@ -5216,6 +6177,18 @@ func runMigrations(db *sql.DB) error {
 	if _, err := db.Exec(`UPDATE admission_pricing SET monthly_fee = 0 WHERE monthly_fee IS NULL`); err != nil {
 		return err
 	}
+	referralCommissionExists, err := tableHasColumn(db, "pricing_settings", "referral_commission_amount")
+	if err != nil {
+		return err
+	}
+	if !referralCommissionExists {
+		if _, err := db.Exec(`ALTER TABLE pricing_settings ADD COLUMN referral_commission_amount REAL NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec(`UPDATE pricing_settings SET referral_commission_amount = 0 WHERE referral_commission_amount IS NULL`); err != nil {
+		return err
+	}
 
 	bookingColumns := []struct {
 		name       string
@@ -5264,12 +6237,69 @@ func runMigrations(db *sql.DB) error {
 	if err := seedPricingSettings(db); err != nil {
 		return err
 	}
+	if err := backfillBookingFinancials(db); err != nil {
+		return err
+	}
 
 	if _, err := db.Exec(`DELETE FROM sessions WHERE expires_at <= ?`, time.Now().UTC()); err != nil {
 		return err
 	}
 	_, err = db.Exec(`DELETE FROM email_verifications WHERE expires_at <= ?`, time.Now().UTC())
 	return err
+}
+
+func backfillBookingFinancials(db *sql.DB) error {
+	rows, err := db.Query(`
+		SELECT s.id, s.slot_date, s.slot_hour, s.activity, s.quantity,
+		       CASE
+		         WHEN CAST(strftime('%w', s.slot_date) AS INTEGER) IN (0, 6) THEN
+		           CASE WHEN s.slot_hour BETWEEN ps.peak_start_hour AND ps.peak_end_hour
+		                THEN pr.weekend_peak_price ELSE pr.weekend_offpeak_price END
+		         ELSE
+		           CASE WHEN s.slot_hour BETWEEN ps.peak_start_hour AND ps.peak_end_hour
+		                THEN pr.weekday_peak_price ELSE pr.weekday_offpeak_price END
+		       END AS quoted_amount
+		FROM space_schedules s
+		JOIN pricing_rules pr ON pr.activity = s.activity AND pr.quantity = s.quantity
+		JOIN pricing_settings ps ON ps.id = 1
+		LEFT JOIN booking_financials bf ON bf.schedule_id = s.id
+		WHERE s.entry_type = 'booking' AND bf.id IS NULL
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type row struct {
+		scheduleID int64
+		amount     float64
+	}
+	var missing []row
+	for rows.Next() {
+		var item row
+		var slotDate, slotHour, activity string
+		var quantity int
+		if err := rows.Scan(&item.scheduleID, &slotDate, &slotHour, &activity, &quantity, &item.amount); err != nil {
+			return err
+		}
+		missing = append(missing, item)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, item := range missing {
+		if _, err := db.Exec(`
+			INSERT OR IGNORE INTO booking_financials (
+				schedule_id, quoted_amount, paid, payment_method, created_at, updated_at
+			) VALUES (?, ?, 0, '', ?, ?)
+		`, item.scheduleID, item.amount, now, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func tableHasColumn(db *sql.DB, tableName, columnName string) (bool, error) {
@@ -5307,8 +6337,8 @@ func seedRoles(db *sql.DB) error {
 	rolePermissions := map[string][]string{
 		"customer":   {"dashboard.view"},
 		"editor":     {"dashboard.view", "editor.access"},
-		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "events.manage"},
-		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "events.manage"},
+		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"},
+		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"},
 	}
 	for roleName, permissions := range rolePermissions {
 		roleID, err := queryRoleID(db, roleName)
@@ -5930,11 +6960,12 @@ func eventFromRequest(r *http.Request) (Event, error) {
 
 func prefillPublicBookingDraft(r *http.Request, viewer *User, calendarDate string) *SpaceSchedule {
 	draft := &SpaceSchedule{
-		EntryType: "booking",
-		SlotDate:  calendarDate,
-		SlotHour:  strings.TrimSpace(r.URL.Query().Get("hour")),
-		Activity:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("activity"))),
-		Quantity:  1,
+		EntryType:    "booking",
+		SlotDate:     calendarDate,
+		SlotHour:     strings.TrimSpace(r.URL.Query().Get("hour")),
+		Activity:     strings.ToLower(strings.TrimSpace(r.URL.Query().Get("activity"))),
+		Quantity:     1,
+		ReferralCode: strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("ref"))),
 	}
 	if quantity, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("quantity"))); err == nil && quantity > 0 {
 		draft.Quantity = quantity
@@ -6127,6 +7158,21 @@ func validateSpaceScheduleInput(schedule SpaceSchedule) error {
 		return errors.New("activity is required")
 	}
 	return nil
+}
+
+func validateReferralPartner(partner ReferralPartner) error {
+	switch {
+	case partner.Name == "":
+		return errors.New("referral partner name is required")
+	case !referralCodePattern.MatchString(partner.Code):
+		return errors.New("referral code must be 3 to 24 letters, numbers, dashes or underscores")
+	case partner.Phone == "":
+		return errors.New("referral partner phone is required")
+	case partner.Email != "" && !emailPattern.MatchString(partner.Email):
+		return errors.New("a valid referral partner email is required")
+	default:
+		return nil
+	}
 }
 
 func validateBookableScheduleTime(schedule SpaceSchedule, now time.Time) error {
@@ -6436,6 +7482,38 @@ func bookingOpenHourCount(slots []BookingSlotAvailability) int {
 	return count
 }
 
+func bookingReferralFor(referrals []BookingReferral, scheduleID int64) *BookingReferral {
+	for i := range referrals {
+		if referrals[i].ScheduleID == scheduleID {
+			return &referrals[i]
+		}
+	}
+	return nil
+}
+
+func buildReferralStats(referrals []BookingReferral) []Stat {
+	referredBookings := len(referrals)
+	pendingBookings := 0
+	payable := 0.0
+	paid := 0.0
+	for _, referral := range referrals {
+		switch {
+		case referral.Paid:
+			paid += referral.CommissionAmount
+		case referral.BookingStatus == "confirmed":
+			payable += referral.CommissionAmount
+		case referral.BookingStatus == "pending":
+			pendingBookings++
+		}
+	}
+	return []Stat{
+		{Label: "Referred bookings", Value: strconv.Itoa(referredBookings)},
+		{Label: "Awaiting confirmation", Value: strconv.Itoa(pendingBookings)},
+		{Label: "Commission payable", Value: money(payable)},
+		{Label: "Commission paid", Value: money(paid)},
+	}
+}
+
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
 		if permission == target {
@@ -6604,10 +7682,10 @@ func pricingRuleForOption(pricings []PricingRule, activity string, quantity int)
 func pricingForOption(pricings []PricingRule, settings *PricingSettings, slotDate, slotHour, activity string, quantity int) string {
 	rule := pricingRuleForOption(pricings, activity, quantity)
 	if rule == nil {
-		return "Set pricing"
+		return "Price on confirmation"
 	}
 	if rule.WeekdayOffPeak == 0 && rule.WeekdayPeak == 0 && rule.WeekendOffPeak == 0 && rule.WeekendPeak == 0 {
-		return "Set pricing"
+		return "Price on confirmation"
 	}
 	return money(priceForRuleSlot(*rule, settings, slotDate, slotHour))
 }
@@ -6619,8 +7697,32 @@ func pricingForSchedule(pricings []PricingRule, settings *PricingSettings, sched
 	return pricingForOption(pricings, settings, schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity)
 }
 
+func (a *App) bookingQuote(schedule SpaceSchedule) (float64, error) {
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		return 0, err
+	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		return 0, err
+	}
+	rule := pricingRuleForOption(pricings, schedule.Activity, schedule.Quantity)
+	if rule == nil {
+		return 0, errors.New("pricing is not configured for this booking")
+	}
+	amount := priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour)
+	if amount <= 0 {
+		return 0, errors.New("a positive price is required before creating this booking")
+	}
+	return amount, nil
+}
+
 func money(value float64) string {
 	return fmt.Sprintf("LKR %.2f", value)
+}
+
+func negate(value float64) float64 {
+	return -value
 }
 
 func boolToInt(value bool) int {
@@ -6636,6 +7738,13 @@ func nullIfBlank(value string) any {
 		return nil
 	}
 	return trimmed
+}
+
+func nullIfZero(value int64) any {
+	if value == 0 {
+		return nil
+	}
+	return value
 }
 
 func uploadedEventImagePath(r *http.Request) (string, error) {
@@ -6734,6 +7843,30 @@ func financeCategoryLabel(value string) string {
 		return "Admission payment"
 	case "student_monthly_payment":
 		return "Student monthly payment"
+	case "booking_payment":
+		return "Booking payment"
+	case "referral_commission_payment":
+		return "Referral commission"
+	case "manual_income":
+		return "General income"
+	case "sponsorship_income":
+		return "Sponsorship income"
+	case "other_income":
+		return "Other income"
+	case "facility_expense":
+		return "Facility expense"
+	case "utilities_expense":
+		return "Utilities expense"
+	case "maintenance_expense":
+		return "Maintenance expense"
+	case "staff_expense":
+		return "Staff expense"
+	case "equipment_expense":
+		return "Equipment expense"
+	case "marketing_expense":
+		return "Marketing expense"
+	case "other_expense":
+		return "Other expense"
 	default:
 		return "Transaction"
 	}
@@ -6971,8 +8104,7 @@ func buildFinanceStats(transactions []FinanceTransaction) []Stat {
 	totalIncome := 0.0
 	admissionPayments := 0
 	studentPayments := 0
-	todayCount := 0
-	today := time.Now().Format("2006-01-02")
+	referralPayouts := 0.0
 
 	for _, transaction := range transactions {
 		totalIncome += transaction.Amount
@@ -6982,16 +8114,346 @@ func buildFinanceStats(transactions []FinanceTransaction) []Stat {
 		if transaction.Category == "student_monthly_payment" {
 			studentPayments++
 		}
-		if transaction.RecordedAt.Format("2006-01-02") == today {
-			todayCount++
+		if transaction.Category == "referral_commission_payment" {
+			referralPayouts += -transaction.Amount
 		}
 	}
 
 	return []Stat{
-		{Label: "Total income", Value: money(totalIncome)},
+		{Label: "Net recorded cash", Value: money(totalIncome)},
 		{Label: "Admission payments", Value: strconv.Itoa(admissionPayments)},
 		{Label: "Student payments", Value: strconv.Itoa(studentPayments)},
-		{Label: "Collected today", Value: strconv.Itoa(todayCount)},
+		{Label: "Referral commission paid", Value: money(referralPayouts)},
+	}
+}
+
+func buildFinanceSummary(transactions []FinanceTransaction, bookings []BookingFinancial, monthly []StudentPaymentRow, referrals []BookingReferral) FinanceSummary {
+	var summary FinanceSummary
+	for _, transaction := range transactions {
+		if transaction.Amount >= 0 {
+			summary.GrossIncome += transaction.Amount
+		} else {
+			summary.TotalExpenses += -transaction.Amount
+		}
+	}
+	summary.NetCash = summary.GrossIncome - summary.TotalExpenses
+	for _, booking := range bookings {
+		summary.OutstandingBooking += booking.QuotedAmount
+	}
+	for _, row := range monthly {
+		if row.Payment == nil {
+			summary.OutstandingMonthly += row.MonthlyFee
+		}
+	}
+	for _, referral := range referrals {
+		if referral.BookingStatus == "confirmed" && !referral.Paid {
+			summary.PayableReferrals += referral.CommissionAmount
+		}
+	}
+	return summary
+}
+
+func reportPeriodFromRequest(r *http.Request) ReportPeriod {
+	kind := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("period")))
+	if kind != "day" && kind != "week" && kind != "month" {
+		kind = "day"
+	}
+	anchor, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(r.URL.Query().Get("date")), time.Local)
+	if err != nil {
+		now := time.Now().In(time.Local)
+		anchor = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	}
+	var start, end, previous, next time.Time
+	switch kind {
+	case "week":
+		daysSinceMonday := (int(anchor.Weekday()) + 6) % 7
+		start = anchor.AddDate(0, 0, -daysSinceMonday)
+		end = start.AddDate(0, 0, 6)
+		previous = anchor.AddDate(0, 0, -7)
+		next = anchor.AddDate(0, 0, 7)
+	case "month":
+		start = time.Date(anchor.Year(), anchor.Month(), 1, 0, 0, 0, 0, time.Local)
+		end = start.AddDate(0, 1, -1)
+		previous = start.AddDate(0, -1, 0)
+		next = start.AddDate(0, 1, 0)
+	default:
+		start = anchor
+		end = anchor
+		previous = anchor.AddDate(0, 0, -1)
+		next = anchor.AddDate(0, 0, 1)
+	}
+	label := start.Format("Monday, 02 January 2006")
+	if kind == "week" {
+		label = start.Format("02 Jan") + " - " + end.Format("02 Jan 2006")
+	}
+	if kind == "month" {
+		label = start.Format("January 2006")
+	}
+	return ReportPeriod{
+		Kind:         kind,
+		Anchor:       anchor.Format("2006-01-02"),
+		Start:        start.Format("2006-01-02"),
+		End:          end.Format("2006-01-02"),
+		Label:        label,
+		PreviousDate: previous.Format("2006-01-02"),
+		NextDate:     next.Format("2006-01-02"),
+	}
+}
+
+func (a *App) buildOperationalReport(period ReportPeriod) (*OperationalReport, error) {
+	report := &OperationalReport{Period: period}
+	points := make(map[string]*ReportSeriesPoint)
+	start, _ := time.ParseInLocation("2006-01-02", period.Start, time.Local)
+	end, _ := time.ParseInLocation("2006-01-02", period.End, time.Local)
+	for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
+		date := day.Format("2006-01-02")
+		report.Series = append(report.Series, ReportSeriesPoint{Date: date, Label: day.Format("Mon 02")})
+	}
+	for i := range report.Series {
+		points[report.Series[i].Date] = &report.Series[i]
+	}
+
+	transactions, err := a.listFinanceTransactionsFiltered(FinanceFilter{From: period.Start, To: period.End})
+	if err != nil {
+		return nil, err
+	}
+	report.Transactions = transactions
+	financeBreakdown := map[string]*ReportBreakdown{}
+	for _, transaction := range transactions {
+		date := transaction.RecordedAt.Format("2006-01-02")
+		point := points[date]
+		if transaction.Amount >= 0 {
+			report.Summary.Income += transaction.Amount
+			if point != nil {
+				point.Income += transaction.Amount
+			}
+		} else {
+			expense := -transaction.Amount
+			report.Summary.Expenses += expense
+			if point != nil {
+				point.Expenses += expense
+			}
+		}
+		switch transaction.Category {
+		case "booking_payment":
+			report.Summary.BookingRevenue += transaction.Amount
+		case "student_monthly_payment":
+			report.Summary.StudentRevenue += transaction.Amount
+			report.Summary.StudentPayments++
+		case "admission_payment":
+			report.Summary.AdmissionRevenue += transaction.Amount
+		}
+		item := financeBreakdown[transaction.Category]
+		if item == nil {
+			item = &ReportBreakdown{Key: transaction.Category, Label: financeCategoryLabel(transaction.Category)}
+			financeBreakdown[transaction.Category] = item
+		}
+		item.Count++
+		item.Amount += transaction.Amount
+	}
+	report.Summary.NetCash = report.Summary.Income - report.Summary.Expenses
+	for _, item := range financeBreakdown {
+		report.FinanceBreakdown = append(report.FinanceBreakdown, *item)
+	}
+	sort.Slice(report.FinanceBreakdown, func(i, j int) bool {
+		return math.Abs(report.FinanceBreakdown[i].Amount) > math.Abs(report.FinanceBreakdown[j].Amount)
+	})
+
+	scheduleRows, err := a.db.Query(`
+		SELECT slot_date, slot_hour, entry_type, activity, quantity, status
+		FROM space_schedules
+		WHERE slot_date BETWEEN ? AND ?
+		ORDER BY slot_date, slot_hour, id
+	`, period.Start, period.End)
+	if err != nil {
+		return nil, err
+	}
+	bookingBreakdown := map[string]*ReportBreakdown{}
+	occupied := map[string]struct{}{}
+	for scheduleRows.Next() {
+		var slotDate, slotHour, entryType, activity, status string
+		var quantity int
+		if err := scheduleRows.Scan(&slotDate, &slotHour, &entryType, &activity, &quantity, &status); err != nil {
+			scheduleRows.Close()
+			return nil, err
+		}
+		if entryType == "booking" {
+			if status == "confirmed" {
+				report.Summary.ConfirmedBookings++
+				if point := points[slotDate]; point != nil {
+					point.Bookings++
+				}
+				item := bookingBreakdown[activity]
+				if item == nil {
+					item = &ReportBreakdown{Key: activity, Label: activityLabel(activity)}
+					bookingBreakdown[activity] = item
+				}
+				item.Count++
+			} else if status == "pending" {
+				report.Summary.PendingBookings++
+			}
+		}
+		if status == "confirmed" {
+			occupied[slotDate+"|"+slotHour] = struct{}{}
+		}
+	}
+	if err := scheduleRows.Err(); err != nil {
+		scheduleRows.Close()
+		return nil, err
+	}
+	if err := scheduleRows.Close(); err != nil {
+		return nil, err
+	}
+	for _, item := range bookingBreakdown {
+		report.BookingBreakdown = append(report.BookingBreakdown, *item)
+	}
+	sort.Slice(report.BookingBreakdown, func(i, j int) bool {
+		return report.BookingBreakdown[i].Count > report.BookingBreakdown[j].Count
+	})
+	report.Summary.OccupiedSlotHours = len(occupied)
+	report.Summary.AvailableSlotHours = len(report.Series) * len(bookingHours())
+	if report.Summary.AvailableSlotHours > 0 {
+		report.Summary.UtilizationRate = float64(report.Summary.OccupiedSlotHours) / float64(report.Summary.AvailableSlotHours) * 100
+	}
+
+	admissionRows, err := a.db.Query(`
+		SELECT admission_date, COUNT(*)
+		FROM admissions
+		WHERE admission_date BETWEEN ? AND ?
+		GROUP BY admission_date
+	`, period.Start, period.End)
+	if err != nil {
+		return nil, err
+	}
+	for admissionRows.Next() {
+		var date string
+		var count int
+		if err := admissionRows.Scan(&date, &count); err != nil {
+			admissionRows.Close()
+			return nil, err
+		}
+		report.Summary.NewAdmissions += count
+		if point := points[date]; point != nil {
+			point.Admissions += count
+		}
+	}
+	if err := admissionRows.Err(); err != nil {
+		admissionRows.Close()
+		return nil, err
+	}
+	if err := admissionRows.Close(); err != nil {
+		return nil, err
+	}
+
+	attendanceRows, err := a.db.Query(`
+		SELECT attendance_date, status, COUNT(*)
+		FROM attendance_records
+		WHERE attendance_date BETWEEN ? AND ?
+		GROUP BY attendance_date, status
+	`, period.Start, period.End)
+	if err != nil {
+		return nil, err
+	}
+	for attendanceRows.Next() {
+		var date, status string
+		var count int
+		if err := attendanceRows.Scan(&date, &status, &count); err != nil {
+			attendanceRows.Close()
+			return nil, err
+		}
+		report.Summary.AttendanceTotal += count
+		if status == "present" {
+			report.Summary.AttendancePresent += count
+		}
+		if point := points[date]; point != nil {
+			point.Attendance += count
+			if status == "present" {
+				point.Present += count
+			}
+		}
+	}
+	if err := attendanceRows.Err(); err != nil {
+		attendanceRows.Close()
+		return nil, err
+	}
+	if err := attendanceRows.Close(); err != nil {
+		return nil, err
+	}
+	if report.Summary.AttendanceTotal > 0 {
+		report.Summary.AttendanceRate = float64(report.Summary.AttendancePresent) / float64(report.Summary.AttendanceTotal) * 100
+	}
+	for i := range report.Series {
+		report.Series[i].NetCash = report.Series[i].Income - report.Series[i].Expenses
+		dailyCash := math.Max(report.Series[i].Income, report.Series[i].Expenses)
+		if dailyCash > report.MaxDailyCash {
+			report.MaxDailyCash = dailyCash
+		}
+	}
+	return report, nil
+}
+
+func formatReportNumber(value float64) string {
+	return strconv.FormatFloat(value, 'f', 2, 64)
+}
+
+func reportBarWidth(value, maxValue float64) string {
+	if value <= 0 || maxValue <= 0 {
+		return "0%"
+	}
+	percent := value / maxValue * 100
+	if percent < 3 {
+		percent = 3
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	return fmt.Sprintf("%.1f%%", percent)
+}
+
+func financeFilterFromRequest(r *http.Request) FinanceFilter {
+	filter := FinanceFilter{
+		From:      strings.TrimSpace(r.URL.Query().Get("from")),
+		To:        strings.TrimSpace(r.URL.Query().Get("to")),
+		Direction: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction"))),
+		Category:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("category"))),
+		Search:    strings.TrimSpace(r.URL.Query().Get("search")),
+	}
+	if _, err := time.Parse("2006-01-02", filter.From); err != nil {
+		filter.From = ""
+	}
+	if _, err := time.Parse("2006-01-02", filter.To); err != nil {
+		filter.To = ""
+	}
+	if filter.Direction != "income" && filter.Direction != "expense" {
+		filter.Direction = ""
+	}
+	return filter
+}
+
+func validManualFinanceCategory(direction, category string) bool {
+	income := map[string]bool{"manual_income": true, "sponsorship_income": true, "other_income": true}
+	expense := map[string]bool{
+		"facility_expense": true, "utilities_expense": true, "maintenance_expense": true,
+		"staff_expense": true, "equipment_expense": true, "marketing_expense": true, "other_expense": true,
+	}
+	if direction == "income" {
+		return income[category]
+	}
+	if direction == "expense" {
+		return expense[category]
+	}
+	return false
+}
+
+func csvSafeCell(value string) string {
+	if value == "" {
+		return value
+	}
+	switch value[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + value
+	default:
+		return value
 	}
 }
 
@@ -7115,6 +8577,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"bookingOptionSelected":     bookingOptionSelected,
 		"bookingReference":          bookingReference,
 		"bookingOpenHourCount":      bookingOpenHourCount,
+		"bookingReferralFor":        bookingReferralFor,
 		"bookingStatusTone":         bookingStatusTone,
 		"pricingForOption":          pricingForOption,
 		"pricingForSchedule":        pricingForSchedule,
@@ -7132,6 +8595,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"hasRegistrationDeadline":   hasRegistrationDeadline,
 		"isPastEventDate":           isPastEventDate,
 		"money":                     money,
+		"negate":                    negate,
+		"reportBarWidth":            reportBarWidth,
 		"registrationDeadlineLabel": registrationDeadlineLabel,
 		"scheduleToneClasses":       scheduleToneClasses,
 		"scheduleBadgeClasses":      scheduleBadgeClasses,
@@ -7207,6 +8672,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"finance-management":       "templates/dashboard/finance-management.html",
 		"finance-receipt":          "templates/dashboard/finance-receipt.html",
 		"student-payments":         "templates/dashboard/student-payments.html",
+		"referral-commissions":     "templates/dashboard/referral-commissions.html",
+		"reports":                  "templates/dashboard/reports.html",
 		"forbidden":                "templates/dashboard/forbidden.html",
 	}
 	dashboardPartials := []string{

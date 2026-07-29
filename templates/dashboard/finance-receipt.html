@@ -22,7 +22,7 @@
   <div class="mx-auto w-full max-w-[5in] rounded-[1.5rem] border border-slate/10 bg-white p-6 shadow-sm">
     <div class="border-b border-dashed border-slate/20 pb-4 text-center">
       <p class="text-xs font-semibold uppercase tracking-[0.32em] text-slate/50">MEKMAA</p>
-      <h1 class="mt-3 text-xl font-semibold text-obsidian">Payment Receipt</h1>
+      <h1 class="mt-3 text-xl font-semibold text-obsidian">{{if lt .SelectedFinance.Amount 0.0}}Expense Voucher{{else}}Payment Receipt{{end}}</h1>
       <p class="mt-2 text-sm leading-6 text-slate/60">No. 64, Temple Road, Jaffna - 40000, Sri Lanka</p>
     </div>
 
@@ -36,7 +36,7 @@
         <dd class="font-medium text-obsidian">{{financeCategoryLabel .SelectedFinance.Category}}</dd>
       </div>
       <div class="flex items-start justify-between gap-3">
-        <dt class="text-slate/50">Collected on</dt>
+        <dt class="text-slate/50">Recorded on</dt>
         <dd class="font-medium text-obsidian">{{formatDateTime .SelectedFinance.RecordedAt}}</dd>
       </div>
       <div class="flex items-start justify-between gap-3">
@@ -44,7 +44,7 @@
         <dd class="font-medium uppercase text-obsidian">{{.SelectedFinance.PaymentMethod}}</dd>
       </div>
       <div class="flex items-start justify-between gap-3">
-        <dt class="text-slate/50">Student</dt>
+        <dt class="text-slate/50">{{if lt .SelectedFinance.Amount 0.0}}Paid to{{else}}Received from{{end}}</dt>
         <dd class="text-right font-medium text-obsidian">{{.SelectedFinance.PersonName}}</dd>
       </div>
       {{if .ReceiptAdmission}}
@@ -64,8 +64,8 @@
     </dl>
 
     <div class="py-5 text-center">
-      <p class="text-xs uppercase tracking-[0.24em] text-slate/50">Amount collected</p>
-      <p class="mt-3 text-3xl font-semibold text-obsidian">{{money .SelectedFinance.Amount}}</p>
+      <p class="text-xs uppercase tracking-[0.24em] text-slate/50">{{if lt .SelectedFinance.Amount 0.0}}Amount paid{{else}}Amount received{{end}}</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{if lt .SelectedFinance.Amount 0.0}}{{money (negate .SelectedFinance.Amount)}}{{else}}{{money .SelectedFinance.Amount}}{{end}}</p>
     </div>
 
     <div class="border-t border-dashed border-slate/20 pt-4 text-center text-xs leading-6 text-slate/55">
@@ -78,8 +78,8 @@
     <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">
       Print again
     </button>
-    <a href="{{if eq .SelectedFinance.Category "student_monthly_payment"}}/admin/student-payments{{else}}/admin/admissions{{end}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
-      {{if eq .SelectedFinance.Category "student_monthly_payment"}}Back to student payments{{else}}Back to admissions{{end}}
+    <a href="{{if eq .SelectedFinance.Category "student_monthly_payment"}}/admin/student-payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}/admin/referrals{{else if eq .SelectedFinance.Category "admission_payment"}}/admin/admissions{{else}}/admin/finance{{end}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
+      {{if eq .SelectedFinance.Category "student_monthly_payment"}}Back to student payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}Back to referrals{{else if eq .SelectedFinance.Category "admission_payment"}}Back to admissions{{else}}Back to finance{{end}}
     </a>
     <a href="/admin/finance" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
       Open finance
