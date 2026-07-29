@@ -2,306 +2,178 @@
 
 {{define "content"}}
 <section class="space-y-6">
-  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+  <div class="relative overflow-hidden rounded-[2rem] bg-obsidian p-6 text-cloud shadow-[0_24px_80px_rgba(11,18,21,0.18)] sm:p-8">
+    <div class="pointer-events-none absolute -right-24 -top-32 h-80 w-80 rounded-full border-[48px] border-aqua/10"></div>
+    <div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
       <div>
-        <h1 class="text-2xl font-semibold sm:text-3xl">Booking manager</h1>
-        <p class="mt-2 text-sm text-slate/70">Bookings and training sessions in 1 hour slots</p>
+        <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Venue operations</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Booking calendar</h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/65">One operational view for confirmed bookings, pending holds, and internal training blocks.</p>
       </div>
-      <a href="/admin/bookings?action=new#schedule-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add new slot</a>
+      <div class="flex flex-wrap gap-2">
+        <a href="/admin/booking-requests" class="relative inline-flex h-11 items-center rounded-2xl border border-white/10 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">
+          Request inbox
+          {{if .PendingSchedules}}<span class="ml-2 rounded-full bg-amber px-2 py-0.5 text-[0.65rem] font-bold text-obsidian">{{len .PendingSchedules}}</span>{{end}}
+        </a>
+        <a href="/admin/bookings?action=new&date={{.CalendarDate}}#schedule-form" class="inline-flex h-11 items-center rounded-2xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Add schedule</a>
+      </div>
     </div>
   </div>
 
-  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div>
-        <h2 class="text-xl font-semibold sm:text-2xl">Daily calendar</h2>
-        <p class="mt-2 text-sm text-slate/70">One day view for bookings and training blocks on {{.CalendarDate}}</p>
-      </div>
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <a href="/admin/bookings?date={{.PreviousDate}}" class="rounded-2xl border border-slate/10 bg-white px-5 py-3 text-center text-sm font-medium text-slate transition hover:bg-cloud">Previous day</a>
-        <form action="/admin/bookings" method="get" class="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <input type="date" name="date" value="{{.CalendarDate}}" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-          <button type="submit" class="rounded-2xl border border-slate/10 bg-white px-5 py-3 text-sm font-medium text-slate transition hover:bg-cloud">View day</button>
-        </form>
-        <a href="/admin/bookings?date={{.NextDate}}" class="rounded-2xl border border-slate/10 bg-white px-5 py-3 text-center text-sm font-medium text-slate transition hover:bg-cloud">Next day</a>
-      </div>
-    </div>
-
-    <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {{range .DailyStats}}
-      <div class="rounded-3xl border border-slate/8 bg-cloud p-4 sm:p-5">
-        <p class="text-xl font-semibold sm:text-2xl">{{.Value}}</p>
-        <p class="mt-2 text-sm text-slate/72">{{.Label}}</p>
-      </div>
-      {{end}}
-    </div>
-
-    <div class="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
-        <p class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Allowed combinations</p>
-        <div class="mt-4 flex flex-wrap gap-2">
-          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Full indoor cricket only</span>
-          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Futsal only</span>
-          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Badminton + 1 cricket net</span>
-          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Badminton + 1 table tennis</span>
-          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Table tennis only, up to 2</span>
-          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate">Cricket nets only, exactly 3</span>
-          <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Training blocks full hour</span>
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-5">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.22em] text-slate/40">Selected operational day</p>
+          <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{formatCalendarDate .CalendarDate}}</h2>
+        </div>
+        <div class="flex items-center gap-2">
+          <a href="/admin/bookings?date={{.PreviousDate}}" class="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate transition hover:bg-cloud" aria-label="Previous day"><svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4.5 7 10l5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          <form action="/admin/bookings" method="get" class="flex min-w-0 gap-2">
+            <input type="date" name="date" value="{{.CalendarDate}}" class="h-11 min-w-0 rounded-2xl border border-slate/10 bg-cloud/45 px-3 text-sm outline-none focus:border-aqua" />
+            <button class="h-11 rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud">Go</button>
+          </form>
+          <a href="/admin/bookings?date={{.NextDate}}" class="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate transition hover:bg-cloud" aria-label="Next day"><svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7.5 4.5 13 10l-5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
         </div>
       </div>
-      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
-        <p class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Venue inventory</p>
-        <div class="mt-4 grid gap-2 sm:grid-cols-2">
-          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate">2 Table tennis courts</div>
-          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate">1 Badminton court</div>
-          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate">1 Futsal court</div>
-          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate">3 Cricket nets</div>
-          <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate sm:col-span-2">1 Full indoor cricket area</div>
-        </div>
-      </div>
-    </div>
 
-    <div class="mt-6 grid gap-3">
-      {{range .Hours}}
-      {{$hour := .}}
-      {{$slotSchedules := schedulesForCalendarSlot $.Schedules $.CalendarDate $hour}}
-      <div class="grid gap-3 rounded-3xl border border-slate/10 bg-cloud/65 p-4 lg:grid-cols-[8rem_1fr] lg:items-start">
-        <div class="rounded-2xl bg-white px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.22em] text-slate/55">Hour</p>
-          <p class="mt-2 text-lg font-semibold text-obsidian">{{$hour}}</p>
-        </div>
-        <div class="grid gap-3">
-          {{range $slotSchedules}}
-          <div class="rounded-2xl border px-4 py-4 {{scheduleToneClasses .}}">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p class="text-sm font-semibold text-obsidian">{{.Title}}</p>
-                <div class="mt-2 flex flex-wrap gap-2">
-                  <span class="rounded-full px-3 py-1 text-xs font-semibold {{scheduleBadgeClasses .}}">{{scheduleSummary .}}</span>
-                  <span class="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate/70">{{.EntryType}}</span>
-                </div>
-                {{if .Notes}}<p class="mt-2 text-sm text-slate/60">{{.Notes}}</p>{{end}}
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <a href="/admin/bookings?action=view&id={{.ID}}#schedule-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
-                <a href="/admin/bookings?action=edit&id={{.ID}}#schedule-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
-              </div>
-            </div>
+      <div class="flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {{range .WeekDays}}
+        <a href="/admin/bookings?date={{.Date}}" class="{{if .IsSelected}}border-obsidian bg-obsidian text-cloud shadow-lg{{else}}border-slate/10 bg-cloud/40 text-obsidian hover:border-aqua hover:bg-mint/35{{end}} min-w-[7.4rem] flex-1 snap-start rounded-[1.35rem] border p-3 transition">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-50">{{.DayLabel}}</span>
+            {{if .IsToday}}<span class="rounded-full bg-aqua px-2 py-0.5 text-[0.52rem] font-bold uppercase text-obsidian">Today</span>{{end}}
           </div>
-          {{else}}
-          <div class="rounded-2xl border border-dashed border-slate/15 bg-white/80 px-4 py-5 text-sm text-slate/55">
-            No slot scheduled.
+          <p class="mt-2 text-xl font-semibold">{{.DayNumber}} <span class="text-xs opacity-45">{{.MonthLabel}}</span></p>
+          <div class="mt-2 flex items-center justify-between text-[0.62rem]">
+            <span class="{{if .IsSelected}}text-aqua{{else}}text-emerald-700{{end}}">{{.OpenSlotCount}} open</span>
+            <span class="opacity-45">{{.BusySlotCount}} full</span>
           </div>
-          {{end}}
-        </div>
+        </a>
+        {{end}}
       </div>
-      {{end}}
     </div>
   </div>
 
-  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
-    <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
-      <h2 class="text-xl font-semibold sm:text-2xl">Selected day schedule</h2>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="min-w-full text-left text-sm">
-        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
-          <tr>
-            <th class="px-5 py-4 font-medium sm:px-6">Hour</th>
-            <th class="px-5 py-4 font-medium">Type</th>
-            <th class="px-5 py-4 font-medium">Space</th>
-            <th class="px-5 py-4 font-medium">Qty</th>
-            <th class="px-5 py-4 font-medium">Title</th>
-            <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate/10">
-          {{range .DaySchedules}}
-          <tr class="bg-white/70 align-top">
-            <td class="px-5 py-4 sm:px-6 text-slate/75">{{.SlotHour}}</td>
-            <td class="px-5 py-4 text-slate/75"><span class="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate/70">{{.EntryType}}</span></td>
-            <td class="px-5 py-4 text-slate/75"><span class="rounded-full px-3 py-1 text-xs font-semibold {{scheduleBadgeClasses .}}">{{scheduleSummary .}}</span></td>
-            <td class="px-5 py-4 text-slate/75">{{.Quantity}}</td>
-            <td class="px-5 py-4 text-slate/75">
-              <p class="font-medium text-obsidian">{{.Title}}</p>
-              {{if .Notes}}<p class="mt-1 text-xs text-slate/55">{{.Notes}}</p>{{end}}
-            </td>
-            <td class="px-5 py-4 sm:px-6">
-              <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
-                <a href="/admin/bookings?action=view&id={{.ID}}#schedule-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
-                <a href="/admin/bookings?action=edit&id={{.ID}}#schedule-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
-              </div>
-            </td>
-          </tr>
-          {{else}}
-          <tr>
-            <td colspan="6" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No schedules for {{.CalendarDate}}.</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
-    </div>
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    {{range .DailyStats}}
+    <article class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm">
+      <p class="text-3xl font-semibold text-obsidian">{{.Value}}</p>
+      <p class="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-slate/45">{{.Label}}</p>
+    </article>
+    {{end}}
   </div>
 
   {{if eq .ScheduleMode "new"}}
-  <div id="schedule-form" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex items-center justify-between gap-3">
-      <h2 class="text-xl font-semibold sm:text-2xl">Add booking or training</h2>
-      <a href="/admin/bookings" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+  <div id="schedule-form" class="overflow-hidden rounded-[2rem] border border-aqua/35 bg-white/95 shadow-[0_20px_60px_rgba(11,18,21,0.1)]">
+    <div class="flex items-center justify-between bg-mint/60 px-5 py-4 sm:px-6">
+      <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-800/55">New calendar entry</p><h2 class="mt-1 text-xl font-semibold text-obsidian">Reserve inventory</h2></div>
+      <a href="/admin/bookings?date={{.CalendarDate}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a>
     </div>
-    {{if .Error}}
-    <div class="mt-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">{{.Error}}</div>
-    {{end}}
-    <form action="/admin/bookings/create" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <form action="/admin/bookings/create" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-      <select name="entry_type" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
-        <option value="booking" {{if or (not .DraftSchedule) (eq .DraftSchedule.EntryType "booking")}}selected{{end}}>Booking</option>
-        <option value="training" {{if and .DraftSchedule (eq .DraftSchedule.EntryType "training")}}selected{{end}}>Training</option>
-      </select>
-      <input type="date" name="slot_date" value="{{if and .DraftSchedule .DraftSchedule.SlotDate}}{{.DraftSchedule.SlotDate}}{{else}}{{.CalendarDate}}{{end}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <select name="slot_hour" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
-        {{range .Hours}}
-        <option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.SlotHour .)}}selected{{end}}>{{.}}</option>
-        {{end}}
-      </select>
-      <select name="activity" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
-        {{range .Activities}}
-        <option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.Activity .)}}selected{{end}}>{{activityLabel .}}</option>
-        {{end}}
-      </select>
-      <input type="number" name="quantity" min="1" max="3" value="{{if and .DraftSchedule (gt .DraftSchedule.Quantity 0)}}{{.DraftSchedule.Quantity}}{{else}}1{{end}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="title" value="{{if .DraftSchedule}}{{.DraftSchedule.Title}}{{end}}" placeholder="Title" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <textarea name="notes" placeholder="Notes" rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{if .DraftSchedule}}{{.DraftSchedule.Notes}}{{end}}</textarea>
-      <div class="md:col-span-2 xl:col-span-3 flex justify-end">
-        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create</button>
-      </div>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Entry type</span><select name="entry_type" data-entry-type required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua"><option value="booking" {{if or (not .DraftSchedule) (eq .DraftSchedule.EntryType "booking")}}selected{{end}}>Direct booking</option><option value="training" {{if and .DraftSchedule (eq .DraftSchedule.EntryType "training")}}selected{{end}}>Internal training</option></select></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Date</span><input type="date" name="slot_date" min="{{.TodayDate}}" value="{{if and .DraftSchedule .DraftSchedule.SlotDate}}{{.DraftSchedule.SlotDate}}{{else}}{{.CalendarDate}}{{end}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Start time</span><select name="slot_hour" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">{{range .Hours}}<option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.SlotHour .)}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Facility</span><select name="activity" data-activity required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">{{range .Activities}}<option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.Activity .)}}selected{{end}}>{{activityLabel .}}</option>{{end}}</select></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Quantity</span><input type="number" name="quantity" data-quantity min="1" max="3" value="{{if and .DraftSchedule (gt .DraftSchedule.Quantity 0)}}{{.DraftSchedule.Quantity}}{{else}}1{{end}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Schedule title</span><input type="text" name="title" value="{{if .DraftSchedule}}{{.DraftSchedule.Title}}{{end}}" placeholder="Customer, team or training name" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" /></label>
+      <label class="md:col-span-2 xl:col-span-3"><span class="mb-1.5 block text-xs font-semibold text-slate/55">Operations note <span class="font-normal text-slate/35">(optional)</span></span><textarea name="notes" rows="3" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{if .DraftSchedule}}{{.DraftSchedule.Notes}}{{end}}</textarea></label>
+      <div class="md:col-span-2 xl:col-span-3 flex justify-end"><button class="h-12 rounded-2xl bg-obsidian px-6 text-sm font-bold text-cloud transition hover:bg-slate">Create schedule</button></div>
     </form>
   </div>
   {{end}}
 
-  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
-    <div class="overflow-x-auto">
-      <table class="min-w-full text-left text-sm">
-        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
-          <tr>
-            <th class="px-5 py-4 font-medium sm:px-6">Date</th>
-            <th class="px-5 py-4 font-medium">Hour</th>
-            <th class="px-5 py-4 font-medium">Type</th>
-            <th class="px-5 py-4 font-medium">Space</th>
-            <th class="px-5 py-4 font-medium">Qty</th>
-            <th class="px-5 py-4 font-medium">Title</th>
-            <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate/10">
-          {{range .Schedules}}
-          <tr class="bg-white/70 align-top">
-            <td class="px-5 py-4 sm:px-6 text-slate/75">{{.SlotDate}}</td>
-            <td class="px-5 py-4 text-slate/75">{{.SlotHour}}</td>
-            <td class="px-5 py-4 text-slate/75"><span class="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate/70">{{.EntryType}}</span></td>
-            <td class="px-5 py-4 text-slate/75"><span class="rounded-full px-3 py-1 text-xs font-semibold {{scheduleBadgeClasses .}}">{{scheduleSummary .}}</span></td>
-            <td class="px-5 py-4 text-slate/75">{{.Quantity}}</td>
-            <td class="px-5 py-4 text-slate/75">
-              <p class="font-medium text-obsidian">{{.Title}}</p>
-              {{if .Notes}}<p class="mt-1 text-xs text-slate/55">{{.Notes}}</p>{{end}}
-            </td>
-            <td class="px-5 py-4 sm:px-6">
-              <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
-                <a href="/admin/bookings?action=view&id={{.ID}}#schedule-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
-                <a href="/admin/bookings?action=edit&id={{.ID}}#schedule-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
-                <form action="/admin/bookings/delete" method="post">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
-                  <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50">Delete</button>
-                </form>
-              </div>
-            </td>
-          </tr>
-          {{else}}
-          <tr>
-            <td colspan="7" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No bookings found.</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
   {{if and (eq .ScheduleMode "view") .SelectedSchedule}}
-  <div id="schedule-view" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex items-center justify-between gap-3">
-      <h2 class="text-xl font-semibold sm:text-2xl">Slot details</h2>
-      <a href="/admin/bookings" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+  <div id="schedule-view" class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/95 shadow-sm">
+    <div class="flex items-center justify-between border-b border-slate/10 px-5 py-4 sm:px-6">
+      <div><p class="font-mono text-xs font-bold text-slate/40">{{if .SelectedSchedule.RequesterName}}{{bookingReference .SelectedSchedule.ID}}{{else}}INTERNAL-{{.SelectedSchedule.ID}}{{end}}</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div>
+      <a href="/admin/bookings?date={{.SelectedSchedule.SlotDate}}" class="rounded-xl bg-cloud px-3 py-2 text-xs font-bold text-slate">Close</a>
     </div>
-    <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Date</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedSchedule.SlotDate}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Hour</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedSchedule.SlotHour}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Type</p>
-        <p class="mt-2 text-sm font-medium capitalize text-obsidian">{{.SelectedSchedule.EntryType}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Space</p>
-        <p class="mt-2"><span class="rounded-full px-3 py-1 text-xs font-semibold {{scheduleBadgeClasses .SelectedSchedule}}">{{scheduleSummary .SelectedSchedule}}</span></p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Quantity</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedSchedule.Quantity}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Title</p>
-        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedSchedule.Title}}</p>
-      </div>
-      <div class="rounded-2xl bg-cloud px-4 py-4 md:col-span-2 xl:col-span-3">
-        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Notes</p>
-        <p class="mt-2 text-sm leading-7 text-obsidian">{{.SelectedSchedule.Notes}}</p>
-      </div>
+    <div class="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
+      <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Date & time</p><p class="mt-2 text-sm font-semibold">{{formatCalendarDate .SelectedSchedule.SlotDate}} · {{.SelectedSchedule.SlotHour}}</p></div>
+      <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Inventory</p><p class="mt-2 text-sm font-semibold">{{scheduleSummary .SelectedSchedule}}</p></div>
+      <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Type & status</p><p class="mt-2 text-sm font-semibold capitalize">{{.SelectedSchedule.EntryType}} · {{.SelectedSchedule.Status}}</p></div>
+      <div class="rounded-2xl bg-emerald-50 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800/45">Current rate</p><p class="mt-2 text-sm font-bold text-emerald-900">{{if eq .SelectedSchedule.EntryType "booking"}}{{pricingForSchedule .Pricings .PricingSettings .SelectedSchedule}}{{else}}Internal{{end}}</p></div>
+      {{if .SelectedSchedule.RequesterName}}<div class="rounded-2xl bg-cloud/60 p-4 sm:col-span-2"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Customer</p><p class="mt-2 text-sm font-semibold">{{.SelectedSchedule.RequesterName}}</p><p class="mt-1 text-xs text-slate/55">{{.SelectedSchedule.RequesterEmail}} · {{.SelectedSchedule.RequesterPhone}}</p></div>{{end}}
+      <div class="rounded-2xl bg-cloud/60 p-4 {{if .SelectedSchedule.RequesterName}}sm:col-span-2{{else}}sm:col-span-2 xl:col-span-4{{end}}"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Notes</p><p class="mt-2 text-sm leading-6 text-slate/65">{{if .SelectedSchedule.Notes}}{{.SelectedSchedule.Notes}}{{else}}No notes provided.{{end}}</p></div>
+    </div>
+    <div class="flex flex-wrap justify-end gap-2 border-t border-slate/10 px-5 py-4 sm:px-6">
+      <a href="/admin/bookings?action=edit&id={{.SelectedSchedule.ID}}&date={{.SelectedSchedule.SlotDate}}#schedule-edit" class="h-10 rounded-xl border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Edit schedule</a>
+      <form action="/admin/bookings/delete" method="post" onsubmit="return confirm('Permanently delete this schedule?')"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" /><button class="h-10 rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700">Delete</button></form>
     </div>
   </div>
   {{end}}
 
   {{if and (eq .ScheduleMode "edit") .SelectedSchedule}}
-  <div id="schedule-edit" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex items-center justify-between gap-3">
-      <h2 class="text-xl font-semibold sm:text-2xl">Edit slot</h2>
-      <a href="/admin/bookings" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
-    </div>
-    {{if .Error}}
-    <div class="mt-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">{{.Error}}</div>
-    {{end}}
-    <form action="/admin/bookings/update" method="post" class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-      <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
-      <select name="entry_type" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
-        <option value="booking" {{if eq .SelectedSchedule.EntryType "booking"}}selected{{end}}>Booking</option>
-        <option value="training" {{if eq .SelectedSchedule.EntryType "training"}}selected{{end}}>Training</option>
-      </select>
-      <input type="date" name="slot_date" value="{{.SelectedSchedule.SlotDate}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <select name="slot_hour" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
-        {{range .Hours}}
-        <option value="{{.}}" {{if eq $.SelectedSchedule.SlotHour .}}selected{{end}}>{{.}}</option>
-        {{end}}
-      </select>
-      <select name="activity" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
-        {{range .Activities}}
-        <option value="{{.}}" {{if eq $.SelectedSchedule.Activity .}}selected{{end}}>{{activityLabel .}}</option>
-        {{end}}
-      </select>
-      <input type="number" name="quantity" min="1" max="3" value="{{.SelectedSchedule.Quantity}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <input type="text" name="title" value="{{.SelectedSchedule.Title}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
-      <textarea name="notes" rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{.SelectedSchedule.Notes}}</textarea>
-      <div class="md:col-span-2 xl:col-span-3 flex justify-end">
-        <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save changes</button>
-      </div>
+  <div id="schedule-edit" class="overflow-hidden rounded-[2rem] border border-aqua/30 bg-white/95 shadow-sm">
+    <div class="flex items-center justify-between bg-cloud/70 px-5 py-4 sm:px-6"><div><p class="text-xs font-bold uppercase tracking-wider text-slate/40">Edit inventory</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div><a href="/admin/bookings?date={{.SelectedSchedule.SlotDate}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a></div>
+    <form action="/admin/bookings/update" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Entry type</span><select name="entry_type" data-entry-type required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm"><option value="booking" {{if eq .SelectedSchedule.EntryType "booking"}}selected{{end}}>Booking</option><option value="training" {{if eq .SelectedSchedule.EntryType "training"}}selected{{end}}>Training</option></select></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Date</span><input type="date" name="slot_date" min="{{.TodayDate}}" value="{{.SelectedSchedule.SlotDate}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Start time</span><select name="slot_hour" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm">{{range .Hours}}<option value="{{.}}" {{if eq $.SelectedSchedule.SlotHour .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Facility</span><select name="activity" data-activity required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm">{{range .Activities}}<option value="{{.}}" {{if eq $.SelectedSchedule.Activity .}}selected{{end}}>{{activityLabel .}}</option>{{end}}</select></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Quantity</span><input type="number" name="quantity" data-quantity min="1" max="3" value="{{.SelectedSchedule.Quantity}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Title</span><input type="text" name="title" value="{{.SelectedSchedule.Title}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm" /></label>
+      <label class="md:col-span-2 xl:col-span-3"><span class="mb-1.5 block text-xs font-semibold text-slate/55">Notes</span><textarea name="notes" rows="3" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">{{.SelectedSchedule.Notes}}</textarea></label>
+      <div class="md:col-span-2 xl:col-span-3 flex justify-end"><button class="h-12 rounded-2xl bg-obsidian px-6 text-sm font-bold text-cloud">Save changes</button></div>
     </form>
   </div>
   {{end}}
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-2 border-b border-slate/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <div><p class="text-xs font-bold uppercase tracking-[0.22em] text-slate/40">Hourly timeline</p><h2 class="mt-2 text-2xl font-semibold">{{formatCalendarDate .CalendarDate}}</h2></div>
+      <div class="flex flex-wrap gap-2 text-[0.62rem] font-bold uppercase tracking-wider"><span class="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-800">Confirmed</span><span class="rounded-full bg-amber-100 px-3 py-1.5 text-amber-800">Pending hold</span><span class="rounded-full bg-slate/10 px-3 py-1.5 text-slate/60">Training</span></div>
+    </div>
+
+    <div class="mt-5 grid gap-2">
+      {{range .Hours}}
+      {{$hour := .}}{{$slotSchedules := schedulesForCalendarSlot $.DaySchedules $.CalendarDate $hour}}
+      <article class="grid gap-3 rounded-[1.35rem] border border-slate/8 {{if $slotSchedules}}bg-cloud/45{{else}}bg-white{{end}} p-3 sm:grid-cols-[5.5rem_minmax(0,1fr)_auto] sm:items-center">
+        <div class="flex items-center justify-between sm:block"><p class="text-lg font-semibold text-obsidian">{{$hour}}</p><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/35 sm:mt-1">1 hour</p></div>
+        <div class="grid gap-2">
+          {{range $slotSchedules}}
+          <div class="flex flex-col gap-2 rounded-xl border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between {{scheduleToneClasses .}}">
+            <div><div class="flex flex-wrap items-center gap-2"><p class="text-sm font-semibold text-obsidian">{{.Title}}</p><span class="rounded-full bg-white/70 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider">{{.Status}}</span></div><p class="mt-1 text-xs text-slate/55">{{scheduleSummary .}}{{if .RequesterName}} · {{.RequesterName}}{{end}}</p></div>
+            <a href="/admin/bookings?action=view&id={{.ID}}&date={{.SlotDate}}#schedule-view" class="shrink-0 rounded-lg bg-white px-3 py-2 text-center text-[0.65rem] font-bold text-slate shadow-sm">Details</a>
+          </div>
+          {{else}}
+          <p class="text-xs text-slate/35">No inventory reserved.</p>
+          {{end}}
+        </div>
+        {{if not $slotSchedules}}<a href="/admin/bookings?action=new&date={{$.CalendarDate}}&hour={{$hour}}#schedule-form" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-center text-xs font-bold text-slate transition hover:border-aqua">Add</a>{{end}}
+      </article>
+      {{end}}
+    </div>
+  </div>
 </section>
+
+<script>
+  (() => {
+    document.querySelectorAll("form").forEach((form) => {
+      const type = form.querySelector("[data-entry-type]");
+      const activity = form.querySelector("[data-activity]");
+      const quantity = form.querySelector("[data-quantity]");
+      if (!type || !activity || !quantity) return;
+      const sync = () => {
+        const training = type.value === "training";
+        if (training) {
+          activity.value = "training";
+          quantity.value = "1";
+        } else if (activity.value === "training") {
+          activity.value = "full_indoor_cricket";
+        }
+        activity.disabled = training;
+        quantity.readOnly = training;
+      };
+      type.addEventListener("change", sync);
+      sync();
+      form.addEventListener("submit", () => {
+        activity.disabled = false;
+      });
+    });
+  })();
+</script>
 {{end}}

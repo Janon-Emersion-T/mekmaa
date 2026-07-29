@@ -243,6 +243,7 @@ type BookingSlotAvailability struct {
 	Schedules     []SpaceSchedule
 	Options       []BookingOption
 	BlockedReason string
+	IsPast        bool
 }
 
 type CalendarDay struct {
@@ -254,6 +255,7 @@ type CalendarDay struct {
 	BusySlotCount int
 	IsToday       bool
 	IsSelected    bool
+	IsPast        bool
 }
 
 type SportPage struct {
@@ -302,6 +304,7 @@ type TemplateData struct {
 	Schedules           []SpaceSchedule
 	DaySchedules        []SpaceSchedule
 	PendingSchedules    []SpaceSchedule
+	BookingRequests     []SpaceSchedule
 	SelectedSchedule    *SpaceSchedule
 	DraftSchedule       *SpaceSchedule
 	ScheduleMode        string
@@ -334,6 +337,8 @@ type TemplateData struct {
 	NextDate            string
 	TodayDate           string
 	DailyStats          []Stat
+	BookingRequestStats []Stat
+	CalendarCanGoBack   bool
 	PendingEmail        string
 	OTPCodeLength       int
 	ResendAction        string
@@ -741,12 +746,34 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		a.writePublicBookingError(w, r, &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.createPublicBookingRequest(schedule); err != nil {
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		a.writePublicBookingError(w, r, &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		log.Printf("list pricing for booking request: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		log.Printf("get pricing settings for booking request: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	rule := pricingRuleForOption(pricings, schedule.Activity, schedule.Quantity)
+	if rule == nil || priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour) <= 0 {
+		a.writePublicBookingError(w, r, &schedule, "Online pricing is not configured for this session. Please choose another option or contact Mekmaa.", http.StatusBadRequest)
+		return
+	}
+	requestID, err := a.createPublicBookingRequest(schedule)
+	if err != nil {
 		a.writePublicBookingError(w, r, &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	a.setFlash(w, "Booking request sent. We will review it soon.")
+	a.setFlash(w, "Booking request "+bookingReference(requestID)+" received. Keep this reference; our team will review the request shortly.")
 	http.Redirect(w, r, "/book?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
 }
 
@@ -1299,6 +1326,15 @@ func (a *App) bookingManagementHandler(w http.ResponseWriter, r *http.Request) {
 	case "new", "view", "edit":
 		data.ScheduleMode = mode
 	}
+	if data.ScheduleMode == "new" {
+		data.DraftSchedule = &SpaceSchedule{
+			EntryType: "booking",
+			SlotDate:  data.CalendarDate,
+			SlotHour:  strings.TrimSpace(r.URL.Query().Get("hour")),
+			Activity:  "full_indoor_cricket",
+			Quantity:  1,
+		}
+	}
 	if data.ScheduleMode == "view" || data.ScheduleMode == "edit" {
 		scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
 		if err == nil && scheduleID > 0 {
@@ -1498,7 +1534,8 @@ func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := a.updateBookingRequestStatus(scheduleID, "confirmed", ""); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.setFlash(w, "Booking could not be confirmed: "+err.Error())
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
 	schedule, err := a.findSpaceScheduleByID(scheduleID)
@@ -1537,8 +1574,14 @@ func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+	if reviewNote == "" {
+		a.setFlash(w, "Add a clear rejection reason before closing the request.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
 	if err := a.updateBookingRequestStatus(scheduleID, "rejected", reviewNote); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.setFlash(w, "Booking could not be rejected: "+err.Error())
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, "Booking request rejected.")
@@ -1812,10 +1855,13 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	data.Description = "Manage bookings and training sessions."
 	data.Schedules = schedules
 	data.PendingSchedules = pending
+	data.BookingRequests = customerBookingRequests(schedules)
+	data.BookingRequestStats = buildBookingRequestStats(data.BookingRequests)
 	data.Pricings = pricings
 	data.PricingSettings = settings
 	data.Activities = bookingActivities()
 	data.Hours = bookingHours()
+	data.TodayDate = time.Now().Format("2006-01-02")
 	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
 	if data.CalendarDate == "" {
 		data.CalendarDate = time.Now().Format("2006-01-02")
@@ -1827,8 +1873,11 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	}
 	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
 	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
-	data.DaySchedules = schedulesForDate(schedules, data.CalendarDate)
+	activeSchedules := activeSchedulesOnly(schedules)
+	data.DaySchedules = schedulesForDate(activeSchedules, data.CalendarDate)
 	data.DailyStats = buildDailyBookingStats(data.DaySchedules, data.Hours)
+	data.WeekDays = buildBookingWeekDays(activeSchedules, selectedDate, data.Hours)
+	data.BookingSlots = buildBookingSlotAvailability(activeSchedules, data.CalendarDate, data.Hours)
 	return data, nil
 }
 
@@ -1864,10 +1913,15 @@ func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, vie
 		data.CalendarDate = selectedDate.Format("2006-01-02")
 	}
 	data.TodayDate = time.Now().Format("2006-01-02")
+	if data.CalendarDate < data.TodayDate {
+		selectedDate = time.Now()
+		data.CalendarDate = data.TodayDate
+	}
 	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
 	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
-	data.BookingSlots = buildBookingSlotAvailability(schedules, data.CalendarDate, data.Hours)
-	data.WeekDays = buildBookingWeekDays(schedules, selectedDate, data.Hours)
+	data.CalendarCanGoBack = data.CalendarDate > data.TodayDate
+	data.BookingSlots = filterPricedBookingSlots(buildBookingSlotAvailability(schedules, data.CalendarDate, data.Hours), data.CalendarDate, pricings, settings)
+	data.WeekDays = buildPricedBookingWeekDays(schedules, selectedDate, data.Hours, pricings, settings)
 	data.DraftSchedule = prefillPublicBookingDraft(r, viewer, data.CalendarDate)
 	return data, nil
 }
@@ -2461,6 +2515,10 @@ func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := a.createSpaceSchedule(schedule); err != nil {
 		log.Printf("create booking: %v", err)
 		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
@@ -2468,7 +2526,7 @@ func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.setFlash(w, "Schedule created.")
-	http.Redirect(w, r, "/admin/bookings", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/bookings?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
 }
 
 func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
@@ -2497,6 +2555,10 @@ func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
 		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := a.updateSpaceSchedule(schedule); err != nil {
 		log.Printf("update booking: %v", err)
 		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
@@ -2504,7 +2566,7 @@ func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.setFlash(w, "Schedule updated.")
-	http.Redirect(w, r, "/admin/bookings", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/bookings?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
 }
 
 func (a *App) deleteBookingHandler(w http.ResponseWriter, r *http.Request) {
@@ -2526,6 +2588,7 @@ func (a *App) deleteBookingHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid schedule id", http.StatusBadRequest)
 		return
 	}
+	schedule, _ := a.findSpaceScheduleByID(scheduleID)
 	if err := a.deleteSpaceSchedule(scheduleID); err != nil {
 		log.Printf("delete booking: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -2533,7 +2596,11 @@ func (a *App) deleteBookingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.setFlash(w, "Schedule deleted.")
-	http.Redirect(w, r, "/admin/bookings", http.StatusSeeOther)
+	redirectTo := "/admin/bookings"
+	if schedule != nil {
+		redirectTo += "?date=" + url.QueryEscape(schedule.SlotDate)
+	}
+	http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 }
 
 func (a *App) securityHeaders(next http.Handler) http.Handler {
@@ -3795,7 +3862,15 @@ func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
 }
 
 func (a *App) schedulesForSlot(slotDate, slotHour string, excludeID int64) ([]SpaceSchedule, error) {
-	rows, err := a.db.Query(`
+	return querySchedulesForSlot(a.db, slotDate, slotHour, excludeID)
+}
+
+type scheduleQueryer interface {
+	Query(string, ...any) (*sql.Rows, error)
+}
+
+func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, excludeID int64) ([]SpaceSchedule, error) {
+	rows, err := queryer.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       created_at, updated_at
@@ -3945,7 +4020,13 @@ func (a *App) replaceAttendanceRecords(groupID int64, attendanceDate string, rec
 }
 
 func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
-	existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, 0)
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, 0)
 	if err != nil {
 		return err
 	}
@@ -3953,7 +4034,7 @@ func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
 		return err
 	}
 
-	_, err = a.db.Exec(`
+	_, err = tx.Exec(`
 		INSERT INTO space_schedules (
 			slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 			requester_name, requester_email, requester_phone, requested_by_user_id, review_note, created_at, updated_at
@@ -3976,7 +4057,10 @@ func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
 		time.Now().UTC(),
 		time.Now().UTC(),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (a *App) createPricingRule(rule PricingRule) error {
@@ -4054,13 +4138,19 @@ func (a *App) saveAdmissionPricings(pricings []AdmissionPricing) error {
 	return tx.Commit()
 }
 
-func (a *App) createPublicBookingRequest(schedule SpaceSchedule) error {
-	existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, 0)
+func (a *App) createPublicBookingRequest(schedule SpaceSchedule) (int64, error) {
+	tx, err := a.db.Begin()
 	if err != nil {
-		return err
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, 0)
+	if err != nil {
+		return 0, err
 	}
 	if err := validateSpaceScheduleSlot(existing, schedule); err != nil {
-		return err
+		return 0, err
 	}
 
 	var requestedBy any
@@ -4068,7 +4158,7 @@ func (a *App) createPublicBookingRequest(schedule SpaceSchedule) error {
 		requestedBy = schedule.RequestedByUser
 	}
 
-	_, err = a.db.Exec(`
+	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
 			slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 			requester_name, requester_email, requester_phone, requested_by_user_id, review_note, created_at, updated_at
@@ -4091,7 +4181,17 @@ func (a *App) createPublicBookingRequest(schedule SpaceSchedule) error {
 		time.Now().UTC(),
 		time.Now().UTC(),
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	requestID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return requestID, nil
 }
 
 func (a *App) updateAdmission(admission Admission) error {
@@ -4257,7 +4357,13 @@ func (a *App) updateStudentGroup(group StudentGroup, admissionIDs []int64) error
 }
 
 func (a *App) updateSpaceSchedule(schedule SpaceSchedule) error {
-	existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, schedule.ID)
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, schedule.ID)
 	if err != nil {
 		return err
 	}
@@ -4265,7 +4371,7 @@ func (a *App) updateSpaceSchedule(schedule SpaceSchedule) error {
 		return err
 	}
 
-	_, err = a.db.Exec(`
+	_, err = tx.Exec(`
 		UPDATE space_schedules
 		SET slot_date = ?, slot_hour = ?, entry_type = ?, activity = ?, quantity = ?, title = ?, notes = ?, updated_at = ?
 		WHERE id = ?
@@ -4280,7 +4386,10 @@ func (a *App) updateSpaceSchedule(schedule SpaceSchedule) error {
 		time.Now().UTC(),
 		schedule.ID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (a *App) updatePricingRule(rule PricingRule) error {
@@ -4337,7 +4446,16 @@ func (a *App) updatePricingSettings(settings PricingSettings) error {
 }
 
 func (a *App) updateBookingRequestStatus(scheduleID int64, status, reviewNote string) error {
-	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if status != "confirmed" && status != "rejected" {
+		return errors.New("invalid booking request status")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	schedule, err := findSpaceScheduleByIDQuery(tx, scheduleID)
 	if err != nil {
 		return err
 	}
@@ -4345,7 +4463,10 @@ func (a *App) updateBookingRequestStatus(scheduleID int64, status, reviewNote st
 		return errors.New("booking request is no longer pending")
 	}
 	if status == "confirmed" {
-		existing, err := a.schedulesForSlot(schedule.SlotDate, schedule.SlotHour, schedule.ID)
+		if err := validateBookableScheduleTime(*schedule, time.Now()); err != nil {
+			return err
+		}
+		existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, schedule.ID)
 		if err != nil {
 			return err
 		}
@@ -4353,12 +4474,15 @@ func (a *App) updateBookingRequestStatus(scheduleID int64, status, reviewNote st
 			return err
 		}
 	}
-	_, err = a.db.Exec(`
+	_, err = tx.Exec(`
 		UPDATE space_schedules
 		SET status = ?, review_note = ?, updated_at = ?
-		WHERE id = ?
+		WHERE id = ? AND status = 'pending'
 	`, status, reviewNote, time.Now().UTC(), scheduleID)
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (a *App) deleteAdmission(admissionID int64) error {
@@ -4687,7 +4811,15 @@ func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
 }
 
 func (a *App) findSpaceScheduleByID(scheduleID int64) (*SpaceSchedule, error) {
-	row := a.db.QueryRow(`
+	return findSpaceScheduleByIDQuery(a.db, scheduleID)
+}
+
+type scheduleRowQueryer interface {
+	QueryRow(string, ...any) *sql.Row
+}
+
+func findSpaceScheduleByIDQuery(queryer scheduleRowQueryer, scheduleID int64) (*SpaceSchedule, error) {
+	row := queryer.QueryRow(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       created_at, updated_at
@@ -4695,6 +4827,14 @@ func (a *App) findSpaceScheduleByID(scheduleID int64) (*SpaceSchedule, error) {
 		WHERE id = ?
 	`, scheduleID)
 
+	return scanSpaceSchedule(row)
+}
+
+type rowScanner interface {
+	Scan(...any) error
+}
+
+func scanSpaceSchedule(row rowScanner) (*SpaceSchedule, error) {
 	var schedule SpaceSchedule
 	if err := row.Scan(
 		&schedule.ID,
@@ -5989,6 +6129,17 @@ func validateSpaceScheduleInput(schedule SpaceSchedule) error {
 	return nil
 }
 
+func validateBookableScheduleTime(schedule SpaceSchedule, now time.Time) error {
+	slotTime, err := time.ParseInLocation("2006-01-02 15:04", schedule.SlotDate+" "+schedule.SlotHour, time.Local)
+	if err != nil {
+		return errors.New("valid booking date and time are required")
+	}
+	if !slotTime.After(now.In(time.Local)) {
+		return errors.New("the selected booking time has already started")
+	}
+	return nil
+}
+
 func validateSpaceScheduleSlot(existing []SpaceSchedule, candidate SpaceSchedule) error {
 	schedules := append([]SpaceSchedule{}, existing...)
 	schedules = append(schedules, candidate)
@@ -6067,11 +6218,18 @@ func bookingOptionCatalog() []BookingOption {
 
 func buildBookingSlotAvailability(schedules []SpaceSchedule, slotDate string, hours []string) []BookingSlotAvailability {
 	var availability []BookingSlotAvailability
+	now := time.Now()
 	for _, hour := range hours {
 		existing := schedulesForCalendarSlot(schedules, slotDate, hour)
 		slot := BookingSlotAvailability{
 			Hour:      hour,
 			Schedules: existing,
+		}
+		if validateBookableScheduleTime(SpaceSchedule{SlotDate: slotDate, SlotHour: hour}, now) != nil {
+			slot.IsPast = true
+			slot.BlockedReason = "This time has already started"
+			availability = append(availability, slot)
+			continue
 		}
 
 		hasTraining := false
@@ -6110,7 +6268,11 @@ func buildBookingSlotAvailability(schedules []SpaceSchedule, slotDate string, ho
 
 func buildBookingWeekDays(schedules []SpaceSchedule, selectedDate time.Time, hours []string) []CalendarDay {
 	start := selectedDate.AddDate(0, 0, -3)
-	today := time.Now().Format("2006-01-02")
+	todayDate := time.Now()
+	today := todayDate.Format("2006-01-02")
+	if selectedDate.Format("2006-01-02") >= today && start.Format("2006-01-02") < today {
+		start = todayDate
+	}
 	days := make([]CalendarDay, 0, 7)
 
 	for offset := 0; offset < 7; offset++ {
@@ -6137,10 +6299,141 @@ func buildBookingWeekDays(schedules []SpaceSchedule, selectedDate time.Time, hou
 			BusySlotCount: busyCount,
 			IsToday:       date == today,
 			IsSelected:    date == selectedDate.Format("2006-01-02"),
+			IsPast:        date < today,
 		})
 	}
 
 	return days
+}
+
+func filterPricedBookingSlots(slots []BookingSlotAvailability, slotDate string, pricings []PricingRule, settings *PricingSettings) []BookingSlotAvailability {
+	filtered := make([]BookingSlotAvailability, len(slots))
+	for i, slot := range slots {
+		filtered[i] = slot
+		filtered[i].Options = nil
+		for _, option := range slot.Options {
+			rule := pricingRuleForOption(pricings, option.Activity, option.Quantity)
+			if rule != nil && priceForRuleSlot(*rule, settings, slotDate, slot.Hour) > 0 {
+				filtered[i].Options = append(filtered[i].Options, option)
+			}
+		}
+		if len(slot.Options) > 0 && len(filtered[i].Options) == 0 {
+			filtered[i].BlockedReason = "Online pricing is not configured"
+		}
+	}
+	return filtered
+}
+
+func buildPricedBookingWeekDays(schedules []SpaceSchedule, selectedDate time.Time, hours []string, pricings []PricingRule, settings *PricingSettings) []CalendarDay {
+	days := buildBookingWeekDays(schedules, selectedDate, hours)
+	for i := range days {
+		slots := filterPricedBookingSlots(buildBookingSlotAvailability(schedules, days[i].Date, hours), days[i].Date, pricings, settings)
+		days[i].OpenSlotCount = bookingOpenHourCount(slots)
+		days[i].BusySlotCount = len(slots) - days[i].OpenSlotCount
+	}
+	return days
+}
+
+func activeSchedulesOnly(schedules []SpaceSchedule) []SpaceSchedule {
+	active := make([]SpaceSchedule, 0, len(schedules))
+	for _, schedule := range schedules {
+		if schedule.Status == "pending" || schedule.Status == "confirmed" {
+			active = append(active, schedule)
+		}
+	}
+	return active
+}
+
+func customerBookingRequests(schedules []SpaceSchedule) []SpaceSchedule {
+	requests := make([]SpaceSchedule, 0)
+	for _, schedule := range schedules {
+		if schedule.EntryType == "booking" && (schedule.RequesterName != "" || schedule.RequesterEmail != "" || schedule.RequestedByUser > 0) {
+			requests = append(requests, schedule)
+		}
+	}
+	sort.SliceStable(requests, func(i, j int) bool {
+		iPending := requests[i].Status == "pending"
+		jPending := requests[j].Status == "pending"
+		if iPending != jPending {
+			return iPending
+		}
+		return requests[i].CreatedAt.After(requests[j].CreatedAt)
+	})
+	return requests
+}
+
+func buildBookingRequestStats(requests []SpaceSchedule) []Stat {
+	pending := 0
+	confirmed := 0
+	rejected := 0
+	receivedToday := 0
+	today := time.Now().Format("2006-01-02")
+	for _, request := range requests {
+		switch request.Status {
+		case "pending":
+			pending++
+		case "confirmed":
+			confirmed++
+		case "rejected":
+			rejected++
+		}
+		if request.CreatedAt.In(time.Local).Format("2006-01-02") == today {
+			receivedToday++
+		}
+	}
+	return []Stat{
+		{Label: "Awaiting review", Value: strconv.Itoa(pending)},
+		{Label: "Confirmed", Value: strconv.Itoa(confirmed)},
+		{Label: "Rejected", Value: strconv.Itoa(rejected)},
+		{Label: "Received today", Value: strconv.Itoa(receivedToday)},
+	}
+}
+
+func bookingReference(scheduleID int64) string {
+	return fmt.Sprintf("BK-%06d", scheduleID)
+}
+
+func relativeTime(value time.Time) string {
+	if value.IsZero() {
+		return "Unknown"
+	}
+	elapsed := time.Since(value)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	switch {
+	case elapsed < time.Minute:
+		return "Just now"
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%d min ago", int(elapsed.Minutes()))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("%d hr ago", int(elapsed.Hours()))
+	default:
+		return fmt.Sprintf("%d days ago", int(elapsed.Hours()/24))
+	}
+}
+
+func bookingStatusTone(status string) string {
+	switch status {
+	case "pending":
+		return "border-amber-200 bg-amber-50 text-amber-900"
+	case "confirmed":
+		return "border-emerald-200 bg-emerald-50 text-emerald-900"
+	case "rejected":
+		return "border-red-200 bg-red-50 text-red-800"
+	default:
+		return "border-slate/10 bg-cloud text-slate"
+	}
+}
+
+func bookingOpenHourCount(slots []BookingSlotAvailability) int {
+	count := 0
+	for _, slot := range slots {
+		if len(slot.Options) > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 func containsPermission(permissions []string, target string) bool {
@@ -6820,6 +7113,9 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"bookingProductLabel":       bookingProductLabel,
 		"optionSummary":             optionSummary,
 		"bookingOptionSelected":     bookingOptionSelected,
+		"bookingReference":          bookingReference,
+		"bookingOpenHourCount":      bookingOpenHourCount,
+		"bookingStatusTone":         bookingStatusTone,
 		"pricingForOption":          pricingForOption,
 		"pricingForSchedule":        pricingForSchedule,
 		"pricingTierLabel":          pricingTierLabel,
@@ -6827,6 +7123,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"financeCategoryLabel":      financeCategoryLabel,
 		"paymentMonthLabel":         paymentMonthLabel,
 		"formatDateTime":            formatDateTime,
+		"relativeTime":              relativeTime,
 		"formatCalendarDate":        formatCalendarDate,
 		"formatClockTime":           formatClockTime,
 		"formatEventTiming":         formatEventTiming,
