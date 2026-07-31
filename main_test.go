@@ -591,11 +591,17 @@ func TestBookingRequestsPreventPastAndConflictingSlots(t *testing.T) {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	past := SpaceSchedule{SlotDate: time.Now().Add(-time.Hour).Format("2006-01-02"), SlotHour: "06:00"}
-	if err := validateBookableScheduleTime(past, time.Now()); err == nil {
+	now := time.Now()
+
+	past := SpaceSchedule{
+		SlotDate: now.AddDate(0, 0, -1).Format("2006-01-02"),
+		SlotHour: "06:00",
+	}
+
+	if err := validateBookableScheduleTime(past, now); err == nil {
 		t.Fatal("expected a past booking slot to be rejected")
 	}
-	days := buildBookingWeekDays(nil, time.Now(), bookingHours())
+	days := buildBookingWeekDays(nil, now, bookingHours())
 	if len(days) != 7 || days[0].IsPast {
 		t.Fatalf("expected a forward-looking seven-day calendar, got %#v", days)
 	}
