@@ -5751,7 +5751,7 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 
 func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 	rows, err := a.db.Query(`
-		SELECT a.id, a.student_id, a.full_name, COALESCE(a.admission_date, ''), a.date_of_birth, a.gender, a.practice_type, a.address, a.passport_number, a.school,
+		SELECT a.id, a.student_id, a.full_name, COALESCE(a.admission_date, ''), a.date_of_birth, a.gender, a.address, a.passport_number, a.school,
 		       a.guardian_name, a.guardian_relationship, a.guardian_contact_number, a.guardian_alternative_contact_number,
 		       a.medical_information, a.created_at
 		FROM admissions a
@@ -5774,7 +5774,6 @@ func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 			&admission.AdmissionDate,
 			&admission.DateOfBirth,
 			&admission.Gender,
-			&admission.PracticeType,
 			&admission.Address,
 			&admission.PassportNumber,
 			&admission.School,
