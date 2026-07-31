@@ -51,7 +51,22 @@ var (
 	eventImagePattern   = regexp.MustCompile(`^event-[a-z0-9_-]{12,64}\.(jpg|png|webp)$`)
 	storedEventPattern  = regexp.MustCompile(`^event-[a-z0-9_-]{12,64}\.(jpg|png|gif|webp)$`)
 	allRoles            = []string{"superadmin", "admin", "editor", "coach", "customer"}
-	allPermissions      = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"}
+	allPermissions      = []string{
+		"dashboard.view",
+		"editor.access",
+		"users.manage",
+		"roles.manage",
+		"admissions.manage",
+		"training_programs.manage",
+		"student_groups.manage",
+		"attendance.manage",
+		"space_bookings.manage",
+		"booking_requests.manage",
+		"pricing.manage",
+		"finance.manage",
+		"reports.view",
+		"events.manage",
+	}
 )
 
 var permissionGroups = []PermissionGroup{
@@ -63,17 +78,38 @@ var permissionGroups = []PermissionGroup{
 		{Key: "users.manage", Label: "Manage users", Description: "Create accounts and change user role assignments.", Sensitive: true},
 		{Key: "roles.manage", Label: "Manage roles", Description: "Create, update, and remove custom authorization roles.", Sensitive: true},
 	}},
-	{Name: "Students", Description: "Student intake, grouping, attendance, and billing operations.", Permissions: []PermissionDefinition{
-		{Key: "admissions.manage", Label: "Manage admissions", Description: "Create, update, archive, and collect admission payments."},
-		{Key: "student_groups.manage", Label: "Manage student groups", Description: "Create groups and maintain student memberships."},
-		{Key: "attendance.manage", Label: "Manage attendance", Description: "Record and update daily attendance registers."},
+	{Name: "Students", Description: "Student intake, training programmes, grouping, attendance, and billing operations.", Permissions: []PermissionDefinition{
+		{
+			Key:         "admissions.manage",
+			Label:       "Manage admissions",
+			Description: "Create, update, archive, and collect admission payments.",
+		},
+		{
+			Key:         "training_programs.manage",
+			Label:       "Manage training programmes",
+			Description: "Create, update, activate, deactivate, and price training programmes.",
+		},
+		{
+			Key:         "student_groups.manage",
+			Label:       "Manage student groups",
+			Description: "Create groups and maintain student memberships.",
+		},
+		{
+			Key:         "attendance.manage",
+			Label:       "Manage attendance",
+			Description: "Record and update daily attendance registers.",
+		},
 	}},
 	{Name: "Bookings", Description: "Facility schedule and customer booking operations.", Permissions: []PermissionDefinition{
 		{Key: "space_bookings.manage", Label: "Manage booking calendar", Description: "Create, update, and remove facility schedule entries."},
 		{Key: "booking_requests.manage", Label: "Manage booking requests", Description: "Review, confirm, and reject customer booking requests."},
 	}},
 	{Name: "Finance", Description: "Pricing, collections, ledger, referrals, and reporting.", Permissions: []PermissionDefinition{
-		{Key: "pricing.manage", Label: "Manage pricing", Description: "Maintain booking, admission, and monthly payment prices."},
+		{
+			Key:         "pricing.manage",
+			Label:       "Manage booking pricing",
+			Description: "Maintain facility booking rates and peak-hour pricing.",
+		},
 		{Key: "finance.manage", Label: "Manage finance", Description: "Manage payments, expenses, receipts, referrals, and exports."},
 		{Key: "reports.view", Label: "View and export reports", Description: "Open operational reports and export report data."},
 	}},
@@ -168,6 +204,8 @@ type Admission struct {
 	AdmissionPaymentAmount   float64
 	FinanceTransactionID     int64
 	CreatedAt                time.Time
+	TrainingProgramID        int64
+	TrainingProgramName      string
 }
 
 type FinanceTransaction struct {
@@ -401,6 +439,19 @@ type AdmissionPricing struct {
 	UpdatedAt    time.Time
 }
 
+type TrainingProgram struct {
+	ID             int64
+	Name           string
+	Activity       string
+	TrainingFormat string
+	AdmissionFee   float64
+	MonthlyFee     float64
+	Active         bool
+	SortOrder      int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type Event struct {
 	ID                   int64
 	Title                string
@@ -469,83 +520,86 @@ type FAQItem struct {
 }
 
 type TemplateData struct {
-	Title               string
-	Description         string
-	CurrentPath         string
-	User                *User
-	Viewer              *User
-	HideChrome          bool
-	CSRFToken           string
-	Flash               string
-	Error               string
-	Stats               []Stat
-	Features            []Feature
-	Users               []User
-	Available           []string
-	Roles               []Role
-	Permissions         []string
-	PermissionGroups    []PermissionGroup
-	Admissions          []Admission
-	SelectedAdmission   *Admission
-	AdmissionMode       string
-	StudentGroups       []StudentGroup
-	SelectedGroup       *StudentGroup
-	GroupMode           string
-	AttendanceRecords   []AttendanceRecord
-	AttendanceDate      string
-	RecentDates         []string
-	Schedules           []SpaceSchedule
-	DaySchedules        []SpaceSchedule
-	PendingSchedules    []SpaceSchedule
-	BookingRequests     []SpaceSchedule
-	SelectedSchedule    *SpaceSchedule
-	DraftSchedule       *SpaceSchedule
-	ScheduleMode        string
-	Pricings            []PricingRule
-	AdmissionPricings   []AdmissionPricing
-	PricingSettings     *PricingSettings
-	ReferralPartners    []ReferralPartner
-	ReferralPartnerRows []ReferralPartnerSummary
-	BookingReferrals    []BookingReferral
-	ReferralStats       []Stat
-	SelectedPricing     *PricingRule
-	PricingMode         string
-	Events              []Event
-	SelectedEvent       *Event
-	EventMode           string
-	FinanceTransactions []FinanceTransaction
-	SelectedFinance     *FinanceTransaction
-	FinanceFilter       FinanceFilter
-	FinanceSummary      FinanceSummary
-	BookingFinancials   []BookingFinancial
-	Report              *OperationalReport
-	ReceiptAdmission    *Admission
-	StudentPaymentRows  []StudentPaymentRow
-	PaymentMonth        string
-	PaymentMonthLabel   string
-	PaymentTotalDue     float64
-	PaymentCollected    float64
-	PaymentOutstanding  float64
-	PaymentPaidCount    int
-	PaymentPendingCount int
-	BookingSlots        []BookingSlotAvailability
-	WeekDays            []CalendarDay
-	BookingOptions      []BookingOption
-	Activities          []string
-	Hours               []string
-	CalendarDate        string
-	PreviousDate        string
-	NextDate            string
-	TodayDate           string
-	DailyStats          []Stat
-	BookingRequestStats []Stat
-	CalendarCanGoBack   bool
-	PendingEmail        string
-	OTPCodeLength       int
-	ResendAction        string
-	SportsCatalog       []SportPage
-	SelectedSport       *SportPage
-	FAQItems            []FAQItem
+	Title                   string
+	Description             string
+	CurrentPath             string
+	User                    *User
+	Viewer                  *User
+	HideChrome              bool
+	CSRFToken               string
+	Flash                   string
+	Error                   string
+	Stats                   []Stat
+	Features                []Feature
+	Users                   []User
+	Available               []string
+	Roles                   []Role
+	Permissions             []string
+	PermissionGroups        []PermissionGroup
+	Admissions              []Admission
+	SelectedAdmission       *Admission
+	AdmissionMode           string
+	StudentGroups           []StudentGroup
+	SelectedGroup           *StudentGroup
+	GroupMode               string
+	AttendanceRecords       []AttendanceRecord
+	AttendanceDate          string
+	RecentDates             []string
+	Schedules               []SpaceSchedule
+	DaySchedules            []SpaceSchedule
+	PendingSchedules        []SpaceSchedule
+	BookingRequests         []SpaceSchedule
+	SelectedSchedule        *SpaceSchedule
+	DraftSchedule           *SpaceSchedule
+	ScheduleMode            string
+	Pricings                []PricingRule
+	AdmissionPricings       []AdmissionPricing
+	TrainingPrograms        []TrainingProgram
+	SelectedTrainingProgram *TrainingProgram
+	TrainingProgramMode     string
+	PricingSettings         *PricingSettings
+	ReferralPartners        []ReferralPartner
+	ReferralPartnerRows     []ReferralPartnerSummary
+	BookingReferrals        []BookingReferral
+	ReferralStats           []Stat
+	SelectedPricing         *PricingRule
+	PricingMode             string
+	Events                  []Event
+	SelectedEvent           *Event
+	EventMode               string
+	FinanceTransactions     []FinanceTransaction
+	SelectedFinance         *FinanceTransaction
+	FinanceFilter           FinanceFilter
+	FinanceSummary          FinanceSummary
+	BookingFinancials       []BookingFinancial
+	Report                  *OperationalReport
+	ReceiptAdmission        *Admission
+	StudentPaymentRows      []StudentPaymentRow
+	PaymentMonth            string
+	PaymentMonthLabel       string
+	PaymentTotalDue         float64
+	PaymentCollected        float64
+	PaymentOutstanding      float64
+	PaymentPaidCount        int
+	PaymentPendingCount     int
+	BookingSlots            []BookingSlotAvailability
+	WeekDays                []CalendarDay
+	BookingOptions          []BookingOption
+	Activities              []string
+	Hours                   []string
+	CalendarDate            string
+	PreviousDate            string
+	NextDate                string
+	TodayDate               string
+	DailyStats              []Stat
+	BookingRequestStats     []Stat
+	CalendarCanGoBack       bool
+	PendingEmail            string
+	OTPCodeLength           int
+	ResendAction            string
+	SportsCatalog           []SportPage
+	SelectedSport           *SportPage
+	FAQItems                []FAQItem
 }
 
 type Stat struct {
@@ -6281,6 +6335,19 @@ func runMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS training_programs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			activity TEXT NOT NULL,
+			training_format TEXT NOT NULL,
+			admission_fee REAL NOT NULL DEFAULT 0,
+			monthly_fee REAL NOT NULL DEFAULT 0,
+			active INTEGER NOT NULL DEFAULT 1,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			UNIQUE(activity, training_format)
+		)`,
 		`CREATE TABLE IF NOT EXISTS finance_transactions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			receipt_number TEXT NOT NULL UNIQUE,
@@ -6409,6 +6476,10 @@ func runMigrations(db *sql.DB) error {
 		`ALTER TABLE admissions ADD COLUMN payment_collected_at DATETIME`,
 		`ALTER TABLE admissions ADD COLUMN admission_payment_amount REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE admissions ADD COLUMN finance_transaction_id INTEGER`,
+		`CREATE INDEX IF NOT EXISTS idx_training_programs_active
+		ON training_programs(active)`,
+		`CREATE INDEX IF NOT EXISTS idx_training_programs_sort_order
+		ON training_programs(sort_order, name)`,
 	}
 
 	for _, stmt := range statements {
