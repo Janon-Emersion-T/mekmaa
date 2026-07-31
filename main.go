@@ -873,6 +873,15 @@ func main() {
 	mux.Handle("/admin/student-groups/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentGroupHandler), "student_groups.manage")))
 	mux.Handle("/admin/attendance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.attendanceManagementHandler), "attendance.manage")))
 	mux.Handle("/admin/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAttendanceHandler), "attendance.manage")))
+	mux.Handle(
+		"/admin/courts",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.courtManagementHandler),
+				"courts.manage",
+			),
+		),
+	)
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
@@ -1497,6 +1506,7 @@ func (a *App) adminRedirectHandler(w http.ResponseWriter, r *http.Request) {
 		{"training_programs.manage", "/admin/training-programs"},
 		{"student_groups.manage", "/admin/student-groups"},
 		{"attendance.manage", "/admin/attendance"},
+		{"courts.manage", "/admin/courts"},
 		{"space_bookings.manage", "/admin/bookings"},
 		{"booking_requests.manage", "/admin/booking-requests"},
 		{"finance.manage", "/admin/finance"},
@@ -2592,6 +2602,75 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	a.render(w, "attendance-management", data, http.StatusOK)
+}
+
+func (a *App) courtManagementHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+
+	courts, err := a.listCourts(true)
+	if err != nil {
+		log.Printf("list courts: %v", err)
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Court Manager"
+	data.Description = "Manage court activities and simultaneous-use configurations."
+	data.Courts = courts
+
+	courtID, err := strconv.ParseInt(
+		strings.TrimSpace(r.URL.Query().Get("court_id")),
+		10,
+		64,
+	)
+	if err != nil || courtID <= 0 {
+		if len(courts) > 0 {
+			courtID = courts[0].ID
+		}
+	}
+
+	if courtID > 0 {
+		selectedCourt, err := a.findCourtByID(courtID)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				log.Printf("find court: %v", err)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
+			}
+		} else {
+			data.SelectedCourt = selectedCourt
+			data.CourtActivities = selectedCourt.Activities
+			data.CourtLayouts = selectedCourt.Layouts
+		}
+	}
+
+	a.render(
+		w,
+		"court-management",
+		data,
+		http.StatusOK,
+	)
 }
 
 func (a *App) bookingManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -11837,6 +11916,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"training-program-management": "templates/dashboard/training-program-management.html",
 		"student-group-management":    "templates/dashboard/student-group-management.html",
 		"attendance-management":       "templates/dashboard/attendance-management.html",
+		"court-management":            "templates/dashboard/court-management.html",
 		"booking-management":          "templates/dashboard/booking-management.html",
 		"booking-requests":            "templates/dashboard/booking-requests.html",
 		"pricing-management":          "templates/dashboard/pricing-management.html",

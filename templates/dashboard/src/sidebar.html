@@ -78,10 +78,18 @@
     </div>
     {{end}}
 
-    {{if or (hasPermission .User "space_bookings.manage") (hasPermission .User "booking_requests.manage") (hasPermission .User "pricing.manage")}}
+    {{if or (hasPermission .User "courts.manage") (hasPermission .User "space_bookings.manage") (hasPermission .User "booking_requests.manage") (hasPermission .User "pricing.manage")}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Scheduling</p>
       <div class="space-y-1">
+        {{if hasPermission .User "courts.manage"}}
+<a href="/admin/courts" class="{{if isCurrentPath .CurrentPath "/admin/courts"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+  <span>Court Manager</span>
+  <span class="{{if isCurrentPath .CurrentPath "/admin/courts"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">
+    Layouts
+  </span>
+</a>
+{{end}}
         {{if hasPermission .User "space_bookings.manage"}}
         <a href="/admin/bookings" class="{{if isCurrentPath .CurrentPath "/admin/bookings"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Booking calendar</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Slots</span>

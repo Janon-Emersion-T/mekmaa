@@ -1,0 +1,273 @@
+{{define "court-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.24em] text-slate/45">
+          Scheduling configuration
+        </p>
+
+        <h1 class="mt-3 text-2xl font-semibold text-obsidian sm:text-3xl">
+          Court Manager
+        </h1>
+
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/70">
+          Configure which sports use the facility and which combinations can
+          operate at the same time.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 sm:flex">
+        <div class="rounded-2xl border border-slate/10 bg-cloud px-4 py-3 text-center sm:min-w-[8rem]">
+          <p class="text-xs uppercase tracking-[0.16em] text-slate/45">
+            Courts
+          </p>
+
+          <p class="mt-1 text-2xl font-semibold text-obsidian">
+            {{len .Courts}}
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-slate/10 bg-cloud px-4 py-3 text-center sm:min-w-[8rem]">
+          <p class="text-xs uppercase tracking-[0.16em] text-slate/45">
+            Layouts
+          </p>
+
+          <p class="mt-1 text-2xl font-semibold text-obsidian">
+            {{len .CourtLayouts}}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {{if .Courts}}
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
+    <div class="flex flex-wrap gap-2">
+      {{range .Courts}}
+      <a
+        href="/admin/courts?court_id={{.ID}}"
+        class="{{if and $.SelectedCourt (eq $.SelectedCourt.ID .ID)}}bg-obsidian text-cloud{{else}}border border-slate/10 bg-cloud text-slate/70 hover:border-slate/20 hover:bg-white hover:text-obsidian{{end}} rounded-2xl px-4 py-3 text-sm font-semibold transition"
+      >
+        {{.Name}}
+      </a>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  {{if .SelectedCourt}}
+  <div class="grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
+    <div class="space-y-6">
+      <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
+              Selected court
+            </p>
+
+            <h2 class="mt-3 text-xl font-semibold text-obsidian sm:text-2xl">
+              {{.SelectedCourt.Name}}
+            </h2>
+
+            <p class="mt-1 text-sm font-medium text-slate/45">
+              {{.SelectedCourt.Code}}
+            </p>
+          </div>
+
+          {{if .SelectedCourt.Active}}
+          <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">
+            Active
+          </span>
+          {{else}}
+          <span class="rounded-full border border-slate/15 bg-cloud px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-slate/55">
+            Inactive
+          </span>
+          {{end}}
+        </div>
+
+        <p class="mt-5 text-sm leading-6 text-slate/68">
+          {{.SelectedCourt.Description}}
+        </p>
+
+        <div class="mt-6 grid grid-cols-2 gap-3">
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate/45">
+              Activities
+            </p>
+
+            <p class="mt-2 text-2xl font-semibold text-obsidian">
+              {{len .CourtActivities}}
+            </p>
+          </div>
+
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate/45">
+              Layouts
+            </p>
+
+            <p class="mt-2 text-2xl font-semibold text-obsidian">
+              {{len .CourtLayouts}}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
+            Available sports
+          </p>
+
+          <h2 class="mt-2 text-xl font-semibold text-obsidian">
+            Court activities
+          </h2>
+
+          <p class="mt-2 text-sm leading-6 text-slate/65">
+            Maximum quantity is the largest amount this physical court can
+            support under any valid layout.
+          </p>
+        </div>
+
+        <div class="mt-5 space-y-3">
+          {{range .CourtActivities}}
+          <div class="flex items-center justify-between gap-4 rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-4">
+            <div>
+              <p class="font-semibold text-obsidian">
+                {{.DisplayName}}
+              </p>
+
+              <p class="mt-1 text-xs font-medium text-slate/45">
+                {{.Activity}}
+              </p>
+            </div>
+
+            <div class="text-right">
+              <p class="text-xs uppercase tracking-[0.14em] text-slate/45">
+                Maximum
+              </p>
+
+              <p class="mt-1 text-lg font-semibold text-obsidian">
+                {{.MaxQuantity}}
+              </p>
+            </div>
+          </div>
+          {{else}}
+          <div class="rounded-2xl border border-dashed border-slate/20 bg-cloud/50 px-4 py-8 text-center">
+            <p class="text-sm text-slate/60">
+              No activities have been configured.
+            </p>
+          </div>
+          {{end}}
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
+            Simultaneous utilization
+          </p>
+
+          <h2 class="mt-2 text-xl font-semibold text-obsidian sm:text-2xl">
+            Valid court layouts
+          </h2>
+
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-slate/65">
+            Every layout represents one complete arrangement of the court.
+            Separate customers may book different activities when their
+            combined bookings fit within one active layout.
+          </p>
+        </div>
+
+        <span class="self-start rounded-full bg-aqua/20 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-obsidian">
+          {{len .CourtLayouts}} configurations
+        </span>
+      </div>
+
+      <div class="mt-6 grid gap-4">
+        {{range .CourtLayouts}}
+        <article class="rounded-3xl border border-slate/10 bg-cloud/65 p-5 transition hover:border-slate/20 hover:bg-cloud">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="text-lg font-semibold text-obsidian">
+                  {{.Name}}
+                </h3>
+
+                {{if .Active}}
+                <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                  Active
+                </span>
+                {{else}}
+                <span class="rounded-full border border-slate/15 bg-white px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/50">
+                  Inactive
+                </span>
+                {{end}}
+              </div>
+
+              <p class="mt-2 text-sm leading-6 text-slate/65">
+                {{.Description}}
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-center">
+              <p class="text-xs uppercase tracking-[0.14em] text-slate/45">
+                Activities
+              </p>
+
+              <p class="mt-1 text-xl font-semibold text-obsidian">
+                {{len .Items}}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-5 flex flex-wrap gap-2">
+            {{range .Items}}
+            <div class="rounded-2xl border border-slate/10 bg-white px-4 py-3">
+              <p class="text-sm font-semibold text-obsidian">
+                {{.DisplayName}}
+              </p>
+
+              <p class="mt-1 text-xs text-slate/50">
+                Maximum quantity: {{.Quantity}}
+              </p>
+            </div>
+            {{else}}
+            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+              This layout has no configured activities.
+            </div>
+            {{end}}
+          </div>
+        </article>
+        {{else}}
+        <div class="rounded-3xl border border-dashed border-slate/20 bg-cloud/50 px-5 py-12 text-center">
+          <p class="font-semibold text-obsidian">
+            No court layouts found
+          </p>
+
+          <p class="mt-2 text-sm text-slate/60">
+            Add at least one valid layout before enabling dynamic booking
+            validation.
+          </p>
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{else}}
+  <div class="rounded-[2rem] border border-dashed border-slate/20 bg-white/80 px-6 py-14 text-center shadow-sm">
+    <h2 class="text-xl font-semibold text-obsidian">
+      No courts configured
+    </h2>
+
+    <p class="mt-2 text-sm text-slate/60">
+      Create the first court before configuring activities and layouts.
+    </p>
+  </div>
+  {{end}}
+</section>
+{{end}}
