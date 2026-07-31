@@ -105,6 +105,79 @@
           <p class="mt-2 text-2xl font-semibold text-obsidian"><span data-count="review">{{.SelectedGroup.StudentCount}}</span>/<span>{{.SelectedGroup.StudentCount}}</span></p>
         </div>
       </div>
+      <div class="rounded-[1.75rem] border border-slate/10 bg-white p-5 shadow-sm sm:p-6">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">
+              Historical summary
+            </p>
+
+            <h3 class="mt-2 text-xl font-semibold text-obsidian">
+              Group attendance performance
+            </h3>
+
+            <p class="mt-1 text-sm text-slate/60">
+              Totals from every saved attendance sheet for this group.
+            </p>
+          </div>
+
+          <div class="rounded-full border border-slate/10 bg-cloud px-4 py-2 text-sm font-semibold text-slate/70">
+            {{.AttendanceSummary.SessionCount}} sessions
+          </div>
+        </div>
+
+        <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div class="rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate/50">
+              Total entries
+            </p>
+
+            <p class="mt-2 text-2xl font-semibold text-obsidian">
+              {{.AttendanceSummary.TotalEntries}}
+            </p>
+          </div>
+
+          <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-emerald-800/70">
+              Present
+            </p>
+
+            <p class="mt-2 text-2xl font-semibold text-emerald-900">
+              {{.AttendanceSummary.PresentCount}}
+            </p>
+          </div>
+
+          <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-rose-800/70">
+              Absent
+            </p>
+
+            <p class="mt-2 text-2xl font-semibold text-rose-900">
+              {{.AttendanceSummary.AbsentCount}}
+            </p>
+          </div>
+
+          <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-amber-800/70">
+              Late
+            </p>
+
+            <p class="mt-2 text-2xl font-semibold text-amber-900">
+              {{.AttendanceSummary.LateCount}}
+            </p>
+          </div>
+
+          <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-sky-800/70">
+              Excused
+            </p>
+
+            <p class="mt-2 text-2xl font-semibold text-sky-900">
+              {{.AttendanceSummary.ExcusedCount}}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {{if .RecentDates}}
       <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">

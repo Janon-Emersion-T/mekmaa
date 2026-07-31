@@ -345,6 +345,15 @@ type StudentGroup struct {
 	CreatedAt    time.Time
 }
 
+type AttendanceSummary struct {
+	SessionCount int
+	PresentCount int
+	AbsentCount  int
+	LateCount    int
+	ExcusedCount int
+	TotalEntries int
+}
+
 type SpaceSchedule struct {
 	ID              int64
 	SlotDate        string
@@ -549,6 +558,7 @@ type TemplateData struct {
 	AttendanceRecords       []AttendanceRecord
 	AttendanceDate          string
 	RecentDates             []string
+	AttendanceSummary       AttendanceSummary
 	Schedules               []SpaceSchedule
 	DaySchedules            []SpaceSchedule
 	PendingSchedules        []SpaceSchedule
@@ -2464,14 +2474,48 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 
 		if selectedGroup != nil {
 			data.SelectedGroup = selectedGroup
-			records, err := a.listAttendanceRecords(groupID, data.AttendanceDate)
-			if err == nil {
-				data.AttendanceRecords = records
+
+			records, err := a.listAttendanceRecords(
+				groupID,
+				data.AttendanceDate,
+			)
+			if err != nil {
+				log.Printf("list attendance records: %v", err)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
 			}
+
+			data.AttendanceRecords = records
+
 			recentDates, err := a.listRecentAttendanceDates(groupID, 8)
-			if err == nil {
-				data.RecentDates = recentDates
+			if err != nil {
+				log.Printf("list recent attendance dates: %v", err)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
 			}
+
+			data.RecentDates = recentDates
+
+			summary, err := a.getAttendanceSummary(groupID)
+			if err != nil {
+				log.Printf("get attendance summary: %v", err)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
+			}
+
+			data.AttendanceSummary = summary
 		}
 	}
 
@@ -5246,6 +5290,36 @@ func (a *App) listRecentAttendanceDates(groupID int64, limit int) ([]string, err
 		dates = append(dates, date)
 	}
 	return dates, rows.Err()
+}
+
+func (a *App) getAttendanceSummary(
+	groupID int64,
+) (AttendanceSummary, error) {
+	var summary AttendanceSummary
+
+	err := a.db.QueryRow(`
+		SELECT
+			COUNT(DISTINCT attendance_date),
+			COALESCE(SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'excused' THEN 1 ELSE 0 END), 0),
+			COUNT(*)
+		FROM attendance_records
+		WHERE group_id = ?
+	`, groupID).Scan(
+		&summary.SessionCount,
+		&summary.PresentCount,
+		&summary.AbsentCount,
+		&summary.LateCount,
+		&summary.ExcusedCount,
+		&summary.TotalEntries,
+	)
+	if err != nil {
+		return AttendanceSummary{}, err
+	}
+
+	return summary, nil
 }
 
 func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
