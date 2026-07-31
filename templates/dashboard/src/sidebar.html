@@ -43,7 +43,7 @@
       {{end}}
     </div>
 
-    {{if or (hasPermission .User "admissions.manage") (hasPermission .User "student_groups.manage") (hasPermission .User "attendance.manage") (hasPermission .User "finance.manage")}}
+    {{if or (hasPermission .User "admissions.manage") (hasPermission .User "training_programs.manage") (hasPermission .User "student_groups.manage") (hasPermission .User "attendance.manage") (hasPermission .User "finance.manage")}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Students</p>
       <div class="space-y-1">
@@ -52,6 +52,13 @@
           <span>Admissions</span><span class="{{if isCurrentPath .CurrentPath "/admin/admissions"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">New</span>
         </a>
         {{end}}
+
+        {{if hasPermission .User "training_programs.manage"}}
+        <a href="/admin/training-programs" class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Training Manager</span><span class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Programs</span>
+        </a>
+        {{end}}
+
         {{if hasPermission .User "student_groups.manage"}}
         <a href="/admin/student-groups" class="{{if isCurrentPath .CurrentPath "/admin/student-groups"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Student groups</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Teams</span>
@@ -71,7 +78,7 @@
     </div>
     {{end}}
 
-    {{if or (hasPermission .User "space_bookings.manage") (hasPermission .User "booking_requests.manage")}}
+    {{if or (hasPermission .User "space_bookings.manage") (hasPermission .User "booking_requests.manage") (hasPermission .User "pricing.manage")}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Scheduling</p>
       <div class="space-y-1">
@@ -85,11 +92,16 @@
           <span>Booking requests</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Review</span>
         </a>
         {{end}}
+        {{if hasPermission .User "pricing.manage"}}
+        <a href="/admin/pricing" class="{{if isCurrentPath .CurrentPath "/admin/pricing"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Booking pricing</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Rates</span>
+        </a>
+        {{end}}
       </div>
     </div>
     {{end}}
 
-    {{if or (hasPermission .User "finance.manage") (hasPermission .User "pricing.manage")}}
+    {{if hasPermission .User "finance.manage"}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Finance</p>
       <div class="space-y-1">
@@ -99,11 +111,6 @@
         </a>
         <a href="/admin/referrals" class="{{if isCurrentPath .CurrentPath "/admin/referrals"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Referral programme</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Partners</span>
-        </a>
-        {{end}}
-        {{if hasPermission .User "pricing.manage"}}
-        <a href="/admin/pricing" class="{{if isCurrentPath .CurrentPath "/admin/pricing"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Pricing</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Rates</span>
         </a>
         {{end}}
       </div>
