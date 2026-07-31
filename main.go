@@ -1514,10 +1514,78 @@ func (a *App) trainingProgramManagementHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	http.Error(
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+
+	trainingPrograms, err := a.listTrainingPrograms(true)
+	if err != nil {
+		log.Printf("list training programmes: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Training Manager"
+	data.Description = "Manage training programmes and student fees."
+	data.TrainingPrograms = trainingPrograms
+
+	mode := strings.ToLower(
+		strings.TrimSpace(r.URL.Query().Get("action")),
+	)
+
+	switch mode {
+	case "new", "view", "edit":
+		data.TrainingProgramMode = mode
+	}
+
+	if data.TrainingProgramMode == "view" ||
+		data.TrainingProgramMode == "edit" {
+		programID, err := strconv.ParseInt(
+			strings.TrimSpace(r.URL.Query().Get("id")),
+			10,
+			64,
+		)
+		if err != nil || programID <= 0 {
+			http.Error(
+				w,
+				"invalid training programme id",
+				http.StatusBadRequest,
+			)
+			return
+		}
+
+		selectedProgram, err := a.findTrainingProgramByID(programID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				http.Error(
+					w,
+					"training programme not found",
+					http.StatusNotFound,
+				)
+				return
+			}
+
+			log.Printf("find training programme: %v", err)
+			http.Error(
+				w,
+				"internal server error",
+				http.StatusInternalServerError,
+			)
+			return
+		}
+
+		data.SelectedTrainingProgram = selectedProgram
+	}
+
+	a.render(
 		w,
-		"Training Manager is not implemented yet.",
-		http.StatusNotImplemented,
+		"training-program-management",
+		data,
+		http.StatusOK,
 	)
 }
 
@@ -9988,43 +10056,44 @@ func buildTemplates() (map[string]*template.Template, error) {
 	}
 
 	pages := map[string]string{
-		"home":                     "templates/pages/home.html",
-		"about":                    "templates/pages/about.html",
-		"book":                     "templates/pages/book.html",
-		"contact":                  "templates/pages/contact.html",
-		"coaching":                 "templates/pages/coaching.html",
-		"faq":                      "templates/pages/faq.html",
-		"gallery":                  "templates/pages/gallery.html",
-		"events":                   "templates/pages/events.html",
-		"login":                    "templates/login.html",
-		"privacy-policy":           "templates/pages/privacy-policy.html",
-		"register":                 "templates/register.html",
-		"refund-policy":            "templates/pages/refund-policy.html",
-		"sports":                   "templates/pages/sports.html",
-		"sports-cricket":           "templates/pages/sports-cricket.html",
-		"sports-futsal":            "templates/pages/sports-futsal.html",
-		"sports-badminton":         "templates/pages/sports-badminton.html",
-		"sports-table-tennis":      "templates/pages/sports-table-tennis.html",
-		"sports-tennis":            "templates/pages/sports-tennis.html",
-		"terms-and-conditions":     "templates/pages/terms-and-conditions.html",
-		"verify-email":             "templates/verify-email.html",
-		"dashboard":                "templates/dashboard/dashboard.html",
-		"editor":                   "templates/dashboard/editor.html",
-		"user-management":          "templates/dashboard/user-management.html",
-		"role-management":          "templates/dashboard/role-management.html",
-		"admission-management":     "templates/dashboard/admission-management.html",
-		"student-group-management": "templates/dashboard/student-group-management.html",
-		"attendance-management":    "templates/dashboard/attendance-management.html",
-		"booking-management":       "templates/dashboard/booking-management.html",
-		"booking-requests":         "templates/dashboard/booking-requests.html",
-		"pricing-management":       "templates/dashboard/pricing-management.html",
-		"events-management":        "templates/dashboard/events-management.html",
-		"finance-management":       "templates/dashboard/finance-management.html",
-		"finance-receipt":          "templates/dashboard/finance-receipt.html",
-		"student-payments":         "templates/dashboard/student-payments.html",
-		"referral-commissions":     "templates/dashboard/referral-commissions.html",
-		"reports":                  "templates/dashboard/reports.html",
-		"forbidden":                "templates/dashboard/forbidden.html",
+		"home":                        "templates/pages/home.html",
+		"about":                       "templates/pages/about.html",
+		"book":                        "templates/pages/book.html",
+		"contact":                     "templates/pages/contact.html",
+		"coaching":                    "templates/pages/coaching.html",
+		"faq":                         "templates/pages/faq.html",
+		"gallery":                     "templates/pages/gallery.html",
+		"events":                      "templates/pages/events.html",
+		"login":                       "templates/login.html",
+		"privacy-policy":              "templates/pages/privacy-policy.html",
+		"register":                    "templates/register.html",
+		"refund-policy":               "templates/pages/refund-policy.html",
+		"sports":                      "templates/pages/sports.html",
+		"sports-cricket":              "templates/pages/sports-cricket.html",
+		"sports-futsal":               "templates/pages/sports-futsal.html",
+		"sports-badminton":            "templates/pages/sports-badminton.html",
+		"sports-table-tennis":         "templates/pages/sports-table-tennis.html",
+		"sports-tennis":               "templates/pages/sports-tennis.html",
+		"terms-and-conditions":        "templates/pages/terms-and-conditions.html",
+		"verify-email":                "templates/verify-email.html",
+		"dashboard":                   "templates/dashboard/dashboard.html",
+		"editor":                      "templates/dashboard/editor.html",
+		"user-management":             "templates/dashboard/user-management.html",
+		"role-management":             "templates/dashboard/role-management.html",
+		"admission-management":        "templates/dashboard/admission-management.html",
+		"training-program-management": "templates/dashboard/training-program-management.html",
+		"student-group-management":    "templates/dashboard/student-group-management.html",
+		"attendance-management":       "templates/dashboard/attendance-management.html",
+		"booking-management":          "templates/dashboard/booking-management.html",
+		"booking-requests":            "templates/dashboard/booking-requests.html",
+		"pricing-management":          "templates/dashboard/pricing-management.html",
+		"events-management":           "templates/dashboard/events-management.html",
+		"finance-management":          "templates/dashboard/finance-management.html",
+		"finance-receipt":             "templates/dashboard/finance-receipt.html",
+		"student-payments":            "templates/dashboard/student-payments.html",
+		"referral-commissions":        "templates/dashboard/referral-commissions.html",
+		"reports":                     "templates/dashboard/reports.html",
+		"forbidden":                   "templates/dashboard/forbidden.html",
 	}
 	dashboardPartials := []string{
 		"templates/dashboard/src/sidebar.html",
