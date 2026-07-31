@@ -616,9 +616,12 @@ type Feature struct {
 }
 
 var (
-	ErrEmailTaken                     = errors.New("email already exists")
-	ErrInvalidOTP                     = errors.New("invalid verification code")
-	ErrMonthlyFeeNotConfigured        = errors.New("monthly fee is not configured for this training programme")
+	ErrEmailTaken                = errors.New("email already exists")
+	ErrInvalidOTP                = errors.New("invalid verification code")
+	ErrMonthlyFeeNotConfigured   = errors.New("monthly fee is not configured for this training programme")
+	ErrAdmissionFeeNotConfigured = errors.New(
+		"admission fee is not configured for the selected training programme",
+	)
 	ErrStudentPaymentAlreadyCollected = errors.New("student payment already collected")
 	ErrStudentNotAdmittedForMonth     = errors.New("student was not admitted for the selected month")
 	ErrBookingPaymentAlreadyCollected = errors.New("booking payment already collected")
@@ -3503,10 +3506,12 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	if err := a.verifyCSRF(r); err != nil {
 		http.Error(w, "invalid csrf token", http.StatusForbidden)
 		return
 	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
@@ -3536,7 +3541,11 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Printf("find training programme for admission: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
 		return
 	}
 
@@ -3562,24 +3571,56 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
 	currentUser, _ := a.currentUser(r.Context())
+
 	recordedByUserID := int64(0)
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
 	}
-	_, financeTransactionID, err := a.createAdmissionWithOptionalPayment(admission, collectPayment, recordedByUserID)
+
+	_, financeTransactionID, err := a.createAdmissionWithOptionalPayment(
+		admission,
+		collectPayment,
+		recordedByUserID,
+	)
 	if err != nil {
+		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
+			http.Error(
+				w,
+				err.Error(),
+				http.StatusBadRequest,
+			)
+			return
+		}
+
 		log.Printf("create admission: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
 		return
 	}
 
 	if collectPayment && financeTransactionID > 0 {
-		http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(financeTransactionID, 10), http.StatusSeeOther)
+		http.Redirect(
+			w,
+			r,
+			"/admin/finance/receipt?transaction_id="+
+				strconv.FormatInt(financeTransactionID, 10),
+			http.StatusSeeOther,
+		)
 		return
 	}
+
 	a.setFlash(w, "Admission created.")
-	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+	http.Redirect(
+		w,
+		r,
+		"/admin/admissions",
+		http.StatusSeeOther,
+	)
 }
 
 func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
@@ -7185,9 +7226,7 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recorde
 	}
 
 	if admissionFee <= 0 {
-		return 0, errors.New(
-			"admission fee is not configured for the selected training programme",
-		)
+		return 0, ErrAdmissionFeeNotConfigured
 	}
 
 	now := time.Now().UTC()

@@ -1,16 +1,63 @@
 {{define "finance-receipt"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
-<section class="w-full max-w-none">
+<section class="receipt-page w-full max-w-none">
   <style>
     @page {
-      size: 5in auto;
-      margin: 0.12in;
+      size: 4in auto;
+      margin: 0;
+    }
+
+    .thermal-receipt {
+      width: 100%;
+      max-width: 4in;
+    }
+
+    .receipt-divider {
+      border-top: 1px dashed #0f172a;
     }
 
     @media print {
+      html,
       body {
-        background: #fff !important;
+        width: 4in !important;
+        min-width: 4in !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+      }
+
+      body * {
+        visibility: hidden !important;
+      }
+
+      .thermal-receipt,
+      .thermal-receipt * {
+        visibility: visible !important;
+      }
+
+      .thermal-receipt {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 4in !important;
+        max-width: 4in !important;
+        margin: 0 !important;
+        padding: 0.16in !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+
+      .thermal-receipt,
+      .thermal-receipt * {
+        color: #000000 !important;
+      }
+
+      .receipt-logo {
+        filter: grayscale(1) contrast(1.25);
       }
 
       .receipt-actions {
@@ -19,75 +66,210 @@
     }
   </style>
 
-  <div class="mx-auto w-full max-w-[5in] rounded-[1.5rem] border border-slate/10 bg-white p-6 shadow-sm">
-    <div class="border-b border-dashed border-slate/20 pb-4 text-center">
-      <p class="text-xs font-semibold uppercase tracking-[0.32em] text-slate/50">MEKMAA</p>
-      <h1 class="mt-3 text-xl font-semibold text-obsidian">{{if lt .SelectedFinance.Amount 0.0}}Expense Voucher{{else}}Payment Receipt{{end}}</h1>
-      <p class="mt-2 text-sm leading-6 text-slate/60">No. 64, Temple Road, Jaffna - 40000, Sri Lanka</p>
+  <div
+    class="thermal-receipt mx-auto overflow-hidden rounded-[1.5rem] border border-slate/10 bg-white p-5 text-obsidian shadow-sm"
+  >
+    <!-- Logos -->
+    <div class="flex items-center justify-center gap-3 pb-3">
+      <img
+        src="/images/mekmaa-private-limited.jpeg"
+        alt="Mekmaa Private Limited"
+        class="receipt-logo h-14 max-w-[44%] rounded-lg object-contain"
+      />
+
+      <div class="h-11 w-px bg-slate/20"></div>
+
+      <img
+        src="/images/mekmaa-cricket-academy.jpeg"
+        alt="Mekmaa Cricket Academy"
+        class="receipt-logo h-14 max-w-[44%] rounded-lg object-contain"
+      />
     </div>
 
-    <dl class="grid gap-4 border-b border-dashed border-slate/20 py-5 text-sm">
-      <div class="flex items-start justify-between gap-3">
-        <dt class="text-slate/50">Receipt no</dt>
-        <dd class="font-mono font-semibold text-obsidian">{{.SelectedFinance.ReceiptNumber}}</dd>
+    <!-- Receipt heading -->
+    <div class="text-center">
+      <h1 class="text-[1.05rem] font-extrabold uppercase tracking-[0.12em] text-obsidian">
+        {{if lt .SelectedFinance.Amount 0.0}}
+          Expense Voucher
+        {{else}}
+          Payment Receipt
+        {{end}}
+      </h1>
+
+      <p class="mt-2 text-[0.72rem] font-medium leading-5 text-slate/65">
+        No. 64, Temple Road<br />
+        Jaffna 40000, Sri Lanka
+      </p>
+    </div>
+
+    <div class="receipt-divider mt-4"></div>
+
+    <!-- Receipt information -->
+    <dl class="space-y-2.5 py-4 text-[0.78rem] leading-5">
+      <div class="flex items-start justify-between gap-4">
+        <dt class="shrink-0 font-medium text-slate/60">
+          Receipt No.
+        </dt>
+
+        <dd class="break-all text-right font-mono font-bold text-obsidian">
+          {{.SelectedFinance.ReceiptNumber}}
+        </dd>
       </div>
-      <div class="flex items-start justify-between gap-3">
-        <dt class="text-slate/50">Category</dt>
-        <dd class="font-medium text-obsidian">{{financeCategoryLabel .SelectedFinance.Category}}</dd>
+
+      <div class="flex items-start justify-between gap-4">
+        <dt class="shrink-0 font-medium text-slate/60">
+          Date
+        </dt>
+
+        <dd class="text-right font-semibold text-obsidian">
+          {{formatDateTime .SelectedFinance.RecordedAt}}
+        </dd>
       </div>
-      <div class="flex items-start justify-between gap-3">
-        <dt class="text-slate/50">Recorded on</dt>
-        <dd class="font-medium text-obsidian">{{formatDateTime .SelectedFinance.RecordedAt}}</dd>
+
+      <div class="flex items-start justify-between gap-4">
+        <dt class="shrink-0 font-medium text-slate/60">
+          Category
+        </dt>
+
+        <dd class="text-right font-semibold text-obsidian">
+          {{financeCategoryLabel .SelectedFinance.Category}}
+        </dd>
       </div>
-      <div class="flex items-start justify-between gap-3">
-        <dt class="text-slate/50">Payment method</dt>
-        <dd class="font-medium uppercase text-obsidian">{{.SelectedFinance.PaymentMethod}}</dd>
-      </div>
-      <div class="flex items-start justify-between gap-3">
-        <dt class="text-slate/50">{{if lt .SelectedFinance.Amount 0.0}}Paid to{{else}}Received from{{end}}</dt>
-        <dd class="text-right font-medium text-obsidian">{{.SelectedFinance.PersonName}}</dd>
-      </div>
-      {{if .ReceiptAdmission}}
-      <div class="flex items-start justify-between gap-3">
-        <dt class="text-slate/50">Student ID</dt>
-        <dd class="font-medium text-obsidian">{{.ReceiptAdmission.StudentID}}</dd>
-      </div>
-      <div class="flex items-start justify-between gap-3">
-  <dt class="text-slate/50">Training programme</dt>
-  <dd class="font-medium text-obsidian">
-    {{if .ReceiptAdmission.TrainingProgramName}}
-      {{.ReceiptAdmission.TrainingProgramName}}
-    {{else}}
-      Legacy programme
-    {{end}}
-  </dd>
-</div>
-      {{end}}
-      <div class="flex items-start justify-between gap-3">
-        <dt class="text-slate/50">Description</dt>
-        <dd class="text-right font-medium text-obsidian">{{.SelectedFinance.Description}}</dd>
+
+      <div class="flex items-start justify-between gap-4">
+        <dt class="shrink-0 font-medium text-slate/60">
+          Payment method
+        </dt>
+
+        <dd class="text-right font-bold uppercase text-obsidian">
+          {{.SelectedFinance.PaymentMethod}}
+        </dd>
       </div>
     </dl>
 
+    <div class="receipt-divider"></div>
+
+    <!-- Customer and student information -->
+    <dl class="space-y-3 py-4 text-[0.78rem] leading-5">
+      <div>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">
+          {{if lt .SelectedFinance.Amount 0.0}}
+            Paid to
+          {{else}}
+            Received from
+          {{end}}
+        </dt>
+
+        <dd class="mt-1 text-sm font-bold text-obsidian">
+          {{.SelectedFinance.PersonName}}
+        </dd>
+      </div>
+
+      {{if .ReceiptAdmission}}
+      <div>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">
+          Student ID
+        </dt>
+
+        <dd class="mt-1 font-bold text-obsidian">
+          {{.ReceiptAdmission.StudentID}}
+        </dd>
+      </div>
+
+      <div>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">
+          Training programme
+        </dt>
+
+        <dd class="mt-1 font-semibold text-obsidian">
+          {{if .ReceiptAdmission.TrainingProgramName}}
+            {{.ReceiptAdmission.TrainingProgramName}}
+          {{else}}
+            Legacy programme
+          {{end}}
+        </dd>
+      </div>
+      {{end}}
+
+      <div>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">
+          Description
+        </dt>
+
+        <dd class="mt-1 font-medium text-obsidian">
+          {{.SelectedFinance.Description}}
+        </dd>
+      </div>
+    </dl>
+
+    <div class="receipt-divider"></div>
+
+    <!-- Total -->
     <div class="py-5 text-center">
-      <p class="text-xs uppercase tracking-[0.24em] text-slate/50">{{if lt .SelectedFinance.Amount 0.0}}Amount paid{{else}}Amount received{{end}}</p>
-      <p class="mt-3 text-3xl font-semibold text-obsidian">{{if lt .SelectedFinance.Amount 0.0}}{{money (negate .SelectedFinance.Amount)}}{{else}}{{money .SelectedFinance.Amount}}{{end}}</p>
+      <p class="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-slate/55">
+        {{if lt .SelectedFinance.Amount 0.0}}
+          Total paid
+        {{else}}
+          Total received
+        {{end}}
+      </p>
+
+      <p class="mt-2 text-[1.8rem] font-black tracking-tight text-obsidian">
+        {{if lt .SelectedFinance.Amount 0.0}}
+          {{money (negate .SelectedFinance.Amount)}}
+        {{else}}
+          {{money .SelectedFinance.Amount}}
+        {{end}}
+      </p>
     </div>
 
-    <div class="border-t border-dashed border-slate/20 pt-4 text-center text-xs leading-6 text-slate/55">
-      <p>This receipt was generated automatically from the Mekmaa payment workflow.</p>
-      <p class="mt-2">Keep this copy for finance reconciliation and student records.</p>
+    <div class="receipt-divider"></div>
+
+    <!-- Footer -->
+    <div class="pt-4 text-center">
+      <p class="text-sm font-bold text-obsidian">
+        Thank you
+      </p>
+
+      <p class="mt-1 text-[0.68rem] font-medium leading-5 text-slate/55">
+        Learn · Play · Achieve
+      </p>
+
+      <p class="mt-3 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/45">
+        Mekmaa
+      </p>
     </div>
   </div>
 
-  <div class="receipt-actions mx-auto mt-5 flex max-w-[5in] flex-col gap-3 sm:flex-row">
-    <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">
-      Print again
+  <!-- Screen-only actions -->
+  <div class="receipt-actions mx-auto mt-5 flex max-w-[4in] flex-col gap-3 sm:flex-row">
+    <button
+      type="button"
+      onclick="window.print()"
+      class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate"
+    >
+      Print receipt
     </button>
-    <a href="{{if eq .SelectedFinance.Category "student_monthly_payment"}}/admin/student-payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}/admin/referrals{{else if eq .SelectedFinance.Category "admission_payment"}}/admin/admissions{{else}}/admin/finance{{end}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
-      {{if eq .SelectedFinance.Category "student_monthly_payment"}}Back to student payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}Back to referrals{{else if eq .SelectedFinance.Category "admission_payment"}}Back to admissions{{else}}Back to finance{{end}}
+
+    <a
+      href="{{if eq .SelectedFinance.Category "student_monthly_payment"}}/admin/student-payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}/admin/referrals{{else if eq .SelectedFinance.Category "admission_payment"}}/admin/admissions{{else}}/admin/finance{{end}}"
+      class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud"
+    >
+      {{if eq .SelectedFinance.Category "student_monthly_payment"}}
+        Back to payments
+      {{else if eq .SelectedFinance.Category "referral_commission_payment"}}
+        Back to referrals
+      {{else if eq .SelectedFinance.Category "admission_payment"}}
+        Back to admissions
+      {{else}}
+        Back to finance
+      {{end}}
     </a>
-    <a href="/admin/finance" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">
+
+    <a
+      href="/admin/finance"
+      class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud"
+    >
       Open finance
     </a>
   </div>
