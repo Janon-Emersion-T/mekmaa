@@ -60,6 +60,7 @@ var (
 		"training_programs.manage",
 		"student_groups.manage",
 		"attendance.manage",
+		"courts.manage",
 		"space_bookings.manage",
 		"booking_requests.manage",
 		"pricing.manage",
@@ -100,9 +101,22 @@ var permissionGroups = []PermissionGroup{
 			Description: "Record and update daily attendance registers.",
 		},
 	}},
-	{Name: "Bookings", Description: "Facility schedule and customer booking operations.", Permissions: []PermissionDefinition{
-		{Key: "space_bookings.manage", Label: "Manage booking calendar", Description: "Create, update, and remove facility schedule entries."},
-		{Key: "booking_requests.manage", Label: "Manage booking requests", Description: "Review, confirm, and reject customer booking requests."},
+	{Name: "Bookings", Description: "Court configuration, facility scheduling, and customer booking operations.", Permissions: []PermissionDefinition{
+		{
+			Key:         "courts.manage",
+			Label:       "Manage courts",
+			Description: "Configure courts, activities, and the combinations that may operate simultaneously.",
+		},
+		{
+			Key:         "space_bookings.manage",
+			Label:       "Manage booking calendar",
+			Description: "Create, update, and remove facility schedule entries.",
+		},
+		{
+			Key:         "booking_requests.manage",
+			Label:       "Manage booking requests",
+			Description: "Review, confirm, and reject customer booking requests.",
+		},
 	}},
 	{Name: "Finance", Description: "Pricing, collections, ledger, referrals, and reporting.", Permissions: []PermissionDefinition{
 		{
@@ -354,6 +368,50 @@ type AttendanceSummary struct {
 	TotalEntries int
 }
 
+type Court struct {
+	ID          int64
+	Name        string
+	Code        string
+	Description string
+	Active      bool
+	SortOrder   int
+	Layouts     []CourtLayout
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type CourtActivity struct {
+	ID          int64
+	CourtID     int64
+	Activity    string
+	DisplayName string
+	MaxQuantity int
+	Active      bool
+	SortOrder   int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type CourtLayout struct {
+	ID          int64
+	CourtID     int64
+	Name        string
+	Description string
+	Active      bool
+	SortOrder   int
+	Items       []CourtLayoutItem
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type CourtLayoutItem struct {
+	ID          int64
+	LayoutID    int64
+	Activity    string
+	DisplayName string
+	Quantity    int
+}
+
 type SpaceSchedule struct {
 	ID              int64
 	SlotDate        string
@@ -559,6 +617,13 @@ type TemplateData struct {
 	AttendanceDate          string
 	RecentDates             []string
 	AttendanceSummary       AttendanceSummary
+	Courts                  []Court
+	SelectedCourt           *Court
+	CourtMode               string
+	CourtActivities         []CourtActivity
+	CourtLayouts            []CourtLayout
+	SelectedCourtLayout     *CourtLayout
+	CourtLayoutMode         string
 	Schedules               []SpaceSchedule
 	DaySchedules            []SpaceSchedule
 	PendingSchedules        []SpaceSchedule
@@ -686,6 +751,9 @@ func main() {
 	}
 	if err := seedRoles(db); err != nil {
 		log.Fatalf("seed roles: %v", err)
+	}
+	if err := seedCourtManager(db); err != nil {
+		log.Fatalf("seed court manager: %v", err)
 	}
 	if err := seedTrainingPrograms(db); err != nil {
 		log.Fatalf("seed training programmes: %v", err)
@@ -7807,6 +7875,54 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
 			FOREIGN KEY (recorded_by_user_id) REFERENCES users(id)
 		)`,
+
+		`CREATE TABLE IF NOT EXISTS courts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			code TEXT NOT NULL UNIQUE,
+			description TEXT NOT NULL DEFAULT '',
+			active INTEGER NOT NULL DEFAULT 1,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS court_activities (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			court_id INTEGER NOT NULL,
+			activity TEXT NOT NULL,
+			display_name TEXT NOT NULL,
+			max_quantity INTEGER NOT NULL DEFAULT 1,
+			active INTEGER NOT NULL DEFAULT 1,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			UNIQUE(court_id, activity),
+			FOREIGN KEY (court_id) REFERENCES courts(id) ON DELETE CASCADE
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS court_layouts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			court_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			active INTEGER NOT NULL DEFAULT 1,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			UNIQUE(court_id, name),
+			FOREIGN KEY (court_id) REFERENCES courts(id) ON DELETE CASCADE
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS court_layout_items (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			layout_id INTEGER NOT NULL,
+			activity TEXT NOT NULL,
+			quantity INTEGER NOT NULL,
+			UNIQUE(layout_id, activity),
+			FOREIGN KEY (layout_id) REFERENCES court_layouts(id) ON DELETE CASCADE
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS pricing_rules (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			activity TEXT NOT NULL,
@@ -7956,6 +8072,17 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_group_student_date ON attendance_records(group_id, admission_id, attendance_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_attendance_group_date ON attendance_records(group_id, attendance_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_courts_active_order
+		ON courts(active, sort_order, name)`,
+
+		`CREATE INDEX IF NOT EXISTS idx_court_activities_court
+		ON court_activities(court_id, active, sort_order)`,
+
+		`CREATE INDEX IF NOT EXISTS idx_court_layouts_court
+		ON court_layouts(court_id, active, sort_order)`,
+
+		`CREATE INDEX IF NOT EXISTS idx_court_layout_items_layout
+		ON court_layout_items(layout_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_rules_option ON pricing_rules(activity, quantity)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_admission_pricing_type ON admission_pricing(practice_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_recorded_at ON finance_transactions(recorded_at)`,
@@ -8364,6 +8491,265 @@ func seedRoles(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+func seedCourtManager(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+
+	_, err = tx.Exec(`
+		INSERT OR IGNORE INTO courts (
+			name,
+			code,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, 1, 10, ?, ?)
+	`,
+		"Main Indoor Court",
+		"MAIN_INDOOR",
+		"Shared multipurpose indoor court used by badminton, cricket nets, table tennis, futsal, tennis, indoor cricket, and training.",
+		now,
+		now,
+	)
+	if err != nil {
+		return err
+	}
+
+	var courtID int64
+	err = tx.QueryRow(`
+		SELECT id
+		FROM courts
+		WHERE code = ?
+	`, "MAIN_INDOOR").Scan(&courtID)
+	if err != nil {
+		return err
+	}
+
+	activities := []struct {
+		Activity    string
+		DisplayName string
+		MaxQuantity int
+		SortOrder   int
+	}{
+		{
+			Activity:    "full_indoor_cricket",
+			DisplayName: "Full Indoor Cricket",
+			MaxQuantity: 1,
+			SortOrder:   10,
+		},
+		{
+			Activity:    "futsal",
+			DisplayName: "Futsal",
+			MaxQuantity: 1,
+			SortOrder:   20,
+		},
+		{
+			Activity:    "badminton",
+			DisplayName: "Badminton",
+			MaxQuantity: 1,
+			SortOrder:   30,
+		},
+		{
+			Activity:    "cricket_net",
+			DisplayName: "Cricket Net",
+			MaxQuantity: 3,
+			SortOrder:   40,
+		},
+		{
+			Activity:    "table_tennis",
+			DisplayName: "Table Tennis",
+			MaxQuantity: 2,
+			SortOrder:   50,
+		},
+		{
+			Activity:    "tennis",
+			DisplayName: "Tennis",
+			MaxQuantity: 1,
+			SortOrder:   60,
+		},
+		{
+			Activity:    "training",
+			DisplayName: "Training Session",
+			MaxQuantity: 1,
+			SortOrder:   70,
+		},
+	}
+
+	for _, activity := range activities {
+		_, err = tx.Exec(`
+			INSERT OR IGNORE INTO court_activities (
+				court_id,
+				activity,
+				display_name,
+				max_quantity,
+				active,
+				sort_order,
+				created_at,
+				updated_at
+			)
+			VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+		`,
+			courtID,
+			activity.Activity,
+			activity.DisplayName,
+			activity.MaxQuantity,
+			activity.SortOrder,
+			now,
+			now,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	type seedLayoutItem struct {
+		Activity string
+		Quantity int
+	}
+
+	type seedLayout struct {
+		Name        string
+		Description string
+		SortOrder   int
+		Items       []seedLayoutItem
+	}
+
+	layouts := []seedLayout{
+		{
+			Name:        "Full Indoor Cricket",
+			Description: "Full-court indoor cricket configuration.",
+			SortOrder:   10,
+			Items: []seedLayoutItem{
+				{Activity: "full_indoor_cricket", Quantity: 1},
+			},
+		},
+		{
+			Name:        "Futsal",
+			Description: "Full-court futsal configuration.",
+			SortOrder:   20,
+			Items: []seedLayoutItem{
+				{Activity: "futsal", Quantity: 1},
+			},
+		},
+		{
+			Name:        "Badminton and Cricket Net",
+			Description: "One badminton booking and one cricket-net booking may operate simultaneously.",
+			SortOrder:   30,
+			Items: []seedLayoutItem{
+				{Activity: "badminton", Quantity: 1},
+				{Activity: "cricket_net", Quantity: 1},
+			},
+		},
+		{
+			Name:        "Badminton and Table Tennis",
+			Description: "One badminton booking and one table-tennis booking may operate simultaneously.",
+			SortOrder:   40,
+			Items: []seedLayoutItem{
+				{Activity: "badminton", Quantity: 1},
+				{Activity: "table_tennis", Quantity: 1},
+			},
+		},
+		{
+			Name:        "Three Cricket Nets",
+			Description: "Up to three cricket nets may operate simultaneously.",
+			SortOrder:   50,
+			Items: []seedLayoutItem{
+				{Activity: "cricket_net", Quantity: 3},
+			},
+		},
+		{
+			Name:        "Two Table Tennis Tables",
+			Description: "Up to two table-tennis bookings may operate simultaneously.",
+			SortOrder:   60,
+			Items: []seedLayoutItem{
+				{Activity: "table_tennis", Quantity: 2},
+			},
+		},
+		{
+			Name:        "Tennis",
+			Description: "Full-court tennis configuration.",
+			SortOrder:   70,
+			Items: []seedLayoutItem{
+				{Activity: "tennis", Quantity: 1},
+			},
+		},
+		{
+			Name:        "Training Session",
+			Description: "Training session that reserves the complete configured court.",
+			SortOrder:   80,
+			Items: []seedLayoutItem{
+				{Activity: "training", Quantity: 1},
+			},
+		},
+	}
+
+	for _, layout := range layouts {
+		_, err = tx.Exec(`
+			INSERT OR IGNORE INTO court_layouts (
+				court_id,
+				name,
+				description,
+				active,
+				sort_order,
+				created_at,
+				updated_at
+			)
+			VALUES (?, ?, ?, 1, ?, ?, ?)
+		`,
+			courtID,
+			layout.Name,
+			layout.Description,
+			layout.SortOrder,
+			now,
+			now,
+		)
+		if err != nil {
+			return err
+		}
+
+		var layoutID int64
+		err = tx.QueryRow(`
+			SELECT id
+			FROM court_layouts
+			WHERE court_id = ?
+			  AND name = ?
+		`,
+			courtID,
+			layout.Name,
+		).Scan(&layoutID)
+		if err != nil {
+			return err
+		}
+
+		for _, item := range layout.Items {
+			_, err = tx.Exec(`
+				INSERT OR IGNORE INTO court_layout_items (
+					layout_id,
+					activity,
+					quantity
+				)
+				VALUES (?, ?, ?)
+			`,
+				layoutID,
+				item.Activity,
+				item.Quantity,
+			)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return tx.Commit()
 }
 
 func seedPricingRules(db *sql.DB) error {
