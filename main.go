@@ -553,7 +553,6 @@ type TemplateData struct {
 	DraftSchedule           *SpaceSchedule
 	ScheduleMode            string
 	Pricings                []PricingRule
-	AdmissionPricings       []AdmissionPricing
 	TrainingPrograms        []TrainingProgram
 	SelectedTrainingProgram *TrainingProgram
 	TrainingProgramMode     string
@@ -615,7 +614,7 @@ type Feature struct {
 var (
 	ErrEmailTaken                     = errors.New("email already exists")
 	ErrInvalidOTP                     = errors.New("invalid verification code")
-	ErrMonthlyFeeNotConfigured        = errors.New("monthly fee is not configured for this practice type")
+	ErrMonthlyFeeNotConfigured        = errors.New("monthly fee is not configured for this training programme")
 	ErrStudentPaymentAlreadyCollected = errors.New("student payment already collected")
 	ErrStudentNotAdmittedForMonth     = errors.New("student was not admitted for the selected month")
 	ErrBookingPaymentAlreadyCollected = errors.New("booking payment already collected")
@@ -797,7 +796,6 @@ func main() {
 	mux.Handle("/admin/pricing/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePricingHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deletePricingHandler), "pricing.manage")))
 	mux.Handle("/admin/pricing/settings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePricingSettingsHandler), "pricing.manage")))
-	mux.Handle("/admin/pricing/admissions/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAdmissionPricingHandler), "pricing.manage")))
 	mux.Handle("/admin/events", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.eventManagementHandler), "events.manage")))
 	mux.Handle("/admin/events/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createEventHandler), "events.manage")))
 	mux.Handle("/admin/events/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEventHandler), "events.manage")))
@@ -2752,55 +2750,6 @@ func (a *App) payReferralCommissionHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
-}
-
-func (a *App) saveAdmissionPricingHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := a.verifyCSRF(r); err != nil {
-		http.Error(w, "invalid csrf token", http.StatusForbidden)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form submission", http.StatusBadRequest)
-		return
-	}
-
-	groupPrice, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("group_practice_price")), 64)
-	if err != nil || groupPrice < 0 {
-		http.Error(w, "valid group practice price is required", http.StatusBadRequest)
-		return
-	}
-	groupMonthlyFee, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("group_practice_monthly_fee")), 64)
-	if err != nil || groupMonthlyFee < 0 {
-		http.Error(w, "valid group practice monthly fee is required", http.StatusBadRequest)
-		return
-	}
-	oneToOnePrice, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("one_to_one_practice_price")), 64)
-	if err != nil || oneToOnePrice < 0 {
-		http.Error(w, "valid one to one practice price is required", http.StatusBadRequest)
-		return
-	}
-	oneToOneMonthlyFee, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("one_to_one_practice_monthly_fee")), 64)
-	if err != nil || oneToOneMonthlyFee < 0 {
-		http.Error(w, "valid one to one practice monthly fee is required", http.StatusBadRequest)
-		return
-	}
-
-	pricings := []AdmissionPricing{
-		{PracticeType: "group_practice", Price: groupPrice, MonthlyFee: groupMonthlyFee},
-		{PracticeType: "one_to_one_practice", Price: oneToOnePrice, MonthlyFee: oneToOneMonthlyFee},
-	}
-	if err := a.saveAdmissionPricings(pricings); err != nil {
-		log.Printf("save admission pricing: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	a.setFlash(w, "Admission pricing updated.")
-	http.Redirect(w, r, "/admin/pricing#admission-pricing", http.StatusSeeOther)
 }
 
 func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
@@ -5137,35 +5086,6 @@ func (a *App) listPricingRules() ([]PricingRule, error) {
 	return rules, rows.Err()
 }
 
-func (a *App) listAdmissionPricings() ([]AdmissionPricing, error) {
-	rows, err := a.db.Query(`
-		SELECT id, practice_type, price, COALESCE(monthly_fee, 0), created_at, updated_at
-		FROM admission_pricing
-		ORDER BY practice_type ASC, id ASC
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var pricings []AdmissionPricing
-	for rows.Next() {
-		var pricing AdmissionPricing
-		if err := rows.Scan(
-			&pricing.ID,
-			&pricing.PracticeType,
-			&pricing.Price,
-			&pricing.MonthlyFee,
-			&pricing.CreatedAt,
-			&pricing.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		pricings = append(pricings, pricing)
-	}
-	return pricings, rows.Err()
-}
-
 func (a *App) listTrainingPrograms(includeInactive bool) ([]TrainingProgram, error) {
 	query := `
 		SELECT
@@ -6040,35 +5960,6 @@ func (a *App) createEvent(event Event) error {
 		time.Now().UTC(),
 	)
 	return err
-}
-
-func (a *App) saveAdmissionPricings(pricings []AdmissionPricing) error {
-	tx, err := a.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	for _, pricing := range pricings {
-		if _, err := tx.Exec(`
-			INSERT INTO admission_pricing (practice_type, price, monthly_fee, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT(practice_type) DO UPDATE SET
-				price = excluded.price,
-				monthly_fee = excluded.monthly_fee,
-				updated_at = excluded.updated_at
-		`,
-			pricing.PracticeType,
-			pricing.Price,
-			pricing.MonthlyFee,
-			time.Now().UTC(),
-			time.Now().UTC(),
-		); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
 }
 
 func (a *App) createPublicBookingRequest(schedule SpaceSchedule) (int64, error) {
@@ -7122,7 +7013,7 @@ func admissionPricingByPracticeTypeTx(
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New(
-				"admission pricing is not configured for the selected practice type",
+				"legacy admission pricing is not configured for this student",
 			)
 		}
 
@@ -8685,7 +8576,7 @@ func validateAdmission(admission Admission) error {
 	case admission.Gender != "male" && admission.Gender != "female":
 		return errors.New("gender is required")
 	case admission.PracticeType != "group_practice" && admission.PracticeType != "one_to_one_practice":
-		return errors.New("practice type is required")
+		return errors.New("training programme is required")
 	case admission.Address == "":
 		return errors.New("address is required")
 	case admission.PassportNumber == "":
@@ -9805,17 +9696,6 @@ func hasTime(value time.Time) bool {
 	return !value.IsZero()
 }
 
-func practiceTypeLabel(value string) string {
-	switch value {
-	case "group_practice":
-		return "Group practice"
-	case "one_to_one_practice":
-		return "One to one practice"
-	default:
-		return "Unknown"
-	}
-}
-
 func admissionAge(dateOfBirth string) string {
 	dob, err := time.Parse("2006-01-02", strings.TrimSpace(dateOfBirth))
 	if err != nil {
@@ -10404,7 +10284,6 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"pricingForOption":          pricingForOption,
 		"pricingForSchedule":        pricingForSchedule,
 		"pricingTierLabel":          pricingTierLabel,
-		"practiceTypeLabel":         practiceTypeLabel,
 		"financeCategoryLabel":      financeCategoryLabel,
 		"paymentMonthLabel":         paymentMonthLabel,
 		"formatDateTime":            formatDateTime,

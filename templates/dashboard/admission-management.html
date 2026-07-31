@@ -608,7 +608,7 @@
             <th scope="col" class="px-5 py-4">Admission</th>
             <th scope="col" class="px-5 py-4">Date of birth</th>
             <th scope="col" class="px-5 py-4">Gender</th>
-            <th scope="col" class="px-5 py-4">Practice type</th>
+            <th scope="col" class="px-5 py-4">Training programme</th>
             <th scope="col" class="px-5 py-4">School</th>
             <th scope="col" class="px-5 py-4">Guardian</th>
             <th scope="col" class="px-5 py-4">Contact</th>
@@ -665,7 +665,11 @@
 
             <td class="px-5 py-5">
               <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-2.5 py-1 text-xs font-medium text-slate/70">
-                {{practiceTypeLabel .PracticeType}}
+                {{if .TrainingProgramName}}
+                  {{.TrainingProgramName}}
+                {{else}}
+                  Legacy programme
+                {{end}}
               </span>
             </td>
 
@@ -856,11 +860,15 @@
 
             <div>
               <dt class="text-xs font-medium uppercase tracking-[0.12em] text-slate/45">
-                Practice type
+                Training programme
               </dt>
 
               <dd class="mt-1 font-medium text-obsidian">
-                {{practiceTypeLabel .PracticeType}}
+                {{if .TrainingProgramName}}
+                  {{.TrainingProgramName}}
+                {{else}}
+                  Legacy programme
+                {{end}}
               </dd>
             </div>
 
@@ -1143,14 +1151,18 @@
             </div>
 
             <div>
-              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
-                Practice type
-              </dt>
+  <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+    Training programme
+  </dt>
 
-              <dd class="mt-2 text-sm font-medium text-obsidian">
-                {{practiceTypeLabel .SelectedAdmission.PracticeType}}
-              </dd>
-            </div>
+  <dd class="mt-2 text-sm font-medium text-obsidian">
+    {{if .SelectedAdmission.TrainingProgramName}}
+      {{.SelectedAdmission.TrainingProgramName}}
+    {{else}}
+      Legacy programme
+    {{end}}
+  </dd>
+</div>
 
             <div>
               <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
