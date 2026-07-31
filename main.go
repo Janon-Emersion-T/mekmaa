@@ -1481,9 +1481,9 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	admissionPricings, err := a.listAdmissionPricings()
+	trainingPrograms, err := a.listTrainingPrograms(false)
 	if err != nil {
-		log.Printf("list admission pricing for admissions: %v", err)
+		log.Printf("list active training programmes for admissions: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -1492,7 +1492,7 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 	data.Title = "Admissions Management"
 	data.Description = "Manage admissions."
 	data.Admissions = admissions
-	data.AdmissionPricings = admissionPricings
+	data.TrainingPrograms = trainingPrograms
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -1993,6 +1993,17 @@ func parsePositiveInt64(value string) (int64, error) {
 	}
 
 	return number, nil
+}
+
+func legacyPracticeTypeForTrainingFormat(trainingFormat string) string {
+	switch trainingFormat {
+	case "one_to_one":
+		return "one_to_one_practice"
+	case "group":
+		return "group_practice"
+	default:
+		return ""
+	}
 }
 
 func isUniqueConstraintError(err error) bool {
@@ -3521,8 +3532,52 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	trainingProgramID, err := parsePositiveInt64(
+		r.FormValue("training_program_id"),
+	)
+	if err != nil {
+		http.Error(
+			w,
+			"select a valid training programme",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	trainingProgram, err := a.findTrainingProgramByID(trainingProgramID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(
+				w,
+				"training programme not found",
+				http.StatusBadRequest,
+			)
+			return
+		}
+
+		log.Printf("find training programme for admission: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if !trainingProgram.Active {
+		http.Error(
+			w,
+			"the selected training programme is inactive",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
 	admission := admissionFromRequest(r)
+	admission.TrainingProgramID = trainingProgram.ID
+	admission.TrainingProgramName = trainingProgram.Name
+	admission.PracticeType = legacyPracticeTypeForTrainingFormat(
+		trainingProgram.TrainingFormat,
+	)
+
 	collectPayment := r.FormValue("payment_collected") == "true"
+
 	if err := validateAdmission(admission); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -3567,9 +3622,44 @@ func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	trainingProgramID, err := parsePositiveInt64(
+		r.FormValue("training_program_id"),
+	)
+	if err != nil {
+		http.Error(
+			w,
+			"select a valid training programme",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	trainingProgram, err := a.findTrainingProgramByID(trainingProgramID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(
+				w,
+				"training programme not found",
+				http.StatusBadRequest,
+			)
+			return
+		}
+
+		log.Printf("find training programme for admission update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	admission := admissionFromRequest(r)
 	admission.ID = admissionID
+	admission.TrainingProgramID = trainingProgram.ID
+	admission.TrainingProgramName = trainingProgram.Name
+	admission.PracticeType = legacyPracticeTypeForTrainingFormat(
+		trainingProgram.TrainingFormat,
+	)
+
 	collectPayment := r.FormValue("payment_collected") == "true"
+
 	if err := validateAdmission(admission); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -8269,6 +8359,13 @@ func studentGroupFromRequest(r *http.Request) StudentGroup {
 }
 
 func validateAdmission(admission Admission) error {
+	if admission.TrainingProgramID <= 0 {
+		return errors.New("training programme is required")
+	}
+
+	if strings.TrimSpace(admission.TrainingProgramName) == "" {
+		return errors.New("training programme name is required")
+	}
 	switch {
 	case admission.StudentID == "":
 		return errors.New("student id is required")
