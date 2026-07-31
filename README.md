@@ -10,7 +10,7 @@ Target Go version: `1.26.5`
 - server-side session storage with SHA-256 token hashes
 - 6-digit email verification OTP before first login
 - CSRF protection on all POST forms
-- role-based middleware for `customer`, `editor`, `admin`, and `superadmin`
+- role-based middleware for `customer`, `editor`, `coach`, `admin`, and `superadmin`
 - admin UI for assigning roles to users
 - seeded verified superadmin account
 
@@ -30,6 +30,7 @@ Target Go version: `1.26.5`
 ## Bootstrap behavior
 
 - Self-service registrations receive the `customer` role by default and must verify their email before signing in.
+- `coach` is a seeded system role with access to the dashboard and student attendance only.
 - A verified seeded superadmin account is created or updated on startup for platform control.
 - `superadmin` can do everything `admin` can do.
 

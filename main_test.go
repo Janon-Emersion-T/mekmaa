@@ -272,20 +272,43 @@ func TestProtectedRolesCannotBeChangedOrDeleted(t *testing.T) {
 		t.Fatalf("expected protected system role error, got %v", err)
 	}
 
-	if err := app.createRole("coach", []string{"attendance.manage"}); err != nil {
+	coach, err := app.dbRoleByName("coach")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !coach.System {
+		t.Fatal("expected coach to be treated as a system role")
 	}
 	user, err := app.createManagedUser("Coach", "coach@example.com", "password-123", []string{"coach"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = user
-	role, err := app.dbRoleByName("coach")
+	if err := app.deleteRole(coach.ID); !errors.Is(err, ErrSystemRoleProtected) {
+		t.Fatalf("expected protected system role error, got %v", err)
+	}
+	if err := app.updateRole(coach.ID, "coach", []string{"dashboard.view", "attendance.manage"}); !errors.Is(err, ErrSystemRoleProtected) {
+		t.Fatalf("expected assigned role error, got %v", err)
+	}
+}
+
+func TestCoachRolePermissions(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+	user, err := app.createManagedUser("Coach", "coach-role@example.com", "password-123", []string{"coach"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := app.deleteRole(role.ID); !errors.Is(err, ErrRoleAssigned) {
-		t.Fatalf("expected assigned role error, got %v", err)
+	if !containsPermission(user.Permissions, "dashboard.view") {
+		t.Fatal("coach should be able to view the dashboard")
+	}
+	if !containsPermission(user.Permissions, "attendance.manage") {
+		t.Fatal("coach should be able to manage attendance")
+	}
+	if containsPermission(user.Permissions, "student_groups.manage") {
+		t.Fatal("coach should not be able to manage student groups")
+	}
+	if containsPermission(user.Permissions, "users.manage") {
+		t.Fatal("coach should not be able to manage users")
 	}
 }
 

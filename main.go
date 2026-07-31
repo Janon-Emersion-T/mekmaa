@@ -50,7 +50,7 @@ var (
 	roleNamePattern     = regexp.MustCompile(`^[a-z][a-z0-9_-]{2,31}$`)
 	eventImagePattern   = regexp.MustCompile(`^event-[a-z0-9_-]{12,64}\.(jpg|png|webp)$`)
 	storedEventPattern  = regexp.MustCompile(`^event-[a-z0-9_-]{12,64}\.(jpg|png|gif|webp)$`)
-	allRoles            = []string{"superadmin", "admin", "editor", "customer"}
+	allRoles            = []string{"superadmin", "admin", "editor", "coach", "customer"}
 	allPermissions      = []string{"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"}
 )
 
@@ -6611,6 +6611,7 @@ func seedRoles(db *sql.DB) error {
 	rolePermissions := map[string][]string{
 		"customer":   {"dashboard.view"},
 		"editor":     {"dashboard.view", "editor.access"},
+		"coach":      {"dashboard.view", "attendance.manage"},
 		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"},
 		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"},
 	}
@@ -8914,7 +8915,7 @@ func normalizeRoleName(name string) string {
 
 func isSystemRole(name string) bool {
 	switch name {
-	case "customer", "editor", "admin", "superadmin":
+	case "customer", "editor", "coach", "admin", "superadmin":
 		return true
 	default:
 		return false
