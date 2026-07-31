@@ -8439,7 +8439,6 @@ func admissionFromRequest(r *http.Request) Admission {
 		AdmissionDate:            strings.TrimSpace(r.FormValue("admission_date")),
 		DateOfBirth:              strings.TrimSpace(r.FormValue("date_of_birth")),
 		Gender:                   strings.ToLower(strings.TrimSpace(r.FormValue("gender"))),
-		PracticeType:             strings.ToLower(strings.TrimSpace(r.FormValue("practice_type"))),
 		Address:                  strings.TrimSpace(r.FormValue("address")),
 		PassportNumber:           strings.TrimSpace(r.FormValue("passport_number")),
 		School:                   strings.TrimSpace(r.FormValue("school")),
@@ -8571,7 +8570,6 @@ func validateAdmission(admission Admission) error {
 		return errors.New("date of birth is required")
 	case admission.Gender != "male" && admission.Gender != "female":
 		return errors.New("gender is required")
-	case admission.PracticeType != "group_practice" && admission.PracticeType != "one_to_one_practice":
 		return errors.New("training programme is required")
 	case admission.Address == "":
 		return errors.New("address is required")
