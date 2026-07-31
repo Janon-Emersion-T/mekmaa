@@ -7691,7 +7691,7 @@ func runMigrations(db *sql.DB) error {
 			recorded_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
-			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE
+			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
 			FOREIGN KEY (recorded_by_user_id) REFERENCES users(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS pricing_rules (
@@ -7932,6 +7932,30 @@ func runMigrations(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admissions_admission_date ON admissions(admission_date)`); err != nil {
 		return err
 	}
+	attendanceRecordedByExists, err := tableHasColumn(
+		db,
+		"attendance_records",
+		"recorded_by_user_id",
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"check attendance recorded_by_user_id column: %w",
+			err,
+		)
+	}
+
+	if !attendanceRecordedByExists {
+		if _, err := db.Exec(`
+			ALTER TABLE attendance_records
+			ADD COLUMN recorded_by_user_id INTEGER
+		`); err != nil {
+			return fmt.Errorf(
+				"add attendance recorded_by_user_id column: %w",
+				err,
+			)
+		}
+	}
+
 	admissionPricingMonthlyFeeExists, err := tableHasColumn(db, "admission_pricing", "monthly_fee")
 	if err != nil {
 		return err
