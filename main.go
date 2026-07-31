@@ -1525,10 +1525,61 @@ func (a *App) createTrainingProgramHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	http.Error(
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	program, err := trainingProgramFromRequest(r)
+	if err != nil {
+		a.setFlash(w, "Training programme could not be created: "+err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/training-programs?action=new",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	programID, err := a.createTrainingProgram(program)
+	if err != nil {
+		log.Printf("create training programme: %v", err)
+
+		message := "Training programme could not be created."
+
+		if isUniqueConstraintError(err) {
+			message = "A programme already exists for this activity and training format."
+		}
+
+		a.setFlash(w, message)
+		http.Redirect(
+			w,
+			r,
+			"/admin/training-programs?action=new",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "Training programme created successfully.")
+
+	http.Redirect(
 		w,
-		"Training Manager create action is not implemented yet.",
-		http.StatusNotImplemented,
+		r,
+		"/admin/training-programs?action=view&id="+
+			strconv.FormatInt(programID, 10),
+		http.StatusSeeOther,
 	)
 }
 
@@ -1536,10 +1587,72 @@ func (a *App) updateTrainingProgramHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	http.Error(
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	programID, err := parsePositiveInt64(r.FormValue("id"))
+	if err != nil {
+		http.Error(w, "invalid training programme id", http.StatusBadRequest)
+		return
+	}
+
+	program, err := trainingProgramFromRequest(r)
+	if err != nil {
+		a.setFlash(w, "Training programme could not be updated: "+err.Error())
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/training-programs?action=edit&id="+
+				strconv.FormatInt(programID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	program.ID = programID
+
+	if err := a.updateTrainingProgram(program); err != nil {
+		log.Printf("update training programme: %v", err)
+
+		message := "Training programme could not be updated."
+
+		if isUniqueConstraintError(err) {
+			message = "A programme already exists for this activity and training format."
+		}
+
+		a.setFlash(w, message)
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/training-programs?action=edit&id="+
+				strconv.FormatInt(programID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "Training programme updated successfully.")
+
+	http.Redirect(
 		w,
-		"Training Manager update action is not implemented yet.",
-		http.StatusNotImplemented,
+		r,
+		"/admin/training-programs?action=view&id="+
+			strconv.FormatInt(programID, 10),
+		http.StatusSeeOther,
 	)
 }
 
@@ -1547,10 +1660,57 @@ func (a *App) toggleTrainingProgramHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	http.Error(
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	programID, err := parsePositiveInt64(r.FormValue("id"))
+	if err != nil {
+		http.Error(w, "invalid training programme id", http.StatusBadRequest)
+		return
+	}
+
+	active, err := strconv.ParseBool(
+		strings.TrimSpace(r.FormValue("active")),
+	)
+	if err != nil {
+		http.Error(w, "invalid programme status", http.StatusBadRequest)
+		return
+	}
+
+	if err := a.setTrainingProgramActive(programID, active); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "training programme not found", http.StatusNotFound)
+			return
+		}
+
+		log.Printf("toggle training programme: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if active {
+		a.setFlash(w, "Training programme activated successfully.")
+	} else {
+		a.setFlash(w, "Training programme deactivated successfully.")
+	}
+
+	http.Redirect(
 		w,
-		"Training Manager toggle action is not implemented yet.",
-		http.StatusNotImplemented,
+		r,
+		"/admin/training-programs",
+		http.StatusSeeOther,
 	)
 }
 
@@ -1558,11 +1718,225 @@ func (a *App) deleteTrainingProgramHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	http.Error(
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	programID, err := parsePositiveInt64(r.FormValue("id"))
+	if err != nil {
+		http.Error(w, "invalid training programme id", http.StatusBadRequest)
+		return
+	}
+
+	if err := a.deleteTrainingProgram(programID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "training programme not found", http.StatusNotFound)
+			return
+		}
+
+		a.setFlash(w, "Training programme could not be deleted: "+err.Error())
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/training-programs",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "Training programme deleted successfully.")
+
+	http.Redirect(
 		w,
-		"Training Manager delete action is not implemented yet.",
-		http.StatusNotImplemented,
+		r,
+		"/admin/training-programs",
+		http.StatusSeeOther,
 	)
+}
+
+func trainingProgramFromRequest(
+	r *http.Request,
+) (TrainingProgram, error) {
+	name := strings.TrimSpace(r.FormValue("name"))
+	activity := normalizeTrainingActivity(
+		r.FormValue("activity"),
+	)
+	trainingFormat := strings.ToLower(
+		strings.TrimSpace(r.FormValue("training_format")),
+	)
+
+	admissionFee, err := parseNonNegativeFloat(
+		r.FormValue("admission_fee"),
+	)
+	if err != nil {
+		return TrainingProgram{}, errors.New(
+			"enter a valid admission fee",
+		)
+	}
+
+	monthlyFee, err := parseNonNegativeFloat(
+		r.FormValue("monthly_fee"),
+	)
+	if err != nil {
+		return TrainingProgram{}, errors.New(
+			"enter a valid monthly fee",
+		)
+	}
+
+	sortOrder := 0
+
+	if value := strings.TrimSpace(r.FormValue("sort_order")); value != "" {
+		sortOrder, err = strconv.Atoi(value)
+		if err != nil || sortOrder < 0 || sortOrder > 100000 {
+			return TrainingProgram{}, errors.New(
+				"sort order must be between 0 and 100000",
+			)
+		}
+	}
+
+	program := TrainingProgram{
+		Name:           name,
+		Activity:       activity,
+		TrainingFormat: trainingFormat,
+		AdmissionFee:   admissionFee,
+		MonthlyFee:     monthlyFee,
+		Active:         r.FormValue("active") == "on",
+		SortOrder:      sortOrder,
+	}
+
+	if err := validateTrainingProgram(program); err != nil {
+		return TrainingProgram{}, err
+	}
+
+	return program, nil
+}
+
+func validateTrainingProgram(program TrainingProgram) error {
+	if program.Name == "" {
+		return errors.New("programme name is required")
+	}
+
+	if len(program.Name) > 120 {
+		return errors.New(
+			"programme name must not exceed 120 characters",
+		)
+	}
+
+	if program.Activity == "" {
+		return errors.New("activity is required")
+	}
+
+	if len(program.Activity) > 60 {
+		return errors.New(
+			"activity must not exceed 60 characters",
+		)
+	}
+
+	switch program.TrainingFormat {
+	case "one_to_one", "group":
+	default:
+		return errors.New(
+			"training format must be one-to-one or group",
+		)
+	}
+
+	if math.IsNaN(program.AdmissionFee) ||
+		math.IsInf(program.AdmissionFee, 0) ||
+		program.AdmissionFee < 0 {
+		return errors.New("admission fee cannot be negative")
+	}
+
+	if math.IsNaN(program.MonthlyFee) ||
+		math.IsInf(program.MonthlyFee, 0) ||
+		program.MonthlyFee < 0 {
+		return errors.New("monthly fee cannot be negative")
+	}
+
+	return nil
+}
+
+func normalizeTrainingActivity(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "&", " and ")
+
+	var result strings.Builder
+	previousSeparator := false
+
+	for _, character := range value {
+		switch {
+		case character >= 'a' && character <= 'z':
+			result.WriteRune(character)
+			previousSeparator = false
+
+		case character >= '0' && character <= '9':
+			result.WriteRune(character)
+			previousSeparator = false
+
+		case !previousSeparator:
+			result.WriteRune('_')
+			previousSeparator = true
+		}
+	}
+
+	return strings.Trim(
+		result.String(),
+		"_",
+	)
+}
+
+func parseNonNegativeFloat(value string) (float64, error) {
+	value = strings.TrimSpace(value)
+
+	if value == "" {
+		return 0, nil
+	}
+
+	number, err := strconv.ParseFloat(value, 64)
+	if err != nil ||
+		math.IsNaN(number) ||
+		math.IsInf(number, 0) ||
+		number < 0 {
+		return 0, errors.New("invalid non-negative number")
+	}
+
+	return number, nil
+}
+
+func parsePositiveInt64(value string) (int64, error) {
+	number, err := strconv.ParseInt(
+		strings.TrimSpace(value),
+		10,
+		64,
+	)
+	if err != nil || number <= 0 {
+		return 0, errors.New("invalid positive integer")
+	}
+
+	return number, nil
+}
+
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := strings.ToLower(err.Error())
+
+	return strings.Contains(message, "unique constraint") ||
+		strings.Contains(message, "constraint failed") ||
+		strings.Contains(message, "is not unique")
 }
 
 func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -8392,10 +8766,6 @@ func containsPermission(permissions []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func isUniqueConstraintError(err error) bool {
-	return strings.Contains(strings.ToLower(err.Error()), "unique")
 }
 
 func admissionSelected(admissions []Admission, admissionID int64) bool {
