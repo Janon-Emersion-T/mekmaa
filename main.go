@@ -4752,9 +4752,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			COALESCE(a.training_program_id, 0),
 			COALESCE(
 				tp.name,
-				CASE a.practice_type
-					WHEN 'one_to_one_practice' THEN 'One-to-one practice'
-					WHEN 'group_practice' THEN 'Group practice'
+				CASE
+					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
 					ELSE ''
 				END
 			),
@@ -5438,9 +5437,8 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			COALESCE(a.training_program_id, 0),
 			COALESCE(
 				tp.name,
-				CASE a.practice_type
-					WHEN 'one_to_one_practice' THEN 'One-to-one practice'
-					WHEN 'group_practice' THEN 'Group practice'
+				CASE
+					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
 					ELSE ''
 				END
 			),
@@ -6696,9 +6694,8 @@ func (a *App) findAdmissionByID(
 			COALESCE(a.training_program_id, 0),
 			COALESCE(
 				tp.name,
-				CASE a.practice_type
-					WHEN 'one_to_one_practice' THEN 'One-to-one practice'
-					WHEN 'group_practice' THEN 'Group practice'
+				CASE
+					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
 					ELSE ''
 				END
 			),
@@ -6777,9 +6774,8 @@ func (a *App) findAdmissionByIDTx(
 			COALESCE(a.training_program_id, 0),
 			COALESCE(
 				tp.name,
-				CASE a.practice_type
-					WHEN 'one_to_one_practice' THEN 'One-to-one practice'
-					WHEN 'group_practice' THEN 'Group practice'
+				CASE
+					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
 					ELSE ''
 				END
 			),
