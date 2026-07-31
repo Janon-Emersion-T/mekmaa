@@ -8931,22 +8931,7 @@ func seedRoles(db *sql.DB) error {
 			"reports.view",
 			"events.manage",
 		},
-		"superadmin": {
-			"dashboard.view",
-			"editor.access",
-			"users.manage",
-			"roles.manage",
-			"admissions.manage",
-			"training_programs.manage",
-			"student_groups.manage",
-			"attendance.manage",
-			"space_bookings.manage",
-			"booking_requests.manage",
-			"pricing.manage",
-			"finance.manage",
-			"reports.view",
-			"events.manage",
-		},
+		"superadmin": allPermissions,
 	}
 	for roleName, permissions := range rolePermissions {
 		roleID, err := queryRoleID(db, roleName)
