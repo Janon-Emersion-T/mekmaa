@@ -730,6 +730,55 @@ func main() {
 	mux.Handle("/admin/admissions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateAdmissionHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteAdmissionHandler), "admissions.manage")))
+	mux.Handle(
+		"/admin/training-programs",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.trainingProgramManagementHandler),
+				"training_programs.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/training-programs/create",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.createTrainingProgramHandler),
+				"training_programs.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/training-programs/update",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.updateTrainingProgramHandler),
+				"training_programs.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/training-programs/toggle",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.toggleTrainingProgramHandler),
+				"training_programs.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/training-programs/delete",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.deleteTrainingProgramHandler),
+				"training_programs.manage",
+			),
+		),
+	)
 	mux.Handle("/admin/student-groups", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentGroupManagementHandler), "student_groups.manage")))
 	mux.Handle("/admin/student-groups/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentGroupHandler), "student_groups.manage")))
 	mux.Handle("/admin/student-groups/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateStudentGroupHandler), "student_groups.manage")))
@@ -1358,6 +1407,7 @@ func (a *App) adminRedirectHandler(w http.ResponseWriter, r *http.Request) {
 		{"users.manage", "/admin/users"},
 		{"roles.manage", "/admin/roles"},
 		{"admissions.manage", "/admin/admissions"},
+		{"training_programs.manage", "/admin/training-programs"},
 		{"student_groups.manage", "/admin/student-groups"},
 		{"attendance.manage", "/admin/attendance"},
 		{"space_bookings.manage", "/admin/bookings"},
@@ -1458,6 +1508,61 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	a.render(w, "admission-management", data, http.StatusOK)
+}
+
+func (a *App) trainingProgramManagementHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	http.Error(
+		w,
+		"Training Manager is not implemented yet.",
+		http.StatusNotImplemented,
+	)
+}
+
+func (a *App) createTrainingProgramHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	http.Error(
+		w,
+		"Training Manager create action is not implemented yet.",
+		http.StatusNotImplemented,
+	)
+}
+
+func (a *App) updateTrainingProgramHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	http.Error(
+		w,
+		"Training Manager update action is not implemented yet.",
+		http.StatusNotImplemented,
+	)
+}
+
+func (a *App) toggleTrainingProgramHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	http.Error(
+		w,
+		"Training Manager toggle action is not implemented yet.",
+		http.StatusNotImplemented,
+	)
+}
+
+func (a *App) deleteTrainingProgramHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	http.Error(
+		w,
+		"Training Manager delete action is not implemented yet.",
+		http.StatusNotImplemented,
+	)
 }
 
 func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -4495,6 +4600,237 @@ func (a *App) listAdmissionPricings() ([]AdmissionPricing, error) {
 		pricings = append(pricings, pricing)
 	}
 	return pricings, rows.Err()
+}
+
+func (a *App) listTrainingPrograms(includeInactive bool) ([]TrainingProgram, error) {
+	query := `
+		SELECT
+			id,
+			name,
+			activity,
+			training_format,
+			admission_fee,
+			monthly_fee,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM training_programs
+	`
+
+	if !includeInactive {
+		query += ` WHERE active = 1`
+	}
+
+	query += ` ORDER BY sort_order ASC, name ASC, id ASC`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var programs []TrainingProgram
+
+	for rows.Next() {
+		var program TrainingProgram
+		var active int
+
+		if err := rows.Scan(
+			&program.ID,
+			&program.Name,
+			&program.Activity,
+			&program.TrainingFormat,
+			&program.AdmissionFee,
+			&program.MonthlyFee,
+			&active,
+			&program.SortOrder,
+			&program.CreatedAt,
+			&program.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		program.Active = active == 1
+		programs = append(programs, program)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return programs, nil
+}
+
+func (a *App) findTrainingProgramByID(programID int64) (*TrainingProgram, error) {
+	row := a.db.QueryRow(`
+		SELECT
+			id,
+			name,
+			activity,
+			training_format,
+			admission_fee,
+			monthly_fee,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM training_programs
+		WHERE id = ?
+	`, programID)
+
+	var program TrainingProgram
+	var active int
+
+	if err := row.Scan(
+		&program.ID,
+		&program.Name,
+		&program.Activity,
+		&program.TrainingFormat,
+		&program.AdmissionFee,
+		&program.MonthlyFee,
+		&active,
+		&program.SortOrder,
+		&program.CreatedAt,
+		&program.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	program.Active = active == 1
+
+	return &program, nil
+}
+
+func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
+	now := time.Now().UTC()
+
+	result, err := a.db.Exec(`
+		INSERT INTO training_programs (
+			name,
+			activity,
+			training_format,
+			admission_fee,
+			monthly_fee,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		program.Name,
+		program.Activity,
+		program.TrainingFormat,
+		program.AdmissionFee,
+		program.MonthlyFee,
+		boolToInt(program.Active),
+		program.SortOrder,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	programID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	return programID, nil
+}
+
+func (a *App) updateTrainingProgram(program TrainingProgram) error {
+	_, err := a.db.Exec(`
+		UPDATE training_programs
+		SET
+			name = ?,
+			activity = ?,
+			training_format = ?,
+			admission_fee = ?,
+			monthly_fee = ?,
+			active = ?,
+			sort_order = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		program.Name,
+		program.Activity,
+		program.TrainingFormat,
+		program.AdmissionFee,
+		program.MonthlyFee,
+		boolToInt(program.Active),
+		program.SortOrder,
+		time.Now().UTC(),
+		program.ID,
+	)
+
+	return err
+}
+
+func (a *App) setTrainingProgramActive(programID int64, active bool) error {
+	result, err := a.db.Exec(`
+		UPDATE training_programs
+		SET active = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		boolToInt(active),
+		time.Now().UTC(),
+		programID,
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (a *App) deleteTrainingProgram(programID int64) error {
+	var admissionCount int
+
+	err := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM admissions
+		WHERE training_program_id = ?
+	`, programID).Scan(&admissionCount)
+	if err != nil {
+		return err
+	}
+
+	if admissionCount > 0 {
+		return errors.New(
+			"this training programme is assigned to students and cannot be deleted",
+		)
+	}
+
+	result, err := a.db.Exec(`
+		DELETE FROM training_programs
+		WHERE id = ?
+	`, programID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
 func (a *App) listFinanceTransactions() ([]FinanceTransaction, error) {
