@@ -4359,6 +4359,10 @@ func (a *App) requirePermission(next http.Handler, permission string) http.Handl
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
+		if containsRole(user.Roles, "superadmin") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if !containsPermission(permissions, permission) {
 			data := a.newTemplateData(w, r, user)
 			data.Title = "Forbidden"
