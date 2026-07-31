@@ -1828,12 +1828,7 @@
   </section>
   {{end}}
 </section>
-<div
-  id="admission-pricing-data"
-  class="hidden"
-  data-group-price="{{range .AdmissionPricings}}{{if eq .PracticeType "group_practice"}}{{printf "%.2f" .Price}}{{end}}{{end}}"
-  data-one-to-one-price="{{range .AdmissionPricings}}{{if eq .PracticeType "one_to_one_practice"}}{{printf "%.2f" .Price}}{{end}}{{end}}"
-></div>
+
 <script>
   (() => {
     const calculateAge = (value) => {
@@ -1879,42 +1874,62 @@
       input.value = `${year}-${month}-${day}`;
     };
 
-    const pricingNode = document.querySelector("#admission-pricing-data");
-    const pricingMap = {
-      group_practice: pricingNode?.dataset.groupPrice || "",
-      one_to_one_practice: pricingNode?.dataset.oneToOnePrice || "",
-    };
-
-    const bindPaymentPreview = (practiceSelector, previewSelector) => {
-      const practiceInput = document.querySelector(practiceSelector);
+    const bindTrainingProgrammePreview = (
+      programmeSelector,
+      previewSelector,
+    ) => {
+      const programmeInput = document.querySelector(programmeSelector);
       const previewNode = document.querySelector(previewSelector);
-      if (!practiceInput || !previewNode) return;
+
+      if (!programmeInput || !previewNode) return;
 
       const syncPreview = () => {
-        const rawAmount = pricingMap[practiceInput.value];
-        if (!rawAmount) {
-          previewNode.textContent = "Admission fee is not configured for the selected practice type yet.";
+        const selectedOption =
+          programmeInput.options[programmeInput.selectedIndex];
+
+        if (!selectedOption || !selectedOption.value) {
+          previewNode.textContent =
+            "Select a training programme to view its admission fee.";
           return;
         }
 
-        const amount = Number(rawAmount);
-        if (Number.isNaN(amount)) {
-          previewNode.textContent = "Admission fee is not configured for the selected practice type yet.";
+        const rawAdmissionFee =
+          selectedOption.dataset.admissionFee || "";
+
+        const admissionFee = Number(rawAdmissionFee);
+
+        if (
+          rawAdmissionFee === "" ||
+          Number.isNaN(admissionFee) ||
+          admissionFee < 0
+        ) {
+          previewNode.textContent =
+            "Admission fee is not configured for this training programme.";
           return;
         }
 
-        previewNode.textContent = `Receipt amount: LKR ${amount.toFixed(2)} based on the selected practice type.`;
+        previewNode.textContent =
+          `Receipt amount: LKR ${admissionFee.toFixed(2)} ` +
+          `for ${selectedOption.textContent.trim()}.`;
       };
 
       syncPreview();
-      practiceInput.addEventListener("change", syncPreview);
-      practiceInput.addEventListener("input", syncPreview);
+
+      programmeInput.addEventListener("change", syncPreview);
+      programmeInput.addEventListener("input", syncPreview);
     };
 
     bindAgeField("#new-date-of-birth", "#new-age");
     bindAgeField("#edit-date-of-birth", "#edit-age");
-    bindPaymentPreview("#new-practice-type", "#new-payment-preview");
-    bindPaymentPreview("#edit-practice-type", "#edit-payment-preview");
+    bindTrainingProgrammePreview(
+      "#new-training-program",
+      "#new-payment-preview",
+    );
+
+    bindTrainingProgrammePreview(
+      "#edit-training-program",
+      "#edit-payment-preview",
+    );
     setDefaultAdmissionDate("#new-admission-date");
   })();
 </script>
