@@ -6,7 +6,7 @@
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-semibold sm:text-3xl">Student groups</h1>
-        <p class="mt-2 text-sm text-slate/70">Manage groups and student assignments</p>
+        <p class="mt-2 text-sm text-slate/70">Manage groups, student assignments, and coach assignments</p>
       </div>
       <a href="/admin/student-groups?action=new#group-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add new group</a>
     </div>
@@ -47,6 +47,29 @@
         </div>
       </div>
 
+      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign coaches</h3>
+          <p class="text-xs text-slate/55">{{len .AvailableCoaches}} available</p>
+        </div>
+
+        <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {{range .AvailableCoaches}}
+          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
+            <input type="checkbox" name="coach_ids" value="{{.ID}}" class="mt-1" />
+            <span class="min-w-0">
+              <span class="block font-medium text-obsidian">{{.Name}}</span>
+              <span class="mt-1 block truncate text-xs text-slate/60">{{.Email}}</span>
+            </span>
+          </label>
+          {{else}}
+          <p class="text-sm text-slate/60">
+            No coach users are available. Assign the coach role through User Management first.
+          </p>
+          {{end}}
+        </div>
+      </div>
+
       <div class="flex justify-end">
         <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Create group</button>
       </div>
@@ -62,6 +85,7 @@
             <th class="px-5 py-4 font-medium sm:px-6">Group</th>
             <th class="px-5 py-4 font-medium">Code</th>
             <th class="px-5 py-4 font-medium">Students</th>
+            <th class="px-5 py-4 font-medium">Coaches</th>
             <th class="px-5 py-4 font-medium">Preview</th>
             <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
           </tr>
@@ -75,6 +99,14 @@
             </td>
             <td class="px-5 py-4 text-slate/75">{{.Code}}</td>
             <td class="px-5 py-4 text-slate/75">{{.StudentCount}}</td>
+            <td class="px-5 py-4 text-slate/75">
+              {{if .Coaches}}
+              {{range $index, $coach := .Coaches}}{{if lt $index 2}}<p>{{$coach.Name}}</p>{{end}}{{end}}
+              {{if gt .CoachCount 2}}<p class="mt-1 text-xs text-slate/55">+ {{sub .CoachCount 2}} more</p>{{end}}
+              {{else}}
+              <p>No coaches</p>
+              {{end}}
+            </td>
             <td class="px-5 py-4 text-slate/75">
               {{if .Students}}
               {{range $index, $student := .Students}}{{if lt $index 3}}<p>{{$student.StudentID}} · {{$student.FullName}}</p>{{end}}{{end}}
@@ -97,7 +129,7 @@
           </tr>
           {{else}}
           <tr>
-            <td colspan="5" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No groups found.</td>
+            <td colspan="6" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No groups found.</td>
           </tr>
           {{end}}
         </tbody>
@@ -129,19 +161,39 @@
           <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Students</p>
           <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedGroup.StudentCount}}</p>
         </div>
+        <div class="rounded-2xl bg-cloud px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Coaches</p>
+          <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedGroup.CoachCount}}</p>
+        </div>
       </div>
-      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
-        <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assigned students</h3>
-        <div class="mt-4 space-y-3">
-          {{range .SelectedGroup.Students}}
-          <div class="rounded-2xl bg-white px-4 py-3">
-            <p class="font-medium text-obsidian">{{.FullName}}</p>
-            <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.StudentID}}</p>
-            <p class="mt-1 text-sm text-slate/60">{{.School}}</p>
+      <div class="space-y-4">
+        <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assigned coaches</h3>
+          <div class="mt-4 space-y-3">
+            {{range .SelectedGroup.Coaches}}
+            <div class="rounded-2xl bg-white px-4 py-3">
+              <p class="font-medium text-obsidian">{{.Name}}</p>
+              <p class="mt-1 text-sm text-slate/60">{{.Email}}</p>
+            </div>
+            {{else}}
+            <p class="text-sm text-slate/60">No coaches assigned.</p>
+            {{end}}
           </div>
-          {{else}}
-          <p class="text-sm text-slate/60">No students assigned.</p>
-          {{end}}
+        </div>
+
+        <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assigned students</h3>
+          <div class="mt-4 space-y-3">
+            {{range .SelectedGroup.Students}}
+            <div class="rounded-2xl bg-white px-4 py-3">
+              <p class="font-medium text-obsidian">{{.FullName}}</p>
+              <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.StudentID}}</p>
+              <p class="mt-1 text-sm text-slate/60">{{.School}}</p>
+            </div>
+            {{else}}
+            <p class="text-sm text-slate/60">No students assigned.</p>
+            {{end}}
+          </div>
         </div>
       </div>
     </div>
@@ -180,6 +232,35 @@
           </label>
           {{else}}
           <p class="text-sm text-slate/60">No students available.</p>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign coaches</h3>
+          <p class="text-xs text-slate/55">{{len .AvailableCoaches}} available</p>
+        </div>
+
+        <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {{range .AvailableCoaches}}
+          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
+            <input
+              type="checkbox"
+              name="coach_ids"
+              value="{{.ID}}"
+              {{if userSelected $.SelectedGroup.Coaches .ID}}checked{{end}}
+              class="mt-1"
+            />
+            <span class="min-w-0">
+              <span class="block font-medium text-obsidian">{{.Name}}</span>
+              <span class="mt-1 block truncate text-xs text-slate/60">{{.Email}}</span>
+            </span>
+          </label>
+          {{else}}
+          <p class="text-sm text-slate/60">
+            No coach users are available. Assign the coach role through User Management first.
+          </p>
           {{end}}
         </div>
       </div>

@@ -340,6 +340,8 @@ type StudentGroup struct {
 	Description  string
 	Students     []Admission
 	StudentCount int
+	Coaches      []User
+	CoachCount   int
 	CreatedAt    time.Time
 }
 
@@ -542,6 +544,7 @@ type TemplateData struct {
 	StudentGroups           []StudentGroup
 	SelectedGroup           *StudentGroup
 	GroupMode               string
+	AvailableCoaches        []User
 	AttendanceRecords       []AttendanceRecord
 	AttendanceDate          string
 	RecentDates             []string
@@ -2371,11 +2374,19 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	coaches, err := a.listCoachUsers()
+	if err != nil {
+		log.Printf("list coach users for student groups: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Student Groups"
 	data.Description = "Manage student groups."
 	data.StudentGroups = groups
 	data.Admissions = admissions
+	data.AvailableCoaches = coaches
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -3734,11 +3745,12 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 
 	group := studentGroupFromRequest(r)
 	admissionIDs := normalizeAdmissionIDs(r.Form["admission_ids"])
+	coachIDs := normalizeAdmissionIDs(r.Form["coach_ids"])
 	if err := validateStudentGroup(group); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.createStudentGroup(group, admissionIDs); err != nil {
+	if err := a.createStudentGroup(group, admissionIDs, coachIDs); err != nil {
 		if isUniqueConstraintError(err) {
 			http.Error(w, "group code already exists", http.StatusConflict)
 			return
@@ -3775,11 +3787,12 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	group := studentGroupFromRequest(r)
 	group.ID = groupID
 	admissionIDs := normalizeAdmissionIDs(r.Form["admission_ids"])
+	coachIDs := normalizeAdmissionIDs(r.Form["coach_ids"])
 	if err := validateStudentGroup(group); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.updateStudentGroup(group, admissionIDs); err != nil {
+	if err := a.updateStudentGroup(group, admissionIDs, coachIDs); err != nil {
 		if isUniqueConstraintError(err) {
 			http.Error(w, "group code already exists", http.StatusConflict)
 			return
@@ -4488,6 +4501,51 @@ func (a *App) listUsers() ([]User, error) {
 	return users, nil
 }
 
+func (a *App) listCoachUsers() ([]User, error) {
+	rows, err := a.db.Query(`
+		SELECT DISTINCT
+			u.id,
+			u.email,
+			u.name,
+			u.email_verified_at,
+			u.created_at
+		FROM users u
+		JOIN user_roles ur
+			ON ur.user_id = u.id
+		JOIN roles r
+			ON r.id = ur.role_id
+		WHERE r.name = 'coach'
+		ORDER BY u.name COLLATE NOCASE ASC, u.id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var coaches []User
+
+	for rows.Next() {
+		var coach User
+		var verifiedAt sql.NullTime
+
+		if err := rows.Scan(
+			&coach.ID,
+			&coach.Email,
+			&coach.Name,
+			&verifiedAt,
+			&coach.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		coach.Verified = verifiedAt.Valid
+		coach.Roles = []string{"coach"}
+		coaches = append(coaches, coach)
+	}
+
+	return coaches, rows.Err()
+}
+
 func (a *App) rolesForUser(userID int64) ([]string, error) {
 	rows, err := a.db.Query(`
 		SELECT r.name
@@ -4945,8 +5003,16 @@ func (a *App) listStudentGroups() ([]StudentGroup, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		coaches, err := a.listCoachesForGroup(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
 		groups[i].Students = students
 		groups[i].StudentCount = len(students)
+		groups[i].Coaches = coaches
+		groups[i].CoachCount = len(coaches)
 	}
 
 	return groups, nil
@@ -5749,6 +5815,54 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 	return schedules, rows.Err()
 }
 
+func (a *App) listCoachesForGroup(groupID int64) ([]User, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			u.id,
+			u.email,
+			u.name,
+			u.email_verified_at,
+			u.created_at
+		FROM users u
+		JOIN student_group_coaches sgc
+			ON sgc.user_id = u.id
+		JOIN user_roles ur
+			ON ur.user_id = u.id
+		JOIN roles r
+			ON r.id = ur.role_id
+		WHERE sgc.group_id = ?
+			AND r.name = 'coach'
+		ORDER BY u.name COLLATE NOCASE ASC, u.id ASC
+	`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var coaches []User
+
+	for rows.Next() {
+		var coach User
+		var verifiedAt sql.NullTime
+
+		if err := rows.Scan(
+			&coach.ID,
+			&coach.Email,
+			&coach.Name,
+			&verifiedAt,
+			&coach.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		coach.Verified = verifiedAt.Valid
+		coach.Roles = []string{"coach"}
+		coaches = append(coaches, coach)
+	}
+
+	return coaches, rows.Err()
+}
+
 func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 	rows, err := a.db.Query(`
 		SELECT a.id, a.student_id, a.full_name, COALESCE(a.admission_date, ''), a.date_of_birth, a.gender, a.address, a.passport_number, a.school,
@@ -5795,8 +5909,63 @@ func (a *App) createAdmission(admission Admission) error {
 	_, _, err := a.createAdmissionWithOptionalPayment(admission, false, 0)
 	return err
 }
+func replaceStudentGroupCoachesTx(
+	tx *sql.Tx,
+	groupID int64,
+	coachIDs []int64,
+) error {
+	if _, err := tx.Exec(
+		`DELETE FROM student_group_coaches WHERE group_id = ?`,
+		groupID,
+	); err != nil {
+		return err
+	}
 
-func (a *App) createStudentGroup(group StudentGroup, admissionIDs []int64) error {
+	now := time.Now().UTC()
+
+	for _, coachID := range coachIDs {
+		result, err := tx.Exec(`
+			INSERT INTO student_group_coaches (
+				group_id,
+				user_id,
+				created_at
+			)
+			SELECT ?, u.id, ?
+			FROM users u
+			JOIN user_roles ur
+				ON ur.user_id = u.id
+			JOIN roles r
+				ON r.id = ur.role_id
+			WHERE u.id = ?
+				AND r.name = 'coach'
+			LIMIT 1
+		`,
+			groupID,
+			now,
+			coachID,
+		)
+		if err != nil {
+			return err
+		}
+
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+
+		if affected != 1 {
+			return errors.New("selected coach is invalid")
+		}
+	}
+
+	return nil
+}
+
+func (a *App) createStudentGroup(
+	group StudentGroup,
+	admissionIDs []int64,
+	coachIDs []int64,
+) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
@@ -5818,6 +5987,10 @@ func (a *App) createStudentGroup(group StudentGroup, admissionIDs []int64) error
 		if _, err := tx.Exec(`INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, groupID, admissionID); err != nil {
 			return err
 		}
+	}
+
+	if err := replaceStudentGroupCoachesTx(tx, groupID, coachIDs); err != nil {
+		return err
 	}
 
 	return tx.Commit()
@@ -6285,7 +6458,11 @@ func (a *App) updateAdmissionWithOptionalPayment(
 	return financeTransactionID, nil
 }
 
-func (a *App) updateStudentGroup(group StudentGroup, admissionIDs []int64) error {
+func (a *App) updateStudentGroup(
+	group StudentGroup,
+	admissionIDs []int64,
+	coachIDs []int64,
+) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
@@ -6306,6 +6483,9 @@ func (a *App) updateStudentGroup(group StudentGroup, admissionIDs []int64) error
 		if _, err := tx.Exec(`INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, group.ID, admissionID); err != nil {
 			return err
 		}
+	}
+	if err := replaceStudentGroupCoachesTx(tx, group.ID, coachIDs); err != nil {
+		return err
 	}
 
 	return tx.Commit()
@@ -7354,12 +7534,21 @@ func runMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+
 		`CREATE TABLE IF NOT EXISTS student_group_members (
 			group_id INTEGER NOT NULL,
 			admission_id INTEGER NOT NULL,
 			PRIMARY KEY (group_id, admission_id),
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
 			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS student_group_coaches (
+			group_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY (group_id, user_id),
+			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS attendance_records (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -9132,6 +9321,15 @@ func admissionSelected(admissions []Admission, admissionID int64) bool {
 	}
 	return false
 }
+func userSelected(users []User, userID int64) bool {
+	for _, user := range users {
+		if user.ID == userID {
+			return true
+		}
+	}
+
+	return false
+}
 
 func normalizeAttendanceStatus(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
@@ -10262,6 +10460,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 			return containsPermission(user.Permissions, permission)
 		},
 		"admissionSelected":         admissionSelected,
+		"userSelected":              userSelected,
 		"admissionAge":              admissionAge,
 		"attendanceCount":           attendanceCount,
 		"attendanceRecordFor":       attendanceRecordFor,
