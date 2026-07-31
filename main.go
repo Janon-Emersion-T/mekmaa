@@ -2406,7 +2406,20 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 
 func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	groups, err := a.listStudentGroups()
+
+	var (
+		groups []StudentGroup
+		err    error
+	)
+
+	if userHasRole(user, "coach") &&
+		!userHasRole(user, "admin") &&
+		!userHasRole(user, "superadmin") {
+		groups, err = a.listStudentGroupsForCoach(user.ID)
+	} else {
+		groups, err = a.listStudentGroups()
+	}
+
 	if err != nil {
 		log.Printf("list student groups for attendance: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -2429,10 +2442,23 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 		data.AttendanceDate = parsedDate.Format("2006-01-02")
 	}
 
-	groupID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("group_id")), 10, 64)
+	groupID, err := strconv.ParseInt(
+		strings.TrimSpace(r.URL.Query().Get("group_id")),
+		10,
+		64,
+	)
+
 	if err == nil && groupID > 0 {
-		selectedGroup, err := a.findStudentGroupByID(groupID)
-		if err == nil {
+		var selectedGroup *StudentGroup
+
+		for i := range groups {
+			if groups[i].ID == groupID {
+				selectedGroup = &groups[i]
+				break
+			}
+		}
+
+		if selectedGroup != nil {
 			data.SelectedGroup = selectedGroup
 			records, err := a.listAttendanceRecords(groupID, data.AttendanceDate)
 			if err == nil {
@@ -3854,6 +3880,23 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid group id", http.StatusBadRequest)
 		return
 	}
+	currentUser, _ := a.currentUser(r.Context())
+
+	if userHasRole(currentUser, "coach") &&
+		!userHasRole(currentUser, "admin") &&
+		!userHasRole(currentUser, "superadmin") {
+		assigned, err := a.coachAssignedToGroup(currentUser.ID, groupID)
+		if err != nil {
+			log.Printf("check coach group assignment: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		if !assigned {
+			http.Error(w, "you are not assigned to this group", http.StatusForbidden)
+			return
+		}
+	}
 	attendanceDate := strings.TrimSpace(r.FormValue("attendance_date"))
 	parsedAttendanceDate, err := time.Parse("2006-01-02", attendanceDate)
 	if err != nil {
@@ -5016,6 +5059,92 @@ func (a *App) listStudentGroups() ([]StudentGroup, error) {
 	}
 
 	return groups, nil
+}
+
+func (a *App) listStudentGroupsForCoach(userID int64) ([]StudentGroup, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			sg.id,
+			sg.name,
+			sg.code,
+			sg.description,
+			sg.created_at
+		FROM student_groups sg
+		JOIN student_group_coaches sgc
+			ON sgc.group_id = sg.id
+		WHERE sgc.user_id = ?
+		ORDER BY sg.created_at DESC, sg.id DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var groups []StudentGroup
+
+	for rows.Next() {
+		var group StudentGroup
+
+		if err := rows.Scan(
+			&group.ID,
+			&group.Name,
+			&group.Code,
+			&group.Description,
+			&group.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		groups = append(groups, group)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range groups {
+		students, err := a.listStudentsForGroup(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		coaches, err := a.listCoachesForGroup(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		groups[i].Students = students
+		groups[i].StudentCount = len(students)
+		groups[i].Coaches = coaches
+		groups[i].CoachCount = len(coaches)
+	}
+
+	return groups, nil
+}
+
+func (a *App) coachAssignedToGroup(
+	userID int64,
+	groupID int64,
+) (bool, error) {
+	var assigned int
+
+	err := a.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM student_group_coaches
+			WHERE user_id = ?
+				AND group_id = ?
+		)
+	`, userID, groupID).Scan(&assigned)
+	if err != nil {
+		return false, err
+	}
+
+	return assigned == 1, nil
 }
 
 func (a *App) listAttendanceRecords(groupID int64, attendanceDate string) ([]AttendanceRecord, error) {
