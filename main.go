@@ -5508,16 +5508,39 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 	monthEnd := monthDate.AddDate(0, 1, -1).Format("2006-01-02")
 	rows, err := a.db.Query(`
 		SELECT
-			a.id, a.student_id, a.full_name, COALESCE(a.admission_date, ''), a.date_of_birth, a.gender,
-			a.practice_type, a.address, a.passport_number, a.school, a.guardian_name, a.guardian_relationship,
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.training_program_id, 0),
+			COALESCE(
+				tp.name,
+				CASE a.practice_type
+					WHEN 'one_to_one_practice' THEN 'One-to-one practice'
+					WHEN 'group_practice' THEN 'Group practice'
+					ELSE ''
+				END
+			),
+			a.address,
+			a.passport_number,
+			a.school,
+			a.guardian_name,
+			a.guardian_relationship,
 			a.guardian_contact_number, a.guardian_alternative_contact_number, a.medical_information,
 			COALESCE(a.payment_collected, 0), a.payment_collected_at, COALESCE(a.admission_payment_amount, 0),
 			COALESCE(a.finance_transaction_id, 0), a.created_at,
-			COALESCE(ap.monthly_fee, 0),
+			COALESCE(tp.monthly_fee, ap.monthly_fee, 0),
 			smp.id, smp.amount, smp.payment_method, smp.finance_transaction_id,
 			COALESCE(smp.collected_by_user_id, 0), smp.collected_at, smp.created_at
 		FROM admissions a
-		LEFT JOIN admission_pricing ap ON ap.practice_type = a.practice_type
+		LEFT JOIN training_programs tp
+			ON tp.id = a.training_program_id
+		LEFT JOIN admission_pricing ap
+			ON a.training_program_id IS NULL
+			AND ap.practice_type = a.practice_type
 		LEFT JOIN student_monthly_payments smp
 			ON smp.admission_id = a.id AND smp.payment_month = ?
 		WHERE a.admission_date <= ?
@@ -5547,7 +5570,12 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 		)
 		if err := rows.Scan(
 			&row.Admission.ID, &row.Admission.StudentID, &row.Admission.FullName, &row.Admission.AdmissionDate,
-			&row.Admission.DateOfBirth, &row.Admission.Gender, &row.Admission.PracticeType, &row.Admission.Address,
+			&row.Admission.DateOfBirth,
+			&row.Admission.Gender,
+			&row.Admission.PracticeType,
+			&row.Admission.TrainingProgramID,
+			&row.Admission.TrainingProgramName,
+			&row.Admission.Address,
 			&row.Admission.PassportNumber, &row.Admission.School, &row.Admission.GuardianName,
 			&row.Admission.GuardianRelationship, &row.Admission.GuardianContactNumber,
 			&row.Admission.GuardianAlternativePhone, &row.Admission.MedicalInformation, &admissionPaid,
