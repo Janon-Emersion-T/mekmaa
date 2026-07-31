@@ -8203,11 +8203,41 @@ func seedRoles(db *sql.DB) error {
 		}
 	}
 	rolePermissions := map[string][]string{
-		"customer":   {"dashboard.view"},
-		"editor":     {"dashboard.view", "editor.access"},
-		"coach":      {"dashboard.view", "attendance.manage"},
-		"admin":      {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"},
-		"superadmin": {"dashboard.view", "editor.access", "users.manage", "roles.manage", "admissions.manage", "student_groups.manage", "attendance.manage", "space_bookings.manage", "booking_requests.manage", "pricing.manage", "finance.manage", "reports.view", "events.manage"},
+		"customer": {"dashboard.view"},
+		"editor":   {"dashboard.view", "editor.access"},
+		"coach":    {"dashboard.view", "attendance.manage"},
+		"admin": {
+			"dashboard.view",
+			"editor.access",
+			"users.manage",
+			"roles.manage",
+			"admissions.manage",
+			"training_programs.manage",
+			"student_groups.manage",
+			"attendance.manage",
+			"space_bookings.manage",
+			"booking_requests.manage",
+			"pricing.manage",
+			"finance.manage",
+			"reports.view",
+			"events.manage",
+		},
+		"superadmin": {
+			"dashboard.view",
+			"editor.access",
+			"users.manage",
+			"roles.manage",
+			"admissions.manage",
+			"training_programs.manage",
+			"student_groups.manage",
+			"attendance.manage",
+			"space_bookings.manage",
+			"booking_requests.manage",
+			"pricing.manage",
+			"finance.manage",
+			"reports.view",
+			"events.manage",
+		},
 	}
 	for roleName, permissions := range rolePermissions {
 		roleID, err := queryRoleID(db, roleName)
