@@ -6959,9 +6959,18 @@ func (a *App) findFinanceTransactionByID(transactionID int64) (*FinanceTransacti
 }
 
 func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recordedByUserID int64) (int64, error) {
-	pricing, err := admissionPricingByPracticeTypeTx(tx, admission.PracticeType)
+	admissionFee, _, err := trainingProgramFeesForAdmissionTx(
+		tx,
+		admission,
+	)
 	if err != nil {
 		return 0, err
+	}
+
+	if admissionFee <= 0 {
+		return 0, errors.New(
+			"admission fee is not configured for the selected training programme",
+		)
 	}
 
 	now := time.Now().UTC()
@@ -6980,7 +6989,7 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recorde
 		admission.FullName,
 		description,
 		"cash",
-		pricing.Price,
+		admissionFee,
 		recordedByUserID,
 		now,
 		now,
@@ -7004,7 +7013,7 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recorde
 		WHERE id = ?
 	`,
 		now,
-		pricing.Price,
+		admissionFee,
 		transactionID,
 		now,
 		admission.ID,
@@ -7015,29 +7024,50 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recorde
 	return transactionID, nil
 }
 
-func admissionPricingByPracticeTypeTx(tx *sql.Tx, practiceType string) (*AdmissionPricing, error) {
-	row := tx.QueryRow(`
-		SELECT id, practice_type, price, COALESCE(monthly_fee, 0), created_at, updated_at
-		FROM admission_pricing
-		WHERE practice_type = ?
-		LIMIT 1
-	`, practiceType)
+func trainingProgramFeesForAdmissionTx(
+	tx *sql.Tx,
+	admission Admission,
+) (float64, float64, error) {
+	if admission.TrainingProgramID > 0 {
+		var admissionFee float64
+		var monthlyFee float64
 
-	var pricing AdmissionPricing
-	if err := row.Scan(
-		&pricing.ID,
-		&pricing.PracticeType,
-		&pricing.Price,
-		&pricing.MonthlyFee,
-		&pricing.CreatedAt,
-		&pricing.UpdatedAt,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errors.New("admission pricing is not configured for the selected practice type")
+		err := tx.QueryRow(`
+			SELECT
+				COALESCE(admission_fee, 0),
+				COALESCE(monthly_fee, 0)
+			FROM training_programs
+			WHERE id = ?
+		`,
+			admission.TrainingProgramID,
+		).Scan(
+			&admissionFee,
+			&monthlyFee,
+		)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return 0, 0, errors.New(
+					"the training programme assigned to this student was not found",
+				)
+			}
+
+			return 0, 0, err
 		}
-		return nil, err
+
+		return admissionFee, monthlyFee, nil
 	}
-	return &pricing, nil
+
+	// Temporary backward-compatibility path for admissions created
+	// before training_program_id was introduced.
+	pricing, err := admissionPricingByPracticeTypeTx(
+		tx,
+		admission.PracticeType,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return pricing.Price, pricing.MonthlyFee, nil
 }
 
 func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth string, monthDate time.Time, paymentMethod string, recordedByUserID int64) (int64, error) {
@@ -7068,11 +7098,15 @@ func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth strin
 		return 0, err
 	}
 
-	pricing, err := admissionPricingByPracticeTypeTx(tx, admission.PracticeType)
+	_, monthlyFee, err := trainingProgramFeesForAdmissionTx(
+		tx,
+		*admission,
+	)
 	if err != nil {
 		return 0, err
 	}
-	if pricing.MonthlyFee <= 0 {
+
+	if monthlyFee <= 0 {
 		return 0, ErrMonthlyFeeNotConfigured
 	}
 	now := time.Now().UTC()
@@ -7091,7 +7125,7 @@ func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth strin
 		admission.FullName,
 		description,
 		paymentMethod,
-		pricing.MonthlyFee,
+		monthlyFee,
 		recordedByUserID,
 		now,
 		now,
@@ -7109,7 +7143,7 @@ func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth strin
 			admission_id, payment_month, amount, payment_method, finance_transaction_id,
 			collected_by_user_id, collected_at, created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, admission.ID, paymentMonth, pricing.MonthlyFee, paymentMethod, transactionID, recordedByUserID, now, now); err != nil {
+	`, admission.ID, paymentMonth, monthlyFee, paymentMethod, transactionID, recordedByUserID, now, now); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return 0, ErrStudentPaymentAlreadyCollected
 		}
