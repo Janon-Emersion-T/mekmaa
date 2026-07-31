@@ -2500,17 +2500,10 @@ func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	admissionPricings, err := a.listAdmissionPricings()
-	if err != nil {
-		log.Printf("list admission pricing: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
 	data := a.newTemplateData(w, r, user)
-	data.Title = "Pricing"
+	data.Title = "Booking Pricing"
 	data.Description = "Manage booking pricing."
 	data.Pricings = pricings
-	data.AdmissionPricings = admissionPricings
 	data.PricingSettings = settings
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
@@ -7068,6 +7061,47 @@ func trainingProgramFeesForAdmissionTx(
 	}
 
 	return pricing.Price, pricing.MonthlyFee, nil
+}
+
+func admissionPricingByPracticeTypeTx(
+	tx *sql.Tx,
+	practiceType string,
+) (*AdmissionPricing, error) {
+	row := tx.QueryRow(`
+		SELECT
+			id,
+			practice_type,
+			price,
+			COALESCE(monthly_fee, 0),
+			created_at,
+			updated_at
+		FROM admission_pricing
+		WHERE practice_type = ?
+		LIMIT 1
+	`,
+		practiceType,
+	)
+
+	var pricing AdmissionPricing
+
+	if err := row.Scan(
+		&pricing.ID,
+		&pricing.PracticeType,
+		&pricing.Price,
+		&pricing.MonthlyFee,
+		&pricing.CreatedAt,
+		&pricing.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New(
+				"admission pricing is not configured for the selected practice type",
+			)
+		}
+
+		return nil, err
+	}
+
+	return &pricing, nil
 }
 
 func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth string, monthDate time.Time, paymentMethod string, recordedByUserID int64) (int64, error) {
