@@ -671,6 +671,9 @@ func main() {
 	if err := seedRoles(db); err != nil {
 		log.Fatalf("seed roles: %v", err)
 	}
+	if err := seedTrainingPrograms(db); err != nil {
+		log.Fatalf("seed training programmes: %v", err)
+	}
 	if err := bootstrapSuperadmin(db); err != nil {
 		log.Fatalf("bootstrap superadmin: %v", err)
 	}
@@ -6278,6 +6281,7 @@ func runMigrations(db *sql.DB) error {
 			payment_collected_at DATETIME,
 			admission_payment_amount REAL NOT NULL DEFAULT 0,
 			finance_transaction_id INTEGER,
+			training_program_id INTEGER,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
@@ -6451,6 +6455,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_admissions_created_at ON admissions(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_admissions_training_program_id ON admissions(training_program_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
@@ -6476,6 +6481,7 @@ func runMigrations(db *sql.DB) error {
 		`ALTER TABLE admissions ADD COLUMN payment_collected_at DATETIME`,
 		`ALTER TABLE admissions ADD COLUMN admission_payment_amount REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE admissions ADD COLUMN finance_transaction_id INTEGER`,
+		`ALTER TABLE admissions ADD COLUMN training_program_id INTEGER`,
 		`CREATE INDEX IF NOT EXISTS idx_training_programs_active
 		ON training_programs(active)`,
 		`CREATE INDEX IF NOT EXISTS idx_training_programs_sort_order
@@ -6591,6 +6597,83 @@ func runMigrations(db *sql.DB) error {
 	}
 	_, err = db.Exec(`DELETE FROM email_verifications WHERE expires_at <= ?`, time.Now().UTC())
 	return err
+}
+
+func seedTrainingPrograms(db *sql.DB) error {
+	now := time.Now().UTC()
+
+	programs := []TrainingProgram{
+		{
+			Name:           "1 to 1 Cricket Practice",
+			Activity:       "cricket",
+			TrainingFormat: "one_to_one",
+			SortOrder:      10,
+		},
+		{
+			Name:           "Group Practice - Cricket",
+			Activity:       "cricket",
+			TrainingFormat: "group",
+			SortOrder:      20,
+		},
+		{
+			Name:           "1 to 1 Zumba Practice",
+			Activity:       "zumba",
+			TrainingFormat: "one_to_one",
+			SortOrder:      30,
+		},
+		{
+			Name:           "Group Practice - Zumba",
+			Activity:       "zumba",
+			TrainingFormat: "group",
+			SortOrder:      40,
+		},
+		{
+			Name:           "1 to 1 Badminton Practice",
+			Activity:       "badminton",
+			TrainingFormat: "one_to_one",
+			SortOrder:      50,
+		},
+		{
+			Name:           "Group Practice - Badminton",
+			Activity:       "badminton",
+			TrainingFormat: "group",
+			SortOrder:      60,
+		},
+	}
+
+	for _, program := range programs {
+		_, err := db.Exec(`
+			INSERT INTO training_programs (
+				name,
+				activity,
+				training_format,
+				admission_fee,
+				monthly_fee,
+				active,
+				sort_order,
+				created_at,
+				updated_at
+			)
+			VALUES (?, ?, ?, 0, 0, 1, ?, ?, ?)
+			ON CONFLICT(activity, training_format) DO NOTHING
+		`,
+			program.Name,
+			program.Activity,
+			program.TrainingFormat,
+			program.SortOrder,
+			now,
+			now,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"seed training programme %q: %w",
+				program.Name,
+				err,
+			)
+		}
+	}
+
+	return nil
 }
 
 func backfillBookingFinancials(db *sql.DB) error {
@@ -9009,6 +9092,7 @@ func isIgnorableMigrationError(err error, stmt string) bool {
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN payment_collected_at") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN admission_payment_amount") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN finance_transaction_id") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN training_program_id") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_name") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_email") ||
