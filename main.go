@@ -6455,7 +6455,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_admissions_created_at ON admissions(created_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_admissions_training_program_id ON admissions(training_program_id)`,
+
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
@@ -6481,7 +6481,6 @@ func runMigrations(db *sql.DB) error {
 		`ALTER TABLE admissions ADD COLUMN payment_collected_at DATETIME`,
 		`ALTER TABLE admissions ADD COLUMN admission_payment_amount REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE admissions ADD COLUMN finance_transaction_id INTEGER`,
-		`ALTER TABLE admissions ADD COLUMN training_program_id INTEGER`,
 		`CREATE INDEX IF NOT EXISTS idx_training_programs_active
 		ON training_programs(active)`,
 		`CREATE INDEX IF NOT EXISTS idx_training_programs_sort_order
@@ -6493,6 +6492,41 @@ func runMigrations(db *sql.DB) error {
 			return err
 		}
 	}
+
+	trainingProgramIDExists, err := tableHasColumn(
+		db,
+		"admissions",
+		"training_program_id",
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"check admissions training_program_id column: %w",
+			err,
+		)
+	}
+
+	if !trainingProgramIDExists {
+		if _, err := db.Exec(`
+			ALTER TABLE admissions
+			ADD COLUMN training_program_id INTEGER
+		`); err != nil {
+			return fmt.Errorf(
+				"add admissions training_program_id column: %w",
+				err,
+			)
+		}
+	}
+
+	if _, err := db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_admissions_training_program_id
+		ON admissions(training_program_id)
+	`); err != nil {
+		return fmt.Errorf(
+			"create admissions training programme index: %w",
+			err,
+		)
+	}
+
 	if _, err := db.Exec(`UPDATE admissions SET student_id = 'STD-' || printf('%05d', id) WHERE student_id IS NULL OR TRIM(student_id) = ''`); err != nil {
 		return err
 	}
@@ -9092,7 +9126,6 @@ func isIgnorableMigrationError(err error, stmt string) bool {
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN payment_collected_at") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN admission_payment_amount") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN finance_transaction_id") ||
-		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN training_program_id") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_name") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_email") ||
