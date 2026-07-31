@@ -3770,8 +3770,8 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	group := studentGroupFromRequest(r)
-	admissionIDs := normalizeAdmissionIDs(r.Form["admission_ids"])
-	coachIDs := normalizeAdmissionIDs(r.Form["coach_ids"])
+	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
+	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
 	if err := validateStudentGroup(group); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -3812,8 +3812,8 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 
 	group := studentGroupFromRequest(r)
 	group.ID = groupID
-	admissionIDs := normalizeAdmissionIDs(r.Form["admission_ids"])
-	coachIDs := normalizeAdmissionIDs(r.Form["coach_ids"])
+	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
+	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
 	if err := validateStudentGroup(group); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -8618,7 +8618,7 @@ func containsSensitivePermission(permissions []string) bool {
 	return containsPermission(permissions, "users.manage") || containsPermission(permissions, "roles.manage")
 }
 
-func normalizeAdmissionIDs(values []string) []int64 {
+func normalizePositiveIDs(values []string) []int64 {
 	seen := map[int64]struct{}{}
 	var ids []int64
 	for _, value := range values {
@@ -8887,7 +8887,6 @@ func validateAdmission(admission Admission) error {
 		return errors.New("date of birth is required")
 	case admission.Gender != "male" && admission.Gender != "female":
 		return errors.New("gender is required")
-		return errors.New("training programme is required")
 	case admission.Address == "":
 		return errors.New("address is required")
 	case admission.PassportNumber == "":

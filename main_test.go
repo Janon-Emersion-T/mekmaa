@@ -233,6 +233,99 @@ func newAuthorizationTestApp(t *testing.T) *App {
 	return &App{db: db}
 }
 
+func TestCoachOnlyLoadsAssignedStudentGroups(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	coach, err := app.createManagedUser(
+		"Test Coach",
+		"coach@example.com",
+		"password-123",
+		[]string{"coach"},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("create coach: %v", err)
+	}
+
+	assignedGroup := StudentGroup{
+		Name:        "Assigned Group",
+		Code:        "ASSIGNED",
+		Description: "Group assigned to the coach.",
+	}
+
+	if err := app.createStudentGroup(
+		assignedGroup,
+		nil,
+		[]int64{coach.ID},
+	); err != nil {
+		t.Fatalf("create assigned group: %v", err)
+	}
+
+	unassignedGroup := StudentGroup{
+		Name:        "Unassigned Group",
+		Code:        "UNASSIGNED",
+		Description: "Group not assigned to the coach.",
+	}
+
+	if err := app.createStudentGroup(
+		unassignedGroup,
+		nil,
+		nil,
+	); err != nil {
+		t.Fatalf("create unassigned group: %v", err)
+	}
+
+	groups, err := app.listStudentGroupsForCoach(coach.ID)
+	if err != nil {
+		t.Fatalf("list coach groups: %v", err)
+	}
+
+	if len(groups) != 1 {
+		t.Fatalf("coach group count = %d, want 1", len(groups))
+	}
+
+	if groups[0].Code != "ASSIGNED" {
+		t.Fatalf(
+			"coach received group %q, want ASSIGNED",
+			groups[0].Code,
+		)
+	}
+
+	assigned, err := app.coachAssignedToGroup(
+		coach.ID,
+		groups[0].ID,
+	)
+	if err != nil {
+		t.Fatalf("check assigned group: %v", err)
+	}
+
+	if !assigned {
+		t.Fatal("coach assignment was not detected")
+	}
+
+	var unassignedGroupID int64
+
+	if err := app.db.QueryRow(`
+		SELECT id
+		FROM student_groups
+		WHERE code = 'UNASSIGNED'
+	`).Scan(&unassignedGroupID); err != nil {
+		t.Fatalf("find unassigned group: %v", err)
+	}
+
+	assigned, err = app.coachAssignedToGroup(
+		coach.ID,
+		unassignedGroupID,
+	)
+	if err != nil {
+		t.Fatalf("check unassigned group: %v", err)
+	}
+
+	if assigned {
+		t.Fatal("coach was incorrectly assigned to unassigned group")
+	}
+}
+
 func TestCustomRolesCanBeAssignedAndAuthorizeRoutes(t *testing.T) {
 	app := newAuthorizationTestApp(t)
 	if err := app.createRole("finance-officer", []string{"dashboard.view", "finance.manage"}); err != nil {
