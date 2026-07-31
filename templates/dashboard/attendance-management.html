@@ -174,7 +174,9 @@
         </div>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p class="text-sm text-slate/62">Review totals above before saving. Future dates are blocked after July 29, 2026.</p>
+          <p class="text-sm text-slate/62">
+  Review totals above before saving. Attendance cannot be recorded for dates after {{.TodayDate}}.
+</p>
           <button type="submit" class="rounded-2xl bg-obsidian px-6 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save attendance</button>
         </div>
       </form>

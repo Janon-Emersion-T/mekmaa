@@ -473,14 +473,15 @@ type Event struct {
 }
 
 type AttendanceRecord struct {
-	ID             int64
-	GroupID        int64
-	AdmissionID    int64
-	AttendanceDate string
-	Status         string
-	Note           string
-	RecordedAt     time.Time
-	UpdatedAt      time.Time
+	ID               int64
+	GroupID          int64
+	AdmissionID      int64
+	AttendanceDate   string
+	Status           string
+	Note             string
+	RecordedByUserID int64
+	RecordedAt       time.Time
+	UpdatedAt        time.Time
 }
 
 type BookingSlotAvailability struct {
@@ -7686,10 +7687,12 @@ func runMigrations(db *sql.DB) error {
 			attendance_date TEXT NOT NULL,
 			status TEXT NOT NULL,
 			note TEXT NOT NULL DEFAULT '',
+			recorded_by_user_id INTEGER,
 			recorded_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
 			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE
+			FOREIGN KEY (recorded_by_user_id) REFERENCES users(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS pricing_rules (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
