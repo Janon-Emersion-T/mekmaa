@@ -263,20 +263,44 @@
           </div>
 
           <div class="space-y-2">
-            <label for="new-practice-type" class="block text-sm font-semibold text-obsidian">
-              Practice type
+            <label
+              for="new-training-program"
+              class="block text-sm font-semibold text-obsidian"
+            >
+              Training programme
             </label>
 
             <select
-              id="new-practice-type"
-              name="practice_type"
+              id="new-training-program"
+              name="training_program_id"
               required
               class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
             >
-              <option value="">Select practice type</option>
-              <option value="group_practice">Group practice</option>
-              <option value="one_to_one_practice">One to one practice</option>
+              <option value="">Select training programme</option>
+
+              {{range .TrainingPrograms}}
+              {{if .Active}}
+              <option
+                value="{{.ID}}"
+                data-admission-fee="{{printf "%.2f" .AdmissionFee}}"
+                data-monthly-fee="{{printf "%.2f" .MonthlyFee}}"
+              >
+                {{.Name}}
+              </option>
+              {{end}}
+              {{end}}
             </select>
+
+            {{if not .TrainingPrograms}}
+            <p class="text-xs leading-5 text-red-600">
+              No active training programmes are available. Add or activate a programme
+              in Training Manager before creating an admission.
+            </p>
+            {{else}}
+            <p class="text-xs leading-5 text-slate/50">
+              Programme fees are managed from Training Manager.
+            </p>
+            {{end}}
           </div>
 
           <div class="space-y-2">
@@ -512,7 +536,7 @@
             <span class="min-w-0">
               <span class="block text-sm font-semibold text-obsidian">Admission payment collected</span>
               <span id="new-payment-preview" class="mt-1 block text-sm leading-6 text-slate/60">
-                Admission fee will follow the selected practice type pricing.
+                Select a training programme to view its admission fee.
               </span>
             </span>
           </label>
@@ -1498,23 +1522,36 @@
           </div>
 
           <div class="space-y-2">
-            <label for="edit-practice-type" class="block text-sm font-semibold text-obsidian">
-              Practice type
+            <label
+              for="edit-training-program"
+              class="block text-sm font-semibold text-obsidian"
+            >
+              Training programme
             </label>
 
             <select
-              id="edit-practice-type"
-              name="practice_type"
+              id="edit-training-program"
+              name="training_program_id"
               required
               class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
             >
-              <option value="group_practice" {{if eq .SelectedAdmission.PracticeType "group_practice"}}selected{{end}}>
-                Group practice
+              <option value="">Select training programme</option>
+
+              {{range $.TrainingPrograms}}
+              <option
+                value="{{.ID}}"
+                data-admission-fee="{{printf "%.2f" .AdmissionFee}}"
+                data-monthly-fee="{{printf "%.2f" .MonthlyFee}}"
+                {{if eq .ID $.SelectedAdmission.TrainingProgramID}}selected{{end}}
+              >
+                {{.Name}}{{if not .Active}} — Inactive{{end}}
               </option>
-              <option value="one_to_one_practice" {{if eq .SelectedAdmission.PracticeType "one_to_one_practice"}}selected{{end}}>
-                One to one practice
-              </option>
+              {{end}}
             </select>
+
+            <p class="text-xs leading-5 text-slate/50">
+              Inactive programmes remain selectable for existing student records.
+            </p>
           </div>
 
           <div class="space-y-2">
@@ -1749,7 +1786,7 @@
             <span class="min-w-0">
               <span class="block text-sm font-semibold text-obsidian">Admission payment collected</span>
               <span id="edit-payment-preview" class="mt-1 block text-sm leading-6 text-slate/60">
-                Admission fee will follow the selected practice type pricing.
+                Select a training programme to view its admission fee.
               </span>
             </span>
           </label>

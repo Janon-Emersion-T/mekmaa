@@ -1481,9 +1481,9 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	trainingPrograms, err := a.listTrainingPrograms(false)
+	trainingPrograms, err := a.listTrainingPrograms(true)
 	if err != nil {
-		log.Printf("list active training programmes for admissions: %v", err)
+		log.Printf("list training programmes for admissions: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -4799,12 +4799,43 @@ func (a *App) deleteSessionsForUser(userID int64) error {
 
 func (a *App) listAdmissions() ([]Admission, error) {
 	rows, err := a.db.Query(`
-		SELECT id, student_id, full_name, COALESCE(admission_date, ''), date_of_birth, gender, practice_type, address, passport_number, school,
-		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
-		       medical_information, COALESCE(payment_collected, 0), payment_collected_at, COALESCE(admission_payment_amount, 0),
-		       COALESCE(finance_transaction_id, 0), created_at
-		FROM admissions
-		ORDER BY admission_date DESC, created_at DESC, id DESC
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.training_program_id, 0),
+			COALESCE(
+				tp.name,
+				CASE a.practice_type
+					WHEN 'one_to_one_practice' THEN 'One-to-one practice'
+					WHEN 'group_practice' THEN 'Group practice'
+					ELSE ''
+				END
+			),
+			a.address,
+			a.passport_number,
+			a.school,
+			a.guardian_name,
+			a.guardian_relationship,
+			a.guardian_contact_number,
+			a.guardian_alternative_contact_number,
+			a.medical_information,
+			COALESCE(a.payment_collected, 0),
+			a.payment_collected_at,
+			COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0),
+			a.created_at
+		FROM admissions a
+		LEFT JOIN training_programs tp
+			ON tp.id = a.training_program_id
+		ORDER BY
+			a.admission_date DESC,
+			a.created_at DESC,
+			a.id DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -4812,10 +4843,12 @@ func (a *App) listAdmissions() ([]Admission, error) {
 	defer rows.Close()
 
 	var admissions []Admission
+
 	for rows.Next() {
 		var admission Admission
 		var paymentCollected int
 		var paymentCollectedAt sql.NullTime
+
 		if err := rows.Scan(
 			&admission.ID,
 			&admission.StudentID,
@@ -4824,6 +4857,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			&admission.DateOfBirth,
 			&admission.Gender,
 			&admission.PracticeType,
+			&admission.TrainingProgramID,
+			&admission.TrainingProgramName,
 			&admission.Address,
 			&admission.PassportNumber,
 			&admission.School,
@@ -4840,12 +4875,16 @@ func (a *App) listAdmissions() ([]Admission, error) {
 		); err != nil {
 			return nil, err
 		}
+
 		admission.PaymentCollected = paymentCollected == 1
+
 		if paymentCollectedAt.Valid {
 			admission.PaymentCollectedAt = paymentCollectedAt.Time
 		}
+
 		admissions = append(admissions, admission)
 	}
+
 	return admissions, rows.Err()
 }
 
@@ -6103,11 +6142,25 @@ func (a *App) createPublicBookingRequest(schedule SpaceSchedule) (int64, error) 
 }
 
 func (a *App) updateAdmission(admission Admission) error {
-	_, err := a.db.Exec(`
+	result, err := a.db.Exec(`
 		UPDATE admissions
-		SET student_id = ?, full_name = ?, admission_date = ?, date_of_birth = ?, gender = ?, practice_type = ?, address = ?, passport_number = ?, school = ?,
-		    guardian_name = ?, guardian_relationship = ?, guardian_contact_number = ?, guardian_alternative_contact_number = ?,
-		    medical_information = ?, updated_at = ?
+		SET
+			student_id = ?,
+			full_name = ?,
+			admission_date = ?,
+			date_of_birth = ?,
+			gender = ?,
+			practice_type = ?,
+			training_program_id = ?,
+			address = ?,
+			passport_number = ?,
+			school = ?,
+			guardian_name = ?,
+			guardian_relationship = ?,
+			guardian_contact_number = ?,
+			guardian_alternative_contact_number = ?,
+			medical_information = ?,
+			updated_at = ?
 		WHERE id = ?
 	`,
 		admission.StudentID,
@@ -6116,6 +6169,7 @@ func (a *App) updateAdmission(admission Admission) error {
 		admission.DateOfBirth,
 		admission.Gender,
 		admission.PracticeType,
+		admission.TrainingProgramID,
 		admission.Address,
 		admission.PassportNumber,
 		admission.School,
@@ -6127,10 +6181,27 @@ func (a *App) updateAdmission(admission Admission) error {
 		time.Now().UTC(),
 		admission.ID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
-func (a *App) createAdmissionWithOptionalPayment(admission Admission, collectPayment bool, recordedByUserID int64) (int64, int64, error) {
+func (a *App) createAdmissionWithOptionalPayment(
+	admission Admission,
+	collectPayment bool,
+	recordedByUserID int64,
+) (int64, int64, error) {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -6138,12 +6209,35 @@ func (a *App) createAdmissionWithOptionalPayment(admission Admission, collectPay
 	defer tx.Rollback()
 
 	now := time.Now().UTC()
+
 	result, err := tx.Exec(`
 		INSERT INTO admissions (
-			student_id, full_name, admission_date, date_of_birth, gender, practice_type, address, passport_number, school,
-			guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
-			medical_information, payment_collected, payment_collected_at, admission_payment_amount, finance_transaction_id, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, 0, NULL, ?, ?)
+			student_id,
+			full_name,
+			admission_date,
+			date_of_birth,
+			gender,
+			practice_type,
+			training_program_id,
+			address,
+			passport_number,
+			school,
+			guardian_name,
+			guardian_relationship,
+			guardian_contact_number,
+			guardian_alternative_contact_number,
+			medical_information,
+			payment_collected,
+			payment_collected_at,
+			admission_payment_amount,
+			finance_transaction_id,
+			created_at,
+			updated_at
+		)
+		VALUES (
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			0, NULL, 0, NULL, ?, ?
+		)
 	`,
 		admission.StudentID,
 		admission.FullName,
@@ -6151,6 +6245,7 @@ func (a *App) createAdmissionWithOptionalPayment(admission Admission, collectPay
 		admission.DateOfBirth,
 		admission.Gender,
 		admission.PracticeType,
+		admission.TrainingProgramID,
 		admission.Address,
 		admission.PassportNumber,
 		admission.School,
@@ -6170,11 +6265,17 @@ func (a *App) createAdmissionWithOptionalPayment(admission Admission, collectPay
 	if err != nil {
 		return 0, 0, err
 	}
+
 	admission.ID = admissionID
 
 	var financeTransactionID int64
+
 	if collectPayment {
-		financeTransactionID, err = a.collectAdmissionPaymentTx(tx, admission, recordedByUserID)
+		financeTransactionID, err = a.collectAdmissionPaymentTx(
+			tx,
+			admission,
+			recordedByUserID,
+		)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -6183,10 +6284,15 @@ func (a *App) createAdmissionWithOptionalPayment(admission Admission, collectPay
 	if err := tx.Commit(); err != nil {
 		return 0, 0, err
 	}
+
 	return admissionID, financeTransactionID, nil
 }
 
-func (a *App) updateAdmissionWithOptionalPayment(admission Admission, collectPayment bool, recordedByUserID int64) (int64, error) {
+func (a *App) updateAdmissionWithOptionalPayment(
+	admission Admission,
+	collectPayment bool,
+	recordedByUserID int64,
+) (int64, error) {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -6197,11 +6303,26 @@ func (a *App) updateAdmissionWithOptionalPayment(admission Admission, collectPay
 	if err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(`
+
+	result, err := tx.Exec(`
 		UPDATE admissions
-		SET student_id = ?, full_name = ?, admission_date = ?, date_of_birth = ?, gender = ?, practice_type = ?, address = ?, passport_number = ?, school = ?,
-		    guardian_name = ?, guardian_relationship = ?, guardian_contact_number = ?, guardian_alternative_contact_number = ?,
-		    medical_information = ?, updated_at = ?
+		SET
+			student_id = ?,
+			full_name = ?,
+			admission_date = ?,
+			date_of_birth = ?,
+			gender = ?,
+			practice_type = ?,
+			training_program_id = ?,
+			address = ?,
+			passport_number = ?,
+			school = ?,
+			guardian_name = ?,
+			guardian_relationship = ?,
+			guardian_contact_number = ?,
+			guardian_alternative_contact_number = ?,
+			medical_information = ?,
+			updated_at = ?
 		WHERE id = ?
 	`,
 		admission.StudentID,
@@ -6210,6 +6331,7 @@ func (a *App) updateAdmissionWithOptionalPayment(admission Admission, collectPay
 		admission.DateOfBirth,
 		admission.Gender,
 		admission.PracticeType,
+		admission.TrainingProgramID,
 		admission.Address,
 		admission.PassportNumber,
 		admission.School,
@@ -6220,13 +6342,28 @@ func (a *App) updateAdmissionWithOptionalPayment(admission Admission, collectPay
 		admission.MedicalInformation,
 		time.Now().UTC(),
 		admission.ID,
-	); err != nil {
+	)
+	if err != nil {
 		return 0, err
 	}
 
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if rowsAffected == 0 {
+		return 0, sql.ErrNoRows
+	}
+
 	var financeTransactionID int64
+
 	if collectPayment && !existing.PaymentCollected {
-		financeTransactionID, err = a.collectAdmissionPaymentTx(tx, admission, recordedByUserID)
+		financeTransactionID, err = a.collectAdmissionPaymentTx(
+			tx,
+			admission,
+			recordedByUserID,
+		)
 		if err != nil {
 			return 0, err
 		}
@@ -6235,6 +6372,7 @@ func (a *App) updateAdmissionWithOptionalPayment(admission Admission, collectPay
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+
 	return financeTransactionID, nil
 }
 
@@ -6631,19 +6769,50 @@ func (a *App) deleteEvent(eventID int64) error {
 	return err
 }
 
-func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
+func (a *App) findAdmissionByID(
+	admissionID int64,
+) (*Admission, error) {
 	row := a.db.QueryRow(`
-		SELECT id, student_id, full_name, COALESCE(admission_date, ''), date_of_birth, gender, practice_type, address, passport_number, school,
-		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
-		       medical_information, COALESCE(payment_collected, 0), payment_collected_at, COALESCE(admission_payment_amount, 0),
-		       COALESCE(finance_transaction_id, 0), created_at
-		FROM admissions
-		WHERE id = ?
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.training_program_id, 0),
+			COALESCE(
+				tp.name,
+				CASE a.practice_type
+					WHEN 'one_to_one_practice' THEN 'One-to-one practice'
+					WHEN 'group_practice' THEN 'Group practice'
+					ELSE ''
+				END
+			),
+			a.address,
+			a.passport_number,
+			a.school,
+			a.guardian_name,
+			a.guardian_relationship,
+			a.guardian_contact_number,
+			a.guardian_alternative_contact_number,
+			a.medical_information,
+			COALESCE(a.payment_collected, 0),
+			a.payment_collected_at,
+			COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0),
+			a.created_at
+		FROM admissions a
+		LEFT JOIN training_programs tp
+			ON tp.id = a.training_program_id
+		WHERE a.id = ?
 	`, admissionID)
 
 	var admission Admission
 	var paymentCollected int
 	var paymentCollectedAt sql.NullTime
+
 	if err := row.Scan(
 		&admission.ID,
 		&admission.StudentID,
@@ -6652,6 +6821,8 @@ func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 		&admission.DateOfBirth,
 		&admission.Gender,
 		&admission.PracticeType,
+		&admission.TrainingProgramID,
+		&admission.TrainingProgramName,
 		&admission.Address,
 		&admission.PassportNumber,
 		&admission.School,
@@ -6668,26 +6839,61 @@ func (a *App) findAdmissionByID(admissionID int64) (*Admission, error) {
 	); err != nil {
 		return nil, err
 	}
+
 	admission.PaymentCollected = paymentCollected == 1
+
 	if paymentCollectedAt.Valid {
 		admission.PaymentCollectedAt = paymentCollectedAt.Time
 	}
+
 	return &admission, nil
 }
 
-func (a *App) findAdmissionByIDTx(tx *sql.Tx, admissionID int64) (*Admission, error) {
+func (a *App) findAdmissionByIDTx(
+	tx *sql.Tx,
+	admissionID int64,
+) (*Admission, error) {
 	row := tx.QueryRow(`
-		SELECT id, student_id, full_name, COALESCE(admission_date, ''), date_of_birth, gender, practice_type, address, passport_number, school,
-		       guardian_name, guardian_relationship, guardian_contact_number, guardian_alternative_contact_number,
-		       medical_information, COALESCE(payment_collected, 0), payment_collected_at, COALESCE(admission_payment_amount, 0),
-		       COALESCE(finance_transaction_id, 0), created_at
-		FROM admissions
-		WHERE id = ?
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.training_program_id, 0),
+			COALESCE(
+				tp.name,
+				CASE a.practice_type
+					WHEN 'one_to_one_practice' THEN 'One-to-one practice'
+					WHEN 'group_practice' THEN 'Group practice'
+					ELSE ''
+				END
+			),
+			a.address,
+			a.passport_number,
+			a.school,
+			a.guardian_name,
+			a.guardian_relationship,
+			a.guardian_contact_number,
+			a.guardian_alternative_contact_number,
+			a.medical_information,
+			COALESCE(a.payment_collected, 0),
+			a.payment_collected_at,
+			COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0),
+			a.created_at
+		FROM admissions a
+		LEFT JOIN training_programs tp
+			ON tp.id = a.training_program_id
+		WHERE a.id = ?
 	`, admissionID)
 
 	var admission Admission
 	var paymentCollected int
 	var paymentCollectedAt sql.NullTime
+
 	if err := row.Scan(
 		&admission.ID,
 		&admission.StudentID,
@@ -6696,6 +6902,8 @@ func (a *App) findAdmissionByIDTx(tx *sql.Tx, admissionID int64) (*Admission, er
 		&admission.DateOfBirth,
 		&admission.Gender,
 		&admission.PracticeType,
+		&admission.TrainingProgramID,
+		&admission.TrainingProgramName,
 		&admission.Address,
 		&admission.PassportNumber,
 		&admission.School,
@@ -6712,10 +6920,13 @@ func (a *App) findAdmissionByIDTx(tx *sql.Tx, admissionID int64) (*Admission, er
 	); err != nil {
 		return nil, err
 	}
+
 	admission.PaymentCollected = paymentCollected == 1
+
 	if paymentCollectedAt.Valid {
 		admission.PaymentCollectedAt = paymentCollectedAt.Time
 	}
+
 	return &admission, nil
 }
 
