@@ -375,6 +375,7 @@ type Court struct {
 	Description string
 	Active      bool
 	SortOrder   int
+	Activities  []CourtActivity
 	Layouts     []CourtLayout
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -754,6 +755,9 @@ func main() {
 	}
 	if err := seedCourtManager(db); err != nil {
 		log.Fatalf("seed court manager: %v", err)
+	}
+	if err := verifyCourtManagerConfiguration(db); err != nil {
+		log.Fatalf("verify court manager: %v", err)
 	}
 	if err := seedTrainingPrograms(db); err != nil {
 		log.Fatalf("seed training programmes: %v", err)
@@ -5390,6 +5394,392 @@ func (a *App) getAttendanceSummary(
 	return summary, nil
 }
 
+func (a *App) listCourts(includeInactive bool) ([]Court, error) {
+	query := `
+		SELECT
+			id,
+			name,
+			code,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM courts
+	`
+
+	if !includeInactive {
+		query += ` WHERE active = 1`
+	}
+
+	query += ` ORDER BY sort_order, name, id`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var courts []Court
+
+	for rows.Next() {
+		var court Court
+
+		err := rows.Scan(
+			&court.ID,
+			&court.Name,
+			&court.Code,
+			&court.Description,
+			&court.Active,
+			&court.SortOrder,
+			&court.CreatedAt,
+			&court.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		layouts, err := a.listCourtLayouts(court.ID, includeInactive)
+		if err != nil {
+			return nil, err
+		}
+
+		court.Layouts = layouts
+		courts = append(courts, court)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return courts, nil
+}
+
+func (a *App) findCourtByID(courtID int64) (*Court, error) {
+	var court Court
+
+	err := a.db.QueryRow(`
+		SELECT
+			id,
+			name,
+			code,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM courts
+		WHERE id = ?
+	`, courtID).Scan(
+		&court.ID,
+		&court.Name,
+		&court.Code,
+		&court.Description,
+		&court.Active,
+		&court.SortOrder,
+		&court.CreatedAt,
+		&court.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	activities, err := a.listCourtActivities(court.ID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	layouts, err := a.listCourtLayouts(court.ID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	court.Activities = activities
+	court.Layouts = layouts
+
+	return &court, nil
+}
+
+func (a *App) listCourtActivities(
+	courtID int64,
+	includeInactive bool,
+) ([]CourtActivity, error) {
+	query := `
+		SELECT
+			id,
+			court_id,
+			activity,
+			display_name,
+			max_quantity,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM court_activities
+		WHERE court_id = ?
+	`
+
+	if !includeInactive {
+		query += ` AND active = 1`
+	}
+
+	query += ` ORDER BY sort_order, display_name, id`
+
+	rows, err := a.db.Query(query, courtID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var activities []CourtActivity
+
+	for rows.Next() {
+		var activity CourtActivity
+
+		err := rows.Scan(
+			&activity.ID,
+			&activity.CourtID,
+			&activity.Activity,
+			&activity.DisplayName,
+			&activity.MaxQuantity,
+			&activity.Active,
+			&activity.SortOrder,
+			&activity.CreatedAt,
+			&activity.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		activities = append(activities, activity)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return activities, nil
+}
+
+func (a *App) listCourtLayouts(
+	courtID int64,
+	includeInactive bool,
+) ([]CourtLayout, error) {
+	query := `
+		SELECT
+			id,
+			court_id,
+			name,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM court_layouts
+		WHERE court_id = ?
+	`
+
+	if !includeInactive {
+		query += ` AND active = 1`
+	}
+
+	query += ` ORDER BY sort_order, name, id`
+
+	rows, err := a.db.Query(query, courtID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var layouts []CourtLayout
+
+	for rows.Next() {
+		var layout CourtLayout
+
+		err := rows.Scan(
+			&layout.ID,
+			&layout.CourtID,
+			&layout.Name,
+			&layout.Description,
+			&layout.Active,
+			&layout.SortOrder,
+			&layout.CreatedAt,
+			&layout.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		items, err := a.listCourtLayoutItems(layout.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		layout.Items = items
+		layouts = append(layouts, layout)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return layouts, nil
+}
+
+func (a *App) findCourtLayoutByID(layoutID int64) (*CourtLayout, error) {
+	var layout CourtLayout
+
+	err := a.db.QueryRow(`
+		SELECT
+			id,
+			court_id,
+			name,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM court_layouts
+		WHERE id = ?
+	`, layoutID).Scan(
+		&layout.ID,
+		&layout.CourtID,
+		&layout.Name,
+		&layout.Description,
+		&layout.Active,
+		&layout.SortOrder,
+		&layout.CreatedAt,
+		&layout.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	items, err := a.listCourtLayoutItems(layout.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	layout.Items = items
+
+	return &layout, nil
+}
+
+func (a *App) listCourtLayoutItems(
+	layoutID int64,
+) ([]CourtLayoutItem, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			cli.id,
+			cli.layout_id,
+			cli.activity,
+			COALESCE(ca.display_name, cli.activity),
+			cli.quantity
+		FROM court_layout_items cli
+		LEFT JOIN court_layouts cl
+			ON cl.id = cli.layout_id
+		LEFT JOIN court_activities ca
+			ON ca.court_id = cl.court_id
+			AND ca.activity = cli.activity
+		WHERE cli.layout_id = ?
+		ORDER BY
+			COALESCE(ca.sort_order, 9999),
+			COALESCE(ca.display_name, cli.activity),
+			cli.id
+	`, layoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []CourtLayoutItem
+
+	for rows.Next() {
+		var item CourtLayoutItem
+
+		err := rows.Scan(
+			&item.ID,
+			&item.LayoutID,
+			&item.Activity,
+			&item.DisplayName,
+			&item.Quantity,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (a *App) listActiveCourtLayouts() ([]CourtLayout, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			cl.id,
+			cl.court_id,
+			cl.name,
+			cl.description,
+			cl.active,
+			cl.sort_order,
+			cl.created_at,
+			cl.updated_at
+		FROM court_layouts cl
+		JOIN courts c
+			ON c.id = cl.court_id
+		WHERE cl.active = 1
+		  AND c.active = 1
+		ORDER BY
+			c.sort_order,
+			cl.sort_order,
+			cl.name,
+			cl.id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var layouts []CourtLayout
+
+	for rows.Next() {
+		var layout CourtLayout
+
+		err := rows.Scan(
+			&layout.ID,
+			&layout.CourtID,
+			&layout.Name,
+			&layout.Description,
+			&layout.Active,
+			&layout.SortOrder,
+			&layout.CreatedAt,
+			&layout.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		items, err := a.listCourtLayoutItems(layout.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		layout.Items = items
+		layouts = append(layouts, layout)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return layouts, nil
+}
+
 func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 	rows, err := a.db.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
@@ -8493,6 +8883,63 @@ func seedRoles(db *sql.DB) error {
 	return nil
 }
 
+func verifyCourtManagerConfiguration(db *sql.DB) error {
+	var activeCourtCount int
+
+	err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM courts
+		WHERE active = 1
+	`).Scan(&activeCourtCount)
+	if err != nil {
+		return err
+	}
+
+	if activeCourtCount == 0 {
+		return errors.New("court manager has no active courts")
+	}
+
+	var activeLayoutCount int
+
+	err = db.QueryRow(`
+		SELECT COUNT(*)
+		FROM court_layouts cl
+		JOIN courts c
+			ON c.id = cl.court_id
+		WHERE cl.active = 1
+		  AND c.active = 1
+	`).Scan(&activeLayoutCount)
+	if err != nil {
+		return err
+	}
+
+	if activeLayoutCount == 0 {
+		return errors.New("court manager has no active court layouts")
+	}
+
+	var emptyLayoutCount int
+
+	err = db.QueryRow(`
+		SELECT COUNT(*)
+		FROM court_layouts cl
+		WHERE cl.active = 1
+		AND NOT EXISTS (
+			SELECT 1
+			FROM court_layout_items cli
+			WHERE cli.layout_id = cl.id
+		)
+	`).Scan(&emptyLayoutCount)
+	if err != nil {
+		return err
+	}
+
+	if emptyLayoutCount > 0 {
+		return errors.New("court manager contains an empty active layout")
+	}
+
+	return nil
+}
+
 func seedCourtManager(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -9562,6 +10009,77 @@ func validateEvent(event Event) error {
 	return nil
 }
 
+func validateCourtLayout(
+	layout CourtLayout,
+	activities []CourtActivity,
+) error {
+	layout.Name = strings.TrimSpace(layout.Name)
+	layout.Description = strings.TrimSpace(layout.Description)
+
+	if layout.CourtID <= 0 {
+		return errors.New("court is required")
+	}
+
+	if layout.Name == "" {
+		return errors.New("layout name is required")
+	}
+
+	if len(layout.Items) == 0 {
+		return errors.New("at least one court activity is required")
+	}
+
+	allowedActivities := make(map[string]CourtActivity)
+
+	for _, activity := range activities {
+		if !activity.Active {
+			continue
+		}
+
+		allowedActivities[activity.Activity] = activity
+	}
+
+	seen := make(map[string]bool)
+
+	for _, item := range layout.Items {
+		item.Activity = strings.TrimSpace(item.Activity)
+
+		if item.Activity == "" {
+			return errors.New("layout activity is required")
+		}
+
+		if seen[item.Activity] {
+			return errors.New("an activity cannot appear twice in the same layout")
+		}
+
+		activity, exists := allowedActivities[item.Activity]
+		if !exists {
+			return fmt.Errorf(
+				"%s is not an active activity for this court",
+				item.Activity,
+			)
+		}
+
+		if item.Quantity <= 0 {
+			return fmt.Errorf(
+				"%s quantity must be at least 1",
+				activity.DisplayName,
+			)
+		}
+
+		if item.Quantity > activity.MaxQuantity {
+			return fmt.Errorf(
+				"%s quantity cannot exceed %d",
+				activity.DisplayName,
+				activity.MaxQuantity,
+			)
+		}
+
+		seen[item.Activity] = true
+	}
+
+	return nil
+}
+
 func validateSpaceScheduleInput(schedule SpaceSchedule) error {
 	if schedule.EntryType != "booking" && schedule.EntryType != "training" {
 		return errors.New("entry type is required")
@@ -9628,6 +10146,82 @@ func validateBookableScheduleTime(schedule SpaceSchedule, now time.Time) error {
 		return errors.New("the selected booking time has already started")
 	}
 	return nil
+}
+
+func validateSpaceScheduleSlotAgainstLayouts(
+	existing []SpaceSchedule,
+	candidate SpaceSchedule,
+	layouts []CourtLayout,
+) error {
+	if len(layouts) == 0 {
+		return errors.New("no active court configurations are available")
+	}
+
+	usage := make(map[string]int)
+
+	for _, schedule := range existing {
+		if !scheduleConsumesCourtCapacity(schedule) {
+			continue
+		}
+
+		usage[schedule.Activity] += schedule.Quantity
+	}
+
+	if scheduleConsumesCourtCapacity(candidate) {
+		usage[candidate.Activity] += candidate.Quantity
+	}
+
+	for _, layout := range layouts {
+		if !layout.Active {
+			continue
+		}
+
+		if courtLayoutSupportsUsage(layout, usage) {
+			return nil
+		}
+	}
+
+	return errors.New("that booking combination does not fit any active court layout")
+}
+
+func scheduleConsumesCourtCapacity(schedule SpaceSchedule) bool {
+	switch strings.ToLower(strings.TrimSpace(schedule.Status)) {
+	case "rejected", "cancelled", "expired":
+		return false
+	default:
+		return true
+	}
+}
+
+func courtLayoutSupportsUsage(
+	layout CourtLayout,
+	usage map[string]int,
+) bool {
+	if len(layout.Items) == 0 {
+		return false
+	}
+
+	capacity := make(map[string]int)
+
+	for _, item := range layout.Items {
+		if item.Quantity <= 0 {
+			continue
+		}
+
+		capacity[item.Activity] += item.Quantity
+	}
+
+	for activity, usedQuantity := range usage {
+		if usedQuantity <= 0 {
+			continue
+		}
+
+		if capacity[activity] < usedQuantity {
+			return false
+		}
+	}
+
+	return true
 }
 
 func validateSpaceScheduleSlot(existing []SpaceSchedule, candidate SpaceSchedule) error {
