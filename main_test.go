@@ -694,9 +694,46 @@ func TestBookingRequestsPreventPastAndConflictingSlots(t *testing.T) {
 	if err := validateBookableScheduleTime(past, now); err == nil {
 		t.Fatal("expected a past booking slot to be rejected")
 	}
-	days := buildBookingWeekDays(nil, now, bookingHours())
+
+	activities := []CourtActivity{
+		{
+			ID:          1,
+			CourtID:     1,
+			Activity:    "badminton",
+			DisplayName: "Badminton",
+			MaxQuantity: 1,
+			Active:      true,
+		},
+	}
+
+	layouts := []CourtLayout{
+		{
+			ID:      1,
+			CourtID: 1,
+			Name:    "Badminton",
+			Active:  true,
+			Items: []CourtLayoutItem{
+				{
+					Activity: "badminton",
+					Quantity: 1,
+				},
+			},
+		},
+	}
+
+	days := buildBookingWeekDays(
+		nil,
+		now,
+		bookingHours(),
+		activities,
+		layouts,
+	)
+
 	if len(days) != 7 || days[0].IsPast {
-		t.Fatalf("expected a forward-looking seven-day calendar, got %#v", days)
+		t.Fatalf(
+			"expected a forward-looking seven-day calendar, got %#v",
+			days,
+		)
 	}
 
 	futureDate := time.Now().AddDate(0, 0, 2).Format("2006-01-02")
@@ -745,6 +782,17 @@ func TestPublicBookingShowsVacantSlotsWithConfiguredPrices(t *testing.T) {
 	db.SetMaxOpenConns(1)
 	if err := runMigrations(db); err != nil {
 		t.Fatalf("run migrations: %v", err)
+	}
+	if err := seedCourtManager(db); err != nil {
+		t.Fatalf("seed court manager: %v", err)
+	}
+
+	if err := seedPricingRules(db); err != nil {
+		t.Fatalf("seed pricing rules: %v", err)
+	}
+
+	if err := seedPricingSettings(db); err != nil {
+		t.Fatalf("seed pricing settings: %v", err)
 	}
 	if _, err := db.Exec(`
 		UPDATE pricing_rules

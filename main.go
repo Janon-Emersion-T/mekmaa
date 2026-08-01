@@ -3808,8 +3808,29 @@ func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, vie
 	}
 	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
 	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
+	courtActivities, courtLayouts, err :=
+		a.activeBookingConfiguration()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	data.CourtActivities = courtActivities
+	data.CourtLayouts = courtLayouts
 	data.CalendarCanGoBack = data.CalendarDate > data.TodayDate
-	data.BookingSlots = filterPricedBookingSlots(buildBookingSlotAvailability(schedules, data.CalendarDate, data.Hours), data.CalendarDate, pricings, settings)
+
+	data.BookingSlots = filterPricedBookingSlots(
+		buildBookingSlotAvailability(
+			schedules,
+			data.CalendarDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+		),
+		data.CalendarDate,
+		pricings,
+		settings,
+	)
+
 	data.WeekDays = buildPricedBookingWeekDays(
 		schedules,
 		selectedDate,
@@ -3819,12 +3840,12 @@ func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, vie
 		courtActivities,
 		courtLayouts,
 	)
-	courtActivities, courtLayouts, err :=
-		a.activeBookingConfiguration()
-	if err != nil {
-		return TemplateData{}, err
-	}
-	data.DraftSchedule = prefillPublicBookingDraft(r, viewer, data.CalendarDate)
+
+	data.DraftSchedule = prefillPublicBookingDraft(
+		r,
+		viewer,
+		data.CalendarDate,
+	)
 	return data, nil
 }
 
@@ -10028,7 +10049,7 @@ func (a *App) activeBookingConfiguration() (
 }
 
 func seedPricingRules(db *sql.DB) error {
-	for _, option := range bookingOptionCatalog() {
+	for _, option := range defaultBookingOptionCatalog() {
 		if _, err := db.Exec(`
 			INSERT OR IGNORE INTO pricing_rules (
 				activity, quantity, weekday_offpeak_price, weekday_peak_price,
@@ -10762,7 +10783,7 @@ func validatePricingRule(rule PricingRule) error {
 		return errors.New("prices cannot be negative")
 	}
 
-	for _, option := range bookingOptionCatalog() {
+	for _, option := range defaultBookingOptionCatalog() {
 		if option.Activity == rule.Activity && option.Quantity == rule.Quantity {
 			return nil
 		}
@@ -11168,6 +11189,56 @@ func validateSpaceScheduleSlot(existing []SpaceSchedule, candidate SpaceSchedule
 	}
 
 	return errors.New("that slot combination is not allowed")
+}
+
+func defaultBookingOptionCatalog() []BookingOption {
+	return []BookingOption{
+		{
+			Activity: "full_indoor_cricket",
+			Quantity: 1,
+			Label:    "Full Indoor Cricket",
+		},
+		{
+			Activity: "futsal",
+			Quantity: 1,
+			Label:    "Futsal",
+		},
+		{
+			Activity: "badminton",
+			Quantity: 1,
+			Label:    "Badminton",
+		},
+		{
+			Activity: "table_tennis",
+			Quantity: 1,
+			Label:    "Table Tennis ×1",
+		},
+		{
+			Activity: "table_tennis",
+			Quantity: 2,
+			Label:    "Table Tennis ×2",
+		},
+		{
+			Activity: "cricket_net",
+			Quantity: 1,
+			Label:    "Cricket Net ×1",
+		},
+		{
+			Activity: "cricket_net",
+			Quantity: 2,
+			Label:    "Cricket Nets ×2",
+		},
+		{
+			Activity: "cricket_net",
+			Quantity: 3,
+			Label:    "Cricket Nets ×3",
+		},
+		{
+			Activity: "tennis",
+			Quantity: 1,
+			Label:    "Tennis",
+		},
+	}
 }
 
 func bookingOptionCatalog(
