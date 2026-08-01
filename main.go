@@ -4258,7 +4258,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		data.Hours,
 		courtActivities,
 		courtLayouts,
-		courtClosures
+		courtClosures,
 	)
 	data.BookingSlots = buildBookingSlotAvailability(
 		activeSchedules,
@@ -4266,58 +4266,93 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		data.Hours,
 		courtActivities,
 		courtLayouts,
-		courtClosures
+		courtClosures,
 	)
 	return data, nil
 }
 
-func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, viewer *User) (TemplateData, error) {
+func (a *App) buildPublicBookingData(
+	w http.ResponseWriter,
+	r *http.Request,
+	viewer *User,
+) (TemplateData, error) {
 	schedules, err := a.listActiveSpaceSchedules()
 	if err != nil {
 		return TemplateData{}, err
 	}
+
 	pricings, err := a.listPricingRules()
 	if err != nil {
 		return TemplateData{}, err
 	}
+
 	settings, err := a.getPricingSettings()
 	if err != nil {
 		return TemplateData{}, err
 	}
-	data := a.newTemplateData(w, r, nil)
-	data.Viewer = viewer
-	data.Title = "Book a Slot"
-	data.Description = "Check availability and request a booking."
-	data.Schedules = schedules
-	data.Pricings = pricings
-	data.PricingSettings = settings
-	data.Activities = bookingActivities()
-	data.Hours = bookingHours()
-	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
-	if data.CalendarDate == "" {
-		data.CalendarDate = time.Now().Format("2006-01-02")
-	}
-	selectedDate, err := time.Parse("2006-01-02", data.CalendarDate)
-	if err != nil {
-		selectedDate = time.Now()
-		data.CalendarDate = selectedDate.Format("2006-01-02")
-	}
-	data.TodayDate = time.Now().Format("2006-01-02")
-	if data.CalendarDate < data.TodayDate {
-		selectedDate = time.Now()
-		data.CalendarDate = data.TodayDate
-	}
-	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
-	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
+
 	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
 		return TemplateData{}, err
 	}
 
+	courtClosures, err :=
+		a.listActiveCourtClosures()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	data := a.newTemplateData(w, r, nil)
+	data.Viewer = viewer
+	data.Title = "Book a Slot"
+	data.Description =
+		"Check availability and request a booking."
+	data.Schedules = schedules
+	data.Pricings = pricings
+	data.PricingSettings = settings
 	data.CourtActivities = courtActivities
 	data.CourtLayouts = courtLayouts
-	data.CalendarCanGoBack = data.CalendarDate > data.TodayDate
+	data.Activities = bookingActivities()
+	data.Hours = bookingHours()
+
+	data.CalendarDate = strings.TrimSpace(
+		r.URL.Query().Get("date"),
+	)
+
+	if data.CalendarDate == "" {
+		data.CalendarDate =
+			time.Now().Format("2006-01-02")
+	}
+
+	selectedDate, err := time.Parse(
+		"2006-01-02",
+		data.CalendarDate,
+	)
+	if err != nil {
+		selectedDate = time.Now()
+		data.CalendarDate =
+			selectedDate.Format("2006-01-02")
+	}
+
+	data.TodayDate =
+		time.Now().Format("2006-01-02")
+
+	if data.CalendarDate < data.TodayDate {
+		selectedDate = time.Now()
+		data.CalendarDate = data.TodayDate
+	}
+
+	data.PreviousDate = selectedDate.
+		AddDate(0, 0, -1).
+		Format("2006-01-02")
+
+	data.NextDate = selectedDate.
+		AddDate(0, 0, 1).
+		Format("2006-01-02")
+
+	data.CalendarCanGoBack =
+		data.CalendarDate > data.TodayDate
 
 	data.BookingSlots = filterPricedBookingSlots(
 		buildBookingSlotAvailability(
@@ -4326,6 +4361,7 @@ func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, vie
 			data.Hours,
 			courtActivities,
 			courtLayouts,
+			courtClosures,
 		),
 		data.CalendarDate,
 		pricings,
@@ -4340,13 +4376,16 @@ func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, vie
 		settings,
 		courtActivities,
 		courtLayouts,
+		courtClosures,
 	)
 
-	data.DraftSchedule = prefillPublicBookingDraft(
-		r,
-		viewer,
-		data.CalendarDate,
-	)
+	data.DraftSchedule =
+		prefillPublicBookingDraft(
+			r,
+			viewer,
+			data.CalendarDate,
+		)
+
 	return data, nil
 }
 
@@ -8471,25 +8510,83 @@ func (a *App) deleteCourtLayout(
 	return nil
 }
 
-func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
+func (a *App) createSpaceSchedule(
+	schedule SpaceSchedule,
+) error {
+	courtActivities, courtLayouts, err :=
+		a.activeBookingConfiguration()
+	if err != nil {
+		return fmt.Errorf(
+			"load active court configuration: %w",
+			err,
+		)
+	}
+
+	if err := validateConfiguredBookingOption(
+		schedule,
+		courtActivities,
+		courtLayouts,
+	); err != nil {
+		return err
+	}
+
+	courtClosures, err :=
+		a.listActiveCourtClosures()
+	if err != nil {
+		return fmt.Errorf(
+			"load active court closures: %w",
+			err,
+		)
+	}
+
+	if err := validateScheduleAgainstClosures(
+		schedule,
+		courtClosures,
+	); err != nil {
+		return err
+	}
+
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, 0)
+	existing, err := querySchedulesForSlot(
+		tx,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		0,
+	)
 	if err != nil {
 		return err
 	}
-	if err := validateSpaceScheduleSlot(existing, schedule); err != nil {
+
+	if err := validateSpaceScheduleSlotAgainstLayouts(
+		existing,
+		schedule,
+		courtLayouts,
+	); err != nil {
 		return err
 	}
 
 	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
-			slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
-			requester_name, requester_email, requester_phone, requested_by_user_id, review_note, created_at, updated_at
+			slot_date,
+			slot_hour,
+			entry_type,
+			activity,
+			quantity,
+			title,
+			notes,
+			status,
+			requester_name,
+			requester_email,
+			requester_phone,
+			requested_by_user_id,
+			review_note,
+			created_at,
+			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
@@ -8512,19 +8609,33 @@ func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
 	if err != nil {
 		return err
 	}
+
 	scheduleID, err := result.LastInsertId()
 	if err != nil {
 		return err
 	}
+
 	if schedule.EntryType == "booking" {
 		if _, err := tx.Exec(`
 			INSERT INTO booking_financials (
-				schedule_id, quoted_amount, paid, payment_method, created_at, updated_at
-			) VALUES (?, ?, 0, '', ?, ?)
-		`, scheduleID, schedule.QuotedPrice, time.Now().UTC(), time.Now().UTC()); err != nil {
+				schedule_id,
+				quoted_amount,
+				paid,
+				payment_method,
+				created_at,
+				updated_at
+			)
+			VALUES (?, ?, 0, '', ?, ?)
+		`,
+			scheduleID,
+			schedule.QuotedPrice,
+			time.Now().UTC(),
+			time.Now().UTC(),
+		); err != nil {
 			return err
 		}
 	}
+
 	return tx.Commit()
 }
 
@@ -8594,6 +8705,22 @@ func (a *App) createPublicBookingRequest(
 		return 0, err
 	}
 
+	courtClosures, err :=
+		a.listActiveCourtClosures()
+	if err != nil {
+		return 0, fmt.Errorf(
+			"load active court closures: %w",
+			err,
+		)
+	}
+
+	if err := validateScheduleAgainstClosures(
+		schedule,
+		courtClosures,
+	); err != nil {
+		return 0, err
+	}
+
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -8619,14 +8746,30 @@ func (a *App) createPublicBookingRequest(
 	}
 
 	var requestedBy any
+
 	if schedule.RequestedByUser > 0 {
 		requestedBy = schedule.RequestedByUser
 	}
 
+	now := time.Now().UTC()
+
 	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
-			slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
-			requester_name, requester_email, requester_phone, requested_by_user_id, review_note, created_at, updated_at
+			slot_date,
+			slot_hour,
+			entry_type,
+			activity,
+			quantity,
+			title,
+			notes,
+			status,
+			requester_name,
+			requester_email,
+			requester_phone,
+			requested_by_user_id,
+			review_note,
+			created_at,
+			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
@@ -8643,54 +8786,103 @@ func (a *App) createPublicBookingRequest(
 		schedule.RequesterPhone,
 		requestedBy,
 		"",
-		time.Now().UTC(),
-		time.Now().UTC(),
+		now,
+		now,
 	)
 	if err != nil {
 		return 0, err
 	}
+
 	requestID, err := result.LastInsertId()
 	if err != nil {
 		return 0, err
 	}
+
 	if _, err := tx.Exec(`
 		INSERT INTO booking_financials (
-			schedule_id, quoted_amount, paid, payment_method, created_at, updated_at
-		) VALUES (?, ?, 0, '', ?, ?)
-	`, requestID, schedule.QuotedPrice, time.Now().UTC(), time.Now().UTC()); err != nil {
+			schedule_id,
+			quoted_amount,
+			paid,
+			payment_method,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, 0, '', ?, ?)
+	`,
+		requestID,
+		schedule.QuotedPrice,
+		now,
+		now,
+	); err != nil {
 		return 0, err
 	}
+
 	if schedule.ReferralCode != "" {
 		var partnerID int64
+
 		if err := tx.QueryRow(`
 			SELECT id
 			FROM referral_partners
-			WHERE code = ? AND active = 1
-		`, schedule.ReferralCode).Scan(&partnerID); err != nil {
+			WHERE code = ?
+			  AND active = 1
+		`,
+			schedule.ReferralCode,
+		).Scan(&partnerID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return 0, errors.New("the referral code is invalid or inactive")
+				return 0, errors.New(
+					"the referral code is invalid or inactive",
+				)
 			}
+
 			return 0, err
 		}
+
 		var commissionAmount float64
-		if err := tx.QueryRow(`SELECT COALESCE(referral_commission_amount, 0) FROM pricing_settings WHERE id = 1`).Scan(&commissionAmount); err != nil {
+
+		if err := tx.QueryRow(`
+			SELECT
+				COALESCE(
+					referral_commission_amount,
+					0
+				)
+			FROM pricing_settings
+			WHERE id = 1
+		`).Scan(&commissionAmount); err != nil {
 			return 0, err
 		}
+
 		if commissionAmount <= 0 {
-			return 0, errors.New("referral commission is not configured")
+			return 0, errors.New(
+				"referral commission is not configured",
+			)
 		}
+
 		if _, err := tx.Exec(`
 			INSERT INTO booking_referrals (
-				schedule_id, partner_id, commission_amount, paid, paid_at,
-				payment_method, finance_transaction_id, created_at
-			) VALUES (?, ?, ?, 0, NULL, '', NULL, ?)
-		`, requestID, partnerID, commissionAmount, time.Now().UTC()); err != nil {
+				schedule_id,
+				partner_id,
+				commission_amount,
+				paid,
+				paid_at,
+				payment_method,
+				finance_transaction_id,
+				created_at
+			)
+			VALUES (?, ?, ?, 0, NULL, '', NULL, ?)
+		`,
+			requestID,
+			partnerID,
+			commissionAmount,
+			now,
+		); err != nil {
 			return 0, err
 		}
 	}
+
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+
 	return requestID, nil
 }
 
@@ -8973,10 +9165,27 @@ func (a *App) updateSpaceSchedule(
 			err,
 		)
 	}
+
 	if err := validateConfiguredBookingOption(
 		schedule,
 		courtActivities,
 		courtLayouts,
+	); err != nil {
+		return err
+	}
+
+	courtClosures, err :=
+		a.listActiveCourtClosures()
+	if err != nil {
+		return fmt.Errorf(
+			"load active court closures: %w",
+			err,
+		)
+	}
+
+	if err := validateScheduleAgainstClosures(
+		schedule,
+		courtClosures,
 	); err != nil {
 		return err
 	}
@@ -9005,9 +9214,17 @@ func (a *App) updateSpaceSchedule(
 		return err
 	}
 
-	_, err = tx.Exec(`
+	result, err := tx.Exec(`
 		UPDATE space_schedules
-		SET slot_date = ?, slot_hour = ?, entry_type = ?, activity = ?, quantity = ?, title = ?, notes = ?, updated_at = ?
+		SET
+			slot_date = ?,
+			slot_hour = ?,
+			entry_type = ?,
+			activity = ?,
+			quantity = ?,
+			title = ?,
+			notes = ?,
+			updated_at = ?
 		WHERE id = ?
 	`,
 		schedule.SlotDate,
@@ -9023,6 +9240,16 @@ func (a *App) updateSpaceSchedule(
 	if err != nil {
 		return err
 	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
 	return tx.Commit()
 }
 
@@ -9291,20 +9518,32 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, reco
 	}
 	return transactionID, nil
 }
-
 func (a *App) updateBookingRequestStatus(
 	scheduleID int64,
 	status string,
 	reviewNote string,
 ) error {
-	if status != "confirmed" && status != "rejected" {
-		return errors.New("invalid booking request status")
+	if status != "confirmed" &&
+		status != "rejected" {
+		return errors.New(
+			"invalid booking request status",
+		)
 	}
+
 	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
 		return fmt.Errorf(
 			"load active court configuration: %w",
+			err,
+		)
+	}
+
+	courtClosures, err :=
+		a.listActiveCourtClosures()
+	if err != nil {
+		return fmt.Errorf(
+			"load active court closures: %w",
 			err,
 		)
 	}
@@ -9315,13 +9554,21 @@ func (a *App) updateBookingRequestStatus(
 	}
 	defer tx.Rollback()
 
-	schedule, err := findSpaceScheduleByIDQuery(tx, scheduleID)
+	schedule, err :=
+		findSpaceScheduleByIDQuery(
+			tx,
+			scheduleID,
+		)
 	if err != nil {
 		return err
 	}
+
 	if schedule.Status != "pending" {
-		return errors.New("booking request is no longer pending")
+		return errors.New(
+			"booking request is no longer pending",
+		)
 	}
+
 	if status == "confirmed" {
 		if err := validateBookableScheduleTime(
 			*schedule,
@@ -9338,33 +9585,63 @@ func (a *App) updateBookingRequestStatus(
 			return err
 		}
 
-		existing, err := querySchedulesForSlot(
-			tx,
-			schedule.SlotDate,
-			schedule.SlotHour,
-			schedule.ID,
-		)
+		if err := validateScheduleAgainstClosures(
+			*schedule,
+			courtClosures,
+		); err != nil {
+			return err
+		}
+
+		existing, err :=
+			querySchedulesForSlot(
+				tx,
+				schedule.SlotDate,
+				schedule.SlotHour,
+				schedule.ID,
+			)
 		if err != nil {
 			return err
 		}
 
-		if err := validateSpaceScheduleSlotAgainstLayouts(
-			existing,
-			*schedule,
-			courtLayouts,
-		); err != nil {
+		if err :=
+			validateSpaceScheduleSlotAgainstLayouts(
+				existing,
+				*schedule,
+				courtLayouts,
+			); err != nil {
 			return err
 		}
 	}
 
-	_, err = tx.Exec(`
+	result, err := tx.Exec(`
 		UPDATE space_schedules
-		SET status = ?, review_note = ?, updated_at = ?
-		WHERE id = ? AND status = 'pending'
-	`, status, reviewNote, time.Now().UTC(), scheduleID)
+		SET
+			status = ?,
+			review_note = ?,
+			updated_at = ?
+		WHERE id = ?
+		  AND status = 'pending'
+	`,
+		status,
+		reviewNote,
+		time.Now().UTC(),
+		scheduleID,
+	)
 	if err != nil {
 		return err
 	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return errors.New(
+			"booking request is no longer pending",
+		)
+	}
+
 	return tx.Commit()
 }
 
