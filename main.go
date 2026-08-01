@@ -939,6 +939,46 @@ func main() {
 			),
 		),
 	)
+
+	mux.Handle(
+		"/admin/courts/closures/create",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.createCourtClosureHandler),
+				"courts.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/courts/closures/update",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.updateCourtClosureHandler),
+				"courts.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/courts/closures/toggle",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.toggleCourtClosureHandler),
+				"courts.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/courts/closures/delete",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.deleteCourtClosureHandler),
+				"courts.manage",
+			),
+		),
+	)
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
@@ -2720,11 +2760,65 @@ func (a *App) courtManagementHandler(
 			data.CourtActivities = selectedCourt.Activities
 			data.CourtLayouts = selectedCourt.Layouts
 
+			closures, err := a.listCourtClosures(
+				selectedCourt.ID,
+				true,
+			)
+			if err != nil {
+				log.Printf(
+					"list court closures: %v",
+					err,
+				)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
+			}
+
+			data.CourtClosures = closures
+
 			mode := strings.ToLower(
 				strings.TrimSpace(
 					r.URL.Query().Get("action"),
 				),
 			)
+
+			closureAction := strings.ToLower(
+				strings.TrimSpace(
+					r.URL.Query().Get("closure_action"),
+				),
+			)
+
+			switch closureAction {
+			case "new", "edit":
+				data.CourtClosureMode = closureAction
+			}
+
+			if data.CourtClosureMode == "edit" {
+				closureID, err := strconv.ParseInt(
+					strings.TrimSpace(
+						r.URL.Query().Get("closure_id"),
+					),
+					10,
+					64,
+				)
+
+				if err == nil && closureID > 0 {
+					closure, err :=
+						a.findCourtClosureByID(
+							closureID,
+						)
+
+					if err == nil &&
+						closure.CourtID ==
+							selectedCourt.ID {
+						data.SelectedCourtClosure =
+							closure
+					}
+				}
+			}
 
 			switch mode {
 			case "new", "edit":
@@ -3070,6 +3164,388 @@ func (a *App) deleteCourtLayoutHandler(
 		r,
 		"/admin/courts?court_id="+
 			url.QueryEscape(r.FormValue("court_id")),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) createCourtClosureHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closure, err :=
+		courtClosureFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				url.QueryEscape(
+					r.FormValue("court_id"),
+				)+
+				"&closure_action=new"+
+				"#closure-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	closureID, err :=
+		a.createCourtClosure(closure)
+	if err != nil {
+		log.Printf(
+			"create court closure: %v",
+			err,
+		)
+
+		a.setFlash(
+			w,
+			"Unable to create the closure: "+
+				err.Error(),
+		)
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				strconv.FormatInt(
+					closure.CourtID,
+					10,
+				)+
+				"&closure_action=new"+
+				"#closure-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(
+		w,
+		"Court closure created successfully.",
+	)
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			strconv.FormatInt(
+				closure.CourtID,
+				10,
+			)+
+			"&closure_action=edit"+
+			"&closure_id="+
+			strconv.FormatInt(
+				closureID,
+				10,
+			)+
+			"#closure-form",
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) updateCourtClosureHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closureID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("closure_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || closureID <= 0 {
+		http.Error(
+			w,
+			"invalid court closure",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closure, err :=
+		courtClosureFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				url.QueryEscape(
+					r.FormValue("court_id"),
+				)+
+				"&closure_action=edit"+
+				"&closure_id="+
+				strconv.FormatInt(
+					closureID,
+					10,
+				)+
+				"#closure-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	closure.ID = closureID
+
+	if err := a.updateCourtClosure(
+		closure,
+	); err != nil {
+		log.Printf(
+			"update court closure: %v",
+			err,
+		)
+
+		a.setFlash(
+			w,
+			"Unable to update the closure: "+
+				err.Error(),
+		)
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				strconv.FormatInt(
+					closure.CourtID,
+					10,
+				)+
+				"&closure_action=edit"+
+				"&closure_id="+
+				strconv.FormatInt(
+					closure.ID,
+					10,
+				)+
+				"#closure-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(
+		w,
+		"Court closure updated successfully.",
+	)
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			strconv.FormatInt(
+				closure.CourtID,
+				10,
+			),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) toggleCourtClosureHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closureID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("closure_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || closureID <= 0 {
+		http.Error(
+			w,
+			"invalid court closure",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err := a.toggleCourtClosure(
+		closureID,
+	); err != nil {
+		log.Printf(
+			"toggle court closure: %v",
+			err,
+		)
+
+		a.setFlash(
+			w,
+			"Unable to update the closure.",
+		)
+	} else {
+		a.setFlash(
+			w,
+			"Court closure status updated.",
+		)
+	}
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			url.QueryEscape(
+				r.FormValue("court_id"),
+			),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) deleteCourtClosureHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closureID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("closure_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || closureID <= 0 {
+		http.Error(
+			w,
+			"invalid court closure",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err := a.deleteCourtClosure(
+		closureID,
+	); err != nil {
+		log.Printf(
+			"delete court closure: %v",
+			err,
+		)
+
+		a.setFlash(
+			w,
+			"Unable to delete the closure: "+
+				err.Error(),
+		)
+	} else {
+		a.setFlash(
+			w,
+			"Court closure deleted successfully.",
+		)
+	}
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			url.QueryEscape(
+				r.FormValue("court_id"),
+			),
 		http.StatusSeeOther,
 	)
 }
@@ -11363,6 +11839,47 @@ func validateEvent(event Event) error {
 	}
 	return nil
 }
+func courtClosureFromRequest(
+	r *http.Request,
+) (CourtClosure, error) {
+	courtID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("court_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || courtID <= 0 {
+		return CourtClosure{},
+			errors.New("valid court is required")
+	}
+
+	closure := CourtClosure{
+		CourtID: courtID,
+		ClosureDate: strings.TrimSpace(
+			r.FormValue("closure_date"),
+		),
+		StartHour: strings.TrimSpace(
+			r.FormValue("start_hour"),
+		),
+		EndHour: strings.TrimSpace(
+			r.FormValue("end_hour"),
+		),
+		Activity: strings.TrimSpace(
+			r.FormValue("activity"),
+		),
+		Title: strings.TrimSpace(
+			r.FormValue("title"),
+		),
+		Reason: strings.TrimSpace(
+			r.FormValue("reason"),
+		),
+		Active: r.FormValue("active") == "1",
+	}
+
+	return closure, nil
+}
+
 func courtLayoutFromRequest(
 	r *http.Request,
 ) (CourtLayout, error) {
