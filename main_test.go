@@ -1173,3 +1173,357 @@ func TestOperationalReportsAndCSVExport(t *testing.T) {
 		t.Fatalf("render reports template: %v", err)
 	}
 }
+func TestValidateSpaceScheduleSlotAgainstLayoutsAllowsBadmintonAndCricketNet(t *testing.T) {
+	layouts := []CourtLayout{
+		{
+			ID:      1,
+			CourtID: 1,
+			Name:    "Badminton and Cricket Net",
+			Active:  true,
+			Items: []CourtLayoutItem{
+				{
+					Activity: "badminton",
+					Quantity: 1,
+				},
+				{
+					Activity: "cricket_net",
+					Quantity: 1,
+				},
+			},
+		},
+	}
+
+	existing := []SpaceSchedule{
+		{
+			EntryType: "booking",
+			Activity:  "badminton",
+			Quantity:  1,
+			Status:    "confirmed",
+		},
+	}
+
+	candidate := SpaceSchedule{
+		EntryType: "booking",
+		Activity:  "cricket_net",
+		Quantity:  1,
+		Status:    "pending",
+	}
+
+	err := validateSpaceScheduleSlotAgainstLayouts(
+		existing,
+		candidate,
+		layouts,
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"expected badminton and one cricket net to be allowed, got %v",
+			err,
+		)
+	}
+}
+
+func TestValidateSpaceScheduleSlotAgainstLayoutsRejectsExtraCricketNet(t *testing.T) {
+	layouts := []CourtLayout{
+		{
+			ID:      1,
+			CourtID: 1,
+			Name:    "Badminton and Cricket Net",
+			Active:  true,
+			Items: []CourtLayoutItem{
+				{
+					Activity: "badminton",
+					Quantity: 1,
+				},
+				{
+					Activity: "cricket_net",
+					Quantity: 1,
+				},
+			},
+		},
+	}
+
+	existing := []SpaceSchedule{
+		{
+			EntryType: "booking",
+			Activity:  "badminton",
+			Quantity:  1,
+			Status:    "confirmed",
+		},
+		{
+			EntryType: "booking",
+			Activity:  "cricket_net",
+			Quantity:  1,
+			Status:    "confirmed",
+		},
+	}
+
+	candidate := SpaceSchedule{
+		EntryType: "booking",
+		Activity:  "cricket_net",
+		Quantity:  1,
+		Status:    "pending",
+	}
+
+	err := validateSpaceScheduleSlotAgainstLayouts(
+		existing,
+		candidate,
+		layouts,
+	)
+
+	if err == nil {
+		t.Fatal(
+			"expected an additional cricket net to be rejected",
+		)
+	}
+}
+
+func TestValidateSpaceScheduleSlotAgainstLayoutsAllowsThreeCricketNets(t *testing.T) {
+	layouts := []CourtLayout{
+		{
+			ID:      1,
+			CourtID: 1,
+			Name:    "Three Cricket Nets",
+			Active:  true,
+			Items: []CourtLayoutItem{
+				{
+					Activity: "cricket_net",
+					Quantity: 3,
+				},
+			},
+		},
+	}
+
+	existing := []SpaceSchedule{
+		{
+			EntryType: "booking",
+			Activity:  "cricket_net",
+			Quantity:  1,
+			Status:    "confirmed",
+		},
+		{
+			EntryType: "booking",
+			Activity:  "cricket_net",
+			Quantity:  1,
+			Status:    "confirmed",
+		},
+	}
+
+	candidate := SpaceSchedule{
+		EntryType: "booking",
+		Activity:  "cricket_net",
+		Quantity:  1,
+		Status:    "pending",
+	}
+
+	err := validateSpaceScheduleSlotAgainstLayouts(
+		existing,
+		candidate,
+		layouts,
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"expected three separate cricket-net bookings to be allowed, got %v",
+			err,
+		)
+	}
+}
+
+func TestValidateSpaceScheduleSlotAgainstLayoutsRejectsFutsalWithBadminton(t *testing.T) {
+	layouts := []CourtLayout{
+		{
+			ID:      1,
+			CourtID: 1,
+			Name:    "Futsal",
+			Active:  true,
+			Items: []CourtLayoutItem{
+				{
+					Activity: "futsal",
+					Quantity: 1,
+				},
+			},
+		},
+		{
+			ID:      2,
+			CourtID: 1,
+			Name:    "Badminton and Cricket Net",
+			Active:  true,
+			Items: []CourtLayoutItem{
+				{
+					Activity: "badminton",
+					Quantity: 1,
+				},
+				{
+					Activity: "cricket_net",
+					Quantity: 1,
+				},
+			},
+		},
+	}
+
+	existing := []SpaceSchedule{
+		{
+			EntryType: "booking",
+			Activity:  "futsal",
+			Quantity:  1,
+			Status:    "confirmed",
+		},
+	}
+
+	candidate := SpaceSchedule{
+		EntryType: "booking",
+		Activity:  "badminton",
+		Quantity:  1,
+		Status:    "pending",
+	}
+
+	err := validateSpaceScheduleSlotAgainstLayouts(
+		existing,
+		candidate,
+		layouts,
+	)
+
+	if err == nil {
+		t.Fatal(
+			"expected badminton to be rejected when futsal occupies the slot",
+		)
+	}
+}
+
+func TestValidateSpaceScheduleSlotAgainstLayoutsIgnoresRejectedBookings(t *testing.T) {
+	layouts := []CourtLayout{
+		{
+			ID:      1,
+			CourtID: 1,
+			Name:    "Futsal",
+			Active:  true,
+			Items: []CourtLayoutItem{
+				{
+					Activity: "futsal",
+					Quantity: 1,
+				},
+			},
+		},
+	}
+
+	existing := []SpaceSchedule{
+		{
+			EntryType: "booking",
+			Activity:  "badminton",
+			Quantity:  1,
+			Status:    "rejected",
+		},
+	}
+
+	candidate := SpaceSchedule{
+		EntryType: "booking",
+		Activity:  "futsal",
+		Quantity:  1,
+		Status:    "pending",
+	}
+
+	err := validateSpaceScheduleSlotAgainstLayouts(
+		existing,
+		candidate,
+		layouts,
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"expected rejected bookings not to consume capacity, got %v",
+			err,
+		)
+	}
+}
+
+func TestValidateSpaceScheduleSlotAgainstLayoutsRejectsInactiveLayout(t *testing.T) {
+	layouts := []CourtLayout{
+		{
+			ID:      1,
+			CourtID: 1,
+			Name:    "Badminton",
+			Active:  false,
+			Items: []CourtLayoutItem{
+				{
+					Activity: "badminton",
+					Quantity: 1,
+				},
+			},
+		},
+	}
+
+	candidate := SpaceSchedule{
+		EntryType: "booking",
+		Activity:  "badminton",
+		Quantity:  1,
+		Status:    "pending",
+	}
+
+	err := validateSpaceScheduleSlotAgainstLayouts(
+		nil,
+		candidate,
+		layouts,
+	)
+
+	if err == nil {
+		t.Fatal(
+			"expected an inactive layout not to permit bookings",
+		)
+	}
+}
+
+func TestCourtLayoutSupportsUsageRejectsUnknownActivity(t *testing.T) {
+	layout := CourtLayout{
+		ID:      1,
+		CourtID: 1,
+		Name:    "Badminton",
+		Active:  true,
+		Items: []CourtLayoutItem{
+			{
+				Activity: "badminton",
+				Quantity: 1,
+			},
+		},
+	}
+
+	usage := map[string]int{
+		"badminton": 1,
+		"futsal":    1,
+	}
+
+	if courtLayoutSupportsUsage(layout, usage) {
+		t.Fatal(
+			"expected layout to reject an activity it does not contain",
+		)
+	}
+}
+
+func TestCourtLayoutSupportsUsageAllowsUnusedCapacity(t *testing.T) {
+	layout := CourtLayout{
+		ID:      1,
+		CourtID: 1,
+		Name:    "Badminton and Cricket Net",
+		Active:  true,
+		Items: []CourtLayoutItem{
+			{
+				Activity: "badminton",
+				Quantity: 1,
+			},
+			{
+				Activity: "cricket_net",
+				Quantity: 1,
+			},
+		},
+	}
+
+	usage := map[string]int{
+		"badminton": 1,
+	}
+
+	if !courtLayoutSupportsUsage(layout, usage) {
+		t.Fatal(
+			"expected badminton alone to fit within the combined layout",
+		)
+	}
+}
