@@ -3718,6 +3718,12 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		return TemplateData{}, err
 	}
 
+	courtActivities, courtLayouts, err :=
+		a.activeBookingConfiguration()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Booking Manager"
 	data.Description = "Manage bookings and training sessions."
@@ -3728,6 +3734,8 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	data.Pricings = pricings
 	data.PricingSettings = settings
 	data.BookingReferrals = bookingReferrals
+	data.CourtActivities = courtActivities
+	data.CourtLayouts = courtLayouts
 	data.Activities = bookingActivities()
 	data.Hours = bookingHours()
 	data.TodayDate = time.Now().Format("2006-01-02")
@@ -3745,8 +3753,20 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	activeSchedules := activeSchedulesOnly(schedules)
 	data.DaySchedules = schedulesForDate(activeSchedules, data.CalendarDate)
 	data.DailyStats = buildDailyBookingStats(data.DaySchedules, data.Hours)
-	data.WeekDays = buildBookingWeekDays(activeSchedules, selectedDate, data.Hours)
-	data.BookingSlots = buildBookingSlotAvailability(activeSchedules, data.CalendarDate, data.Hours)
+	data.WeekDays = buildBookingWeekDays(
+		activeSchedules,
+		selectedDate,
+		data.Hours,
+		courtActivities,
+		courtLayouts,
+	)
+	data.BookingSlots = buildBookingSlotAvailability(
+		activeSchedules,
+		data.CalendarDate,
+		data.Hours,
+		courtActivities,
+		courtLayouts,
+	)
 	return data, nil
 }
 
@@ -3790,7 +3810,20 @@ func (a *App) buildPublicBookingData(w http.ResponseWriter, r *http.Request, vie
 	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
 	data.CalendarCanGoBack = data.CalendarDate > data.TodayDate
 	data.BookingSlots = filterPricedBookingSlots(buildBookingSlotAvailability(schedules, data.CalendarDate, data.Hours), data.CalendarDate, pricings, settings)
-	data.WeekDays = buildPricedBookingWeekDays(schedules, selectedDate, data.Hours, pricings, settings)
+	data.WeekDays = buildPricedBookingWeekDays(
+		schedules,
+		selectedDate,
+		data.Hours,
+		pricings,
+		settings,
+		courtActivities,
+		courtLayouts,
+	)
+	courtActivities, courtLayouts, err :=
+		a.activeBookingConfiguration()
+	if err != nil {
+		return TemplateData{}, err
+	}
 	data.DraftSchedule = prefillPublicBookingDraft(r, viewer, data.CalendarDate)
 	return data, nil
 }
@@ -9944,6 +9977,56 @@ func seedCourtManager(db *sql.DB) error {
 	return tx.Commit()
 }
 
+func (a *App) activeBookingConfiguration() (
+	[]CourtActivity,
+	[]CourtLayout,
+	error,
+) {
+	courts, err := a.listCourts(false)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var activities []CourtActivity
+	var layouts []CourtLayout
+
+	for _, court := range courts {
+		courtActivities, err := a.listCourtActivities(
+			court.ID,
+			false,
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		courtLayouts, err := a.listCourtLayouts(
+			court.ID,
+			false,
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		activities = append(
+			activities,
+			courtActivities...,
+		)
+
+		layouts = append(
+			layouts,
+			courtLayouts...,
+		)
+	}
+
+	if len(layouts) == 0 {
+		return nil, nil, errors.New(
+			"no active court layouts are configured",
+		)
+	}
+
+	return activities, layouts, nil
+}
+
 func seedPricingRules(db *sql.DB) error {
 	for _, option := range bookingOptionCatalog() {
 		if _, err := db.Exec(`
@@ -11087,49 +11170,114 @@ func validateSpaceScheduleSlot(existing []SpaceSchedule, candidate SpaceSchedule
 	return errors.New("that slot combination is not allowed")
 }
 
-func bookingOptionCatalog() []BookingOption {
-	return []BookingOption{
-		{Activity: "full_indoor_cricket", Quantity: 1, Label: "Full Indoor Cricket"},
-		{Activity: "futsal", Quantity: 1, Label: "Futsal"},
-		{Activity: "badminton", Quantity: 1, Label: "Badminton"},
-		{Activity: "table_tennis", Quantity: 1, Label: "Table Tennis x1"},
-		{Activity: "table_tennis", Quantity: 2, Label: "Table Tennis x2"},
-		{Activity: "cricket_net", Quantity: 1, Label: "Cricket Net x1"},
-		{Activity: "cricket_net", Quantity: 3, Label: "Cricket Nets x3"},
-		{Activity: "tennis", Quantity: 1, Label: "Tennis"},
+func bookingOptionCatalog(
+	activities []CourtActivity,
+	layouts []CourtLayout,
+) []BookingOption {
+
+	maxLayoutCapacity := make(map[string]int)
+
+	for _, layout := range layouts {
+		if !layout.Active {
+			continue
+		}
+
+		for _, item := range layout.Items {
+			if item.Quantity > maxLayoutCapacity[item.Activity] {
+				maxLayoutCapacity[item.Activity] = item.Quantity
+			}
+		}
 	}
+
+	var options []BookingOption
+
+	for _, activity := range activities {
+		if !activity.Active {
+			continue
+		}
+
+		maxQuantity := maxLayoutCapacity[activity.Activity]
+		if maxQuantity <= 0 {
+			continue
+		}
+
+		if activity.MaxQuantity > 0 &&
+			maxQuantity > activity.MaxQuantity {
+			maxQuantity = activity.MaxQuantity
+		}
+
+		for quantity := 1; quantity <= maxQuantity; quantity++ {
+			label := activity.DisplayName
+
+			if maxQuantity > 1 || quantity > 1 {
+				label = fmt.Sprintf(
+					"%s ×%d",
+					activity.DisplayName,
+					quantity,
+				)
+			}
+
+			options = append(
+				options,
+				BookingOption{
+					Activity: activity.Activity,
+					Quantity: quantity,
+					Label:    label,
+				},
+			)
+		}
+	}
+
+	return options
 }
 
-func buildBookingSlotAvailability(schedules []SpaceSchedule, slotDate string, hours []string) []BookingSlotAvailability {
+func buildBookingSlotAvailability(
+	schedules []SpaceSchedule,
+	slotDate string,
+	hours []string,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+) []BookingSlotAvailability {
 	var availability []BookingSlotAvailability
 	now := time.Now()
+
+	options := bookingOptionCatalog(
+		activities,
+		layouts,
+	)
+
 	for _, hour := range hours {
-		existing := schedulesForCalendarSlot(schedules, slotDate, hour)
+		existing := schedulesForCalendarSlot(
+			schedules,
+			slotDate,
+			hour,
+		)
+
 		slot := BookingSlotAvailability{
 			Hour:      hour,
 			Schedules: existing,
 		}
-		if validateBookableScheduleTime(SpaceSchedule{SlotDate: slotDate, SlotHour: hour}, now) != nil {
+
+		if validateBookableScheduleTime(
+			SpaceSchedule{
+				SlotDate: slotDate,
+				SlotHour: hour,
+			},
+			now,
+		) != nil {
 			slot.IsPast = true
-			slot.BlockedReason = "This time has already started"
-			availability = append(availability, slot)
+			slot.BlockedReason =
+				"This time has already started"
+
+			availability = append(
+				availability,
+				slot,
+			)
+
 			continue
 		}
 
-		hasTraining := false
-		for _, schedule := range existing {
-			if schedule.EntryType == "training" || schedule.Activity == "training" {
-				hasTraining = true
-				break
-			}
-		}
-		if hasTraining {
-			slot.BlockedReason = "Training session"
-			availability = append(availability, slot)
-			continue
-		}
-
-		for _, option := range bookingOptionCatalog() {
+		for _, option := range options {
 			candidate := SpaceSchedule{
 				EntryType: "booking",
 				Activity:  option.Activity,
@@ -11138,34 +11286,67 @@ func buildBookingSlotAvailability(schedules []SpaceSchedule, slotDate string, ho
 				SlotHour:  hour,
 				Status:    "pending",
 			}
-			if err := validateSpaceScheduleSlot(existing, candidate); err == nil {
-				slot.Options = append(slot.Options, option)
+
+			if err := validateSpaceScheduleSlotAgainstLayouts(
+				existing,
+				candidate,
+				layouts,
+			); err == nil {
+				slot.Options = append(
+					slot.Options,
+					option,
+				)
 			}
 		}
+
 		if len(slot.Options) == 0 {
-			slot.BlockedReason = "No bookable combinations available"
+			slot.BlockedReason =
+				"No bookable combinations available"
 		}
-		availability = append(availability, slot)
+
+		availability = append(
+			availability,
+			slot,
+		)
 	}
+
 	return availability
 }
 
-func buildBookingWeekDays(schedules []SpaceSchedule, selectedDate time.Time, hours []string) []CalendarDay {
+func buildBookingWeekDays(
+	schedules []SpaceSchedule,
+	selectedDate time.Time,
+	hours []string,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+) []CalendarDay {
 	start := selectedDate.AddDate(0, 0, -3)
+
 	todayDate := time.Now()
 	today := todayDate.Format("2006-01-02")
-	if selectedDate.Format("2006-01-02") >= today && start.Format("2006-01-02") < today {
+
+	if selectedDate.Format("2006-01-02") >= today &&
+		start.Format("2006-01-02") < today {
 		start = todayDate
 	}
+
 	days := make([]CalendarDay, 0, 7)
 
 	for offset := 0; offset < 7; offset++ {
 		day := start.AddDate(0, 0, offset)
 		date := day.Format("2006-01-02")
-		availability := buildBookingSlotAvailability(schedules, date, hours)
+
+		availability := buildBookingSlotAvailability(
+			schedules,
+			date,
+			hours,
+			activities,
+			layouts,
+		)
 
 		openCount := 0
 		busyCount := 0
+
 		for _, slot := range availability {
 			if len(slot.Options) > 0 {
 				openCount++
@@ -11174,17 +11355,21 @@ func buildBookingWeekDays(schedules []SpaceSchedule, selectedDate time.Time, hou
 			}
 		}
 
-		days = append(days, CalendarDay{
-			Date:          date,
-			DayLabel:      day.Format("Mon"),
-			MonthLabel:    day.Format("Jan"),
-			DayNumber:     day.Format("02"),
-			OpenSlotCount: openCount,
-			BusySlotCount: busyCount,
-			IsToday:       date == today,
-			IsSelected:    date == selectedDate.Format("2006-01-02"),
-			IsPast:        date < today,
-		})
+		days = append(
+			days,
+			CalendarDay{
+				Date:          date,
+				DayLabel:      day.Format("Mon"),
+				MonthLabel:    day.Format("Jan"),
+				DayNumber:     day.Format("02"),
+				OpenSlotCount: openCount,
+				BusySlotCount: busyCount,
+				IsToday:       date == today,
+				IsSelected: date ==
+					selectedDate.Format("2006-01-02"),
+				IsPast: date < today,
+			},
+		)
 	}
 
 	return days
@@ -11208,13 +11393,46 @@ func filterPricedBookingSlots(slots []BookingSlotAvailability, slotDate string, 
 	return filtered
 }
 
-func buildPricedBookingWeekDays(schedules []SpaceSchedule, selectedDate time.Time, hours []string, pricings []PricingRule, settings *PricingSettings) []CalendarDay {
-	days := buildBookingWeekDays(schedules, selectedDate, hours)
+func buildPricedBookingWeekDays(
+	schedules []SpaceSchedule,
+	selectedDate time.Time,
+	hours []string,
+	pricings []PricingRule,
+	settings *PricingSettings,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+) []CalendarDay {
+	days := buildBookingWeekDays(
+		schedules,
+		selectedDate,
+		hours,
+		activities,
+		layouts,
+	)
+
 	for i := range days {
-		slots := filterPricedBookingSlots(buildBookingSlotAvailability(schedules, days[i].Date, hours), days[i].Date, pricings, settings)
-		days[i].OpenSlotCount = bookingOpenHourCount(slots)
-		days[i].BusySlotCount = len(slots) - days[i].OpenSlotCount
+		slots := buildBookingSlotAvailability(
+			schedules,
+			days[i].Date,
+			hours,
+			activities,
+			layouts,
+		)
+
+		slots = filterPricedBookingSlots(
+			slots,
+			days[i].Date,
+			pricings,
+			settings,
+		)
+
+		days[i].OpenSlotCount =
+			bookingOpenHourCount(slots)
+
+		days[i].BusySlotCount =
+			len(slots) - days[i].OpenSlotCount
 	}
+
 	return days
 }
 
