@@ -5501,14 +5501,13 @@ func (a *App) listCourts(includeInactive bool) ([]Court, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	var courts []Court
 
 	for rows.Next() {
 		var court Court
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&court.ID,
 			&court.Name,
 			&court.Code,
@@ -5517,22 +5516,33 @@ func (a *App) listCourts(includeInactive bool) ([]Court, error) {
 			&court.SortOrder,
 			&court.CreatedAt,
 			&court.UpdatedAt,
+		); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+
+		courts = append(courts, court)
+	}
+
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range courts {
+		layouts, err := a.listCourtLayouts(
+			courts[i].ID,
+			includeInactive,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		layouts, err := a.listCourtLayouts(court.ID, includeInactive)
-		if err != nil {
-			return nil, err
-		}
-
-		court.Layouts = layouts
-		courts = append(courts, court)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
+		courts[i].Layouts = layouts
 	}
 
 	return courts, nil
@@ -5672,14 +5682,13 @@ func (a *App) listCourtLayouts(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	var layouts []CourtLayout
 
 	for rows.Next() {
 		var layout CourtLayout
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&layout.ID,
 			&layout.CourtID,
 			&layout.Name,
@@ -5688,22 +5697,30 @@ func (a *App) listCourtLayouts(
 			&layout.SortOrder,
 			&layout.CreatedAt,
 			&layout.UpdatedAt,
-		)
-		if err != nil {
+		); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
 
-		items, err := a.listCourtLayoutItems(layout.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		layout.Items = items
 		layouts = append(layouts, layout)
 	}
 
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
 		return nil, err
+	}
+
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range layouts {
+		items, err := a.listCourtLayoutItems(layouts[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		layouts[i].Items = items
 	}
 
 	return layouts, nil
@@ -5826,14 +5843,13 @@ func (a *App) listActiveCourtLayouts() ([]CourtLayout, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	var layouts []CourtLayout
 
 	for rows.Next() {
 		var layout CourtLayout
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&layout.ID,
 			&layout.CourtID,
 			&layout.Name,
@@ -5842,22 +5858,30 @@ func (a *App) listActiveCourtLayouts() ([]CourtLayout, error) {
 			&layout.SortOrder,
 			&layout.CreatedAt,
 			&layout.UpdatedAt,
-		)
-		if err != nil {
+		); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
 
-		items, err := a.listCourtLayoutItems(layout.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		layout.Items = items
 		layouts = append(layouts, layout)
 	}
 
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
 		return nil, err
+	}
+
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range layouts {
+		items, err := a.listCourtLayoutItems(layouts[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		layouts[i].Items = items
 	}
 
 	return layouts, nil
