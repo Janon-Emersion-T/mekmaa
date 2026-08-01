@@ -11481,6 +11481,41 @@ func bookingOptionSelected(draft *SpaceSchedule, slotHour, activity string, quan
 	return draft.SlotHour == slotHour && draft.Activity == activity && draft.Quantity == quantity
 }
 
+func courtLayoutHasActivity(
+	layout *CourtLayout,
+	activity string,
+) bool {
+	if layout == nil {
+		return false
+	}
+
+	for _, item := range layout.Items {
+		if item.Activity == activity {
+			return true
+		}
+	}
+
+	return false
+}
+
+func courtLayoutActivityQuantity(
+	layout *CourtLayout,
+	activity string,
+	defaultQuantity int,
+) int {
+	if layout == nil {
+		return defaultQuantity
+	}
+
+	for _, item := range layout.Items {
+		if item.Activity == activity {
+			return item.Quantity
+		}
+	}
+
+	return defaultQuantity
+}
+
 func activityLabel(activity string) string {
 	return scheduleSummary(SpaceSchedule{Activity: activity, Quantity: 1})
 }
@@ -12535,42 +12570,44 @@ func buildTemplates() (map[string]*template.Template, error) {
 			}
 			return containsPermission(user.Permissions, permission)
 		},
-		"admissionSelected":         admissionSelected,
-		"userSelected":              userSelected,
-		"admissionAge":              admissionAge,
-		"attendanceCount":           attendanceCount,
-		"attendanceRecordFor":       attendanceRecordFor,
-		"attendanceStatus":          attendanceStatus,
-		"activityLabel":             activityLabel,
-		"bookingProductLabel":       bookingProductLabel,
-		"optionSummary":             optionSummary,
-		"bookingOptionSelected":     bookingOptionSelected,
-		"bookingReference":          bookingReference,
-		"bookingOpenHourCount":      bookingOpenHourCount,
-		"bookingReferralFor":        bookingReferralFor,
-		"bookingStatusTone":         bookingStatusTone,
-		"pricingForOption":          pricingForOption,
-		"pricingForSchedule":        pricingForSchedule,
-		"pricingTierLabel":          pricingTierLabel,
-		"financeCategoryLabel":      financeCategoryLabel,
-		"paymentMonthLabel":         paymentMonthLabel,
-		"formatDateTime":            formatDateTime,
-		"relativeTime":              relativeTime,
-		"formatCalendarDate":        formatCalendarDate,
-		"formatClockTime":           formatClockTime,
-		"formatEventTiming":         formatEventTiming,
-		"eventScheduleLabel":        eventScheduleLabel,
-		"hasTime":                   hasTime,
-		"hasRegistrationDeadline":   hasRegistrationDeadline,
-		"isPastEventDate":           isPastEventDate,
-		"money":                     money,
-		"negate":                    negate,
-		"reportBarWidth":            reportBarWidth,
-		"registrationDeadlineLabel": registrationDeadlineLabel,
-		"scheduleToneClasses":       scheduleToneClasses,
-		"scheduleBadgeClasses":      scheduleBadgeClasses,
-		"schedulesForCalendarSlot":  schedulesForCalendarSlot,
-		"scheduleSummary":           scheduleSummary,
+		"admissionSelected":           admissionSelected,
+		"userSelected":                userSelected,
+		"admissionAge":                admissionAge,
+		"attendanceCount":             attendanceCount,
+		"attendanceRecordFor":         attendanceRecordFor,
+		"attendanceStatus":            attendanceStatus,
+		"activityLabel":               activityLabel,
+		"bookingProductLabel":         bookingProductLabel,
+		"optionSummary":               optionSummary,
+		"bookingOptionSelected":       bookingOptionSelected,
+		"bookingReference":            bookingReference,
+		"bookingOpenHourCount":        bookingOpenHourCount,
+		"bookingReferralFor":          bookingReferralFor,
+		"bookingStatusTone":           bookingStatusTone,
+		"courtLayoutHasActivity":      courtLayoutHasActivity,
+		"courtLayoutActivityQuantity": courtLayoutActivityQuantity,
+		"pricingForOption":            pricingForOption,
+		"pricingForSchedule":          pricingForSchedule,
+		"pricingTierLabel":            pricingTierLabel,
+		"financeCategoryLabel":        financeCategoryLabel,
+		"paymentMonthLabel":           paymentMonthLabel,
+		"formatDateTime":              formatDateTime,
+		"relativeTime":                relativeTime,
+		"formatCalendarDate":          formatCalendarDate,
+		"formatClockTime":             formatClockTime,
+		"formatEventTiming":           formatEventTiming,
+		"eventScheduleLabel":          eventScheduleLabel,
+		"hasTime":                     hasTime,
+		"hasRegistrationDeadline":     hasRegistrationDeadline,
+		"isPastEventDate":             isPastEventDate,
+		"money":                       money,
+		"negate":                      negate,
+		"reportBarWidth":              reportBarWidth,
+		"registrationDeadlineLabel":   registrationDeadlineLabel,
+		"scheduleToneClasses":         scheduleToneClasses,
+		"scheduleBadgeClasses":        scheduleBadgeClasses,
+		"schedulesForCalendarSlot":    schedulesForCalendarSlot,
+		"scheduleSummary":             scheduleSummary,
 		"seq": func(n int) []int {
 			if n <= 0 {
 				return nil

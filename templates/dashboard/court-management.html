@@ -135,9 +135,21 @@
           {{range .CourtActivities}}
           <div class="flex items-center justify-between gap-4 rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-4">
             <div>
-              <p class="font-semibold text-obsidian">
-                {{.DisplayName}}
-              </p>
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="font-semibold text-obsidian">
+                  {{.DisplayName}}
+                </p>
+
+                {{if .Active}}
+                <span class="rounded-full bg-emerald-50 px-2 py-1 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-emerald-700">
+                  Active
+                </span>
+                {{else}}
+                <span class="rounded-full bg-white px-2 py-1 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate/45">
+                  Inactive
+                </span>
+                {{end}}
+              </div>
 
               <p class="mt-1 text-xs font-medium text-slate/45">
                 {{.Activity}}
@@ -165,96 +177,479 @@
       </div>
     </div>
 
-    <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
-            Simultaneous utilization
-          </p>
+    <div class="space-y-6">
+      <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
+              Simultaneous utilization
+            </p>
 
-          <h2 class="mt-2 text-xl font-semibold text-obsidian sm:text-2xl">
-            Valid court layouts
-          </h2>
+            <h2 class="mt-2 text-xl font-semibold text-obsidian sm:text-2xl">
+              Valid court layouts
+            </h2>
 
-          <p class="mt-2 max-w-2xl text-sm leading-6 text-slate/65">
-            Every layout represents one complete arrangement of the court.
-            Separate customers may book different activities when their
-            combined bookings fit within one active layout.
-          </p>
+            <p class="mt-2 max-w-2xl text-sm leading-6 text-slate/65">
+              Each layout defines one complete way the court can be used.
+              Separate customers may book activities concurrently when their
+              combined bookings fit within the same active layout.
+            </p>
+          </div>
+
+          <a
+            href="/admin/courts?court_id={{.SelectedCourt.ID}}&action=new#layout-form"
+            class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-semibold text-cloud transition hover:bg-slate"
+          >
+            Add layout
+          </a>
         </div>
 
-        <span class="self-start rounded-full bg-aqua/20 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-obsidian">
-          {{len .CourtLayouts}} configurations
-        </span>
-      </div>
-
-      <div class="mt-6 grid gap-4">
-        {{range .CourtLayouts}}
-        <article class="rounded-3xl border border-slate/10 bg-cloud/65 p-5 transition hover:border-slate/20 hover:bg-cloud">
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        {{if eq .CourtLayoutMode "new"}}
+        <div id="layout-form" class="mt-6 rounded-3xl border border-aqua/40 bg-aqua/5 p-5 sm:p-6">
+          <div class="flex items-center justify-between gap-4">
             <div>
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="text-lg font-semibold text-obsidian">
-                  {{.Name}}
-                </h3>
+              <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">
+                New configuration
+              </p>
 
+              <h3 class="mt-2 text-lg font-semibold text-obsidian">
+                Create court layout
+              </h3>
+            </div>
+
+            <a
+              href="/admin/courts?court_id={{.SelectedCourt.ID}}"
+              class="text-sm font-semibold text-slate/60 transition hover:text-obsidian"
+            >
+              Close
+            </a>
+          </div>
+
+          <form action="/admin/courts/layouts/create" method="post" class="mt-6 space-y-5">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="court_id" value="{{.SelectedCourt.ID}}" />
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">
+                  Layout name
+                </span>
+
+                <input
+                  type="text"
+                  name="name"
+                  maxlength="120"
+                  required
+                  placeholder="Example: Badminton and Cricket Net"
+                  class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua"
+                />
+              </label>
+
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">
+                  Display order
+                </span>
+
+                <input
+                  type="number"
+                  name="sort_order"
+                  value="100"
+                  min="0"
+                  required
+                  class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua"
+                />
+              </label>
+            </div>
+
+            <label class="grid gap-2">
+              <span class="text-sm font-semibold text-obsidian">
+                Description
+              </span>
+
+              <textarea
+                name="description"
+                rows="3"
+                maxlength="500"
+                placeholder="Describe how this court configuration operates."
+                class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-aqua"
+              ></textarea>
+            </label>
+
+            <div>
+              <p class="text-sm font-semibold text-obsidian">
+                Activities and capacities
+              </p>
+
+              <p class="mt-1 text-xs leading-5 text-slate/55">
+                Select every activity that can operate within this layout.
+                Quantity is the maximum capacity available at the same time.
+              </p>
+
+              <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                {{range .CourtActivities}}
                 {{if .Active}}
-                <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-emerald-700">
-                  Active
-                </span>
-                {{else}}
-                <span class="rounded-full border border-slate/15 bg-white px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/50">
-                  Inactive
-                </span>
+                <div class="rounded-2xl border border-slate/10 bg-white p-4">
+                  <label class="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      name="activity"
+                      value="{{.Activity}}"
+                      class="h-4 w-4 rounded border-slate/20"
+                    />
+
+                    <span class="min-w-0">
+                      <span class="block font-semibold text-obsidian">
+                        {{.DisplayName}}
+                      </span>
+
+                      <span class="mt-0.5 block text-xs text-slate/45">
+                        Maximum supported: {{.MaxQuantity}}
+                      </span>
+                    </span>
+                  </label>
+
+                  <label class="mt-3 grid gap-1.5">
+                    <span class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                      Layout capacity
+                    </span>
+
+                    <input
+                      type="number"
+                      name="quantity_{{.Activity}}"
+                      value="1"
+                      min="1"
+                      max="{{.MaxQuantity}}"
+                      class="h-11 rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none transition focus:border-aqua"
+                    />
+                  </label>
+                </div>
+                {{end}}
                 {{end}}
               </div>
-
-              <p class="mt-2 text-sm leading-6 text-slate/65">
-                {{.Description}}
-              </p>
             </div>
 
-            <div class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-center">
-              <p class="text-xs uppercase tracking-[0.14em] text-slate/45">
-                Activities
-              </p>
+            <label class="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-4">
+              <input
+                type="checkbox"
+                name="active"
+                value="1"
+                checked
+                class="h-4 w-4 rounded border-slate/20"
+              />
 
-              <p class="mt-1 text-xl font-semibold text-obsidian">
-                {{len .Items}}
-              </p>
+              <span>
+                <span class="block text-sm font-semibold text-obsidian">
+                  Activate immediately
+                </span>
+
+                <span class="mt-0.5 block text-xs text-slate/50">
+                  Active layouts will participate in booking availability.
+                </span>
+              </span>
+            </label>
+
+            <div class="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <a
+                href="/admin/courts?court_id={{.SelectedCourt.ID}}"
+                class="inline-flex items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 py-3 text-sm font-semibold text-slate/65 transition hover:text-obsidian"
+              >
+                Cancel
+              </a>
+
+              <button
+                type="submit"
+                class="rounded-2xl bg-obsidian px-6 py-3 text-sm font-semibold text-cloud transition hover:bg-slate"
+              >
+                Create layout
+              </button>
             </div>
-          </div>
-
-          <div class="mt-5 flex flex-wrap gap-2">
-            {{range .Items}}
-            <div class="rounded-2xl border border-slate/10 bg-white px-4 py-3">
-              <p class="text-sm font-semibold text-obsidian">
-                {{.DisplayName}}
-              </p>
-
-              <p class="mt-1 text-xs text-slate/50">
-                Maximum quantity: {{.Quantity}}
-              </p>
-            </div>
-            {{else}}
-            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-              This layout has no configured activities.
-            </div>
-            {{end}}
-          </div>
-        </article>
-        {{else}}
-        <div class="rounded-3xl border border-dashed border-slate/20 bg-cloud/50 px-5 py-12 text-center">
-          <p class="font-semibold text-obsidian">
-            No court layouts found
-          </p>
-
-          <p class="mt-2 text-sm text-slate/60">
-            Add at least one valid layout before enabling dynamic booking
-            validation.
-          </p>
+          </form>
         </div>
         {{end}}
+
+        {{if and (eq .CourtLayoutMode "edit") .SelectedCourtLayout}}
+        <div id="layout-form" class="mt-6 rounded-3xl border border-aqua/40 bg-aqua/5 p-5 sm:p-6">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">
+                Edit configuration
+              </p>
+
+              <h3 class="mt-2 text-lg font-semibold text-obsidian">
+                {{.SelectedCourtLayout.Name}}
+              </h3>
+            </div>
+
+            <a
+              href="/admin/courts?court_id={{.SelectedCourt.ID}}"
+              class="text-sm font-semibold text-slate/60 transition hover:text-obsidian"
+            >
+              Close
+            </a>
+          </div>
+
+          <form action="/admin/courts/layouts/update" method="post" class="mt-6 space-y-5">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="court_id" value="{{.SelectedCourt.ID}}" />
+            <input type="hidden" name="layout_id" value="{{.SelectedCourtLayout.ID}}" />
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">
+                  Layout name
+                </span>
+
+                <input
+                  type="text"
+                  name="name"
+                  value="{{.SelectedCourtLayout.Name}}"
+                  maxlength="120"
+                  required
+                  class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua"
+                />
+              </label>
+
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">
+                  Display order
+                </span>
+
+                <input
+                  type="number"
+                  name="sort_order"
+                  value="{{.SelectedCourtLayout.SortOrder}}"
+                  min="0"
+                  required
+                  class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua"
+                />
+              </label>
+            </div>
+
+            <label class="grid gap-2">
+              <span class="text-sm font-semibold text-obsidian">
+                Description
+              </span>
+
+              <textarea
+                name="description"
+                rows="3"
+                maxlength="500"
+                class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-aqua"
+              >{{.SelectedCourtLayout.Description}}</textarea>
+            </label>
+
+            <div>
+              <p class="text-sm font-semibold text-obsidian">
+                Activities and capacities
+              </p>
+
+              <p class="mt-1 text-xs leading-5 text-slate/55">
+                Unchecking an activity removes it from this layout.
+              </p>
+
+              <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                {{range .CourtActivities}}
+                {{if .Active}}
+                <div class="rounded-2xl border border-slate/10 bg-white p-4">
+                  <label class="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      name="activity"
+                      value="{{.Activity}}"
+                      {{if courtLayoutHasActivity $.SelectedCourtLayout .Activity}}checked{{end}}
+                      class="h-4 w-4 rounded border-slate/20"
+                    />
+
+                    <span class="min-w-0">
+                      <span class="block font-semibold text-obsidian">
+                        {{.DisplayName}}
+                      </span>
+
+                      <span class="mt-0.5 block text-xs text-slate/45">
+                        Maximum supported: {{.MaxQuantity}}
+                      </span>
+                    </span>
+                  </label>
+
+                  <label class="mt-3 grid gap-1.5">
+                    <span class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+                      Layout capacity
+                    </span>
+
+                    <input
+                      type="number"
+                      name="quantity_{{.Activity}}"
+                      value="{{courtLayoutActivityQuantity $.SelectedCourtLayout .Activity 1}}"
+                      min="1"
+                      max="{{.MaxQuantity}}"
+                      class="h-11 rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none transition focus:border-aqua"
+                    />
+                  </label>
+                </div>
+                {{end}}
+                {{end}}
+              </div>
+            </div>
+
+            <label class="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-4">
+              <input
+                type="checkbox"
+                name="active"
+                value="1"
+                {{if .SelectedCourtLayout.Active}}checked{{end}}
+                class="h-4 w-4 rounded border-slate/20"
+              />
+
+              <span>
+                <span class="block text-sm font-semibold text-obsidian">
+                  Layout is active
+                </span>
+
+                <span class="mt-0.5 block text-xs text-slate/50">
+                  Only active layouts are considered by booking availability.
+                </span>
+              </span>
+            </label>
+
+            <div class="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <a
+                href="/admin/courts?court_id={{.SelectedCourt.ID}}"
+                class="inline-flex items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 py-3 text-sm font-semibold text-slate/65 transition hover:text-obsidian"
+              >
+                Cancel
+              </a>
+
+              <button
+                type="submit"
+                class="rounded-2xl bg-obsidian px-6 py-3 text-sm font-semibold text-cloud transition hover:bg-slate"
+              >
+                Save changes
+              </button>
+            </div>
+          </form>
+        </div>
+        {{end}}
+      </div>
+
+      <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
+              Current configurations
+            </p>
+
+            <h2 class="mt-2 text-xl font-semibold text-obsidian">
+              Layout library
+            </h2>
+          </div>
+
+          <span class="rounded-full bg-aqua/20 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-obsidian">
+            {{len .CourtLayouts}} layouts
+          </span>
+        </div>
+
+        <div class="mt-6 grid gap-4">
+          {{range .CourtLayouts}}
+          <article class="rounded-3xl border border-slate/10 bg-cloud/65 p-5">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="text-lg font-semibold text-obsidian">
+                    {{.Name}}
+                  </h3>
+
+                  {{if .Active}}
+                  <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                    Active
+                  </span>
+                  {{else}}
+                  <span class="rounded-full border border-slate/15 bg-white px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/50">
+                    Inactive
+                  </span>
+                  {{end}}
+                </div>
+
+                <p class="mt-2 text-sm leading-6 text-slate/65">
+                  {{.Description}}
+                </p>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <a
+                  href="/admin/courts?court_id={{.CourtID}}&action=edit&layout_id={{.ID}}#layout-form"
+                  class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-slate/65 transition hover:text-obsidian"
+                >
+                  Edit
+                </a>
+
+                <form action="/admin/courts/layouts/toggle" method="post">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="court_id" value="{{.CourtID}}" />
+                  <input type="hidden" name="layout_id" value="{{.ID}}" />
+
+                  <button
+                    type="submit"
+                    class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-slate/65 transition hover:text-obsidian"
+                  >
+                    {{if .Active}}Deactivate{{else}}Activate{{end}}
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <div class="mt-5 flex flex-wrap gap-2">
+              {{range .Items}}
+              <div class="rounded-2xl border border-slate/10 bg-white px-4 py-3">
+                <p class="text-sm font-semibold text-obsidian">
+                  {{.DisplayName}}
+                </p>
+
+                <p class="mt-1 text-xs text-slate/50">
+                  Capacity: {{.Quantity}}
+                </p>
+              </div>
+              {{else}}
+              <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+                This layout has no configured activities.
+              </div>
+              {{end}}
+            </div>
+
+            <div class="mt-5 flex items-center justify-between gap-4 border-t border-slate/10 pt-4">
+              <p class="text-xs text-slate/45">
+                Display order: {{.SortOrder}}
+              </p>
+
+              <form
+                action="/admin/courts/layouts/delete"
+                method="post"
+                onsubmit="return confirm('Delete this court layout? This cannot be undone.');"
+              >
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                <input type="hidden" name="court_id" value="{{.CourtID}}" />
+                <input type="hidden" name="layout_id" value="{{.ID}}" />
+
+                <button
+                  type="submit"
+                  class="text-xs font-bold uppercase tracking-[0.12em] text-rose-600 transition hover:text-rose-800"
+                >
+                  Delete
+                </button>
+              </form>
+            </div>
+          </article>
+          {{else}}
+          <div class="rounded-3xl border border-dashed border-slate/20 bg-cloud/50 px-5 py-12 text-center">
+            <p class="font-semibold text-obsidian">
+              No court layouts found
+            </p>
+
+            <p class="mt-2 text-sm text-slate/60">
+              Create the first layout to define how this court may be used.
+            </p>
+          </div>
+          {{end}}
+        </div>
       </div>
     </div>
   </div>
