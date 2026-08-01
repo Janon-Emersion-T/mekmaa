@@ -9033,7 +9033,23 @@ func verifyCourtManagerConfiguration(db *sql.DB) error {
 }
 
 func seedCourtManager(db *sql.DB) error {
+	var existingCourtCount int
+
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM courts
+	`).Scan(&existingCourtCount); err != nil {
+		return fmt.Errorf(
+			"count existing courts before seed: %w",
+			err,
+		)
+	}
+
+	if existingCourtCount > 0 {
+		return nil
+	}
 	tx, err := db.Begin()
+
 	if err != nil {
 		return err
 	}
