@@ -413,6 +413,21 @@ type CourtLayoutItem struct {
 	Quantity    int
 }
 
+type CourtClosure struct {
+	ID          int64
+	CourtID     int64
+	CourtName   string
+	ClosureDate string
+	StartHour   string
+	EndHour     string
+	Activity    string
+	Title       string
+	Reason      string
+	Active      bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type SpaceSchedule struct {
 	ID              int64
 	SlotDate        string
@@ -625,6 +640,9 @@ type TemplateData struct {
 	CourtLayouts            []CourtLayout
 	SelectedCourtLayout     *CourtLayout
 	CourtLayoutMode         string
+	CourtClosures           []CourtClosure
+	SelectedCourtClosure    *CourtClosure
+	CourtClosureMode        string
 	Schedules               []SpaceSchedule
 	DaySchedules            []SpaceSchedule
 	PendingSchedules        []SpaceSchedule
@@ -6255,6 +6273,378 @@ func (a *App) listCourtLayoutItems(
 	return items, nil
 }
 
+func (a *App) listCourtClosures(
+	courtID int64,
+	includeInactive bool,
+) ([]CourtClosure, error) {
+	query := `
+		SELECT
+			cc.id,
+			cc.court_id,
+			c.name,
+			cc.closure_date,
+			cc.start_hour,
+			cc.end_hour,
+			cc.activity,
+			cc.title,
+			cc.reason,
+			cc.active,
+			cc.created_at,
+			cc.updated_at
+		FROM court_closures cc
+		JOIN courts c
+			ON c.id = cc.court_id
+		WHERE cc.court_id = ?
+	`
+
+	if !includeInactive {
+		query += ` AND cc.active = 1`
+	}
+
+	query += `
+		ORDER BY
+			cc.closure_date DESC,
+			cc.start_hour,
+			cc.id DESC
+	`
+
+	rows, err := a.db.Query(
+		query,
+		courtID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var closures []CourtClosure
+
+	for rows.Next() {
+		var closure CourtClosure
+
+		if err := rows.Scan(
+			&closure.ID,
+			&closure.CourtID,
+			&closure.CourtName,
+			&closure.ClosureDate,
+			&closure.StartHour,
+			&closure.EndHour,
+			&closure.Activity,
+			&closure.Title,
+			&closure.Reason,
+			&closure.Active,
+			&closure.CreatedAt,
+			&closure.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		closures = append(
+			closures,
+			closure,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return closures, nil
+}
+
+func (a *App) findCourtClosureByID(
+	closureID int64,
+) (*CourtClosure, error) {
+	var closure CourtClosure
+
+	err := a.db.QueryRow(`
+		SELECT
+			cc.id,
+			cc.court_id,
+			c.name,
+			cc.closure_date,
+			cc.start_hour,
+			cc.end_hour,
+			cc.activity,
+			cc.title,
+			cc.reason,
+			cc.active,
+			cc.created_at,
+			cc.updated_at
+		FROM court_closures cc
+		JOIN courts c
+			ON c.id = cc.court_id
+		WHERE cc.id = ?
+	`, closureID).Scan(
+		&closure.ID,
+		&closure.CourtID,
+		&closure.CourtName,
+		&closure.ClosureDate,
+		&closure.StartHour,
+		&closure.EndHour,
+		&closure.Activity,
+		&closure.Title,
+		&closure.Reason,
+		&closure.Active,
+		&closure.CreatedAt,
+		&closure.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &closure, nil
+}
+
+func (a *App) activeCourtClosuresForDate(
+	closureDate string,
+) ([]CourtClosure, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			cc.id,
+			cc.court_id,
+			c.name,
+			cc.closure_date,
+			cc.start_hour,
+			cc.end_hour,
+			cc.activity,
+			cc.title,
+			cc.reason,
+			cc.active,
+			cc.created_at,
+			cc.updated_at
+		FROM court_closures cc
+		JOIN courts c
+			ON c.id = cc.court_id
+		WHERE cc.active = 1
+		  AND c.active = 1
+		  AND cc.closure_date = ?
+		ORDER BY
+			c.sort_order,
+			cc.start_hour,
+			cc.id
+	`, closureDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var closures []CourtClosure
+
+	for rows.Next() {
+		var closure CourtClosure
+
+		if err := rows.Scan(
+			&closure.ID,
+			&closure.CourtID,
+			&closure.CourtName,
+			&closure.ClosureDate,
+			&closure.StartHour,
+			&closure.EndHour,
+			&closure.Activity,
+			&closure.Title,
+			&closure.Reason,
+			&closure.Active,
+			&closure.CreatedAt,
+			&closure.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		closures = append(
+			closures,
+			closure,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return closures, nil
+}
+
+func (a *App) createCourtClosure(
+	closure CourtClosure,
+) (int64, error) {
+	activities, err := a.listCourtActivities(
+		closure.CourtID,
+		false,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := validateCourtClosure(
+		closure,
+		activities,
+	); err != nil {
+		return 0, err
+	}
+
+	now := time.Now().UTC()
+
+	result, err := a.db.Exec(`
+		INSERT INTO court_closures (
+			court_id,
+			closure_date,
+			start_hour,
+			end_hour,
+			activity,
+			title,
+			reason,
+			active,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		closure.CourtID,
+		closure.ClosureDate,
+		closure.StartHour,
+		closure.EndHour,
+		closure.Activity,
+		closure.Title,
+		closure.Reason,
+		closure.Active,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.LastInsertId()
+}
+
+func (a *App) updateCourtClosure(
+	closure CourtClosure,
+) error {
+	if closure.ID <= 0 {
+		return errors.New(
+			"valid court closure is required",
+		)
+	}
+
+	activities, err := a.listCourtActivities(
+		closure.CourtID,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := validateCourtClosure(
+		closure,
+		activities,
+	); err != nil {
+		return err
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE court_closures
+		SET
+			court_id = ?,
+			closure_date = ?,
+			start_hour = ?,
+			end_hour = ?,
+			activity = ?,
+			title = ?,
+			reason = ?,
+			active = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		closure.CourtID,
+		closure.ClosureDate,
+		closure.StartHour,
+		closure.EndHour,
+		closure.Activity,
+		closure.Title,
+		closure.Reason,
+		closure.Active,
+		time.Now().UTC(),
+		closure.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (a *App) toggleCourtClosure(
+	closureID int64,
+) error {
+	if closureID <= 0 {
+		return errors.New(
+			"valid court closure is required",
+		)
+	}
+
+	var active bool
+
+	if err := a.db.QueryRow(`
+		SELECT active
+		FROM court_closures
+		WHERE id = ?
+	`, closureID).Scan(&active); err != nil {
+		return err
+	}
+
+	_, err := a.db.Exec(`
+		UPDATE court_closures
+		SET
+			active = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		!active,
+		time.Now().UTC(),
+		closureID,
+	)
+
+	return err
+}
+
+func (a *App) deleteCourtClosure(
+	closureID int64,
+) error {
+	if closureID <= 0 {
+		return errors.New(
+			"valid court closure is required",
+		)
+	}
+
+	result, err := a.db.Exec(`
+		DELETE FROM court_closures
+		WHERE id = ?
+	`, closureID)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
 func (a *App) listActiveCourtLayouts() ([]CourtLayout, error) {
 	rows, err := a.db.Query(`
 		SELECT
@@ -9204,6 +9594,21 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (layout_id) REFERENCES court_layouts(id) ON DELETE CASCADE
 		)`,
 
+		`CREATE TABLE IF NOT EXISTS court_closures (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	court_id INTEGER NOT NULL,
+	closure_date TEXT NOT NULL,
+	start_hour TEXT NOT NULL,
+	end_hour TEXT NOT NULL,
+	activity TEXT NOT NULL DEFAULT '',
+	title TEXT NOT NULL,
+	reason TEXT NOT NULL DEFAULT '',
+	active INTEGER NOT NULL DEFAULT 1,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
+	FOREIGN KEY (court_id) REFERENCES courts(id) ON DELETE CASCADE
+)`,
+
 		`CREATE TABLE IF NOT EXISTS pricing_rules (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			activity TEXT NOT NULL,
@@ -9364,6 +9769,14 @@ func runMigrations(db *sql.DB) error {
 
 		`CREATE INDEX IF NOT EXISTS idx_court_layout_items_layout
 		ON court_layout_items(layout_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_court_closures_date
+ON court_closures(closure_date, start_hour, end_hour)`,
+
+		`CREATE INDEX IF NOT EXISTS idx_court_closures_court
+ON court_closures(court_id, active, closure_date)`,
+
+		`CREATE INDEX IF NOT EXISTS idx_court_closures_activity
+ON court_closures(activity, active, closure_date)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_pricing_rules_option ON pricing_rules(activity, quantity)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_admission_pricing_type ON admission_pricing(practice_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_recorded_at ON finance_transactions(recorded_at)`,
@@ -11002,6 +11415,91 @@ func courtLayoutFromRequest(
 	}
 
 	return layout, nil
+}
+
+func validateCourtClosure(
+	closure CourtClosure,
+	activities []CourtActivity,
+) error {
+	closure.ClosureDate = strings.TrimSpace(
+		closure.ClosureDate,
+	)
+	closure.StartHour = strings.TrimSpace(
+		closure.StartHour,
+	)
+	closure.EndHour = strings.TrimSpace(
+		closure.EndHour,
+	)
+	closure.Activity = strings.TrimSpace(
+		closure.Activity,
+	)
+	closure.Title = strings.TrimSpace(
+		closure.Title,
+	)
+	closure.Reason = strings.TrimSpace(
+		closure.Reason,
+	)
+
+	if closure.CourtID <= 0 {
+		return errors.New("court is required")
+	}
+
+	if closure.ClosureDate == "" {
+		return errors.New("closure date is required")
+	}
+
+	if _, err := time.Parse(
+		"2006-01-02",
+		closure.ClosureDate,
+	); err != nil {
+		return errors.New("valid closure date is required")
+	}
+
+	start, err := time.Parse(
+		"15:04",
+		closure.StartHour,
+	)
+	if err != nil {
+		return errors.New("valid start hour is required")
+	}
+
+	end, err := time.Parse(
+		"15:04",
+		closure.EndHour,
+	)
+	if err != nil {
+		return errors.New("valid end hour is required")
+	}
+
+	if !start.Before(end) {
+		return errors.New(
+			"closure end hour must be after the start hour",
+		)
+	}
+
+	if closure.Title == "" {
+		return errors.New("closure title is required")
+	}
+
+	if closure.Activity != "" {
+		validActivity := false
+
+		for _, activity := range activities {
+			if activity.Active &&
+				activity.Activity == closure.Activity {
+				validActivity = true
+				break
+			}
+		}
+
+		if !validActivity {
+			return errors.New(
+				"selected closure activity is not available for this court",
+			)
+		}
+	}
+
+	return nil
 }
 
 func validateCourtLayout(
