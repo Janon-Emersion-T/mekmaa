@@ -7633,7 +7633,18 @@ func (a *App) createEvent(event Event) error {
 	return err
 }
 
-func (a *App) createPublicBookingRequest(schedule SpaceSchedule) (int64, error) {
+func (a *App) createPublicBookingRequest(
+	schedule SpaceSchedule,
+) (int64, error) {
+	_, courtLayouts, err :=
+		a.activeBookingConfiguration()
+	if err != nil {
+		return 0, fmt.Errorf(
+			"load active court configuration: %w",
+			err,
+		)
+	}
+
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -7641,15 +7652,13 @@ func (a *App) createPublicBookingRequest(schedule SpaceSchedule) (int64, error) 
 	defer tx.Rollback()
 
 	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, 0)
-	if err != nil {
+	if err := validateSpaceScheduleSlotAgainstLayouts(
+		existing,
+		schedule,
+		courtLayouts,
+	); err != nil {
 		return 0, err
 	}
-	if err := a.validateSpaceScheduleSlotAgainstActiveLayouts(
-	existing,
-	schedule,
-); err != nil {
-	return err
-}
 
 	var requestedBy any
 	if schedule.RequestedByUser > 0 {
@@ -7995,7 +8004,18 @@ func (a *App) updateStudentGroup(
 	return tx.Commit()
 }
 
-func (a *App) updateSpaceSchedule(schedule SpaceSchedule) error {
+func (a *App) updateSpaceSchedule(
+	schedule SpaceSchedule,
+) error {
+	_, courtLayouts, err :=
+		a.activeBookingConfiguration()
+	if err != nil {
+		return fmt.Errorf(
+			"load active court configuration: %w",
+			err,
+		)
+	}
+
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
@@ -8003,15 +8023,13 @@ func (a *App) updateSpaceSchedule(schedule SpaceSchedule) error {
 	defer tx.Rollback()
 
 	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, schedule.ID)
-	if err != nil {
+	if err := validateSpaceScheduleSlotAgainstLayouts(
+		existing,
+		schedule,
+		courtLayouts,
+	); err != nil {
 		return err
 	}
-	if err := a.validateSpaceScheduleSlotAgainstActiveLayouts(
-	existing,
-	schedule,
-); err != nil {
-	return err
-}
 
 	_, err = tx.Exec(`
 		UPDATE space_schedules
@@ -8300,10 +8318,20 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, reco
 	return transactionID, nil
 }
 
-func (a *App) updateBookingRequestStatus(scheduleID int64, status, reviewNote string) error {
-	if status != "confirmed" && status != "rejected" {
-		return errors.New("invalid booking request status")
+func (a *App) updateBookingRequestStatus(
+	scheduleID int64,
+	status string,
+	reviewNote string,
+) error {
+	_, courtLayouts, err :=
+		a.activeBookingConfiguration()
+	if err != nil {
+		return fmt.Errorf(
+			"load active court configuration: %w",
+			err,
+		)
 	}
+
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
@@ -8325,13 +8353,15 @@ func (a *App) updateBookingRequestStatus(scheduleID int64, status, reviewNote st
 		if err != nil {
 			return err
 		}
-		if err := a.validateSpaceScheduleSlotAgainstActiveLayouts(
-	existing,
-	schedule,
-); err != nil {
-	return err
-}
+		if err := validateSpaceScheduleSlotAgainstLayouts(
+			existing,
+			*schedule,
+			courtLayouts,
+		); err != nil {
+			return err
+		}
 	}
+
 	_, err = tx.Exec(`
 		UPDATE space_schedules
 		SET status = ?, review_note = ?, updated_at = ?
@@ -11056,29 +11086,6 @@ func validateBookableScheduleTime(schedule SpaceSchedule, now time.Time) error {
 	if !slotTime.After(now.In(time.Local)) {
 		return errors.New("the selected booking time has already started")
 	}
-	return nil
-}
-
-func (a *App) validateSpaceScheduleSlotAgainstActiveLayouts(
-	existing []SpaceSchedule,
-	candidate SpaceSchedule,
-) error {
-	_, layouts, err := a.activeBookingConfiguration()
-	if err != nil {
-		return fmt.Errorf(
-			"load active court configuration: %w",
-			err,
-		)
-	}
-
-	if err := validateSpaceScheduleSlotAgainstLayouts(
-		existing,
-		candidate,
-		layouts,
-	); err != nil {
-		return err
-	}
-
 	return nil
 }
 
