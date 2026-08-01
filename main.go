@@ -7651,7 +7651,16 @@ func (a *App) createPublicBookingRequest(
 	}
 	defer tx.Rollback()
 
-	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, 0)
+	existing, err := querySchedulesForSlot(
+		tx,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		0,
+	)
+	if err != nil {
+		return 0, err
+	}
+
 	if err := validateSpaceScheduleSlotAgainstLayouts(
 		existing,
 		schedule,
@@ -8022,7 +8031,16 @@ func (a *App) updateSpaceSchedule(
 	}
 	defer tx.Rollback()
 
-	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, schedule.ID)
+	existing, err := querySchedulesForSlot(
+		tx,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		schedule.ID,
+	)
+	if err != nil {
+		return err
+	}
+
 	if err := validateSpaceScheduleSlotAgainstLayouts(
 		existing,
 		schedule,
@@ -8323,6 +8341,9 @@ func (a *App) updateBookingRequestStatus(
 	status string,
 	reviewNote string,
 ) error {
+	if status != "confirmed" && status != "rejected" {
+		return errors.New("invalid booking request status")
+	}
 	_, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
