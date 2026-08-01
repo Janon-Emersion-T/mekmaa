@@ -4218,6 +4218,11 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		return TemplateData{}, err
 	}
 
+	courtClosures, err :=
+		a.listActiveCourtClosures()
+	if err != nil {
+		return TemplateData{}, err
+	}
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Booking Manager"
 	data.Description = "Manage bookings and training sessions."
@@ -4253,6 +4258,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		data.Hours,
 		courtActivities,
 		courtLayouts,
+		courtClosures
 	)
 	data.BookingSlots = buildBookingSlotAvailability(
 		activeSchedules,
@@ -4260,6 +4266,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		data.Hours,
 		courtActivities,
 		courtLayouts,
+		courtClosures
 	)
 	return data, nil
 }
@@ -6870,6 +6877,74 @@ func (a *App) findCourtClosureByID(
 	}
 
 	return &closure, nil
+}
+
+func (a *App) listActiveCourtClosures() (
+	[]CourtClosure,
+	error,
+) {
+	rows, err := a.db.Query(`
+		SELECT
+			cc.id,
+			cc.court_id,
+			c.name,
+			cc.closure_date,
+			cc.start_hour,
+			cc.end_hour,
+			cc.activity,
+			cc.title,
+			cc.reason,
+			cc.active,
+			cc.created_at,
+			cc.updated_at
+		FROM court_closures cc
+		JOIN courts c
+			ON c.id = cc.court_id
+		WHERE cc.active = 1
+		  AND c.active = 1
+		ORDER BY
+			cc.closure_date,
+			cc.start_hour,
+			cc.id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var closures []CourtClosure
+
+	for rows.Next() {
+		var closure CourtClosure
+
+		if err := rows.Scan(
+			&closure.ID,
+			&closure.CourtID,
+			&closure.CourtName,
+			&closure.ClosureDate,
+			&closure.StartHour,
+			&closure.EndHour,
+			&closure.Activity,
+			&closure.Title,
+			&closure.Reason,
+			&closure.Active,
+			&closure.CreatedAt,
+			&closure.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		closures = append(
+			closures,
+			closure,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return closures, nil
 }
 
 func (a *App) activeCourtClosuresForDate(
@@ -11934,6 +12009,137 @@ func courtLayoutFromRequest(
 	return layout, nil
 }
 
+func courtClosureCoversSlot(
+	closure CourtClosure,
+	slotDate string,
+	slotHour string,
+) bool {
+	if !closure.Active {
+		return false
+	}
+
+	if closure.ClosureDate != slotDate {
+		return false
+	}
+
+	slotHour = strings.TrimSpace(slotHour)
+
+	return slotHour >= closure.StartHour &&
+		slotHour < closure.EndHour
+}
+
+func closureBlocksActivity(
+	closure CourtClosure,
+	activity string,
+) bool {
+	if strings.TrimSpace(closure.Activity) == "" {
+		return true
+	}
+
+	return closure.Activity ==
+		strings.TrimSpace(activity)
+}
+
+func validateScheduleAgainstClosures(
+	schedule SpaceSchedule,
+	closures []CourtClosure,
+) error {
+	for _, closure := range closures {
+		if !courtClosureCoversSlot(
+			closure,
+			schedule.SlotDate,
+			schedule.SlotHour,
+		) {
+			continue
+		}
+
+		if !closureBlocksActivity(
+			closure,
+			schedule.Activity,
+		) {
+			continue
+		}
+
+		if strings.TrimSpace(
+			closure.Activity,
+		) == "" {
+			return fmt.Errorf(
+				"the court is unavailable at this time: %s",
+				closure.Title,
+			)
+		}
+
+		return fmt.Errorf(
+			"%s is unavailable at this time: %s",
+			schedule.Activity,
+			closure.Title,
+		)
+	}
+
+	return nil
+}
+
+func filterBookingOptionsForClosures(
+	options []BookingOption,
+	slotDate string,
+	slotHour string,
+	closures []CourtClosure,
+) (
+	[]BookingOption,
+	string,
+) {
+	for _, closure := range closures {
+		if !courtClosureCoversSlot(
+			closure,
+			slotDate,
+			slotHour,
+		) {
+			continue
+		}
+
+		if strings.TrimSpace(
+			closure.Activity,
+		) == "" {
+			return nil, closure.Title
+		}
+	}
+
+	filtered := make(
+		[]BookingOption,
+		0,
+		len(options),
+	)
+
+	for _, option := range options {
+		blocked := false
+
+		for _, closure := range closures {
+			if !courtClosureCoversSlot(
+				closure,
+				slotDate,
+				slotHour,
+			) {
+				continue
+			}
+
+			if closure.Activity ==
+				option.Activity {
+				blocked = true
+				break
+			}
+		}
+
+		if !blocked {
+			filtered = append(
+				filtered,
+				option,
+			)
+		}
+	}
+
+	return filtered, ""
+}
+
 func validateCourtClosure(
 	closure CourtClosure,
 	activities []CourtActivity,
@@ -12465,6 +12671,7 @@ func buildBookingSlotAvailability(
 	hours []string,
 	activities []CourtActivity,
 	layouts []CourtLayout,
+	closures []CourtClosure,
 ) []BookingSlotAvailability {
 	var availability []BookingSlotAvailability
 	now := time.Now()
@@ -12527,7 +12734,23 @@ func buildBookingSlotAvailability(
 			}
 		}
 
-		if len(slot.Options) == 0 {
+		var closureReason string
+
+		slot.Options, closureReason =
+			filterBookingOptionsForClosures(
+				slot.Options,
+				slotDate,
+				hour,
+				closures,
+			)
+
+		if closureReason != "" {
+			slot.BlockedReason =
+				"Unavailable: " + closureReason
+		}
+
+		if len(slot.Options) == 0 &&
+			slot.BlockedReason == "" {
 			slot.BlockedReason =
 				"No bookable combinations available"
 		}
@@ -12547,6 +12770,7 @@ func buildBookingWeekDays(
 	hours []string,
 	activities []CourtActivity,
 	layouts []CourtLayout,
+	closures []CourtClosure,
 ) []CalendarDay {
 	start := selectedDate.AddDate(0, 0, -3)
 
@@ -12570,6 +12794,7 @@ func buildBookingWeekDays(
 			hours,
 			activities,
 			layouts,
+			closures,
 		)
 
 		openCount := 0
@@ -12629,6 +12854,7 @@ func buildPricedBookingWeekDays(
 	settings *PricingSettings,
 	activities []CourtActivity,
 	layouts []CourtLayout,
+	closures []CourtClosure,
 ) []CalendarDay {
 	days := buildBookingWeekDays(
 		schedules,
@@ -12636,6 +12862,7 @@ func buildPricedBookingWeekDays(
 		hours,
 		activities,
 		layouts,
+		closures,
 	)
 
 	for i := range days {
@@ -12645,6 +12872,7 @@ func buildPricedBookingWeekDays(
 			hours,
 			activities,
 			layouts,
+			closures,
 		)
 
 		slots = filterPricedBookingSlots(
