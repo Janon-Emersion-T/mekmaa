@@ -7636,13 +7636,21 @@ func (a *App) createEvent(event Event) error {
 func (a *App) createPublicBookingRequest(
 	schedule SpaceSchedule,
 ) (int64, error) {
-	_, courtLayouts, err :=
+	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
 		return 0, fmt.Errorf(
 			"load active court configuration: %w",
 			err,
 		)
+	}
+
+	if err := validateConfiguredBookingOption(
+		schedule,
+		courtActivities,
+		courtLayouts,
+	); err != nil {
+		return 0, err
 	}
 
 	tx, err := a.db.Begin()
@@ -8016,13 +8024,20 @@ func (a *App) updateStudentGroup(
 func (a *App) updateSpaceSchedule(
 	schedule SpaceSchedule,
 ) error {
-	_, courtLayouts, err :=
+	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
 		return fmt.Errorf(
 			"load active court configuration: %w",
 			err,
 		)
+	}
+	if err := validateConfiguredBookingOption(
+		schedule,
+		courtActivities,
+		courtLayouts,
+	); err != nil {
+		return err
 	}
 
 	tx, err := a.db.Begin()
@@ -8344,7 +8359,7 @@ func (a *App) updateBookingRequestStatus(
 	if status != "confirmed" && status != "rejected" {
 		return errors.New("invalid booking request status")
 	}
-	_, courtLayouts, err :=
+	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
 		return fmt.Errorf(
@@ -8367,13 +8382,31 @@ func (a *App) updateBookingRequestStatus(
 		return errors.New("booking request is no longer pending")
 	}
 	if status == "confirmed" {
-		if err := validateBookableScheduleTime(*schedule, time.Now()); err != nil {
+		if err := validateBookableScheduleTime(
+			*schedule,
+			time.Now(),
+		); err != nil {
 			return err
 		}
-		existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, schedule.ID)
+
+		if err := validateConfiguredBookingOption(
+			*schedule,
+			courtActivities,
+			courtLayouts,
+		); err != nil {
+			return err
+		}
+
+		existing, err := querySchedulesForSlot(
+			tx,
+			schedule.SlotDate,
+			schedule.SlotHour,
+			schedule.ID,
+		)
 		if err != nil {
 			return err
 		}
+
 		if err := validateSpaceScheduleSlotAgainstLayouts(
 			existing,
 			*schedule,
@@ -11360,6 +11393,55 @@ func bookingOptionCatalog(
 	}
 
 	return options
+}
+
+func bookingOptionExists(
+	activity string,
+	quantity int,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+) bool {
+	activity = strings.TrimSpace(activity)
+
+	if activity == "" || quantity <= 0 {
+		return false
+	}
+
+	for _, option := range bookingOptionCatalog(
+		activities,
+		layouts,
+	) {
+		if option.Activity == activity &&
+			option.Quantity == quantity {
+			return true
+		}
+	}
+
+	return false
+}
+
+func validateConfiguredBookingOption(
+	schedule SpaceSchedule,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+) error {
+	if schedule.EntryType == "training" ||
+		schedule.Activity == "training" {
+		return nil
+	}
+
+	if !bookingOptionExists(
+		schedule.Activity,
+		schedule.Quantity,
+		activities,
+		layouts,
+	) {
+		return errors.New(
+			"the selected booking option is no longer available",
+		)
+	}
+
+	return nil
 }
 
 func buildBookingSlotAvailability(
