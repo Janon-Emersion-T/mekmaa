@@ -882,6 +882,45 @@ func main() {
 			),
 		),
 	)
+	mux.Handle(
+		"/admin/courts/layouts/create",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.createCourtLayoutHandler),
+				"courts.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/courts/layouts/update",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.updateCourtLayoutHandler),
+				"courts.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/courts/layouts/toggle",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.toggleCourtLayoutHandler),
+				"courts.manage",
+			),
+		),
+	)
+
+	mux.Handle(
+		"/admin/courts/layouts/delete",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.deleteCourtLayoutHandler),
+				"courts.manage",
+			),
+		),
+	)
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
@@ -2662,6 +2701,37 @@ func (a *App) courtManagementHandler(
 			data.SelectedCourt = selectedCourt
 			data.CourtActivities = selectedCourt.Activities
 			data.CourtLayouts = selectedCourt.Layouts
+
+			mode := strings.ToLower(
+				strings.TrimSpace(
+					r.URL.Query().Get("action"),
+				),
+			)
+
+			switch mode {
+			case "new", "edit":
+				data.CourtLayoutMode = mode
+			}
+
+			if data.CourtLayoutMode == "edit" {
+				layoutID, err := strconv.ParseInt(
+					strings.TrimSpace(
+						r.URL.Query().Get("layout_id"),
+					),
+					10,
+					64,
+				)
+
+				if err == nil && layoutID > 0 {
+					layout, err := a.findCourtLayoutByID(
+						layoutID,
+					)
+					if err == nil &&
+						layout.CourtID == selectedCourt.ID {
+						data.SelectedCourtLayout = layout
+					}
+				}
+			}
 		}
 	}
 
@@ -2670,6 +2740,319 @@ func (a *App) courtManagementHandler(
 		"court-management",
 		data,
 		http.StatusOK,
+	)
+}
+
+func (a *App) createCourtLayoutHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layout, err := courtLayoutFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				url.QueryEscape(r.FormValue("court_id"))+
+				"&action=new#layout-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	layoutID, err := a.createCourtLayout(layout)
+	if err != nil {
+		log.Printf("create court layout: %v", err)
+		a.setFlash(
+			w,
+			"Unable to create the court layout: "+
+				err.Error(),
+		)
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				strconv.FormatInt(layout.CourtID, 10)+
+				"&action=new#layout-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "Court layout created successfully.")
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			strconv.FormatInt(layout.CourtID, 10)+
+			"&action=edit&layout_id="+
+			strconv.FormatInt(layoutID, 10)+
+			"#layout-form",
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) updateCourtLayoutHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layoutID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("layout_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || layoutID <= 0 {
+		http.Error(
+			w,
+			"invalid court layout",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layout, err := courtLayoutFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				url.QueryEscape(r.FormValue("court_id"))+
+				"&action=edit&layout_id="+
+				strconv.FormatInt(layoutID, 10)+
+				"#layout-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	layout.ID = layoutID
+
+	if err := a.updateCourtLayout(layout); err != nil {
+		log.Printf("update court layout: %v", err)
+		a.setFlash(
+			w,
+			"Unable to update the court layout: "+
+				err.Error(),
+		)
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				strconv.FormatInt(layout.CourtID, 10)+
+				"&action=edit&layout_id="+
+				strconv.FormatInt(layout.ID, 10)+
+				"#layout-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "Court layout updated successfully.")
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			strconv.FormatInt(layout.CourtID, 10),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) toggleCourtLayoutHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layoutID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("layout_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || layoutID <= 0 {
+		http.Error(
+			w,
+			"invalid court layout",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err := a.toggleCourtLayout(layoutID); err != nil {
+		log.Printf("toggle court layout: %v", err)
+		a.setFlash(
+			w,
+			"Unable to update the court layout.",
+		)
+	} else {
+		a.setFlash(
+			w,
+			"Court layout status updated.",
+		)
+	}
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			url.QueryEscape(r.FormValue("court_id")),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) deleteCourtLayoutHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layoutID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("layout_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || layoutID <= 0 {
+		http.Error(
+			w,
+			"invalid court layout",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err := a.deleteCourtLayout(layoutID); err != nil {
+		log.Printf("delete court layout: %v", err)
+		a.setFlash(
+			w,
+			"Unable to delete the court layout: "+
+				err.Error(),
+		)
+	} else {
+		a.setFlash(
+			w,
+			"Court layout deleted successfully.",
+		)
+	}
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			url.QueryEscape(r.FormValue("court_id")),
+		http.StatusSeeOther,
 	)
 }
 
@@ -6839,6 +7222,260 @@ func (a *App) replaceAttendanceRecords(groupID int64, attendanceDate string, rec
 	return tx.Commit()
 }
 
+func (a *App) createCourtLayout(
+	layout CourtLayout,
+) (int64, error) {
+	activities, err := a.listCourtActivities(
+		layout.CourtID,
+		false,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := validateCourtLayout(
+		layout,
+		activities,
+	); err != nil {
+		return 0, err
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+
+	result, err := tx.Exec(`
+		INSERT INTO court_layouts (
+			court_id,
+			name,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		layout.CourtID,
+		layout.Name,
+		layout.Description,
+		layout.Active,
+		layout.SortOrder,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	layoutID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	for _, item := range layout.Items {
+		_, err := tx.Exec(`
+			INSERT INTO court_layout_items (
+				layout_id,
+				activity,
+				quantity
+			)
+			VALUES (?, ?, ?)
+		`,
+			layoutID,
+			item.Activity,
+			item.Quantity,
+		)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	return layoutID, nil
+}
+
+func (a *App) updateCourtLayout(
+	layout CourtLayout,
+) error {
+	if layout.ID <= 0 {
+		return errors.New("valid court layout is required")
+	}
+
+	activities, err := a.listCourtActivities(
+		layout.CourtID,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := validateCourtLayout(
+		layout,
+		activities,
+	); err != nil {
+		return err
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
+		UPDATE court_layouts
+		SET
+			name = ?,
+			description = ?,
+			active = ?,
+			sort_order = ?,
+			updated_at = ?
+		WHERE id = ?
+		  AND court_id = ?
+	`,
+		layout.Name,
+		layout.Description,
+		layout.Active,
+		layout.SortOrder,
+		time.Now().UTC(),
+		layout.ID,
+		layout.CourtID,
+	)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	if _, err := tx.Exec(`
+		DELETE FROM court_layout_items
+		WHERE layout_id = ?
+	`, layout.ID); err != nil {
+		return err
+	}
+
+	for _, item := range layout.Items {
+		_, err := tx.Exec(`
+			INSERT INTO court_layout_items (
+				layout_id,
+				activity,
+				quantity
+			)
+			VALUES (?, ?, ?)
+		`,
+			layout.ID,
+			item.Activity,
+			item.Quantity,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) toggleCourtLayout(
+	layoutID int64,
+) error {
+	if layoutID <= 0 {
+		return errors.New("valid court layout is required")
+	}
+
+	var active bool
+
+	err := a.db.QueryRow(`
+		SELECT active
+		FROM court_layouts
+		WHERE id = ?
+	`, layoutID).Scan(&active)
+	if err != nil {
+		return err
+	}
+
+	_, err = a.db.Exec(`
+		UPDATE court_layouts
+		SET
+			active = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		!active,
+		time.Now().UTC(),
+		layoutID,
+	)
+
+	return err
+}
+
+func (a *App) deleteCourtLayout(
+	layoutID int64,
+) error {
+	if layoutID <= 0 {
+		return errors.New("valid court layout is required")
+	}
+
+	var activeLayoutCount int
+
+	if err := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM court_layouts
+		WHERE active = 1
+	`).Scan(&activeLayoutCount); err != nil {
+		return err
+	}
+
+	var deletingActive bool
+
+	if err := a.db.QueryRow(`
+		SELECT active
+		FROM court_layouts
+		WHERE id = ?
+	`, layoutID).Scan(&deletingActive); err != nil {
+		return err
+	}
+
+	if deletingActive && activeLayoutCount <= 1 {
+		return errors.New(
+			"the final active court layout cannot be deleted",
+		)
+	}
+
+	result, err := a.db.Exec(`
+		DELETE FROM court_layouts
+		WHERE id = ?
+	`, layoutID)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
 func (a *App) createSpaceSchedule(schedule SpaceSchedule) error {
 	tx, err := a.db.Begin()
 	if err != nil {
@@ -10115,6 +10752,59 @@ func validateEvent(event Event) error {
 		return errors.New("cta label and cta link must both be provided")
 	}
 	return nil
+}
+func courtLayoutFromRequest(
+	r *http.Request,
+) (CourtLayout, error) {
+	courtID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("court_id")),
+		10,
+		64,
+	)
+	if err != nil || courtID <= 0 {
+		return CourtLayout{}, errors.New("valid court is required")
+	}
+
+	sortOrder, err := strconv.Atoi(
+		strings.TrimSpace(r.FormValue("sort_order")),
+	)
+	if err != nil {
+		return CourtLayout{}, errors.New("valid sort order is required")
+	}
+
+	layout := CourtLayout{
+		CourtID:     courtID,
+		Name:        strings.TrimSpace(r.FormValue("name")),
+		Description: strings.TrimSpace(r.FormValue("description")),
+		Active:      r.FormValue("active") == "1",
+		SortOrder:   sortOrder,
+	}
+
+	for _, activity := range r.Form["activity"] {
+		activity = strings.TrimSpace(activity)
+		if activity == "" {
+			continue
+		}
+
+		quantityValue := strings.TrimSpace(
+			r.FormValue("quantity_" + activity),
+		)
+
+		quantity, err := strconv.Atoi(quantityValue)
+		if err != nil || quantity <= 0 {
+			continue
+		}
+
+		layout.Items = append(
+			layout.Items,
+			CourtLayoutItem{
+				Activity: activity,
+				Quantity: quantity,
+			},
+		)
+	}
+
+	return layout, nil
 }
 
 func validateCourtLayout(
