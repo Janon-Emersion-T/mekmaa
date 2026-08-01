@@ -7644,9 +7644,12 @@ func (a *App) createPublicBookingRequest(schedule SpaceSchedule) (int64, error) 
 	if err != nil {
 		return 0, err
 	}
-	if err := validateSpaceScheduleSlot(existing, schedule); err != nil {
-		return 0, err
-	}
+	if err := a.validateSpaceScheduleSlotAgainstActiveLayouts(
+	existing,
+	schedule,
+); err != nil {
+	return err
+}
 
 	var requestedBy any
 	if schedule.RequestedByUser > 0 {
@@ -8003,9 +8006,12 @@ func (a *App) updateSpaceSchedule(schedule SpaceSchedule) error {
 	if err != nil {
 		return err
 	}
-	if err := validateSpaceScheduleSlot(existing, schedule); err != nil {
-		return err
-	}
+	if err := a.validateSpaceScheduleSlotAgainstActiveLayouts(
+	existing,
+	schedule,
+); err != nil {
+	return err
+}
 
 	_, err = tx.Exec(`
 		UPDATE space_schedules
@@ -8319,9 +8325,12 @@ func (a *App) updateBookingRequestStatus(scheduleID int64, status, reviewNote st
 		if err != nil {
 			return err
 		}
-		if err := validateSpaceScheduleSlot(existing, *schedule); err != nil {
-			return err
-		}
+		if err := a.validateSpaceScheduleSlotAgainstActiveLayouts(
+	existing,
+	schedule,
+); err != nil {
+	return err
+}
 	}
 	_, err = tx.Exec(`
 		UPDATE space_schedules
@@ -11047,6 +11056,29 @@ func validateBookableScheduleTime(schedule SpaceSchedule, now time.Time) error {
 	if !slotTime.After(now.In(time.Local)) {
 		return errors.New("the selected booking time has already started")
 	}
+	return nil
+}
+
+func (a *App) validateSpaceScheduleSlotAgainstActiveLayouts(
+	existing []SpaceSchedule,
+	candidate SpaceSchedule,
+) error {
+	_, layouts, err := a.activeBookingConfiguration()
+	if err != nil {
+		return fmt.Errorf(
+			"load active court configuration: %w",
+			err,
+		)
+	}
+
+	if err := validateSpaceScheduleSlotAgainstLayouts(
+		existing,
+		candidate,
+		layouts,
+	); err != nil {
+		return err
+	}
+
 	return nil
 }
 
