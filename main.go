@@ -613,6 +613,56 @@ type BookingSlotAvailability struct {
 	IsPast        bool
 }
 
+type AdminCalendarItem struct {
+	ID             int64
+	Reference      string
+	Title          string
+	Summary        string
+	Status         string
+	EntryType      string
+	RequesterName  string
+	RequesterPhone string
+	PriceLabel     string
+	PaymentLabel   string
+	PaymentTone    string
+	ReferralCode   string
+	ReviewNote     string
+	ViewURL        string
+	EditURL        string
+	RequestURL     string
+	CanConfirm     bool
+	CanReschedule  bool
+	IsPending      bool
+	IsTraining     bool
+	IsUnpaid       bool
+}
+
+type AdminCalendarHour struct {
+	Hour              string
+	State             string
+	StateLabel        string
+	StateClasses      string
+	RemainingSummary  string
+	BlockedReason     string
+	IsPast            bool
+	ConfirmedCount    int
+	PendingCount      int
+	TrainingCount     int
+	UnpaidCount       int
+	ExpectedRevenue   float64
+	CollectedRevenue  float64
+	Confirmed         []AdminCalendarItem
+	Pending           []AdminCalendarItem
+	Training          []AdminCalendarItem
+	Closures          []CourtClosure
+	AvailableOptions  []AdminBookingOption
+	CanAddDirect      bool
+	CanAddTraining    bool
+	AddDirectURL      string
+	AddTrainingURL    string
+	ManageClosuresURL string
+}
+
 type CalendarDay struct {
 	Date          string
 	DayLabel      string
@@ -719,6 +769,7 @@ type TemplateData struct {
 	PaymentPaidCount          int
 	PaymentPendingCount       int
 	BookingSlots              []BookingSlotAvailability
+	AdminCalendarHours        []AdminCalendarHour
 	AdminBookingOptions       []AdminBookingOption
 	AdminBookingBlockedReason string
 	WeekDays                  []CalendarDay
@@ -731,6 +782,7 @@ type TemplateData struct {
 	TodayDate                 string
 	DailyStats                []Stat
 	BookingRequestStats       []Stat
+	PendingRequestCount       int
 	CalendarCanGoBack         bool
 	PendingEmail              string
 	OTPCodeLength             int
@@ -4418,31 +4470,13 @@ func (a *App) deleteEventHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, user *User) (TemplateData, error) {
-	schedules, err := a.listSpaceSchedules()
-	if err != nil {
-		return TemplateData{}, err
-	}
-	pending, err := a.listPendingSpaceSchedules()
-	if err != nil {
-		return TemplateData{}, err
-	}
-	bookingFinancials, err := a.listBookingFinancials()
-	if err != nil {
-		return TemplateData{}, err
-	}
+	isBookingCalendar := r.URL.Path == "/admin/bookings"
+
 	pricings, err := a.listPricingRules()
 	if err != nil {
 		return TemplateData{}, err
 	}
 	settings, err := a.getPricingSettings()
-	if err != nil {
-		return TemplateData{}, err
-	}
-	bookingReferrals, err := a.listBookingReferrals()
-	if err != nil {
-		return TemplateData{}, err
-	}
-	bookingRequestChanges, err := a.listBookingRequestChanges()
 	if err != nil {
 		return TemplateData{}, err
 	}
@@ -4458,20 +4492,15 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	if err != nil {
 		return TemplateData{}, err
 	}
+
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Booking Manager"
 	data.Description = "Manage bookings and training sessions."
-	data.Schedules = schedules
-	data.PendingSchedules = pending
-	data.BookingRequests = customerBookingRequests(schedules)
-	data.BookingRequestStats = buildBookingRequestStats(data.BookingRequests)
 	data.Pricings = pricings
 	data.PricingSettings = settings
-	data.BookingFinancials = bookingFinancials
-	data.BookingReferrals = bookingReferrals
-	data.BookingRequestChanges = bookingRequestChanges
 	data.CourtActivities = courtActivities
 	data.CourtLayouts = courtLayouts
+	data.CourtClosures = courtClosures
 	data.Activities = bookingActivities()
 	data.Hours = bookingHours()
 	data.TodayDate = time.Now().Format("2006-01-02")
@@ -4489,32 +4518,140 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	}
 	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
 	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
-	activeSchedules := activeSchedulesOnly(schedules)
-	data.DaySchedules = schedulesForDate(activeSchedules, data.CalendarDate)
-	data.DailyStats = buildDailyBookingStats(data.DaySchedules, data.Hours)
-	data.WeekDays = buildBookingWeekDays(
-		activeSchedules,
-		selectedDate,
-		data.Hours,
-		courtActivities,
-		courtLayouts,
-		courtClosures,
-	)
-	data.BookingSlots = buildBookingSlotAvailability(
-		activeSchedules,
-		data.CalendarDate,
-		data.Hours,
-		courtActivities,
-		courtLayouts,
-		courtClosures,
-	)
 
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	selectedScheduleID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+
+	if isBookingCalendar {
+		weekStart, weekEnd := bookingCalendarWindow(selectedDate)
+		activeSchedules, err := a.listActiveSpaceSchedulesBetween(
+			weekStart.Format("2006-01-02"),
+			weekEnd.Format("2006-01-02"),
+		)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		pendingCount, err := a.countPendingSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		filteredClosures := courtClosuresBetween(
+			courtClosures,
+			weekStart.Format("2006-01-02"),
+			weekEnd.Format("2006-01-02"),
+		)
+
+		data.Schedules = activeSchedules
+		data.PendingRequestCount = pendingCount
+		data.DaySchedules = schedulesForDate(activeSchedules, data.CalendarDate)
+		data.BookingRequests = customerBookingRequests(data.DaySchedules)
+
+		relevantScheduleIDs := scheduleIDs(data.DaySchedules)
+		if selectedScheduleID > 0 {
+			relevantScheduleIDs = appendInt64Unique(relevantScheduleIDs, selectedScheduleID)
+		}
+
+		data.BookingFinancials, err = a.listBookingFinancialsForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingReferrals, err = a.listBookingReferralsForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingRequestChanges, err = a.listBookingRequestChangesForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.WeekDays = buildBookingWeekDays(
+			activeSchedules,
+			selectedDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+			filteredClosures,
+		)
+		data.BookingSlots = buildBookingSlotAvailability(
+			activeSchedules,
+			data.CalendarDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+			filteredClosures,
+		)
+		data.AdminCalendarHours = buildAdminCalendarHours(
+			data.CalendarDate,
+			data.Hours,
+			data.DaySchedules,
+			courtActivities,
+			courtLayouts,
+			filteredClosures,
+			pricings,
+			settings,
+			data.BookingFinancials,
+			data.BookingReferrals,
+			data.BookingRequestChanges,
+		)
+		data.DailyStats = buildAdminCalendarStats(data.AdminCalendarHours)
+	} else {
+		schedules, err := a.listSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		pending, err := a.listPendingSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		bookingFinancials, err := a.listBookingFinancials()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		bookingReferrals, err := a.listBookingReferrals()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		bookingRequestChanges, err := a.listBookingRequestChanges()
+		if err != nil {
+			return TemplateData{}, err
+		}
+
+		data.Schedules = schedules
+		data.PendingSchedules = pending
+		data.PendingRequestCount = len(pending)
+		data.BookingRequests = customerBookingRequests(schedules)
+		data.BookingRequestStats = buildBookingRequestStats(data.BookingRequests)
+		data.BookingFinancials = bookingFinancials
+		data.BookingReferrals = bookingReferrals
+		data.BookingRequestChanges = bookingRequestChanges
+
+		activeSchedules := activeSchedulesOnly(schedules)
+		data.DaySchedules = schedulesForDate(activeSchedules, data.CalendarDate)
+		data.DailyStats = buildDailyBookingStats(data.DaySchedules, data.Hours)
+		data.WeekDays = buildBookingWeekDays(
+			activeSchedules,
+			selectedDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+			courtClosures,
+		)
+		data.BookingSlots = buildBookingSlotAvailability(
+			activeSchedules,
+			data.CalendarDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+			courtClosures,
+		)
+	}
+
+	activeSchedulesForOptions := activeSchedulesOnly(data.Schedules)
+
 	switch mode {
 	case "new":
 		draft := prefillAdminBookingDraft(r, data.CalendarDate)
 		options, blockedReason, err := buildAdminBookingOptions(
-			activeSchedules,
+			activeSchedulesForOptions,
 			draft,
 			0,
 			courtActivities,
@@ -4537,7 +4674,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 				draft := *selectedSchedule
 				applyAdminBookingQueryDraft(r, &draft)
 				options, blockedReason, err := buildAdminBookingOptions(
-					activeSchedules,
+					activeSchedulesForOptions,
 					&draft,
 					draft.ID,
 					courtActivities,
@@ -7858,6 +7995,54 @@ func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 	return schedules, rows.Err()
 }
 
+func (a *App) listActiveSpaceSchedulesBetween(
+	startDate string,
+	endDate string,
+) ([]SpaceSchedule, error) {
+	rows, err := a.db.Query(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       created_at, updated_at
+		FROM space_schedules
+		WHERE status IN ('pending', 'confirmed')
+		  AND slot_date >= ?
+		  AND slot_date <= ?
+		ORDER BY slot_date ASC, slot_hour ASC, entry_type ASC, id ASC
+	`, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []SpaceSchedule
+	for rows.Next() {
+		var schedule SpaceSchedule
+		if err := rows.Scan(
+			&schedule.ID,
+			&schedule.SlotDate,
+			&schedule.SlotHour,
+			&schedule.EntryType,
+			&schedule.Activity,
+			&schedule.Quantity,
+			&schedule.Title,
+			&schedule.Notes,
+			&schedule.Status,
+			&schedule.RequesterName,
+			&schedule.RequesterEmail,
+			&schedule.RequesterPhone,
+			&schedule.RequestedByUser,
+			&schedule.ReviewNote,
+			&schedule.CreatedAt,
+			&schedule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		schedules = append(schedules, schedule)
+	}
+
+	return schedules, rows.Err()
+}
+
 func (a *App) listPricingRules() ([]PricingRule, error) {
 	return listPricingRulesQuery(a.db)
 }
@@ -8429,6 +8614,10 @@ func (a *App) listBookingReferrals() ([]BookingReferral, error) {
 	return referrals, rows.Err()
 }
 
+func (a *App) listBookingReferralsForScheduleIDs(scheduleIDs []int64) ([]BookingReferral, error) {
+	return listBookingReferralsForScheduleIDsQuery(a.db, scheduleIDs)
+}
+
 func (a *App) listBookingFinancials() ([]BookingFinancial, error) {
 	rows, err := a.db.Query(`
 		SELECT
@@ -8489,6 +8678,10 @@ func (a *App) listBookingFinancials() ([]BookingFinancial, error) {
 	return financials, rows.Err()
 }
 
+func (a *App) listBookingFinancialsForScheduleIDs(scheduleIDs []int64) ([]BookingFinancial, error) {
+	return listBookingFinancialsForScheduleIDsQuery(a.db, scheduleIDs)
+}
+
 func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
 	rows, err := a.db.Query(`
 		SELECT
@@ -8547,6 +8740,10 @@ func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
 	}
 
 	return changes, rows.Err()
+}
+
+func (a *App) listBookingRequestChangesForScheduleIDs(scheduleIDs []int64) ([]BookingRequestChange, error) {
+	return listBookingRequestChangesForScheduleIDsQuery(a.db, scheduleIDs)
 }
 
 func (a *App) listActiveSpaceSchedules() ([]SpaceSchedule, error) {
@@ -8631,6 +8828,19 @@ func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
 		schedules = append(schedules, schedule)
 	}
 	return schedules, rows.Err()
+}
+
+func (a *App) countPendingSpaceSchedules() (int, error) {
+	row := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM space_schedules
+		WHERE status = 'pending'
+	`)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (a *App) schedulesForSlot(slotDate, slotHour string, excludeID int64) ([]SpaceSchedule, error) {
@@ -14152,6 +14362,18 @@ func buildBookingWeekDays(
 	return days
 }
 
+func bookingCalendarWindow(selectedDate time.Time) (time.Time, time.Time) {
+	start := selectedDate.AddDate(0, 0, -3)
+	today := time.Now()
+	if selectedDate.Format("2006-01-02") >= today.Format("2006-01-02") &&
+		start.Format("2006-01-02") < today.Format("2006-01-02") {
+		start = today
+	}
+	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+	end := start.AddDate(0, 0, 6)
+	return start, end
+}
+
 func filterPricedBookingSlots(slots []BookingSlotAvailability, slotDate string, pricings []PricingRule, settings *PricingSettings) []BookingSlotAvailability {
 	filtered := make([]BookingSlotAvailability, len(slots))
 	for i, slot := range slots {
@@ -14309,6 +14531,266 @@ func buildAdminBookingOptions(
 	}
 
 	return adminOptions, "", nil
+}
+
+func buildAdminCalendarHours(
+	slotDate string,
+	hours []string,
+	daySchedules []SpaceSchedule,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+	closures []CourtClosure,
+	pricings []PricingRule,
+	settings *PricingSettings,
+	financials []BookingFinancial,
+	referrals []BookingReferral,
+	changes []BookingRequestChange,
+) []AdminCalendarHour {
+	hoursView := make([]AdminCalendarHour, 0, len(hours))
+	for _, hour := range hours {
+		slotSchedules := schedulesForCalendarSlot(daySchedules, slotDate, hour)
+		slotClosures := closuresForSlot(closures, slotDate, hour)
+
+		bookingDraft := &SpaceSchedule{
+			EntryType: "booking",
+			SlotDate:  slotDate,
+			SlotHour:  hour,
+		}
+		bookingOptions, blockedReason, _ := buildAdminBookingOptions(
+			daySchedules,
+			bookingDraft,
+			0,
+			activities,
+			layouts,
+			closures,
+			pricings,
+			settings,
+		)
+
+		trainingDraft := &SpaceSchedule{
+			EntryType: "training",
+			SlotDate:  slotDate,
+			SlotHour:  hour,
+		}
+		trainingOptions, _, _ := buildAdminBookingOptions(
+			daySchedules,
+			trainingDraft,
+			0,
+			activities,
+			layouts,
+			closures,
+			pricings,
+			settings,
+		)
+
+		row := AdminCalendarHour{
+			Hour:              hour,
+			BlockedReason:     blockedReason,
+			Closures:          slotClosures,
+			AvailableOptions:  bookingOptions,
+			CanAddDirect:      len(bookingOptions) > 0,
+			CanAddTraining:    len(trainingOptions) > 0,
+			AddDirectURL:      adminCalendarActionURL(slotDate, hour, "booking", bookingOptions),
+			AddTrainingURL:    adminCalendarActionURL(slotDate, hour, "training", trainingOptions),
+			ManageClosuresURL: "/admin/courts",
+		}
+
+		for _, schedule := range slotSchedules {
+			item := buildAdminCalendarItem(schedule, financials, referrals, changes)
+			switch {
+			case item.IsTraining:
+				row.Training = append(row.Training, item)
+				row.TrainingCount++
+			case item.IsPending:
+				row.Pending = append(row.Pending, item)
+				row.PendingCount++
+			default:
+				row.Confirmed = append(row.Confirmed, item)
+				row.ConfirmedCount++
+			}
+			if item.IsUnpaid {
+				row.UnpaidCount++
+			}
+			if financial := bookingFinancialForSchedule(financials, schedule.ID); financial != nil {
+				row.ExpectedRevenue += financial.QuotedAmount
+				if financial.Paid {
+					row.CollectedRevenue += financial.QuotedAmount
+				}
+			}
+		}
+
+		row.IsPast = validateBookableScheduleTime(
+			SpaceSchedule{SlotDate: slotDate, SlotHour: hour},
+			time.Now(),
+		) != nil
+		row.CanAddDirect = row.CanAddDirect && !row.IsPast
+		row.CanAddTraining = row.CanAddTraining && !row.IsPast
+		if !row.CanAddDirect {
+			row.AddDirectURL = ""
+		}
+		if !row.CanAddTraining {
+			row.AddTrainingURL = ""
+		}
+
+		row.State, row.StateLabel, row.StateClasses = adminCalendarState(row, bookingOptions, trainingOptions, activities, layouts)
+		row.RemainingSummary = adminCalendarRemainingSummary(row, bookingOptions, trainingOptions)
+		hoursView = append(hoursView, row)
+	}
+	return hoursView
+}
+
+func buildAdminCalendarItem(
+	schedule SpaceSchedule,
+	financials []BookingFinancial,
+	referrals []BookingReferral,
+	changes []BookingRequestChange,
+) AdminCalendarItem {
+	item := AdminCalendarItem{
+		ID:             schedule.ID,
+		Title:          schedule.Title,
+		Summary:        scheduleSummary(schedule),
+		Status:         schedule.Status,
+		EntryType:      schedule.EntryType,
+		RequesterName:  schedule.RequesterName,
+		RequesterPhone: schedule.RequesterPhone,
+		ReviewNote:     schedule.ReviewNote,
+		ViewURL:        fmt.Sprintf("/admin/bookings?action=view&id=%d&date=%s#schedule-view", schedule.ID, url.QueryEscape(schedule.SlotDate)),
+		EditURL:        fmt.Sprintf("/admin/bookings?action=edit&id=%d&date=%s#schedule-edit", schedule.ID, url.QueryEscape(schedule.SlotDate)),
+		IsPending:      schedule.Status == "pending",
+		IsTraining:     schedule.EntryType == "training",
+	}
+	if schedule.RequesterName != "" || schedule.RequesterEmail != "" || schedule.RequestedByUser > 0 {
+		item.Reference = bookingReference(schedule.ID)
+	} else {
+		item.Reference = fmt.Sprintf("INTERNAL-%06d", schedule.ID)
+	}
+	if referral := bookingReferralFor(referrals, schedule.ID); referral != nil {
+		item.ReferralCode = referral.PartnerCode
+	}
+	if history := bookingRequestHistoryFor(changes, schedule.ID); len(history) > 0 {
+		item.CanReschedule = true
+	}
+	if item.IsPending && !item.IsTraining && (schedule.RequesterName != "" || schedule.RequesterEmail != "" || schedule.RequestedByUser > 0) {
+		item.RequestURL = fmt.Sprintf("/admin/booking-requests?action=reschedule&id=%d", schedule.ID)
+		item.CanConfirm = true
+		item.CanReschedule = true
+	}
+
+	if item.IsTraining {
+		item.PriceLabel = "Internal"
+		item.PaymentLabel = "No payment"
+		item.PaymentTone = "text-slate/55"
+		return item
+	}
+
+	financial := bookingFinancialForSchedule(financials, schedule.ID)
+	if financial == nil {
+		item.PriceLabel = "Unquoted"
+		item.PaymentLabel = "No finance record"
+		item.PaymentTone = "text-slate/55"
+		return item
+	}
+
+	item.PriceLabel = money(financial.QuotedAmount)
+	switch {
+	case financial.Paid:
+		item.PaymentLabel = "Paid"
+		if strings.TrimSpace(financial.PaymentMethod) != "" {
+			item.PaymentLabel += " • " + financial.PaymentMethod
+		}
+		item.PaymentTone = "text-emerald-700"
+	case schedule.Status == "confirmed":
+		item.PaymentLabel = "Unpaid"
+		item.PaymentTone = "text-red-700"
+		item.IsUnpaid = true
+	default:
+		item.PaymentLabel = "Quoted"
+		item.PaymentTone = "text-amber-700"
+	}
+	return item
+}
+
+func adminCalendarState(
+	row AdminCalendarHour,
+	bookingOptions []AdminBookingOption,
+	trainingOptions []AdminBookingOption,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+) (string, string, string) {
+	if row.IsPast {
+		return "past_hour", "Past hour", "border-slate/12 bg-slate-50"
+	}
+	if len(activities) == 0 || len(layouts) == 0 {
+		return "configuration_unavailable", "Configuration unavailable", "border-amber-200 bg-amber-50"
+	}
+	if len(row.Closures) > 0 {
+		if len(bookingOptions) == 0 && len(trainingOptions) == 0 {
+			return "fully_closed", "Fully closed", "border-rose-200 bg-rose-50"
+		}
+		return "partially_closed", "Partially closed", "border-orange-200 bg-orange-50"
+	}
+	if len(bookingOptions) == 0 && len(trainingOptions) == 0 {
+		if strings.Contains(strings.ToLower(row.BlockedReason), "pricing") ||
+			strings.Contains(strings.ToLower(row.BlockedReason), "configured") {
+			return "configuration_unavailable", "Configuration unavailable", "border-amber-200 bg-amber-50"
+		}
+		return "fully_occupied", "Fully occupied", "border-red-200 bg-red-50"
+	}
+	if row.ConfirmedCount > 0 || row.PendingCount > 0 || row.TrainingCount > 0 {
+		return "partially_occupied", "Partially occupied", "border-sky-200 bg-sky-50/60"
+	}
+	return "fully_open", "Fully open", "border-emerald-200 bg-emerald-50"
+}
+
+func adminCalendarRemainingSummary(
+	row AdminCalendarHour,
+	bookingOptions []AdminBookingOption,
+	trainingOptions []AdminBookingOption,
+) string {
+	switch {
+	case row.IsPast:
+		return "This hour has already started."
+	case len(bookingOptions) > 0:
+		summary := fmt.Sprintf("%d direct booking option", len(bookingOptions))
+		if len(bookingOptions) != 1 {
+			summary += "s"
+		}
+		summary += " remain."
+		if len(trainingOptions) > 0 {
+			summary += " Internal training can still fit."
+		}
+		return summary
+	case row.BlockedReason != "":
+		return row.BlockedReason
+	case len(row.Closures) > 0:
+		return "Active closures block the remaining combinations."
+	default:
+		return "No valid booking combinations remain for this hour."
+	}
+}
+
+func buildAdminCalendarStats(hours []AdminCalendarHour) []Stat {
+	openHours := 0
+	pending := 0
+	training := 0
+	unpaid := 0
+	expectedRevenue := 0.0
+	for _, hour := range hours {
+		if hour.CanAddDirect {
+			openHours++
+		}
+		pending += hour.PendingCount
+		training += hour.TrainingCount
+		unpaid += hour.UnpaidCount
+		expectedRevenue += hour.ExpectedRevenue
+	}
+	return []Stat{
+		{Label: "Open booking hours", Value: strconv.Itoa(openHours)},
+		{Label: "Pending requests today", Value: strconv.Itoa(pending)},
+		{Label: "Internal training today", Value: strconv.Itoa(training)},
+		{Label: "Unpaid confirmed bookings", Value: strconv.Itoa(unpaid)},
+		{Label: "Quoted value on day", Value: money(expectedRevenue)},
+	}
 }
 
 func maxAvailableQuantityForActivity(
@@ -14490,6 +14972,46 @@ func bookingReference(scheduleID int64) string {
 	return fmt.Sprintf("BK-%06d", scheduleID)
 }
 
+func adminCalendarActionURL(
+	slotDate string,
+	slotHour string,
+	entryType string,
+	options []AdminBookingOption,
+) string {
+	values := url.Values{}
+	values.Set("action", "new")
+	values.Set("date", slotDate)
+	values.Set("slot_date", slotDate)
+	values.Set("hour", slotHour)
+	values.Set("slot_hour", slotHour)
+	values.Set("entry_type", entryType)
+	if len(options) == 1 {
+		values.Set("activity", options[0].Activity)
+		values.Set("quantity", strconv.Itoa(options[0].Quantity))
+	}
+	return "/admin/bookings?" + values.Encode() + "#schedule-form"
+}
+
+func closuresForSlot(closures []CourtClosure, slotDate string, slotHour string) []CourtClosure {
+	filtered := make([]CourtClosure, 0)
+	for _, closure := range closures {
+		if courtClosureCoversSlot(closure, slotDate, slotHour) {
+			filtered = append(filtered, closure)
+		}
+	}
+	return filtered
+}
+
+func courtClosuresBetween(closures []CourtClosure, startDate string, endDate string) []CourtClosure {
+	filtered := make([]CourtClosure, 0, len(closures))
+	for _, closure := range closures {
+		if closure.ClosureDate >= startDate && closure.ClosureDate <= endDate {
+			filtered = append(filtered, closure)
+		}
+	}
+	return filtered
+}
+
 func relativeTime(value time.Time) string {
 	if value.IsZero() {
 		return "Unknown"
@@ -14559,6 +15081,207 @@ func bookingFinancialForSchedule(financials []BookingFinancial, scheduleID int64
 		}
 	}
 	return nil
+}
+
+func listBookingFinancialsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingFinancial, error) {
+	if len(scheduleIDs) == 0 {
+		return nil, nil
+	}
+	query, args := scheduleIDScopedQuery(`
+		SELECT
+			bf.id,
+			bf.schedule_id,
+			bf.quoted_amount,
+			bf.paid,
+			bf.paid_at,
+			bf.payment_method,
+			COALESCE(bf.finance_transaction_id, 0),
+			s.slot_date,
+			s.slot_hour,
+			s.activity,
+			s.quantity,
+			s.status,
+			COALESCE(s.requester_name, ''),
+			COALESCE(s.requester_email, '')
+		FROM booking_financials bf
+		JOIN space_schedules s
+			ON s.id = bf.schedule_id
+		WHERE bf.schedule_id IN (%s)
+		ORDER BY s.slot_date ASC, s.slot_hour ASC, bf.id ASC
+	`, scheduleIDs)
+	rows, err := queryer.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var financials []BookingFinancial
+	for rows.Next() {
+		var financial BookingFinancial
+		var paid int
+		var paidAt sql.NullTime
+		if err := rows.Scan(
+			&financial.ID,
+			&financial.ScheduleID,
+			&financial.QuotedAmount,
+			&paid,
+			&paidAt,
+			&financial.PaymentMethod,
+			&financial.FinanceTransactionID,
+			&financial.SlotDate,
+			&financial.SlotHour,
+			&financial.Activity,
+			&financial.Quantity,
+			&financial.Status,
+			&financial.RequesterName,
+			&financial.RequesterEmail,
+		); err != nil {
+			return nil, err
+		}
+		financial.Paid = paid == 1
+		if paidAt.Valid {
+			financial.PaidAt = paidAt.Time
+		}
+		financials = append(financials, financial)
+	}
+	return financials, rows.Err()
+}
+
+func listBookingReferralsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingReferral, error) {
+	if len(scheduleIDs) == 0 {
+		return nil, nil
+	}
+	query, args := scheduleIDScopedQuery(`
+		SELECT br.id, br.schedule_id, br.partner_id, rp.name, rp.code, br.commission_amount,
+		       s.status, s.title, s.slot_date, br.paid, br.paid_at, br.payment_method,
+		       COALESCE(br.finance_transaction_id, 0), br.created_at
+		FROM booking_referrals br
+		JOIN referral_partners rp ON rp.id = br.partner_id
+		JOIN space_schedules s ON s.id = br.schedule_id
+		WHERE br.schedule_id IN (%s)
+		ORDER BY br.created_at DESC, br.id DESC
+	`, scheduleIDs)
+	rows, err := queryer.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var referrals []BookingReferral
+	for rows.Next() {
+		var referral BookingReferral
+		var paid int
+		var paidAt sql.NullTime
+		if err := rows.Scan(
+			&referral.ID, &referral.ScheduleID, &referral.PartnerID, &referral.PartnerName,
+			&referral.PartnerCode, &referral.CommissionAmount, &referral.BookingStatus,
+			&referral.BookingTitle, &referral.SlotDate, &paid, &paidAt, &referral.PaymentMethod,
+			&referral.FinanceTransactionID, &referral.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		referral.BookingReference = bookingReference(referral.ScheduleID)
+		referral.Paid = paid == 1
+		if paidAt.Valid {
+			referral.PaidAt = paidAt.Time
+		}
+		referrals = append(referrals, referral)
+	}
+	return referrals, rows.Err()
+}
+
+func listBookingRequestChangesForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingRequestChange, error) {
+	if len(scheduleIDs) == 0 {
+		return nil, nil
+	}
+	query, args := scheduleIDScopedQuery(`
+		SELECT
+			brch.id,
+			brch.schedule_id,
+			brch.previous_slot_date,
+			brch.previous_slot_hour,
+			brch.previous_activity,
+			brch.previous_quantity,
+			brch.previous_quoted_price,
+			brch.new_slot_date,
+			brch.new_slot_hour,
+			brch.new_activity,
+			brch.new_quantity,
+			brch.new_quoted_price,
+			brch.action_type,
+			brch.review_note,
+			COALESCE(brch.changed_by_user_id, 0),
+			COALESCE(u.name, ''),
+			brch.changed_at
+		FROM booking_request_changes brch
+		LEFT JOIN users u
+			ON u.id = brch.changed_by_user_id
+		WHERE brch.schedule_id IN (%s)
+		ORDER BY brch.changed_at DESC, brch.id DESC
+	`, scheduleIDs)
+	rows, err := queryer.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var changes []BookingRequestChange
+	for rows.Next() {
+		var change BookingRequestChange
+		if err := rows.Scan(
+			&change.ID,
+			&change.ScheduleID,
+			&change.PreviousSlotDate,
+			&change.PreviousSlotHour,
+			&change.PreviousActivity,
+			&change.PreviousQuantity,
+			&change.PreviousQuote,
+			&change.NewSlotDate,
+			&change.NewSlotHour,
+			&change.NewActivity,
+			&change.NewQuantity,
+			&change.NewQuote,
+			&change.ActionType,
+			&change.ReviewNote,
+			&change.ChangedByUserID,
+			&change.ChangedByUserName,
+			&change.ChangedAt,
+		); err != nil {
+			return nil, err
+		}
+		changes = append(changes, change)
+	}
+	return changes, rows.Err()
+}
+
+func scheduleIDScopedQuery(base string, scheduleIDs []int64) (string, []any) {
+	placeholders := make([]string, 0, len(scheduleIDs))
+	args := make([]any, 0, len(scheduleIDs))
+	for _, scheduleID := range scheduleIDs {
+		placeholders = append(placeholders, "?")
+		args = append(args, scheduleID)
+	}
+	return fmt.Sprintf(base, strings.Join(placeholders, ",")), args
+}
+
+func scheduleIDs(schedules []SpaceSchedule) []int64 {
+	ids := make([]int64, 0, len(schedules))
+	for _, schedule := range schedules {
+		ids = appendInt64Unique(ids, schedule.ID)
+	}
+	return ids
+}
+
+func appendInt64Unique(values []int64, value int64) []int64 {
+	if value <= 0 {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func quotedPriceForSchedule(financials []BookingFinancial, scheduleID int64) string {

@@ -13,7 +13,7 @@
       <div class="flex flex-wrap gap-2">
         <a href="/admin/booking-requests" class="relative inline-flex h-11 items-center rounded-2xl border border-white/10 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">
           Request inbox
-          {{if .PendingSchedules}}<span class="ml-2 rounded-full bg-amber px-2 py-0.5 text-[0.65rem] font-bold text-obsidian">{{len .PendingSchedules}}</span>{{end}}
+          {{if .PendingRequestCount}}<span class="ml-2 rounded-full bg-amber px-2 py-0.5 text-[0.65rem] font-bold text-obsidian">{{.PendingRequestCount}}</span>{{end}}
         </a>
         <a href="/admin/bookings?action=new&date={{.CalendarDate}}#schedule-form" class="inline-flex h-11 items-center rounded-2xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Add schedule</a>
       </div>
@@ -124,7 +124,7 @@
       <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Date & time</p><p class="mt-2 text-sm font-semibold">{{formatCalendarDate .SelectedSchedule.SlotDate}} · {{.SelectedSchedule.SlotHour}}</p></div>
       <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Inventory</p><p class="mt-2 text-sm font-semibold">{{scheduleSummary .SelectedSchedule}}</p></div>
       <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Type & status</p><p class="mt-2 text-sm font-semibold capitalize">{{.SelectedSchedule.EntryType}} · {{.SelectedSchedule.Status}}</p></div>
-      <div class="rounded-2xl bg-emerald-50 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800/45">Current rate</p><p class="mt-2 text-sm font-bold text-emerald-900">{{if eq .SelectedSchedule.EntryType "booking"}}{{pricingForSchedule .Pricings .PricingSettings .SelectedSchedule}}{{else}}Internal{{end}}</p></div>
+      <div class="rounded-2xl bg-emerald-50 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800/45">Quoted amount</p><p class="mt-2 text-sm font-bold text-emerald-900">{{if eq .SelectedSchedule.EntryType "booking"}}{{quotedPriceForSchedule .BookingFinancials .SelectedSchedule.ID}}{{else}}Internal{{end}}</p></div>
       {{if .SelectedSchedule.RequesterName}}<div class="rounded-2xl bg-cloud/60 p-4 sm:col-span-2"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Customer</p><p class="mt-2 text-sm font-semibold">{{.SelectedSchedule.RequesterName}}</p><p class="mt-1 text-xs text-slate/55">{{.SelectedSchedule.RequesterEmail}} · {{.SelectedSchedule.RequesterPhone}}</p></div>{{end}}
       <div class="rounded-2xl bg-cloud/60 p-4 {{if .SelectedSchedule.RequesterName}}sm:col-span-2{{else}}sm:col-span-2 xl:col-span-4{{end}}"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Notes</p><p class="mt-2 text-sm leading-6 text-slate/65">{{if .SelectedSchedule.Notes}}{{.SelectedSchedule.Notes}}{{else}}No notes provided.{{end}}</p></div>
     </div>
@@ -182,27 +182,171 @@
   {{end}}
 
   <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
-    <div class="flex flex-col gap-2 border-b border-slate/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
-      <div><p class="text-xs font-bold uppercase tracking-[0.22em] text-slate/40">Hourly timeline</p><h2 class="mt-2 text-2xl font-semibold">{{formatCalendarDate .CalendarDate}}</h2></div>
-      <div class="flex flex-wrap gap-2 text-[0.62rem] font-bold uppercase tracking-wider"><span class="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-800">Confirmed</span><span class="rounded-full bg-amber-100 px-3 py-1.5 text-amber-800">Pending hold</span><span class="rounded-full bg-slate/10 px-3 py-1.5 text-slate/60">Training</span></div>
+    <div class="flex flex-col gap-4 border-b border-slate/10 pb-5">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div><p class="text-xs font-bold uppercase tracking-[0.22em] text-slate/40">Hourly timeline</p><h2 class="mt-2 text-2xl font-semibold">{{formatCalendarDate .CalendarDate}}</h2></div>
+        <div class="flex flex-wrap gap-2 text-[0.62rem] font-bold uppercase tracking-wider"><span class="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-800">Confirmed</span><span class="rounded-full bg-amber-100 px-3 py-1.5 text-amber-800">Pending request</span><span class="rounded-full bg-slate/10 px-3 py-1.5 text-slate/60">Training</span><span class="rounded-full bg-rose-100 px-3 py-1.5 text-rose-800">Closures</span><span class="rounded-full bg-red-100 px-3 py-1.5 text-red-800">Unpaid</span></div>
+      </div>
+      <div class="flex flex-wrap gap-2" data-calendar-filters>
+        <button type="button" data-filter="all" class="rounded-full bg-obsidian px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-cloud">All</button>
+        <button type="button" data-filter="confirmed" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Confirmed bookings</button>
+        <button type="button" data-filter="pending" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Pending requests</button>
+        <button type="button" data-filter="training" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Internal training</button>
+        <button type="button" data-filter="closures" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Closures</button>
+        <button type="button" data-filter="unpaid" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Unpaid bookings</button>
+      </div>
     </div>
 
-    <div class="mt-5 grid gap-2">
-      {{range .Hours}}
-      {{$hour := .}}{{$slotSchedules := schedulesForCalendarSlot $.DaySchedules $.CalendarDate $hour}}
-      <article class="grid gap-3 rounded-[1.35rem] border border-slate/8 {{if $slotSchedules}}bg-cloud/45{{else}}bg-white{{end}} p-3 sm:grid-cols-[5.5rem_minmax(0,1fr)_auto] sm:items-center">
-        <div class="flex items-center justify-between sm:block"><p class="text-lg font-semibold text-obsidian">{{$hour}}</p><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/35 sm:mt-1">1 hour</p></div>
-        <div class="grid gap-2">
-          {{range $slotSchedules}}
-          <div class="flex flex-col gap-2 rounded-xl border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between {{scheduleToneClasses .}}">
-            <div><div class="flex flex-wrap items-center gap-2"><p class="text-sm font-semibold text-obsidian">{{.Title}}</p><span class="rounded-full bg-white/70 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider">{{.Status}}</span></div><p class="mt-1 text-xs text-slate/55">{{scheduleSummary .}}{{if .RequesterName}} · {{.RequesterName}}{{end}}</p></div>
-            <a href="/admin/bookings?action=view&id={{.ID}}&date={{.SlotDate}}#schedule-view" class="shrink-0 rounded-lg bg-white px-3 py-2 text-center text-[0.65rem] font-bold text-slate shadow-sm">Details</a>
+    <div class="mt-5 grid gap-3">
+      {{range .AdminCalendarHours}}
+      <article class="rounded-[1.5rem] border p-4 shadow-sm {{.StateClasses}}" data-hour-row>
+        <div class="flex flex-col gap-4 border-b border-slate/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
+          <div class="flex flex-col gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+              <p class="text-xl font-semibold text-obsidian">{{.Hour}}</p>
+              <span class="rounded-full bg-white/80 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate">{{.StateLabel}}</span>
+              {{if .ConfirmedCount}}<span class="rounded-full bg-emerald-100 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800">{{.ConfirmedCount}} confirmed</span>{{end}}
+              {{if .PendingCount}}<span class="rounded-full bg-amber-100 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-amber-800">{{.PendingCount}} pending</span>{{end}}
+              {{if .TrainingCount}}<span class="rounded-full bg-slate-200 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-slate-700">{{.TrainingCount}} training</span>{{end}}
+              {{if .UnpaidCount}}<span class="rounded-full bg-red-100 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-red-700">{{.UnpaidCount}} unpaid</span>{{end}}
+            </div>
+            <div class="grid gap-2 text-sm text-slate/70 sm:grid-cols-2 xl:grid-cols-4">
+              <p><span class="font-semibold text-obsidian">Remaining:</span> {{.RemainingSummary}}</p>
+              <p><span class="font-semibold text-obsidian">Closures:</span> {{len .Closures}}</p>
+              <p><span class="font-semibold text-obsidian">Quoted value:</span> {{money .ExpectedRevenue}}</p>
+              <p><span class="font-semibold text-obsidian">Collected:</span> {{money .CollectedRevenue}}</p>
+            </div>
+            {{if .BlockedReason}}<p class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{{.BlockedReason}}</p>{{end}}
           </div>
-          {{else}}
-          <p class="text-xs text-slate/35">No inventory reserved.</p>
-          {{end}}
+          <div class="flex flex-wrap gap-2 lg:max-w-sm lg:justify-end">
+            {{if .CanAddDirect}}<a href="{{.AddDirectURL}}" class="inline-flex h-10 items-center rounded-xl bg-obsidian px-4 text-xs font-bold uppercase tracking-wider text-cloud">Add booking</a>{{else}}<span class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white/70 px-4 text-xs font-bold uppercase tracking-wider text-slate/45">No booking slot</span>{{end}}
+            {{if .CanAddTraining}}<a href="{{.AddTrainingURL}}" class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold uppercase tracking-wider text-slate">Add training</a>{{else}}<span class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white/70 px-4 text-xs font-bold uppercase tracking-wider text-slate/45">No training slot</span>{{end}}
+            <a href="{{.ManageClosuresURL}}" class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold uppercase tracking-wider text-slate">Manage closures</a>
+          </div>
         </div>
-        <a href="/admin/bookings?action=new&date={{$.CalendarDate}}&hour={{$hour}}#schedule-form" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-center text-xs font-bold text-slate transition hover:border-aqua">Add</a>
+
+        <div class="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]">
+          <div class="grid gap-3">
+            {{range .Closures}}
+            <div class="rounded-[1.2rem] border border-rose-200 bg-rose-50 p-4" data-hour-item data-item-kind="closures" data-item-unpaid="false">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-sm font-semibold text-obsidian">{{.Title}}</p>
+                    <span class="rounded-full bg-rose-100 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-rose-800">Closure</span>
+                  </div>
+                  <p class="mt-1 text-xs text-slate/65">{{formatClockTime .StartHour}} to {{formatClockTime .EndHour}} · {{if .Activity}}{{activityLabel .Activity}}{{else}}Whole court{{end}}</p>
+                  {{if .Reason}}<p class="mt-2 text-xs leading-5 text-slate/70">{{.Reason}}</p>{{end}}
+                </div>
+                <a href="/admin/courts" class="rounded-lg bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Open courts</a>
+              </div>
+            </div>
+            {{end}}
+
+            {{range .Confirmed}}
+            <div class="rounded-[1.2rem] border border-emerald-200 bg-white p-4" data-hour-item data-item-kind="confirmed" data-item-unpaid="{{if .IsUnpaid}}true{{else}}false{{end}}">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate/45">{{.Reference}}</p>
+                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-emerald-800">{{.Status}}</span>
+                    {{if .ReferralCode}}<span class="rounded-full bg-aqua/20 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-obsidian">Referral {{.ReferralCode}}</span>{{end}}
+                  </div>
+                  <p class="mt-2 text-base font-semibold text-obsidian">{{.Title}}</p>
+                  <p class="mt-1 text-sm text-slate/70">{{.Summary}} · Confirmed booking{{if .RequesterName}} · {{.RequesterName}}{{end}}{{if .RequesterPhone}} · {{.RequesterPhone}}{{end}}</p>
+                  <div class="mt-3 flex flex-wrap gap-2 text-[0.68rem] font-semibold">
+                    <span class="rounded-full bg-cloud px-2.5 py-1 text-slate">Quoted {{.PriceLabel}}</span>
+                    <span class="rounded-full bg-white px-2.5 py-1 {{.PaymentTone}}">{{.PaymentLabel}}</span>
+                    {{if .ReviewNote}}<span class="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800">Review note</span>{{end}}
+                  </div>
+                  {{if .ReviewNote}}<p class="mt-2 text-xs leading-5 text-slate/65">{{.ReviewNote}}</p>{{end}}
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
+                  <a href="{{.EditURL}}" class="rounded-lg bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Edit</a>
+                </div>
+              </div>
+            </div>
+            {{end}}
+
+            {{range .Pending}}
+            <div class="rounded-[1.2rem] border border-amber-200 bg-white p-4" data-hour-item data-item-kind="pending" data-item-unpaid="{{if .IsUnpaid}}true{{else}}false{{end}}">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate/45">{{.Reference}}</p>
+                    <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-amber-800">Pending request</span>
+                  </div>
+                  <p class="mt-2 text-base font-semibold text-obsidian">{{.Title}}</p>
+                  <p class="mt-1 text-sm text-slate/70">{{.Summary}} · Customer request{{if .RequesterName}} · {{.RequesterName}}{{end}}{{if .RequesterPhone}} · {{.RequesterPhone}}{{end}}</p>
+                  <div class="mt-3 flex flex-wrap gap-2 text-[0.68rem] font-semibold">
+                    <span class="rounded-full bg-cloud px-2.5 py-1 text-slate">Quoted {{.PriceLabel}}</span>
+                    <span class="rounded-full bg-amber-50 px-2.5 py-1 {{.PaymentTone}}">{{.PaymentLabel}}</span>
+                    {{if .ReviewNote}}<span class="rounded-full bg-sky-50 px-2.5 py-1 text-sky-800">Reschedule history</span>{{end}}
+                  </div>
+                  {{if .ReviewNote}}<p class="mt-2 text-xs leading-5 text-slate/65">{{.ReviewNote}}</p>{{end}}
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  {{if .RequestURL}}<a href="{{.RequestURL}}" class="rounded-lg bg-amber px-3 py-2 text-[0.65rem] font-bold text-obsidian">Open request</a>{{end}}
+                  <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
+                </div>
+              </div>
+            </div>
+            {{end}}
+
+            {{range .Training}}
+            <div class="rounded-[1.2rem] border border-slate/15 bg-white p-4" data-hour-item data-item-kind="training" data-item-unpaid="false">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate/45">{{.Reference}}</p>
+                    <span class="rounded-full bg-slate-200 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-slate-700">Internal training</span>
+                  </div>
+                  <p class="mt-2 text-base font-semibold text-obsidian">{{.Title}}</p>
+                  <p class="mt-1 text-sm text-slate/70">{{.Summary}} · Internal calendar block</p>
+                  <div class="mt-3 flex flex-wrap gap-2 text-[0.68rem] font-semibold">
+                    <span class="rounded-full bg-cloud px-2.5 py-1 text-slate">{{.PriceLabel}}</span>
+                    <span class="rounded-full bg-white px-2.5 py-1 {{.PaymentTone}}">{{.PaymentLabel}}</span>
+                  </div>
+                  {{if .ReviewNote}}<p class="mt-2 text-xs leading-5 text-slate/65">{{.ReviewNote}}</p>{{end}}
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
+                  <a href="{{.EditURL}}" class="rounded-lg bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Edit</a>
+                </div>
+              </div>
+            </div>
+            {{end}}
+
+            {{if and (eq (len .Closures) 0) (eq (len .Confirmed) 0) (eq (len .Pending) 0) (eq (len .Training) 0)}}
+            <div class="rounded-[1.2rem] border border-dashed border-slate/15 bg-white/70 p-4 text-sm text-slate/55">
+              No operational entries are recorded for this hour yet.
+            </div>
+            {{end}}
+          </div>
+
+          <aside class="rounded-[1.3rem] border border-white/80 bg-white/80 p-4">
+            <p class="text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate/40">Remaining valid options</p>
+            {{if .AvailableOptions}}
+            <div class="mt-3 grid gap-2">
+              {{range .AvailableOptions}}
+              <div class="rounded-2xl border border-slate/10 bg-cloud/45 p-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
+                    <p class="mt-1 text-[0.68rem] font-bold uppercase tracking-wider text-slate/45">{{.AvailabilityState}}</p>
+                  </div>
+                  <span class="text-sm font-bold text-emerald-700">{{.PriceLabel}}</span>
+                </div>
+                {{if .RemainingCapacityLabel}}<p class="mt-2 text-xs leading-5 text-slate/60">{{.RemainingCapacityLabel}}</p>{{end}}
+              </div>
+              {{end}}
+            </div>
+            {{else}}
+            <p class="mt-3 text-sm leading-6 text-slate/60">{{if .BlockedReason}}{{.BlockedReason}}{{else}}No valid direct-booking options remain for this hour.{{end}}</p>
+            {{end}}
+          </aside>
+        </div>
       </article>
       {{end}}
     </div>
@@ -324,6 +468,37 @@
         optionsRoot.dataset.selectedQuantity = quantity || "1";
       });
     });
+
+    const filterRoot = document.querySelector("[data-calendar-filters]");
+    if (filterRoot) {
+      const buttons = Array.from(filterRoot.querySelectorAll("[data-filter]"));
+      const items = Array.from(document.querySelectorAll("[data-hour-item]"));
+      const applyFilter = (value) => {
+        items.forEach((item) => {
+          const kind = item.getAttribute("data-item-kind");
+          const unpaid = item.getAttribute("data-item-unpaid") === "true";
+          let visible = value === "all";
+          if (value === "confirmed") visible = kind === "confirmed";
+          if (value === "pending") visible = kind === "pending";
+          if (value === "training") visible = kind === "training";
+          if (value === "closures") visible = kind === "closures";
+          if (value === "unpaid") visible = kind === "confirmed" && unpaid;
+          item.classList.toggle("hidden", !visible);
+        });
+        buttons.forEach((button) => {
+          const active = button.getAttribute("data-filter") === value;
+          button.classList.toggle("bg-obsidian", active);
+          button.classList.toggle("text-cloud", active);
+          button.classList.toggle("border", !active);
+          button.classList.toggle("border-slate/10", !active);
+          button.classList.toggle("bg-white", !active);
+          button.classList.toggle("text-slate", !active);
+        });
+      };
+      buttons.forEach((button) => {
+        button.addEventListener("click", () => applyFilter(button.getAttribute("data-filter") || "all"));
+      });
+    }
   })();
 </script>
 {{end}}
