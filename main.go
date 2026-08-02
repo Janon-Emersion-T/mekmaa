@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -15,6 +16,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/smtp"
@@ -137,12 +139,13 @@ type contextKey string
 const userContextKey contextKey = "currentUser"
 
 type App struct {
-	db           *sql.DB
-	templates    map[string]*template.Template
-	cookieSecure bool
-	smtp         SMTPConfig
-	sms          SMSConfig
-	uploads      UploadStorage
+	db              *sql.DB
+	templates       map[string]*template.Template
+	cookieSecure    bool
+	smtp            SMTPConfig
+	sms             SMSConfig
+	uploads         UploadStorage
+	bookingMessages BookingCommunicationSettings
 }
 
 type UploadStorage struct {
@@ -164,6 +167,15 @@ type SMSConfig struct {
 	APIKey   string
 	SenderID string
 	Enabled  bool
+}
+
+type BookingCommunicationSettings struct {
+	EmailEnabled bool
+	SMSEnabled   bool
+	ContactPhone string
+	ContactEmail string
+	VenueName    string
+	VenueAddress string
 }
 
 type User struct {
@@ -545,12 +557,37 @@ type BookingRequestChange struct {
 	ChangedAt         time.Time
 }
 
+type BookingCommunication struct {
+	ID               int64
+	ScheduleID       int64
+	EventType        string
+	RelatedEventType string
+	EventKey         string
+	Channel          string
+	Recipient        string
+	Subject          string
+	BodyPreview      string
+	Status           string
+	Provider         string
+	ProviderMessage  string
+	AttemptCount     int
+	LastAttemptAt    time.Time
+	SentAt           time.Time
+	CreatedAt        time.Time
+	CreatedByUserID  int64
+}
+
 type BookingRequestSnapshot struct {
 	SlotDate    string
 	SlotHour    string
 	Activity    string
 	Quantity    int
 	QuotedPrice float64
+}
+
+type BookingRequestRescheduleResult struct {
+	Schedule *SpaceSchedule
+	ChangeID int64
 }
 
 type AdmissionPricing struct {
@@ -758,6 +795,7 @@ type TemplateData struct {
 	FinanceFilter             FinanceFilter
 	FinanceSummary            FinanceSummary
 	BookingFinancials         []BookingFinancial
+	BookingCommunications     []BookingCommunication
 	Report                    *OperationalReport
 	ReceiptAdmission          *Admission
 	StudentPaymentRows        []StudentPaymentRow
@@ -816,6 +854,20 @@ var (
 	ErrSystemRoleProtected            = errors.New("system roles are protected")
 )
 
+const (
+	bookingCommEventRequestReceived      = "booking_request_received"
+	bookingCommEventConfirmed            = "booking_confirmed"
+	bookingCommEventRejected             = "booking_rejected"
+	bookingCommEventRescheduledPending   = "booking_rescheduled_pending"
+	bookingCommEventRescheduledConfirmed = "booking_rescheduled_confirmed"
+	bookingCommEventResent               = "booking_message_resent"
+	bookingCommChannelEmail              = "email"
+	bookingCommChannelSMS                = "sms"
+	bookingCommStatusPending             = "pending"
+	bookingCommStatusSent                = "sent"
+	bookingCommStatusFailed              = "failed"
+)
+
 func main() {
 	if err := loadDotEnv(".env"); err != nil {
 		log.Printf("load .env: %v", err)
@@ -851,6 +903,15 @@ func main() {
 	smsConfig.Enabled = smsConfig.UserID != "" && smsConfig.APIKey != "" && smsConfig.SenderID != ""
 	log.Printf("sms enabled=%t provider=smslenz sender_id=%s", smsConfig.Enabled, smsConfig.SenderID)
 
+	bookingMessageSettings := BookingCommunicationSettings{
+		EmailEnabled: envOrDefault("BOOKING_EMAIL_ENABLED", "true") != "false",
+		SMSEnabled:   envOrDefault("BOOKING_SMS_ENABLED", "true") != "false",
+		ContactPhone: envOrDefault("MEKMAA_CONTACT_PHONE", "077 220 7297"),
+		ContactEmail: envOrDefault("MEKMAA_CONTACT_EMAIL", "mekmaa.jo@gmail.com"),
+		VenueName:    envOrDefault("MEKMAA_VENUE_NAME", "Mekmaa (Private Limited)"),
+		VenueAddress: envOrDefault("MEKMAA_VENUE_ADDRESS", "No. 64, Temple Road, Jaffna - 40000, Sri Lanka"),
+	}
+
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Fatalf("open database: %v", err)
@@ -883,12 +944,13 @@ func main() {
 	}
 
 	app := &App{
-		db:           db,
-		templates:    templates,
-		cookieSecure: cookieSecure,
-		smtp:         smtpConfig,
-		sms:          smsConfig,
-		uploads:      uploadStorage,
+		db:              db,
+		templates:       templates,
+		cookieSecure:    cookieSecure,
+		smtp:            smtpConfig,
+		sms:             smsConfig,
+		uploads:         uploadStorage,
+		bookingMessages: bookingMessageSettings,
 	}
 
 	mux := http.NewServeMux()
@@ -1074,6 +1136,7 @@ func main() {
 	)
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/options", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.adminBookingOptionsHandler), "space_bookings.manage")))
+	mux.Handle("/admin/bookings/communications/resend", app.sessionMiddleware(http.HandlerFunc(app.resendBookingCommunicationHandler)))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.manage")))
@@ -1391,7 +1454,22 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	a.setFlash(w, "Booking request "+bookingReference(requestID)+" received. Keep this reference; our team will review the request shortly.")
+	results, commErr := a.sendBookingCommunicationEvent(
+		requestID,
+		bookingCommEventRequestReceived,
+		"",
+		fmt.Sprintf("schedule:%d:%s", requestID, bookingCommEventRequestReceived),
+		0,
+	)
+	if commErr != nil {
+		log.Printf("send booking request received communication: %v", commErr)
+	}
+	emailSent := communicationDelivered(results, bookingCommChannelEmail)
+	if emailSent {
+		a.setFlash(w, "Booking request "+bookingReference(requestID)+" received. We emailed the pending request details to you.")
+	} else {
+		a.setFlash(w, "Booking request "+bookingReference(requestID)+" received. Keep this reference; our team will review the request shortly. We could not confirm email delivery automatically.")
+	}
 	http.Redirect(w, r, "/book?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
 }
 
@@ -3741,6 +3819,12 @@ func (a *App) bookingRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Title = "Booking Requests"
 	data.Description = "Review pending booking requests."
+	data.BookingCommunications, err = a.listBookingCommunicationsForScheduleIDs(scheduleIDs(data.BookingRequests))
+	if err != nil {
+		log.Printf("list booking communications: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("action")), "reschedule") {
 		if requestID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64); err == nil && requestID > 0 {
@@ -3768,6 +3852,65 @@ func (a *App) bookingRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.render(w, "booking-requests", data, http.StatusOK)
+}
+
+func (a *App) resendBookingCommunicationHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	if currentUser == nil || (!containsPermission(currentUser.Permissions, "space_bookings.manage") && !containsPermission(currentUser.Permissions, "booking_requests.manage")) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		http.Error(w, "schedule not found", http.StatusNotFound)
+		return
+	}
+
+	communications, err := a.listBookingCommunicationsForScheduleIDs([]int64{scheduleID})
+	if err != nil {
+		log.Printf("list booking communications for resend: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	relatedEventType := latestResendableEventType(schedule, communications)
+	if relatedEventType == "" {
+		a.setFlash(w, "No customer communication template is available for this booking state.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+		return
+	}
+
+	eventKey := fmt.Sprintf("schedule:%d:%s:%s:%d", scheduleID, bookingCommEventResent, relatedEventType, time.Now().UTC().UnixNano())
+	results, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventResent, relatedEventType, eventKey, currentUser.ID)
+	if commErr != nil {
+		log.Printf("resend booking communication: %v", commErr)
+		a.setFlash(w, "The communication resend could not be prepared automatically.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, communicationFlashMessage("Customer communication resent.", results))
+	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
 }
 
 func (a *App) rescheduleBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
@@ -3810,12 +3953,29 @@ func (a *App) rescheduleBookingRequestHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if _, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, "rescheduled", false, changedByUserID); err != nil {
+	result, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, "rescheduled", false, changedByUserID)
+	if err != nil {
 		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	a.setFlash(w, "Pending booking request updated with the proposed slot.")
+	flashMessage := "Pending booking request updated with the proposed slot."
+	if result != nil && result.ChangeID > 0 {
+		communications, commErr := a.sendBookingCommunicationEvent(
+			scheduleID,
+			bookingCommEventRescheduledPending,
+			"",
+			fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventRescheduledPending, result.ChangeID),
+			changedByUserID,
+		)
+		if commErr != nil {
+			log.Printf("send pending reschedule communication: %v", commErr)
+			flashMessage = "Pending booking request updated, but the customer communication could not be prepared automatically."
+		} else if !communicationDelivered(communications, bookingCommChannelEmail) {
+			flashMessage = "Pending booking request updated, but email delivery failed or is not configured."
+		}
+	}
+	a.setFlash(w, flashMessage)
 	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 }
 
@@ -3859,20 +4019,32 @@ func (a *App) rescheduleAndConfirmBookingRequestHandler(w http.ResponseWriter, r
 		return
 	}
 
-	updatedSchedule, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, "rescheduled_confirmed", true, changedByUserID)
+	result, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, "rescheduled_confirmed", true, changedByUserID)
 	if err != nil {
 		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := a.sendBookingConfirmationSMS(updatedSchedule); err != nil {
-		log.Printf("send rescheduled booking confirmation sms: %v", err)
-		a.setFlash(w, "Booking request was rescheduled and confirmed, but SMS delivery failed or is not configured.")
+	eventType := bookingCommEventConfirmed
+	eventKey := fmt.Sprintf("schedule:%d:%s", scheduleID, bookingCommEventConfirmed)
+	if result != nil && result.ChangeID > 0 {
+		eventType = bookingCommEventRescheduledConfirmed
+		eventKey = fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventRescheduledConfirmed, result.ChangeID)
+	}
+	communications, commErr := a.sendBookingCommunicationEvent(
+		scheduleID,
+		eventType,
+		"",
+		eventKey,
+		changedByUserID,
+	)
+	if commErr != nil {
+		log.Printf("send reschedule confirm communication: %v", commErr)
+		a.setFlash(w, "Booking request was rescheduled and confirmed, but the customer communication could not be prepared automatically.")
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
-
-	a.setFlash(w, "Booking request rescheduled and confirmed.")
+	a.setFlash(w, communicationFlashMessage("Booking request rescheduled and confirmed.", communications))
 	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 }
 
@@ -4162,25 +4334,25 @@ func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid schedule id", http.StatusBadRequest)
 		return
 	}
-	if err := a.updateBookingRequestStatus(scheduleID, "confirmed", ""); err != nil {
+	if _, err := a.updateBookingRequestStatus(scheduleID, "confirmed", ""); err != nil {
 		a.setFlash(w, "Booking could not be confirmed and remains pending: "+err.Error())
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
-	schedule, err := a.findSpaceScheduleByID(scheduleID)
-	if err != nil {
-		log.Printf("find confirmed booking request: %v", err)
-		a.setFlash(w, "Booking request confirmed.")
+	communications, commErr := a.sendBookingCommunicationEvent(
+		scheduleID,
+		bookingCommEventConfirmed,
+		"",
+		fmt.Sprintf("schedule:%d:%s", scheduleID, bookingCommEventConfirmed),
+		currentUserID(r),
+	)
+	if commErr != nil {
+		log.Printf("send booking confirmation communication: %v", commErr)
+		a.setFlash(w, "Booking request confirmed, but the customer communication could not be prepared automatically.")
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
-	if err := a.sendBookingConfirmationSMS(schedule); err != nil {
-		log.Printf("send booking confirmation sms: %v", err)
-		a.setFlash(w, "Booking request confirmed, but SMS delivery failed or is not configured.")
-		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
-		return
-	}
-	a.setFlash(w, "Booking request confirmed and SMS sent.")
+	a.setFlash(w, communicationFlashMessage("Booking request confirmed.", communications))
 	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 }
 
@@ -4208,12 +4380,29 @@ func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
-	if err := a.updateBookingRequestStatus(scheduleID, "rejected", reviewNote); err != nil {
+	if _, err := a.updateBookingRequestStatus(scheduleID, "rejected", reviewNote); err != nil {
 		a.setFlash(w, "Booking could not be rejected: "+err.Error())
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
-	a.setFlash(w, "Booking request rejected.")
+	communications, commErr := a.sendBookingCommunicationEvent(
+		scheduleID,
+		bookingCommEventRejected,
+		"",
+		fmt.Sprintf("schedule:%d:%s", scheduleID, bookingCommEventRejected),
+		currentUserID(r),
+	)
+	if commErr != nil {
+		log.Printf("send booking rejection communication: %v", commErr)
+		a.setFlash(w, "Booking request rejected, but the rejection email could not be prepared automatically.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	if communicationDelivered(communications, bookingCommChannelEmail) {
+		a.setFlash(w, "Booking request rejected and the customer was notified by email.")
+	} else {
+		a.setFlash(w, "Booking request rejected, but the rejection email failed or is not configured.")
+	}
 	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 }
 
@@ -4560,6 +4749,10 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 			return TemplateData{}, err
 		}
 		data.BookingRequestChanges, err = a.listBookingRequestChangesForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingCommunications, err = a.listBookingCommunicationsForScheduleIDs(relevantScheduleIDs)
 		if err != nil {
 			return TemplateData{}, err
 		}
@@ -10480,10 +10673,10 @@ func (a *App) updateBookingRequestStatus(
 	scheduleID int64,
 	status string,
 	reviewNote string,
-) error {
+) (*SpaceSchedule, error) {
 	if status != "confirmed" &&
 		status != "rejected" {
-		return errors.New(
+		return nil, errors.New(
 			"invalid booking request status",
 		)
 	}
@@ -10491,7 +10684,7 @@ func (a *App) updateBookingRequestStatus(
 	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"load active court configuration: %w",
 			err,
 		)
@@ -10500,7 +10693,7 @@ func (a *App) updateBookingRequestStatus(
 	courtClosures, err :=
 		a.listActiveCourtClosures()
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"load active court closures: %w",
 			err,
 		)
@@ -10508,7 +10701,7 @@ func (a *App) updateBookingRequestStatus(
 
 	tx, err := a.db.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -10518,11 +10711,11 @@ func (a *App) updateBookingRequestStatus(
 			scheduleID,
 		)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if schedule.Status != "pending" {
-		return errors.New(
+		return nil, errors.New(
 			"booking request is no longer pending",
 		)
 	}
@@ -10532,7 +10725,7 @@ func (a *App) updateBookingRequestStatus(
 			*schedule,
 			time.Now(),
 		); err != nil {
-			return err
+			return nil, err
 		}
 
 		if err := validateConfiguredBookingOption(
@@ -10540,14 +10733,14 @@ func (a *App) updateBookingRequestStatus(
 			courtActivities,
 			courtLayouts,
 		); err != nil {
-			return err
+			return nil, err
 		}
 
 		if err := validateScheduleAgainstClosures(
 			*schedule,
 			courtClosures,
 		); err != nil {
-			return err
+			return nil, err
 		}
 
 		existing, err :=
@@ -10558,7 +10751,7 @@ func (a *App) updateBookingRequestStatus(
 				schedule.ID,
 			)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if err :=
@@ -10567,7 +10760,7 @@ func (a *App) updateBookingRequestStatus(
 				*schedule,
 				courtLayouts,
 			); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -10586,21 +10779,30 @@ func (a *App) updateBookingRequestStatus(
 		scheduleID,
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if affected == 0 {
-		return errors.New(
+		return nil, errors.New(
 			"booking request is no longer pending",
 		)
 	}
 
-	return tx.Commit()
+	updated := *schedule
+	updated.Status = status
+	updated.ReviewNote = reviewNote
+	updated.UpdatedAt = time.Now().UTC()
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &updated, nil
 }
 
 func (a *App) rescheduleBookingRequest(
@@ -10610,7 +10812,7 @@ func (a *App) rescheduleBookingRequest(
 	actionType string,
 	confirm bool,
 	changedByUserID int64,
-) (*SpaceSchedule, error) {
+) (*BookingRequestRescheduleResult, error) {
 	if actionType != "rescheduled" &&
 		actionType != "rescheduled_confirmed" {
 		return nil, errors.New("invalid booking request change action")
@@ -10772,12 +10974,13 @@ func (a *App) rescheduleBookingRequest(
 		return nil, err
 	}
 
+	var changeID int64
 	if slotChanged || financial.QuotedAmount != updated.QuotedPrice {
 		var changedBy any
 		if changedByUserID > 0 {
 			changedBy = changedByUserID
 		}
-		if _, err := tx.Exec(`
+		changeResult, err := tx.Exec(`
 			INSERT INTO booking_request_changes (
 				schedule_id,
 				previous_slot_date,
@@ -10812,7 +11015,12 @@ func (a *App) rescheduleBookingRequest(
 			reviewNote,
 			changedBy,
 			now,
-		); err != nil {
+		)
+		if err != nil {
+			return nil, err
+		}
+		changeID, err = changeResult.LastInsertId()
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -10821,7 +11029,10 @@ func (a *App) rescheduleBookingRequest(
 		return nil, err
 	}
 
-	return &updated, nil
+	return &BookingRequestRescheduleResult{
+		Schedule: &updated,
+		ChangeID: changeID,
+	}, nil
 }
 
 func (a *App) deleteAdmission(admissionID int64) error {
@@ -11774,6 +11985,27 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
 			FOREIGN KEY (changed_by_user_id) REFERENCES users(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS booking_communications (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			schedule_id INTEGER NOT NULL,
+			event_type TEXT NOT NULL,
+			related_event_type TEXT NOT NULL DEFAULT '',
+			event_key TEXT NOT NULL,
+			channel TEXT NOT NULL,
+			recipient TEXT NOT NULL,
+			subject TEXT NOT NULL DEFAULT '',
+			body_preview TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'pending',
+			provider TEXT NOT NULL DEFAULT '',
+			provider_message TEXT NOT NULL DEFAULT '',
+			attempt_count INTEGER NOT NULL DEFAULT 0,
+			last_attempt_at DATETIME,
+			sent_at DATETIME,
+			created_at DATETIME NOT NULL,
+			created_by_user_id INTEGER,
+			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
+			FOREIGN KEY (created_by_user_id) REFERENCES users(id)
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)`,
@@ -11816,6 +12048,11 @@ ON court_closures(activity, active, closure_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_referrals_partner ON booking_referrals(partner_id, paid)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_financials_paid ON booking_financials(paid, schedule_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_request_changes_schedule ON booking_request_changes(schedule_id, changed_at DESC)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_communications_event_channel ON booking_communications(event_key, channel)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_communications_schedule ON booking_communications(schedule_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_communications_status ON booking_communications(status, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_communications_event_type ON booking_communications(event_type, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_communications_created_at ON booking_communications(created_at DESC)`,
 		`ALTER TABLE events ADD COLUMN registration_deadline TEXT`,
 		`ALTER TABLE events ADD COLUMN image_path TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
@@ -12698,80 +12935,19 @@ func (a *App) issueVerificationCode(userID int64) (string, error) {
 }
 
 func (a *App) sendVerificationEmail(user *User, otp string) error {
-	if !a.smtp.Enabled {
-		return errors.New("smtp is not configured")
-	}
-
-	headers := "" +
-		"From: " + a.smtp.From + "\r\n" +
-		"To: " + user.Email + "\r\n" +
-		"Subject: Verify your email address\r\n" +
-		"MIME-Version: 1.0\r\n" +
-		"Content-Type: text/plain; charset=UTF-8\r\n\r\n"
 	body := fmt.Sprintf(
 		"Hi %s,\r\n\r\nYour mekmaa3 verification code is %s.\r\nIt expires in 10 minutes.\r\n\r\nIf you did not create this account, you can ignore this email.\r\n",
 		user.Name,
 		otp,
 	)
-	auth := smtp.PlainAuth("", a.smtp.Username, a.smtp.Password, a.smtp.Host)
-	return smtp.SendMail(a.smtp.Host+":"+a.smtp.Port, auth, a.smtp.From, []string{user.Email}, []byte(headers+body))
+	return a.sendEmailMessage(user.Email, "Verify your email address", body, "")
 }
 
 func (a *App) sendBookingConfirmationSMS(schedule *SpaceSchedule) error {
 	if schedule == nil {
 		return errors.New("schedule is required")
 	}
-	if !a.sms.Enabled {
-		return errors.New("sms is not configured")
-	}
-
-	phone, err := normalizeSMSPhone(schedule.RequesterPhone)
-	if err != nil {
-		return err
-	}
-
-	form := url.Values{}
-	form.Set("user_id", a.sms.UserID)
-	form.Set("api_key", a.sms.APIKey)
-	form.Set("sender_id", a.sms.SenderID)
-	form.Set("contact", phone)
-	form.Set("message", buildBookingConfirmationSMSBody(schedule))
-
-	endpoint := "https://smslenz.lk/api/send-sms"
-	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("sms send failed with status %s", resp.Status)
-	}
-
-	var payload struct {
-		Success bool   `json:"success"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil
-	}
-	if !payload.Success {
-		if payload.Message != "" {
-			return errors.New(payload.Message)
-		}
-		return errors.New("sms send failed")
-	}
-	return nil
+	return a.sendSMSMessage(schedule.RequesterPhone, buildBookingConfirmationSMSBody(schedule))
 }
 
 func (a *App) consumeVerificationCode(userID int64, otp string) error {
@@ -12845,6 +13021,590 @@ func buildBookingConfirmationSMSBody(schedule *SpaceSchedule) string {
 		schedule.SlotHour,
 		scheduleSummary(*schedule),
 	)
+}
+
+type bookingCommunicationDispatch struct {
+	Channel     string
+	Recipient   string
+	Subject     string
+	TextBody    string
+	HTMLBody    string
+	BodyPreview string
+}
+
+type bookingEmailFact struct {
+	Label string
+	Value string
+}
+
+type bookingCommunicationContent struct {
+	Subject string
+	Heading string
+	Intro   string
+	Facts   []bookingEmailFact
+	Notes   []string
+	SMSBody string
+}
+
+func (a *App) sendEmailMessage(recipient string, subject string, textBody string, htmlBody string) error {
+	if !a.smtp.Enabled {
+		return errors.New("smtp is not configured")
+	}
+	if !emailPattern.MatchString(strings.TrimSpace(recipient)) {
+		return errors.New("recipient email address is invalid")
+	}
+
+	var message bytes.Buffer
+	message.WriteString("From: " + a.smtp.From + "\r\n")
+	message.WriteString("To: " + recipient + "\r\n")
+	message.WriteString("Subject: " + mime.QEncoding.Encode("utf-8", subject) + "\r\n")
+	message.WriteString("MIME-Version: 1.0\r\n")
+
+	if strings.TrimSpace(htmlBody) == "" {
+		message.WriteString("Content-Type: text/plain; charset=UTF-8\r\n\r\n")
+		message.WriteString(textBody)
+	} else {
+		boundary := fmt.Sprintf("mekmaa-%d", time.Now().UTC().UnixNano())
+		message.WriteString("Content-Type: multipart/alternative; boundary=" + boundary + "\r\n\r\n")
+		message.WriteString("--" + boundary + "\r\n")
+		message.WriteString("Content-Type: text/plain; charset=UTF-8\r\n\r\n")
+		message.WriteString(textBody + "\r\n")
+		message.WriteString("--" + boundary + "\r\n")
+		message.WriteString("Content-Type: text/html; charset=UTF-8\r\n\r\n")
+		message.WriteString(htmlBody + "\r\n")
+		message.WriteString("--" + boundary + "--\r\n")
+	}
+
+	auth := smtp.PlainAuth("", a.smtp.Username, a.smtp.Password, a.smtp.Host)
+	return smtp.SendMail(a.smtp.Host+":"+a.smtp.Port, auth, a.smtp.From, []string{recipient}, message.Bytes())
+}
+
+func (a *App) sendSMSMessage(phone string, message string) error {
+	if !a.sms.Enabled {
+		return errors.New("sms is not configured")
+	}
+
+	normalizedPhone, err := normalizeSMSPhone(phone)
+	if err != nil {
+		return err
+	}
+
+	form := url.Values{}
+	form.Set("user_id", a.sms.UserID)
+	form.Set("api_key", a.sms.APIKey)
+	form.Set("sender_id", a.sms.SenderID)
+	form.Set("contact", normalizedPhone)
+	form.Set("message", message)
+
+	endpoint := "https://smslenz.lk/api/send-sms"
+	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("sms send failed with status %s", resp.Status)
+	}
+
+	var payload struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	if !payload.Success {
+		if payload.Message != "" {
+			return errors.New(payload.Message)
+		}
+		return errors.New("sms send failed")
+	}
+	return nil
+}
+
+func (a *App) sendBookingCommunicationEvent(
+	scheduleID int64,
+	eventType string,
+	relatedEventType string,
+	eventKey string,
+	createdByUserID int64,
+) ([]BookingCommunication, error) {
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		return nil, err
+	}
+	financials, err := a.listBookingFinancialsForScheduleIDs([]int64{scheduleID})
+	if err != nil {
+		return nil, err
+	}
+	referrals, err := a.listBookingReferralsForScheduleIDs([]int64{scheduleID})
+	if err != nil {
+		return nil, err
+	}
+	changes, err := a.listBookingRequestChangesForScheduleIDs([]int64{scheduleID})
+	if err != nil {
+		return nil, err
+	}
+
+	dispatches, err := a.buildBookingCommunicationDispatches(*schedule, bookingFinancialForSchedule(financials, scheduleID), bookingReferralFor(referrals, scheduleID), changes, eventType, relatedEventType)
+	if err != nil {
+		return nil, err
+	}
+	if len(dispatches) == 0 {
+		return nil, errors.New("no customer communication recipient is available")
+	}
+
+	results := make([]BookingCommunication, 0, len(dispatches))
+	for _, dispatch := range dispatches {
+		record, duplicate, err := a.createPendingBookingCommunication(BookingCommunication{
+			ScheduleID:       scheduleID,
+			EventType:        eventType,
+			RelatedEventType: relatedEventType,
+			EventKey:         eventKey,
+			Channel:          dispatch.Channel,
+			Recipient:        dispatch.Recipient,
+			Subject:          dispatch.Subject,
+			BodyPreview:      dispatch.BodyPreview,
+			CreatedByUserID:  createdByUserID,
+		})
+		if err != nil {
+			return results, err
+		}
+		if duplicate {
+			results = append(results, *record)
+			continue
+		}
+
+		provider, providerMessage, sendErr := a.deliverBookingCommunicationDispatch(dispatch)
+		status := bookingCommStatusSent
+		if sendErr != nil {
+			status = bookingCommStatusFailed
+		}
+		if err := a.completeBookingCommunicationAttempt(record.ID, status, provider, providerMessage); err != nil {
+			return results, err
+		}
+		record.Status = status
+		record.Provider = provider
+		record.ProviderMessage = truncateString(strings.TrimSpace(providerMessage), 300)
+		record.AttemptCount = 1
+		record.LastAttemptAt = time.Now().UTC()
+		if status == bookingCommStatusSent {
+			record.SentAt = record.LastAttemptAt
+		}
+		results = append(results, *record)
+	}
+
+	return results, nil
+}
+
+func (a *App) deliverBookingCommunicationDispatch(dispatch bookingCommunicationDispatch) (string, string, error) {
+	switch dispatch.Channel {
+	case bookingCommChannelEmail:
+		if !a.bookingMessages.EmailEnabled {
+			return "smtp", "booking email delivery is disabled by configuration", errors.New("booking email delivery is disabled by configuration")
+		}
+		if err := a.sendEmailMessage(dispatch.Recipient, dispatch.Subject, dispatch.TextBody, dispatch.HTMLBody); err != nil {
+			return "smtp", err.Error(), err
+		}
+		return "smtp", "", nil
+	case bookingCommChannelSMS:
+		if !a.bookingMessages.SMSEnabled {
+			return "smslenz", "booking sms delivery is disabled by configuration", errors.New("booking sms delivery is disabled by configuration")
+		}
+		if err := a.sendSMSMessage(dispatch.Recipient, dispatch.TextBody); err != nil {
+			return "smslenz", err.Error(), err
+		}
+		return "smslenz", "", nil
+	default:
+		return "", "unsupported communication channel", errors.New("unsupported communication channel")
+	}
+}
+
+func (a *App) buildBookingCommunicationDispatches(
+	schedule SpaceSchedule,
+	financial *BookingFinancial,
+	referral *BookingReferral,
+	changes []BookingRequestChange,
+	eventType string,
+	relatedEventType string,
+) ([]bookingCommunicationDispatch, error) {
+	effectiveEventType := eventType
+	if eventType == bookingCommEventResent {
+		effectiveEventType = relatedEventType
+	}
+
+	content, err := a.buildBookingCommunicationContent(schedule, financial, referral, changes, effectiveEventType)
+	if err != nil {
+		return nil, err
+	}
+
+	dispatches := make([]bookingCommunicationDispatch, 0, 2)
+	if emailPattern.MatchString(strings.TrimSpace(schedule.RequesterEmail)) {
+		dispatches = append(dispatches, bookingCommunicationDispatch{
+			Channel:     bookingCommChannelEmail,
+			Recipient:   schedule.RequesterEmail,
+			Subject:     content.Subject,
+			TextBody:    renderBookingEmailText(content),
+			HTMLBody:    renderBookingEmailHTML(content),
+			BodyPreview: truncateString(renderBookingEmailText(content), 240),
+		})
+	}
+	if strings.TrimSpace(content.SMSBody) != "" && strings.TrimSpace(schedule.RequesterPhone) != "" {
+		dispatches = append(dispatches, bookingCommunicationDispatch{
+			Channel:     bookingCommChannelSMS,
+			Recipient:   schedule.RequesterPhone,
+			Subject:     content.Subject,
+			TextBody:    content.SMSBody,
+			BodyPreview: truncateString(content.SMSBody, 240),
+		})
+	}
+	return dispatches, nil
+}
+
+func (a *App) buildBookingCommunicationContent(
+	schedule SpaceSchedule,
+	financial *BookingFinancial,
+	referral *BookingReferral,
+	changes []BookingRequestChange,
+	eventType string,
+) (bookingCommunicationContent, error) {
+	customerName := strings.TrimSpace(schedule.RequesterName)
+	if customerName == "" {
+		customerName = "Customer"
+	}
+	reference := bookingReference(schedule.ID)
+	amountLabel := quotedAmountLabel(financial)
+	paymentLabel := bookingPaymentStatusLabel(financial, schedule.Status)
+	title := strings.TrimSpace(schedule.Title)
+	if title == "" {
+		title = bookingProductLabel(schedule.Activity, schedule.Quantity)
+	}
+
+	content := bookingCommunicationContent{}
+	switch eventType {
+	case bookingCommEventRequestReceived:
+		content.Subject = "Mekmaa booking request received - " + reference
+		content.Heading = "Your booking request is pending review"
+		content.Intro = "Mekmaa has received your booking request. The requested slot is still pending and has not been confirmed for payment."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "Pending"},
+			{Label: "Booking title", Value: title},
+			{Label: "Customer", Value: customerName},
+			{Label: "Date", Value: formatCalendarDate(schedule.SlotDate)},
+			{Label: "Time", Value: formatClockTime(schedule.SlotHour)},
+			{Label: "Activity", Value: bookingProductLabel(schedule.Activity, schedule.Quantity)},
+			{Label: "Quoted amount", Value: amountLabel},
+		}
+		if strings.TrimSpace(schedule.Notes) != "" {
+			content.Facts = append(content.Facts, bookingEmailFact{Label: "Customer notes", Value: schedule.Notes})
+		}
+		if referral != nil {
+			content.Facts = append(content.Facts, bookingEmailFact{Label: "Referral code", Value: referral.PartnerCode})
+		}
+		content.Notes = []string{
+			"No payment has been confirmed at this stage.",
+			"We will contact you once the request has been reviewed.",
+			"Mekmaa contact: " + a.bookingMessages.ContactPhone + " • " + a.bookingMessages.ContactEmail,
+		}
+	case bookingCommEventConfirmed:
+		content.Subject = "Mekmaa booking confirmed - " + reference
+		content.Heading = "Your booking is confirmed"
+		content.Intro = "Your booking has been confirmed by the Mekmaa team."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "Confirmed"},
+			{Label: "Customer", Value: customerName},
+			{Label: "Date", Value: formatCalendarDate(schedule.SlotDate)},
+			{Label: "Time", Value: formatClockTime(schedule.SlotHour)},
+			{Label: "Activity", Value: bookingProductLabel(schedule.Activity, schedule.Quantity)},
+			{Label: "Quoted amount", Value: amountLabel},
+			{Label: "Payment status", Value: paymentLabel},
+		}
+		if strings.TrimSpace(schedule.ReviewNote) != "" {
+			content.Facts = append(content.Facts, bookingEmailFact{Label: "Administrator note", Value: schedule.ReviewNote})
+		}
+		content.Notes = []string{
+			"Venue: " + a.bookingMessages.VenueName,
+			"Address: " + a.bookingMessages.VenueAddress,
+			"Please arrive 10 to 15 minutes early and keep your booking reference ready.",
+			"Need help before arrival? Contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
+		}
+		content.SMSBody = fmt.Sprintf(
+			"Mekmaa confirmed %s. Ref %s. %s, %s. %s. %s.",
+			title,
+			reference,
+			schedule.SlotDate,
+			schedule.SlotHour,
+			bookingProductLabel(schedule.Activity, schedule.Quantity),
+			amountLabel,
+		)
+	case bookingCommEventRejected:
+		content.Subject = "Mekmaa booking request update - " + reference
+		content.Heading = "Your booking request was not approved"
+		content.Intro = "Your requested booking could not be approved for the selected slot."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "Rejected"},
+			{Label: "Customer", Value: customerName},
+			{Label: "Original requested date", Value: formatCalendarDate(schedule.SlotDate)},
+			{Label: "Original requested time", Value: formatClockTime(schedule.SlotHour)},
+			{Label: "Activity", Value: bookingProductLabel(schedule.Activity, schedule.Quantity)},
+			{Label: "Rejection reason", Value: strings.TrimSpace(schedule.ReviewNote)},
+		}
+		content.Notes = []string{
+			"If you would like help with another booking request, contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
+		}
+	case bookingCommEventRescheduledPending:
+		change, err := latestRelevantBookingRequestChange(changes, "rescheduled")
+		if err != nil {
+			return bookingCommunicationContent{}, err
+		}
+		content.Subject = "Mekmaa proposed a new pending booking slot - " + reference
+		content.Heading = "Your request has a new proposed slot"
+		content.Intro = "The Mekmaa team updated your requested slot, but the booking is still pending and is not confirmed yet."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "Pending"},
+			{Label: "Previous slot", Value: formatCalendarDate(change.PreviousSlotDate) + " at " + formatClockTime(change.PreviousSlotHour) + " • " + bookingProductLabel(change.PreviousActivity, change.PreviousQuantity)},
+			{Label: "New proposed slot", Value: formatCalendarDate(change.NewSlotDate) + " at " + formatClockTime(change.NewSlotHour) + " • " + bookingProductLabel(change.NewActivity, change.NewQuantity)},
+			{Label: "Previous quoted amount", Value: money(change.PreviousQuote)},
+			{Label: "New quoted amount", Value: money(change.NewQuote)},
+			{Label: "Administrator note", Value: strings.TrimSpace(change.ReviewNote)},
+		}
+		content.Notes = []string{
+			"The new slot remains pending until Mekmaa confirms it.",
+			"Contact us at " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + " if you need assistance.",
+		}
+	case bookingCommEventRescheduledConfirmed:
+		change, err := latestRelevantBookingRequestChange(changes, "rescheduled_confirmed")
+		if err != nil {
+			return bookingCommunicationContent{}, err
+		}
+		content.Subject = "Mekmaa booking confirmed after reschedule - " + reference
+		content.Heading = "Your rescheduled booking is confirmed"
+		content.Intro = "Mekmaa has confirmed the final slot after rescheduling your request."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "Confirmed"},
+			{Label: "Previous slot", Value: formatCalendarDate(change.PreviousSlotDate) + " at " + formatClockTime(change.PreviousSlotHour) + " • " + bookingProductLabel(change.PreviousActivity, change.PreviousQuantity)},
+			{Label: "Final confirmed slot", Value: formatCalendarDate(change.NewSlotDate) + " at " + formatClockTime(change.NewSlotHour) + " • " + bookingProductLabel(change.NewActivity, change.NewQuantity)},
+			{Label: "Final quoted amount", Value: amountLabel},
+			{Label: "Payment status", Value: paymentLabel},
+		}
+		if strings.TrimSpace(change.ReviewNote) != "" {
+			content.Facts = append(content.Facts, bookingEmailFact{Label: "Administrator note", Value: change.ReviewNote})
+		}
+		content.Notes = []string{
+			"Venue: " + a.bookingMessages.VenueName,
+			"Address: " + a.bookingMessages.VenueAddress,
+			"Please arrive 10 to 15 minutes early and keep your booking reference ready.",
+			"Need help before arrival? Contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
+		}
+		content.SMSBody = fmt.Sprintf(
+			"Mekmaa confirmed your rescheduled booking. Ref %s. %s, %s. %s. %s.",
+			reference,
+			schedule.SlotDate,
+			schedule.SlotHour,
+			bookingProductLabel(schedule.Activity, schedule.Quantity),
+			amountLabel,
+		)
+	default:
+		return bookingCommunicationContent{}, fmt.Errorf("unsupported booking communication event: %s", eventType)
+	}
+
+	return content, nil
+}
+
+func renderBookingEmailText(content bookingCommunicationContent) string {
+	var builder strings.Builder
+	builder.WriteString("Mekmaa\n\n")
+	builder.WriteString(content.Heading + "\n\n")
+	builder.WriteString(content.Intro + "\n\n")
+	for _, fact := range content.Facts {
+		builder.WriteString(fact.Label + ": " + fact.Value + "\n")
+	}
+	if len(content.Notes) > 0 {
+		builder.WriteString("\n")
+		for _, note := range content.Notes {
+			builder.WriteString("- " + note + "\n")
+		}
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+func renderBookingEmailHTML(content bookingCommunicationContent) string {
+	var facts strings.Builder
+	for _, fact := range content.Facts {
+		facts.WriteString("<tr>")
+		facts.WriteString("<td style=\"padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#0f172a;vertical-align:top;width:34%;\">" + template.HTMLEscapeString(fact.Label) + "</td>")
+		facts.WriteString("<td style=\"padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#334155;vertical-align:top;\">" + template.HTMLEscapeString(fact.Value) + "</td>")
+		facts.WriteString("</tr>")
+	}
+
+	var notes strings.Builder
+	if len(content.Notes) > 0 {
+		notes.WriteString("<ul style=\"padding-left:18px;margin:20px 0 0;color:#334155;\">")
+		for _, note := range content.Notes {
+			notes.WriteString("<li style=\"margin:0 0 10px;\">" + template.HTMLEscapeString(note) + "</li>")
+		}
+		notes.WriteString("</ul>")
+	}
+
+	return "<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;\">" +
+		"<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f8fafc;padding:24px 12px;\"><tr><td align=\"center\">" +
+		"<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e2e8f0;\">" +
+		"<tr><td style=\"padding:28px 28px 20px;background:#0f172a;color:#f8fafc;\"><div style=\"font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#67e8f9;\">Mekmaa</div><h1 style=\"margin:12px 0 0;font-size:28px;line-height:1.2;\">" + template.HTMLEscapeString(content.Heading) + "</h1></td></tr>" +
+		"<tr><td style=\"padding:28px;\"><p style=\"margin:0 0 18px;font-size:15px;line-height:1.7;color:#334155;\">" + template.HTMLEscapeString(content.Intro) + "</p>" +
+		"<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;\">" + facts.String() + "</table>" +
+		notes.String() +
+		"<p style=\"margin:22px 0 0;font-size:13px;line-height:1.7;color:#64748b;\">This message was sent by Mekmaa regarding your booking record.</p>" +
+		"</td></tr></table></td></tr></table></body></html>"
+}
+
+func latestRelevantBookingRequestChange(changes []BookingRequestChange, actionType string) (*BookingRequestChange, error) {
+	for i := range changes {
+		if changes[i].ActionType == actionType {
+			return &changes[i], nil
+		}
+	}
+	if len(changes) == 0 {
+		return nil, errors.New("booking request change history was not found")
+	}
+	return nil, fmt.Errorf("booking request change history for %s was not found", actionType)
+}
+
+func quotedAmountLabel(financial *BookingFinancial) string {
+	if financial == nil {
+		return "Unquoted"
+	}
+	return money(financial.QuotedAmount)
+}
+
+func bookingPaymentStatusLabel(financial *BookingFinancial, scheduleStatus string) string {
+	switch {
+	case financial == nil:
+		return "No finance record"
+	case financial.Paid && strings.TrimSpace(financial.PaymentMethod) != "":
+		return "Paid via " + financial.PaymentMethod
+	case financial.Paid:
+		return "Paid"
+	case scheduleStatus == "confirmed":
+		return "Unpaid"
+	default:
+		return "No payment confirmed"
+	}
+}
+
+func truncateString(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	if limit <= 3 {
+		return value[:limit]
+	}
+	return value[:limit-3] + "..."
+}
+
+func communicationDelivered(communications []BookingCommunication, channel string) bool {
+	for _, communication := range communications {
+		if communication.Channel == channel && communication.Status == bookingCommStatusSent {
+			return true
+		}
+	}
+	return false
+}
+
+func communicationFailed(communications []BookingCommunication) bool {
+	for _, communication := range communications {
+		if communication.Status == bookingCommStatusFailed {
+			return true
+		}
+	}
+	return false
+}
+
+func communicationFlashMessage(base string, communications []BookingCommunication) string {
+	emailSent := communicationDelivered(communications, bookingCommChannelEmail)
+	smsSent := communicationDelivered(communications, bookingCommChannelSMS)
+	switch {
+	case emailSent && smsSent:
+		return base + " Email and SMS were sent."
+	case emailSent:
+		if communicationFailed(communications) {
+			return base + " Email was sent, but another communication channel failed."
+		}
+		return base + " Email was sent."
+	case smsSent:
+		return base + " SMS was sent, but email failed or is not configured."
+	case communicationFailed(communications):
+		return base + " Customer communication failed or is not configured."
+	default:
+		return base
+	}
+}
+
+func latestResendableEventType(schedule *SpaceSchedule, communications []BookingCommunication) string {
+	if schedule == nil {
+		return ""
+	}
+	switch schedule.Status {
+	case "confirmed":
+		for _, communication := range communications {
+			if communication.EventType == bookingCommEventRescheduledConfirmed ||
+				(communication.EventType == bookingCommEventResent && communication.RelatedEventType == bookingCommEventRescheduledConfirmed) {
+				return bookingCommEventRescheduledConfirmed
+			}
+		}
+		return bookingCommEventConfirmed
+	case "rejected":
+		return bookingCommEventRejected
+	case "pending":
+		for _, communication := range communications {
+			if communication.EventType == bookingCommEventRescheduledPending ||
+				(communication.EventType == bookingCommEventResent && communication.RelatedEventType == bookingCommEventRescheduledPending) {
+				return bookingCommEventRescheduledPending
+			}
+		}
+		return bookingCommEventRequestReceived
+	default:
+		return ""
+	}
+}
+
+func adminBookingCommunicationRedirect(scheduleID int64, status string, slotDate string) string {
+	if status == "pending" {
+		return "/admin/booking-requests"
+	}
+	return fmt.Sprintf("/admin/bookings?action=view&id=%d&date=%s#schedule-view", scheduleID, url.QueryEscape(slotDate))
+}
+
+func currentUserID(r *http.Request) int64 {
+	user, _ := currentUserFromRequest(r)
+	if user == nil {
+		return 0
+	}
+	return user.ID
+}
+
+func currentUserFromRequest(r *http.Request) (*User, bool) {
+	if r == nil {
+		return nil, false
+	}
+	user, ok := r.Context().Value(userContextKey).(*User)
+	return user, ok
 }
 
 func userHasAnyRole(user *User, roles ...string) bool {
@@ -15083,6 +15843,54 @@ func bookingFinancialForSchedule(financials []BookingFinancial, scheduleID int64
 	return nil
 }
 
+func bookingCommunicationsFor(communications []BookingCommunication, scheduleID int64) []BookingCommunication {
+	filtered := make([]BookingCommunication, 0)
+	for _, communication := range communications {
+		if communication.ScheduleID == scheduleID {
+			filtered = append(filtered, communication)
+		}
+	}
+	return filtered
+}
+
+func bookingCommunicationEventLabel(communication BookingCommunication) string {
+	eventType := communication.EventType
+	if communication.EventType == bookingCommEventResent && communication.RelatedEventType != "" {
+		return "Manual resend: " + bookingCommunicationEventTypeLabel(communication.RelatedEventType)
+	}
+	return bookingCommunicationEventTypeLabel(eventType)
+}
+
+func bookingCommunicationEventTypeLabel(eventType string) string {
+	switch eventType {
+	case bookingCommEventRequestReceived:
+		return "Request received"
+	case bookingCommEventConfirmed:
+		return "Booking confirmed"
+	case bookingCommEventRejected:
+		return "Booking rejected"
+	case bookingCommEventRescheduledPending:
+		return "Pending reschedule"
+	case bookingCommEventRescheduledConfirmed:
+		return "Rescheduled and confirmed"
+	case bookingCommEventResent:
+		return "Manual resend"
+	default:
+		return strings.ReplaceAll(strings.TrimSpace(eventType), "_", " ")
+	}
+}
+
+func bookingCommunicationStatusTone(status string) string {
+	switch status {
+	case bookingCommStatusSent:
+		return "border-emerald-200 bg-emerald-50 text-emerald-900"
+	case bookingCommStatusFailed:
+		return "border-red-200 bg-red-50 text-red-900"
+	default:
+		return "border-slate/10 bg-cloud text-slate"
+	}
+}
+
 func listBookingFinancialsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingFinancial, error) {
 	if len(scheduleIDs) == 0 {
 		return nil, nil
@@ -15252,6 +16060,209 @@ func listBookingRequestChangesForScheduleIDsQuery(queryer sqlQueryer, scheduleID
 		changes = append(changes, change)
 	}
 	return changes, rows.Err()
+}
+
+func (a *App) listBookingCommunicationsForScheduleIDs(scheduleIDs []int64) ([]BookingCommunication, error) {
+	return listBookingCommunicationsForScheduleIDsQuery(a.db, scheduleIDs)
+}
+
+func listBookingCommunicationsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingCommunication, error) {
+	if len(scheduleIDs) == 0 {
+		return nil, nil
+	}
+	query, args := scheduleIDScopedQuery(`
+		SELECT
+			id,
+			schedule_id,
+			event_type,
+			related_event_type,
+			event_key,
+			channel,
+			recipient,
+			subject,
+			body_preview,
+			status,
+			provider,
+			provider_message,
+			attempt_count,
+			last_attempt_at,
+			sent_at,
+			created_at,
+			COALESCE(created_by_user_id, 0)
+		FROM booking_communications
+		WHERE schedule_id IN (%s)
+		ORDER BY created_at DESC, id DESC
+	`, scheduleIDs)
+	rows, err := queryer.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var communications []BookingCommunication
+	for rows.Next() {
+		communication, err := scanBookingCommunication(rows)
+		if err != nil {
+			return nil, err
+		}
+		communications = append(communications, communication)
+	}
+	return communications, rows.Err()
+}
+
+func (a *App) findBookingCommunicationByEventKeyChannel(eventKey string, channel string) (*BookingCommunication, error) {
+	row := a.db.QueryRow(`
+		SELECT
+			id,
+			schedule_id,
+			event_type,
+			related_event_type,
+			event_key,
+			channel,
+			recipient,
+			subject,
+			body_preview,
+			status,
+			provider,
+			provider_message,
+			attempt_count,
+			last_attempt_at,
+			sent_at,
+			created_at,
+			COALESCE(created_by_user_id, 0)
+		FROM booking_communications
+		WHERE event_key = ?
+		  AND channel = ?
+		LIMIT 1
+	`, eventKey, channel)
+	communication, err := scanBookingCommunication(row)
+	if err != nil {
+		return nil, err
+	}
+	return &communication, nil
+}
+
+func scanBookingCommunication(row rowScanner) (BookingCommunication, error) {
+	var (
+		communication BookingCommunication
+		lastAttempt   sql.NullTime
+		sentAt        sql.NullTime
+	)
+	if err := row.Scan(
+		&communication.ID,
+		&communication.ScheduleID,
+		&communication.EventType,
+		&communication.RelatedEventType,
+		&communication.EventKey,
+		&communication.Channel,
+		&communication.Recipient,
+		&communication.Subject,
+		&communication.BodyPreview,
+		&communication.Status,
+		&communication.Provider,
+		&communication.ProviderMessage,
+		&communication.AttemptCount,
+		&lastAttempt,
+		&sentAt,
+		&communication.CreatedAt,
+		&communication.CreatedByUserID,
+	); err != nil {
+		return BookingCommunication{}, err
+	}
+	if lastAttempt.Valid {
+		communication.LastAttemptAt = lastAttempt.Time
+	}
+	if sentAt.Valid {
+		communication.SentAt = sentAt.Time
+	}
+	return communication, nil
+}
+
+func (a *App) createPendingBookingCommunication(communication BookingCommunication) (*BookingCommunication, bool, error) {
+	now := time.Now().UTC()
+	result, err := a.db.Exec(`
+		INSERT INTO booking_communications (
+			schedule_id,
+			event_type,
+			related_event_type,
+			event_key,
+			channel,
+			recipient,
+			subject,
+			body_preview,
+			status,
+			provider,
+			provider_message,
+			attempt_count,
+			last_attempt_at,
+			sent_at,
+			created_at,
+			created_by_user_id
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', 0, NULL, NULL, ?, ?)
+	`,
+		communication.ScheduleID,
+		communication.EventType,
+		communication.RelatedEventType,
+		communication.EventKey,
+		communication.Channel,
+		communication.Recipient,
+		communication.Subject,
+		communication.BodyPreview,
+		bookingCommStatusPending,
+		now,
+		nullIfZero(communication.CreatedByUserID),
+	)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			existing, findErr := a.findBookingCommunicationByEventKeyChannel(communication.EventKey, communication.Channel)
+			if findErr != nil {
+				return nil, false, findErr
+			}
+			return existing, true, nil
+		}
+		return nil, false, err
+	}
+	communicationID, err := result.LastInsertId()
+	if err != nil {
+		return nil, false, err
+	}
+	communication.ID = communicationID
+	communication.Status = bookingCommStatusPending
+	communication.CreatedAt = now
+	return &communication, false, nil
+}
+
+func (a *App) completeBookingCommunicationAttempt(
+	communicationID int64,
+	status string,
+	provider string,
+	providerMessage string,
+) error {
+	now := time.Now().UTC()
+	var sentAt any
+	if status == bookingCommStatusSent {
+		sentAt = now
+	}
+	_, err := a.db.Exec(`
+		UPDATE booking_communications
+		SET
+			status = ?,
+			provider = ?,
+			provider_message = ?,
+			attempt_count = attempt_count + 1,
+			last_attempt_at = ?,
+			sent_at = COALESCE(?, sent_at)
+		WHERE id = ?
+	`,
+		status,
+		provider,
+		truncateString(strings.TrimSpace(providerMessage), 300),
+		now,
+		sentAt,
+		communicationID,
+	)
+	return err
 }
 
 func scheduleIDScopedQuery(base string, scheduleIDs []int64) (string, []any) {
@@ -16606,6 +17617,9 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"bookingRequestHistoryFor":       bookingRequestHistoryFor,
 		"bookingRequestOriginalSnapshot": bookingRequestOriginalSnapshot,
 		"bookingRequestActionLabel":      bookingRequestActionLabel,
+		"bookingCommunicationEventLabel": bookingCommunicationEventLabel,
+		"bookingCommunicationStatusTone": bookingCommunicationStatusTone,
+		"bookingCommunicationsFor":       bookingCommunicationsFor,
 		"bookingStatusTone":              bookingStatusTone,
 		"quotedPriceForSchedule":         quotedPriceForSchedule,
 		"courtLayoutHasActivity":         courtLayoutHasActivity,

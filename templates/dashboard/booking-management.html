@@ -127,6 +127,39 @@
       <div class="rounded-2xl bg-emerald-50 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800/45">Quoted amount</p><p class="mt-2 text-sm font-bold text-emerald-900">{{if eq .SelectedSchedule.EntryType "booking"}}{{quotedPriceForSchedule .BookingFinancials .SelectedSchedule.ID}}{{else}}Internal{{end}}</p></div>
       {{if .SelectedSchedule.RequesterName}}<div class="rounded-2xl bg-cloud/60 p-4 sm:col-span-2"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Customer</p><p class="mt-2 text-sm font-semibold">{{.SelectedSchedule.RequesterName}}</p><p class="mt-1 text-xs text-slate/55">{{.SelectedSchedule.RequesterEmail}} · {{.SelectedSchedule.RequesterPhone}}</p></div>{{end}}
       <div class="rounded-2xl bg-cloud/60 p-4 {{if .SelectedSchedule.RequesterName}}sm:col-span-2{{else}}sm:col-span-2 xl:col-span-4{{end}}"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Notes</p><p class="mt-2 text-sm leading-6 text-slate/65">{{if .SelectedSchedule.Notes}}{{.SelectedSchedule.Notes}}{{else}}No notes provided.{{end}}</p></div>
+      <div class="rounded-2xl bg-cloud/40 p-4 sm:col-span-2 xl:col-span-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Communication history</p>
+            <p class="mt-1 text-xs text-slate/55">Every automatic send and manual resend for this booking.</p>
+          </div>
+          {{if .SelectedSchedule.RequesterEmail}}
+          <form action="/admin/bookings/communications/resend" method="post">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+            <button class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold text-slate">Resend latest message</button>
+          </form>
+          {{end}}
+        </div>
+        <div class="mt-4 grid gap-2">
+          {{range bookingCommunicationsFor .BookingCommunications .SelectedSchedule.ID}}
+          <div class="rounded-xl border px-3 py-3 {{bookingCommunicationStatusTone .Status}}">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-[0.68rem] font-bold uppercase tracking-wider">{{bookingCommunicationEventLabel .}}</p>
+                <span class="rounded-full bg-white/80 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider">{{.Channel}}</span>
+              </div>
+              <p class="text-[0.68rem]">{{if .LastAttemptAt.IsZero}}{{relativeTime .CreatedAt}}{{else}}{{relativeTime .LastAttemptAt}}{{end}}</p>
+            </div>
+            <p class="mt-2 text-xs break-all">{{.Recipient}}</p>
+            <p class="mt-1 text-xs">Attempt {{.AttemptCount}} · {{.Status}}</p>
+            {{if .ProviderMessage}}<p class="mt-1 text-xs leading-5">{{.ProviderMessage}}</p>{{end}}
+          </div>
+          {{else}}
+          <p class="text-sm text-slate/55">No customer communication has been recorded for this booking yet.</p>
+          {{end}}
+        </div>
+      </div>
     </div>
     <div class="flex flex-wrap justify-end gap-2 border-t border-slate/10 px-5 py-4 sm:px-6">
       <a href="/admin/bookings?action=edit&id={{.SelectedSchedule.ID}}&date={{.SelectedSchedule.SlotDate}}#schedule-edit" class="h-10 rounded-xl border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Edit schedule</a>
