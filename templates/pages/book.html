@@ -1163,384 +1163,156 @@
 
 <script>
   (() => {
-    const journeySelector = "#booking-journey";
-    const bookingOptionSelector = "[data-booking-option]";
-    const filterButtonSelector = "[data-activity-filter]";
-    const bookingFormID = "public-booking-form";
+    const filterButtons = Array.from(
+      document.querySelectorAll("[data-activity-filter]")
+    );
 
-    let navigationController = null;
-    let navigationSequence = 0;
+    const bookingOptions = Array.from(
+      document.querySelectorAll("[data-booking-option]")
+    );
 
-    const customerFieldNames = [
-      "title",
-      "requester_name",
-      "requester_email",
-      "requester_phone",
-      "referral_code",
-      "notes",
-    ];
+    const emptyFilterState = document.querySelector(
+      "[data-filter-empty]"
+    );
 
-    const captureCustomerDetails = () => {
-      const form = document.getElementById(bookingFormID);
+    const bookingForm = document.getElementById(
+      "public-booking-form"
+    );
 
-      if (!form) {
-        return {};
-      }
+    filterButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const filter = button.dataset.activityFilter;
 
-      return customerFieldNames.reduce((values, name) => {
-        const field = form.elements.namedItem(name);
+        filterButtons.forEach((item) => {
+          const active = item === button;
 
-        if (
-          field instanceof HTMLInputElement ||
-          field instanceof HTMLTextAreaElement ||
-          field instanceof HTMLSelectElement
-        ) {
-          values[name] = field.value;
-        }
+          item.classList.toggle(
+            "bg-obsidian",
+            active
+          );
 
-        return values;
-      }, {});
-    };
+          item.classList.toggle(
+            "text-cloud",
+            active
+          );
 
-    const restoreCustomerDetails = (values) => {
-      const form = document.getElementById(bookingFormID);
+          item.classList.toggle(
+            "border",
+            !active
+          );
 
-      if (!form || !values) {
-        return;
-      }
+          item.classList.toggle(
+            "border-slate/10",
+            !active
+          );
 
-      customerFieldNames.forEach((name) => {
-        if (!(name in values)) {
-          return;
-        }
+          item.classList.toggle(
+            "bg-white",
+            !active
+          );
 
-        const field = form.elements.namedItem(name);
-
-        if (
-          field instanceof HTMLInputElement ||
-          field instanceof HTMLTextAreaElement ||
-          field instanceof HTMLSelectElement
-        ) {
-          field.value = values[name];
-        }
-      });
-    };
-
-    const setJourneyBusy = (busy) => {
-      const journey = document.querySelector(journeySelector);
-
-      if (!journey) {
-        return;
-      }
-
-      journey.setAttribute("aria-busy", busy ? "true" : "false");
-      journey.classList.toggle("pointer-events-none", busy);
-      journey.classList.toggle("opacity-60", busy);
-    };
-
-    const syncMobileReservationSpacing = () => {
-      const journey = document.querySelector(journeySelector);
-      const pageSection = journey?.closest("section");
-      const mobileReservationBar = journey?.querySelector(
-        '[form="public-booking-form"]'
-      );
-
-      if (!pageSection) {
-        return;
-      }
-
-      pageSection.classList.toggle(
-        "max-xl:pb-28",
-        Boolean(mobileReservationBar)
-      );
-    };
-
-    const updateBrowserURL = (url, replace = false) => {
-      const method = replace ? "replaceState" : "pushState";
-
-      window.history[method](
-        {
-          mekmaaBookingNavigation: true,
-        },
-        "",
-        url
-      );
-    };
-
-    const scrollToReservationSummary = () => {
-      const summary = document.getElementById("booking-summary");
-
-      if (!summary) {
-        return;
-      }
-
-      const reducedMotion = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
-
-      summary.scrollIntoView({
-        behavior: reducedMotion ? "auto" : "smooth",
-        block: "start",
-      });
-    };
-
-    const parseBookingPage = (html) => {
-      const parser = new DOMParser();
-      const parsedDocument = parser.parseFromString(html, "text/html");
-      const parsedJourney = parsedDocument.querySelector(journeySelector);
-
-      if (!parsedJourney) {
-        throw new Error("The booking journey was not found in the response.");
-      }
-
-      return parsedJourney;
-    };
-
-    const replaceBookingJourney = (
-      nextJourney,
-      customerDetails,
-      targetURL,
-      options = {}
-    ) => {
-      const currentJourney = document.querySelector(journeySelector);
-
-      if (!currentJourney) {
-        window.location.assign(targetURL);
-        return;
-      }
-
-      currentJourney.replaceWith(nextJourney);
-
-      restoreCustomerDetails(customerDetails);
-      bindBookingExperience();
-      syncMobileReservationSpacing();
-
-      if (options.updateHistory !== false) {
-        updateBrowserURL(targetURL, options.replaceHistory === true);
-      }
-
-      if (options.scrollToSummary !== false) {
-        window.requestAnimationFrame(scrollToReservationSummary);
-      }
-    };
-
-    const loadBookingSelection = async (
-      targetURL,
-      options = {}
-    ) => {
-      if (!targetURL) {
-        return;
-      }
-
-      const customerDetails = captureCustomerDetails();
-      const sequence = ++navigationSequence;
-
-      if (navigationController) {
-        navigationController.abort();
-      }
-
-      navigationController = new AbortController();
-      setJourneyBusy(true);
-
-      try {
-        const response = await fetch(targetURL, {
-          method: "GET",
-          credentials: "same-origin",
-          headers: {
-            Accept: "text/html",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          signal: navigationController.signal,
+          item.classList.toggle(
+            "text-slate",
+            !active
+          );
         });
 
-        if (!response.ok) {
-          throw new Error(
-            `Booking selection returned HTTP ${response.status}.`
-          );
-        }
+        let visibleOptions = 0;
 
-        const html = await response.text();
+        bookingOptions.forEach((option) => {
+          const visible =
+            filter === "all" ||
+            option.dataset.activity === filter;
 
-        if (sequence !== navigationSequence) {
-          return;
-        }
+          option.hidden = !visible;
 
-        const nextJourney = parseBookingPage(html);
-
-        replaceBookingJourney(
-          nextJourney,
-          customerDetails,
-          targetURL,
-          options
-        );
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-
-        console.error("Unable to update the booking selection.", error);
-        window.location.assign(targetURL);
-      } finally {
-        if (sequence === navigationSequence) {
-          setJourneyBusy(false);
-          navigationController = null;
-        }
-      }
-    };
-
-    const bindActivityFilters = () => {
-      const filterButtons = Array.from(
-        document.querySelectorAll(filterButtonSelector)
-      );
-
-      const bookingOptions = Array.from(
-        document.querySelectorAll(bookingOptionSelector)
-      );
-
-      const emptyFilterState = document.querySelector(
-        "[data-filter-empty]"
-      );
-
-      filterButtons.forEach((button) => {
-        button.addEventListener("click", () => {
-          const filter = button.dataset.activityFilter;
-
-          filterButtons.forEach((item) => {
-            const active = item === button;
-
-            item.classList.toggle("bg-obsidian", active);
-            item.classList.toggle("text-cloud", active);
-            item.classList.toggle("border", !active);
-            item.classList.toggle("border-slate/10", !active);
-            item.classList.toggle("bg-white", !active);
-            item.classList.toggle("text-slate", !active);
-
-            item.setAttribute(
-              "aria-pressed",
-              active ? "true" : "false"
-            );
-          });
-
-          let visibleOptions = 0;
-
-          bookingOptions.forEach((option) => {
-            const visible =
-              filter === "all" ||
-              option.dataset.activity === filter;
-
-            option.hidden = !visible;
-
-            if (visible) {
-              visibleOptions++;
-            }
-          });
-
-          document
-            .querySelectorAll("[data-slot-card]")
-            .forEach((card) => {
-              const hasVisibleOption = Array.from(
-                card.querySelectorAll(bookingOptionSelector)
-              ).some((option) => !option.hidden);
-
-              card.hidden = !hasVisibleOption;
-            });
-
-          if (emptyFilterState) {
-            emptyFilterState.hidden = visibleOptions > 0;
+          if (visible) {
+            visibleOptions++;
           }
         });
-      });
-    };
 
-    const bindSessionSelection = () => {
-      document
-        .querySelectorAll(bookingOptionSelector)
-        .forEach((option) => {
-          option.addEventListener("click", (event) => {
-            if (
-              event.defaultPrevented ||
-              event.button !== 0 ||
-              event.metaKey ||
-              event.ctrlKey ||
-              event.shiftKey ||
-              event.altKey
-            ) {
-              return;
-            }
+        document
+          .querySelectorAll("[data-slot-card]")
+          .forEach((card) => {
+            const hasVisibleOption = Array.from(
+              card.querySelectorAll("[data-booking-option]")
+            ).some((option) => !option.hidden);
 
-            const href = option.getAttribute("href");
-
-            if (!href) {
-              return;
-            }
-
-            event.preventDefault();
-
-            const targetURL = new URL(
-              href,
-              window.location.href
-            );
-
-            loadBookingSelection(targetURL.toString(), {
-              updateHistory: true,
-              replaceHistory: false,
-              scrollToSummary: true,
-            });
+            card.hidden = !hasVisibleOption;
           });
-        });
-    };
 
-    const bindBookingFormProgress = () => {
-      const bookingForm = document.getElementById(bookingFormID);
+        if (emptyFilterState) {
+          emptyFilterState.hidden =
+            visibleOptions > 0;
+        }
+      });
+    });
 
-      if (!bookingForm) {
-        return;
-      }
+    if (!bookingForm) {
+      return;
+    }
 
-      const requiredFields = Array.from(
-        bookingForm.querySelectorAll("[required]")
-      );
+    const requiredFields = Array.from(
+      bookingForm.querySelectorAll("[required]")
+    );
 
-      const progressLabels = Array.from(
-        document.querySelectorAll("[data-booking-progress]")
-      );
+    const progressLabels = Array.from(
+      document.querySelectorAll(
+        "[data-booking-progress]"
+      )
+    );
 
-      const submitLabels = Array.from(
-        document.querySelectorAll("[data-booking-submit-label]")
-      );
+    const submitLabels = Array.from(
+      document.querySelectorAll(
+        "[data-booking-submit-label]"
+      )
+    );
 
-      const refreshProgress = () => {
-        const completed = requiredFields.filter(
-          (field) =>
-            field.value.trim() !== "" &&
-            field.checkValidity()
-        ).length;
+    const refreshProgress = () => {
+      const completed = requiredFields.filter(
+        (field) =>
+          field.value.trim() !== "" &&
+          field.checkValidity()
+      ).length;
 
-        progressLabels.forEach((label) => {
-          label.textContent =
-            `${completed} of ${requiredFields.length} complete`;
-        });
-
-        submitLabels.forEach((label) => {
-          label.textContent =
-            completed === requiredFields.length
-              ? "Request booking"
-              : "Complete details";
-        });
-      };
-
-      requiredFields.forEach((field) => {
-        field.addEventListener("input", refreshProgress);
-        field.addEventListener("change", refreshProgress);
+      progressLabels.forEach((label) => {
+        label.textContent =
+          `${completed} of ${requiredFields.length} complete`;
       });
 
-      document
-        .querySelectorAll('[form="public-booking-form"]')
-        .forEach((button) => {
-          button.addEventListener("click", (event) => {
-            const firstInvalid = requiredFields.find(
-              (field) => !field.checkValidity()
-            );
+      submitLabels.forEach((label) => {
+        label.textContent =
+          completed === requiredFields.length
+            ? "Request booking"
+            : "Complete details";
+      });
+    };
+
+    requiredFields.forEach((field) => {
+      field.addEventListener(
+        "input",
+        refreshProgress
+      );
+
+      field.addEventListener(
+        "change",
+        refreshProgress
+      );
+    });
+
+    document
+      .querySelectorAll(
+        '[form="public-booking-form"]'
+      )
+      .forEach((button) => {
+        button.addEventListener(
+          "click",
+          (event) => {
+            const firstInvalid =
+              requiredFields.find(
+                (field) =>
+                  !field.checkValidity()
+              );
 
             if (!firstInvalid) {
               return;
@@ -1553,34 +1325,18 @@
               block: "center",
             });
 
-            window.setTimeout(() => {
+            setTimeout(() => {
               firstInvalid.focus({
                 preventScroll: true,
               });
 
               firstInvalid.reportValidity();
             }, 250);
-          });
-        });
-
-      refreshProgress();
-    };
-
-    const bindBookingExperience = () => {
-      bindActivityFilters();
-      bindSessionSelection();
-      bindBookingFormProgress();
-    };
-
-    window.addEventListener("popstate", () => {
-      loadBookingSelection(window.location.href, {
-        updateHistory: false,
-        scrollToSummary: false,
+          }
+        );
       });
-    });
 
-    bindBookingExperience();
-    syncMobileReservationSpacing();
+    refreshProgress();
   })();
 </script>
 {{end}}
