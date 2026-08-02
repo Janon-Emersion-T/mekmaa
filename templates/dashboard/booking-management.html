@@ -70,13 +70,43 @@
       <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-800/55">New calendar entry</p><h2 class="mt-1 text-xl font-semibold text-obsidian">Reserve inventory</h2></div>
       <a href="/admin/bookings?date={{.CalendarDate}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a>
     </div>
-    <form action="/admin/bookings/create" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3">
+    <form action="/admin/bookings/create" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3" data-admin-booking-form data-options-url="/admin/bookings/options">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="hidden" name="action" value="new" />
       <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Entry type</span><select name="entry_type" data-entry-type required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua"><option value="booking" {{if or (not .DraftSchedule) (eq .DraftSchedule.EntryType "booking")}}selected{{end}}>Direct booking</option><option value="training" {{if and .DraftSchedule (eq .DraftSchedule.EntryType "training")}}selected{{end}}>Internal training</option></select></label>
-      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Date</span><input type="date" name="slot_date" min="{{.TodayDate}}" value="{{if and .DraftSchedule .DraftSchedule.SlotDate}}{{.DraftSchedule.SlotDate}}{{else}}{{.CalendarDate}}{{end}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" /></label>
-      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Start time</span><select name="slot_hour" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">{{range .Hours}}<option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.SlotHour .)}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Facility</span><select name="activity" data-activity required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">{{range .Activities}}<option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.Activity .)}}selected{{end}}>{{activityLabel .}}</option>{{end}}</select></label>
-      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Quantity</span><input type="number" name="quantity" data-quantity min="1" max="3" value="{{if and .DraftSchedule (gt .DraftSchedule.Quantity 0)}}{{.DraftSchedule.Quantity}}{{else}}1{{end}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Date</span><input type="date" name="slot_date" data-slot-date min="{{.TodayDate}}" value="{{if and .DraftSchedule .DraftSchedule.SlotDate}}{{.DraftSchedule.SlotDate}}{{else}}{{.CalendarDate}}{{end}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Start time</span><select name="slot_hour" data-slot-hour required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">{{range .Hours}}<option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.SlotHour .)}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <div class="md:col-span-2 xl:col-span-3 rounded-[1.6rem] border border-slate/10 bg-cloud/35 p-4 sm:p-5" data-admin-options-root data-selected-activity="{{if .DraftSchedule}}{{.DraftSchedule.Activity}}{{end}}" data-selected-quantity="{{if .DraftSchedule}}{{.DraftSchedule.Quantity}}{{else}}1{{end}}">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Valid slot options</p>
+            <h3 class="mt-1 text-lg font-semibold text-obsidian">Choose from available combinations only</h3>
+          </div>
+          <button type="submit" formmethod="get" formaction="/admin/bookings" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua">Refresh valid options</button>
+        </div>
+        <p class="mt-2 text-xs leading-5 text-slate/55">The list below is derived from active layouts, current schedules, closures, and pricing for the selected slot.</p>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-admin-options-list>
+          {{range .AdminBookingOptions}}
+          <label class="group block cursor-pointer">
+            <input type="radio" name="booking_option" value="{{.Activity}}:{{.Quantity}}" class="peer sr-only" {{if and $.DraftSchedule (eq $.DraftSchedule.Activity .Activity) (eq $.DraftSchedule.Quantity .Quantity)}}checked{{end}} />
+            <span class="flex min-h-[10rem] flex-col justify-between rounded-[1.25rem] border border-slate/10 bg-white p-4 text-obsidian transition peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud group-hover:border-aqua group-hover:shadow-lg">
+              <span>
+                <span class="flex items-start justify-between gap-3">
+                  <span>
+                    <span class="block text-base font-semibold">{{.Label}}</span>
+                    <span class="mt-1 block text-[0.68rem] uppercase tracking-[0.14em] opacity-50">{{.AvailabilityState}}</span>
+                  </span>
+                  <span class="text-sm font-bold {{if eq .PriceLabel "Internal"}}text-slate/55 peer-checked:text-aqua{{else}}text-emerald-700 peer-checked:text-aqua{{end}}">{{.PriceLabel}}</span>
+                </span>
+                {{if .RemainingCapacityLabel}}<span class="mt-4 block text-xs leading-5 opacity-60">{{.RemainingCapacityLabel}}</span>{{end}}
+              </span>
+              <span class="mt-4 flex items-center justify-between border-t border-slate/10 pt-3 text-xs font-bold peer-checked:border-white/10"><span>Select option</span><span>{{optionSummary .}}</span></span>
+            </span>
+          </label>
+          {{end}}
+        </div>
+        <p class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 {{if .AdminBookingBlockedReason}}{{else}}hidden{{end}}" data-admin-options-message>{{if .AdminBookingBlockedReason}}{{.AdminBookingBlockedReason}}{{else}}No valid options remain for this slot.{{end}}</p>
+      </div>
       <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Schedule title</span><input type="text" name="title" value="{{if .DraftSchedule}}{{.DraftSchedule.Title}}{{end}}" placeholder="Customer, team or training name" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" /></label>
       <label class="md:col-span-2 xl:col-span-3"><span class="mb-1.5 block text-xs font-semibold text-slate/55">Operations note <span class="font-normal text-slate/35">(optional)</span></span><textarea name="notes" rows="3" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{if .DraftSchedule}}{{.DraftSchedule.Notes}}{{end}}</textarea></label>
       <div class="md:col-span-2 xl:col-span-3 flex justify-end"><button class="h-12 rounded-2xl bg-obsidian px-6 text-sm font-bold text-cloud transition hover:bg-slate">Create schedule</button></div>
@@ -108,13 +138,42 @@
   {{if and (eq .ScheduleMode "edit") .SelectedSchedule}}
   <div id="schedule-edit" class="overflow-hidden rounded-[2rem] border border-aqua/30 bg-white/95 shadow-sm">
     <div class="flex items-center justify-between bg-cloud/70 px-5 py-4 sm:px-6"><div><p class="text-xs font-bold uppercase tracking-wider text-slate/40">Edit inventory</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div><a href="/admin/bookings?date={{.SelectedSchedule.SlotDate}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a></div>
-    <form action="/admin/bookings/update" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+    <form action="/admin/bookings/update" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3" data-admin-booking-form data-options-url="/admin/bookings/options">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" /><input type="hidden" name="id" value="{{.SelectedSchedule.ID}}" /><input type="hidden" name="action" value="edit" />
       <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Entry type</span><select name="entry_type" data-entry-type required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm"><option value="booking" {{if eq .SelectedSchedule.EntryType "booking"}}selected{{end}}>Booking</option><option value="training" {{if eq .SelectedSchedule.EntryType "training"}}selected{{end}}>Training</option></select></label>
-      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Date</span><input type="date" name="slot_date" min="{{.TodayDate}}" value="{{.SelectedSchedule.SlotDate}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm" /></label>
-      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Start time</span><select name="slot_hour" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm">{{range .Hours}}<option value="{{.}}" {{if eq $.SelectedSchedule.SlotHour .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Facility</span><select name="activity" data-activity required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm">{{range .Activities}}<option value="{{.}}" {{if eq $.SelectedSchedule.Activity .}}selected{{end}}>{{activityLabel .}}</option>{{end}}</select></label>
-      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Quantity</span><input type="number" name="quantity" data-quantity min="1" max="3" value="{{.SelectedSchedule.Quantity}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Date</span><input type="date" name="slot_date" data-slot-date min="{{.TodayDate}}" value="{{.SelectedSchedule.SlotDate}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Start time</span><select name="slot_hour" data-slot-hour required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm">{{range .Hours}}<option value="{{.}}" {{if eq $.SelectedSchedule.SlotHour .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <div class="md:col-span-2 xl:col-span-3 rounded-[1.6rem] border border-slate/10 bg-cloud/35 p-4 sm:p-5" data-admin-options-root data-selected-activity="{{.SelectedSchedule.Activity}}" data-selected-quantity="{{.SelectedSchedule.Quantity}}">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Valid slot options</p>
+            <h3 class="mt-1 text-lg font-semibold text-obsidian">Edit only within current capacity</h3>
+          </div>
+          <button type="submit" formmethod="get" formaction="/admin/bookings" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua">Refresh valid options</button>
+        </div>
+        <p class="mt-2 text-xs leading-5 text-slate/55">The current selection is revalidated against layouts, pending holds, confirmed bookings, closures, and pricing before save.</p>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-admin-options-list>
+          {{range .AdminBookingOptions}}
+          <label class="group block cursor-pointer">
+            <input type="radio" name="booking_option" value="{{.Activity}}:{{.Quantity}}" class="peer sr-only" {{if and $.SelectedSchedule (eq $.SelectedSchedule.Activity .Activity) (eq $.SelectedSchedule.Quantity .Quantity)}}checked{{end}} />
+            <span class="flex min-h-[10rem] flex-col justify-between rounded-[1.25rem] border border-slate/10 bg-white p-4 text-obsidian transition peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud group-hover:border-aqua group-hover:shadow-lg">
+              <span>
+                <span class="flex items-start justify-between gap-3">
+                  <span>
+                    <span class="block text-base font-semibold">{{.Label}}</span>
+                    <span class="mt-1 block text-[0.68rem] uppercase tracking-[0.14em] opacity-50">{{.AvailabilityState}}</span>
+                  </span>
+                  <span class="text-sm font-bold {{if eq .PriceLabel "Internal"}}text-slate/55 peer-checked:text-aqua{{else}}text-emerald-700 peer-checked:text-aqua{{end}}">{{.PriceLabel}}</span>
+                </span>
+                {{if .RemainingCapacityLabel}}<span class="mt-4 block text-xs leading-5 opacity-60">{{.RemainingCapacityLabel}}</span>{{end}}
+              </span>
+              <span class="mt-4 flex items-center justify-between border-t border-slate/10 pt-3 text-xs font-bold peer-checked:border-white/10"><span>Select option</span><span>{{optionSummary .}}</span></span>
+            </span>
+          </label>
+          {{end}}
+        </div>
+        <p class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 {{if .AdminBookingBlockedReason}}{{else}}hidden{{end}}" data-admin-options-message>{{if .AdminBookingBlockedReason}}{{.AdminBookingBlockedReason}}{{else}}No valid options remain for this slot.{{end}}</p>
+      </div>
       <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Title</span><input type="text" name="title" value="{{.SelectedSchedule.Title}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm" /></label>
       <label class="md:col-span-2 xl:col-span-3"><span class="mb-1.5 block text-xs font-semibold text-slate/55">Notes</span><textarea name="notes" rows="3" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">{{.SelectedSchedule.Notes}}</textarea></label>
       <div class="md:col-span-2 xl:col-span-3 flex justify-end"><button class="h-12 rounded-2xl bg-obsidian px-6 text-sm font-bold text-cloud">Save changes</button></div>
@@ -143,7 +202,7 @@
           <p class="text-xs text-slate/35">No inventory reserved.</p>
           {{end}}
         </div>
-        {{if not $slotSchedules}}<a href="/admin/bookings?action=new&date={{$.CalendarDate}}&hour={{$hour}}#schedule-form" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-center text-xs font-bold text-slate transition hover:border-aqua">Add</a>{{end}}
+        <a href="/admin/bookings?action=new&date={{$.CalendarDate}}&hour={{$hour}}#schedule-form" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-center text-xs font-bold text-slate transition hover:border-aqua">Add</a>
       </article>
       {{end}}
     </div>
@@ -152,26 +211,117 @@
 
 <script>
   (() => {
-    document.querySelectorAll("form").forEach((form) => {
+    const escapeHTML = (value) =>
+      String(value).replace(/[&<>\"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;",
+      }[char]));
+
+    document.querySelectorAll("[data-admin-booking-form]").forEach((form) => {
       const type = form.querySelector("[data-entry-type]");
-      const activity = form.querySelector("[data-activity]");
-      const quantity = form.querySelector("[data-quantity]");
-      if (!type || !activity || !quantity) return;
-      const sync = () => {
-        const training = type.value === "training";
-        if (training) {
-          activity.value = "training";
-          quantity.value = "1";
-        } else if (activity.value === "training") {
-          activity.value = "full_indoor_cricket";
-        }
-        activity.disabled = training;
-        quantity.readOnly = training;
+      const slotDate = form.querySelector("[data-slot-date]");
+      const slotHour = form.querySelector("[data-slot-hour]");
+      const optionsRoot = form.querySelector("[data-admin-options-root]");
+      const optionsList = form.querySelector("[data-admin-options-list]");
+      const message = form.querySelector("[data-admin-options-message]");
+      const optionsURL = form.dataset.optionsUrl;
+      if (!type || !slotDate || !slotHour || !optionsRoot || !optionsList || !message || !optionsURL) return;
+
+      let requestCounter = 0;
+
+      const currentSelection = () => {
+        const checked = optionsList.querySelector('input[name="booking_option"]:checked');
+        if (checked) return checked.value;
+        const activity = optionsRoot.dataset.selectedActivity || "";
+        const quantity = optionsRoot.dataset.selectedQuantity || "1";
+        return activity ? `${activity}:${quantity}` : "";
       };
-      type.addEventListener("change", sync);
-      sync();
-      form.addEventListener("submit", () => {
-        activity.disabled = false;
+
+      const renderOptions = (options, selectedValue) => {
+        optionsList.innerHTML = "";
+        if (!Array.isArray(options) || options.length === 0) return;
+        options.forEach((option) => {
+          const value = `${option.Activity}:${option.Quantity}`;
+          const checked = value === selectedValue;
+          const card = document.createElement("label");
+          card.className = "group block cursor-pointer";
+          card.innerHTML = `
+            <input type="radio" name="booking_option" value="${escapeHTML(value)}" class="peer sr-only" ${checked ? "checked" : ""} />
+            <span class="flex min-h-[10rem] flex-col justify-between rounded-[1.25rem] border border-slate/10 bg-white p-4 text-obsidian transition peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud group-hover:border-aqua group-hover:shadow-lg">
+              <span>
+                <span class="flex items-start justify-between gap-3">
+                  <span>
+                    <span class="block text-base font-semibold">${escapeHTML(option.Label)}</span>
+                    <span class="mt-1 block text-[0.68rem] uppercase tracking-[0.14em] opacity-50">${escapeHTML(option.AvailabilityState || "Available")}</span>
+                  </span>
+                  <span class="text-sm font-bold text-emerald-700 peer-checked:text-aqua">${escapeHTML(option.PriceLabel || "")}</span>
+                </span>
+                ${option.RemainingCapacityLabel ? `<span class="mt-4 block text-xs leading-5 opacity-60">${escapeHTML(option.RemainingCapacityLabel)}</span>` : ""}
+              </span>
+              <span class="mt-4 flex items-center justify-between border-t border-slate/10 pt-3 text-xs font-bold peer-checked:border-white/10"><span>Select option</span><span>${escapeHTML(option.Label)}</span></span>
+            </span>
+          `;
+          optionsList.appendChild(card);
+        });
+      };
+
+      const updateOptions = async () => {
+        const selectedValue = currentSelection();
+        const params = new URLSearchParams({
+          slot_date: slotDate.value,
+          slot_hour: slotHour.value,
+          entry_type: type.value,
+        });
+        const scheduleID = form.querySelector('input[name="schedule_id"]');
+        if (scheduleID && scheduleID.value) params.set("schedule_id", scheduleID.value);
+        const requestID = ++requestCounter;
+        message.hidden = false;
+        message.textContent = "Refreshing valid options...";
+        try {
+          const response = await fetch(`${optionsURL}?${params.toString()}`, {
+            headers: { Accept: "application/json" },
+            credentials: "same-origin",
+          });
+          if (!response.ok) throw new Error("request failed");
+          const payload = await response.json();
+          if (requestID !== requestCounter) return;
+          renderOptions(payload.options || [], selectedValue);
+          const hasOptions = Array.isArray(payload.options) && payload.options.length > 0;
+          const nextSelected = optionsList.querySelector(`input[name="booking_option"][value="${CSS.escape(selectedValue)}"]`);
+          if (!nextSelected) {
+            const firstOption = optionsList.querySelector('input[name="booking_option"]');
+            if (firstOption) firstOption.checked = true;
+          }
+          if (hasOptions) {
+            message.hidden = !payload.blocked_reason;
+            message.textContent = payload.blocked_reason || "";
+          } else {
+            message.hidden = false;
+            message.textContent = payload.blocked_reason || "No valid options remain for this slot.";
+          }
+          optionsRoot.dataset.selectedActivity = "";
+          optionsRoot.dataset.selectedQuantity = "";
+        } catch (error) {
+          if (requestID !== requestCounter) return;
+          message.hidden = false;
+          message.textContent = "Could not refresh valid options automatically. Use \"Refresh valid options\".";
+        }
+      };
+
+      [type, slotDate, slotHour].forEach((field) => {
+        field.addEventListener("change", updateOptions);
+      });
+
+      form.addEventListener("change", (event) => {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement)) return;
+        if (input.name !== "booking_option" || !input.checked) return;
+        const [activity, quantity] = input.value.split(":");
+        optionsRoot.dataset.selectedActivity = activity || "";
+        optionsRoot.dataset.selectedQuantity = quantity || "1";
       });
     });
   })();

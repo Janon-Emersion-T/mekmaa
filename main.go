@@ -455,6 +455,16 @@ type BookingOption struct {
 	Label    string
 }
 
+type AdminBookingOption struct {
+	Activity               string
+	Quantity               int
+	Label                  string
+	PriceLabel             string
+	AvailabilityState      string
+	RemainingCapacity      int
+	RemainingCapacityLabel string
+}
+
 type PricingRule struct {
 	ID             int64
 	Activity       string
@@ -606,97 +616,99 @@ type FAQItem struct {
 }
 
 type TemplateData struct {
-	Title                   string
-	Description             string
-	CurrentPath             string
-	User                    *User
-	Viewer                  *User
-	HideChrome              bool
-	CSRFToken               string
-	Flash                   string
-	Error                   string
-	Stats                   []Stat
-	Features                []Feature
-	Users                   []User
-	Available               []string
-	Roles                   []Role
-	Permissions             []string
-	PermissionGroups        []PermissionGroup
-	Admissions              []Admission
-	SelectedAdmission       *Admission
-	AdmissionMode           string
-	StudentGroups           []StudentGroup
-	SelectedGroup           *StudentGroup
-	GroupMode               string
-	AvailableCoaches        []User
-	AttendanceRecords       []AttendanceRecord
-	AttendanceDate          string
-	RecentDates             []string
-	AttendanceSummary       AttendanceSummary
-	Courts                  []Court
-	SelectedCourt           *Court
-	CourtMode               string
-	CourtActivities         []CourtActivity
-	CourtLayouts            []CourtLayout
-	SelectedCourtLayout     *CourtLayout
-	CourtLayoutMode         string
-	CourtClosures           []CourtClosure
-	SelectedCourtClosure    *CourtClosure
-	CourtClosureMode        string
-	Schedules               []SpaceSchedule
-	DaySchedules            []SpaceSchedule
-	PendingSchedules        []SpaceSchedule
-	BookingRequests         []SpaceSchedule
-	SelectedSchedule        *SpaceSchedule
-	DraftSchedule           *SpaceSchedule
-	ScheduleMode            string
-	Pricings                []PricingRule
-	TrainingPrograms        []TrainingProgram
-	SelectedTrainingProgram *TrainingProgram
-	TrainingProgramMode     string
-	PricingSettings         *PricingSettings
-	ReferralPartners        []ReferralPartner
-	ReferralPartnerRows     []ReferralPartnerSummary
-	BookingReferrals        []BookingReferral
-	ReferralStats           []Stat
-	SelectedPricing         *PricingRule
-	PricingMode             string
-	Events                  []Event
-	SelectedEvent           *Event
-	EventMode               string
-	FinanceTransactions     []FinanceTransaction
-	SelectedFinance         *FinanceTransaction
-	FinanceFilter           FinanceFilter
-	FinanceSummary          FinanceSummary
-	BookingFinancials       []BookingFinancial
-	Report                  *OperationalReport
-	ReceiptAdmission        *Admission
-	StudentPaymentRows      []StudentPaymentRow
-	PaymentMonth            string
-	PaymentMonthLabel       string
-	PaymentTotalDue         float64
-	PaymentCollected        float64
-	PaymentOutstanding      float64
-	PaymentPaidCount        int
-	PaymentPendingCount     int
-	BookingSlots            []BookingSlotAvailability
-	WeekDays                []CalendarDay
-	BookingOptions          []BookingOption
-	Activities              []string
-	Hours                   []string
-	CalendarDate            string
-	PreviousDate            string
-	NextDate                string
-	TodayDate               string
-	DailyStats              []Stat
-	BookingRequestStats     []Stat
-	CalendarCanGoBack       bool
-	PendingEmail            string
-	OTPCodeLength           int
-	ResendAction            string
-	SportsCatalog           []SportPage
-	SelectedSport           *SportPage
-	FAQItems                []FAQItem
+	Title                     string
+	Description               string
+	CurrentPath               string
+	User                      *User
+	Viewer                    *User
+	HideChrome                bool
+	CSRFToken                 string
+	Flash                     string
+	Error                     string
+	Stats                     []Stat
+	Features                  []Feature
+	Users                     []User
+	Available                 []string
+	Roles                     []Role
+	Permissions               []string
+	PermissionGroups          []PermissionGroup
+	Admissions                []Admission
+	SelectedAdmission         *Admission
+	AdmissionMode             string
+	StudentGroups             []StudentGroup
+	SelectedGroup             *StudentGroup
+	GroupMode                 string
+	AvailableCoaches          []User
+	AttendanceRecords         []AttendanceRecord
+	AttendanceDate            string
+	RecentDates               []string
+	AttendanceSummary         AttendanceSummary
+	Courts                    []Court
+	SelectedCourt             *Court
+	CourtMode                 string
+	CourtActivities           []CourtActivity
+	CourtLayouts              []CourtLayout
+	SelectedCourtLayout       *CourtLayout
+	CourtLayoutMode           string
+	CourtClosures             []CourtClosure
+	SelectedCourtClosure      *CourtClosure
+	CourtClosureMode          string
+	Schedules                 []SpaceSchedule
+	DaySchedules              []SpaceSchedule
+	PendingSchedules          []SpaceSchedule
+	BookingRequests           []SpaceSchedule
+	SelectedSchedule          *SpaceSchedule
+	DraftSchedule             *SpaceSchedule
+	ScheduleMode              string
+	Pricings                  []PricingRule
+	TrainingPrograms          []TrainingProgram
+	SelectedTrainingProgram   *TrainingProgram
+	TrainingProgramMode       string
+	PricingSettings           *PricingSettings
+	ReferralPartners          []ReferralPartner
+	ReferralPartnerRows       []ReferralPartnerSummary
+	BookingReferrals          []BookingReferral
+	ReferralStats             []Stat
+	SelectedPricing           *PricingRule
+	PricingMode               string
+	Events                    []Event
+	SelectedEvent             *Event
+	EventMode                 string
+	FinanceTransactions       []FinanceTransaction
+	SelectedFinance           *FinanceTransaction
+	FinanceFilter             FinanceFilter
+	FinanceSummary            FinanceSummary
+	BookingFinancials         []BookingFinancial
+	Report                    *OperationalReport
+	ReceiptAdmission          *Admission
+	StudentPaymentRows        []StudentPaymentRow
+	PaymentMonth              string
+	PaymentMonthLabel         string
+	PaymentTotalDue           float64
+	PaymentCollected          float64
+	PaymentOutstanding        float64
+	PaymentPaidCount          int
+	PaymentPendingCount       int
+	BookingSlots              []BookingSlotAvailability
+	AdminBookingOptions       []AdminBookingOption
+	AdminBookingBlockedReason string
+	WeekDays                  []CalendarDay
+	BookingOptions            []BookingOption
+	Activities                []string
+	Hours                     []string
+	CalendarDate              string
+	PreviousDate              string
+	NextDate                  string
+	TodayDate                 string
+	DailyStats                []Stat
+	BookingRequestStats       []Stat
+	CalendarCanGoBack         bool
+	PendingEmail              string
+	OTPCodeLength             int
+	ResendAction              string
+	SportsCatalog             []SportPage
+	SelectedSport             *SportPage
+	FAQItems                  []FAQItem
 }
 
 type Stat struct {
@@ -980,6 +992,7 @@ func main() {
 		),
 	)
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
+	mux.Handle("/admin/bookings/options", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.adminBookingOptionsHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.manage")))
@@ -3564,24 +3577,75 @@ func (a *App) bookingManagementHandler(w http.ResponseWriter, r *http.Request) {
 		data.ScheduleMode = mode
 	}
 	if data.ScheduleMode == "new" {
-		data.DraftSchedule = &SpaceSchedule{
-			EntryType: "booking",
-			SlotDate:  data.CalendarDate,
-			SlotHour:  strings.TrimSpace(r.URL.Query().Get("hour")),
-			Activity:  "full_indoor_cricket",
-			Quantity:  1,
-		}
+		data.DraftSchedule = prefillAdminBookingDraft(r, data.CalendarDate)
 	}
 	if data.ScheduleMode == "view" || data.ScheduleMode == "edit" {
 		scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
 		if err == nil && scheduleID > 0 {
 			selectedSchedule, err := a.findSpaceScheduleByID(scheduleID)
 			if err == nil {
+				if data.ScheduleMode == "edit" {
+					applyAdminBookingQueryDraft(r, selectedSchedule)
+				}
 				data.SelectedSchedule = selectedSchedule
 			}
 		}
 	}
 	a.render(w, "booking-management", data, http.StatusOK)
+}
+
+func (a *App) adminBookingOptionsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slotDate := strings.TrimSpace(r.URL.Query().Get("slot_date"))
+	slotHour := strings.TrimSpace(r.URL.Query().Get("slot_hour"))
+	entryType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entry_type")))
+	if entryType == "" {
+		entryType = "booking"
+	}
+
+	candidate := SpaceSchedule{
+		EntryType: entryType,
+		SlotDate:  slotDate,
+		SlotHour:  slotHour,
+	}
+
+	scheduleID, _ := strconv.ParseInt(
+		strings.TrimSpace(r.URL.Query().Get("schedule_id")),
+		10,
+		64,
+	)
+
+	if _, err := time.Parse("2006-01-02", slotDate); err != nil {
+		http.Error(w, "invalid slot date", http.StatusBadRequest)
+		return
+	}
+	if _, err := time.Parse("15:04", slotHour); err != nil {
+		http.Error(w, "invalid slot hour", http.StatusBadRequest)
+		return
+	}
+	if entryType != "booking" && entryType != "training" {
+		http.Error(w, "invalid entry type", http.StatusBadRequest)
+		return
+	}
+
+	options, blockedReason, err := a.adminBookingOptionsForSchedule(candidate, scheduleID)
+	if err != nil {
+		log.Printf("build admin booking options: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"options":        options,
+		"blocked_reason": blockedReason,
+	}); err != nil {
+		log.Printf("encode admin booking options: %v", err)
+	}
 }
 
 func (a *App) bookingRequestsHandler(w http.ResponseWriter, r *http.Request) {
@@ -3884,7 +3948,7 @@ func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := a.updateBookingRequestStatus(scheduleID, "confirmed", ""); err != nil {
-		a.setFlash(w, "Booking could not be confirmed: "+err.Error())
+		a.setFlash(w, "Booking could not be confirmed and remains pending: "+err.Error())
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
@@ -4240,6 +4304,9 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	data.TodayDate = time.Now().Format("2006-01-02")
 	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
 	if data.CalendarDate == "" {
+		data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("slot_date"))
+	}
+	if data.CalendarDate == "" {
 		data.CalendarDate = time.Now().Format("2006-01-02")
 	}
 	selectedDate, err := time.Parse("2006-01-02", data.CalendarDate)
@@ -4268,6 +4335,53 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		courtLayouts,
 		courtClosures,
 	)
+
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new":
+		draft := prefillAdminBookingDraft(r, data.CalendarDate)
+		options, blockedReason, err := buildAdminBookingOptions(
+			activeSchedules,
+			draft,
+			0,
+			courtActivities,
+			courtLayouts,
+			courtClosures,
+			pricings,
+			settings,
+		)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.DraftSchedule = draft
+		data.AdminBookingOptions = options
+		data.AdminBookingBlockedReason = blockedReason
+	case "edit":
+		scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && scheduleID > 0 {
+			selectedSchedule, err := a.findSpaceScheduleByID(scheduleID)
+			if err == nil {
+				draft := *selectedSchedule
+				applyAdminBookingQueryDraft(r, &draft)
+				options, blockedReason, err := buildAdminBookingOptions(
+					activeSchedules,
+					&draft,
+					draft.ID,
+					courtActivities,
+					courtLayouts,
+					courtClosures,
+					pricings,
+					settings,
+				)
+				if err != nil {
+					return TemplateData{}, err
+				}
+				data.SelectedSchedule = &draft
+				data.AdminBookingOptions = options
+				data.AdminBookingBlockedReason = blockedReason
+			}
+		}
+	}
 	return data, nil
 }
 
@@ -4416,6 +4530,27 @@ func (a *App) writeBookingError(w http.ResponseWriter, r *http.Request, mode str
 		data.SelectedSchedule = selected
 	} else if mode == "new" {
 		data.DraftSchedule = selected
+	}
+	if selected != nil {
+		closures, closureErr := a.listActiveCourtClosures()
+		if closureErr == nil {
+			options, blockedReason, optionErr := buildAdminBookingOptions(
+				activeSchedulesOnly(data.Schedules),
+				selected,
+				selected.ID,
+				data.CourtActivities,
+				data.CourtLayouts,
+				closures,
+				data.Pricings,
+				data.PricingSettings,
+			)
+			if optionErr == nil {
+				data.AdminBookingOptions = options
+				data.AdminBookingBlockedReason = blockedReason
+			}
+		} else {
+			log.Printf("load booking error closures: %v", closureErr)
+		}
 	}
 	a.render(w, "booking-management", data, status)
 }
@@ -5222,6 +5357,14 @@ func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
 	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
 		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if schedule.EntryType == "booking" {
+		quotedPrice, err := a.bookingQuote(schedule)
+		if err != nil {
+			a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
+			return
+		}
+		schedule.QuotedPrice = quotedPrice
 	}
 	if err := a.updateSpaceSchedule(schedule); err != nil {
 		log.Printf("update booking: %v", err)
@@ -8358,6 +8501,21 @@ func (a *App) updateCourtLayout(
 		return err
 	}
 
+	if !layout.Active {
+		var otherActiveLayouts int
+		if err := a.db.QueryRow(`
+			SELECT COUNT(*)
+			FROM court_layouts
+			WHERE active = 1
+			  AND id <> ?
+		`, layout.ID).Scan(&otherActiveLayouts); err != nil {
+			return err
+		}
+		if otherActiveLayouts == 0 {
+			return errors.New("at least one active court layout must remain available")
+		}
+	}
+
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
@@ -8440,6 +8598,20 @@ func (a *App) toggleCourtLayout(
 	`, layoutID).Scan(&active)
 	if err != nil {
 		return err
+	}
+
+	if active {
+		var activeLayoutCount int
+		if err := a.db.QueryRow(`
+			SELECT COUNT(*)
+			FROM court_layouts
+			WHERE active = 1
+		`).Scan(&activeLayoutCount); err != nil {
+			return err
+		}
+		if activeLayoutCount <= 1 {
+			return errors.New("at least one active court layout must remain available")
+		}
 	}
 
 	_, err = a.db.Exec(`
@@ -9196,6 +9368,19 @@ func (a *App) updateSpaceSchedule(
 	}
 	defer tx.Rollback()
 
+	var currentSlotDate string
+	var currentSlotHour string
+	var currentEntryType string
+	var currentActivity string
+	var currentQuantity int
+	if err := tx.QueryRow(`
+		SELECT slot_date, slot_hour, entry_type, activity, quantity
+		FROM space_schedules
+		WHERE id = ?
+	`, schedule.ID).Scan(&currentSlotDate, &currentSlotHour, &currentEntryType, &currentActivity, &currentQuantity); err != nil {
+		return err
+	}
+
 	existing, err := querySchedulesForSlot(
 		tx,
 		schedule.SlotDate,
@@ -9248,6 +9433,71 @@ func (a *App) updateSpaceSchedule(
 
 	if affected == 0 {
 		return sql.ErrNoRows
+	}
+
+	var financial struct {
+		ID           int64
+		QuotedAmount float64
+		Paid         bool
+	}
+	financialErr := tx.QueryRow(`
+		SELECT id, quoted_amount, paid
+		FROM booking_financials
+		WHERE schedule_id = ?
+	`, schedule.ID).Scan(&financial.ID, &financial.QuotedAmount, &financial.Paid)
+	if financialErr != nil && !errors.Is(financialErr, sql.ErrNoRows) {
+		return financialErr
+	}
+
+	billingFieldsChanged := currentSlotDate != schedule.SlotDate ||
+		currentSlotHour != schedule.SlotHour ||
+		currentEntryType != schedule.EntryType ||
+		currentActivity != schedule.Activity ||
+		currentQuantity != schedule.Quantity
+
+	if financial.Paid && billingFieldsChanged {
+		return errors.New("paid bookings cannot change date, hour, entry type, activity, or quantity")
+	}
+
+	now := time.Now().UTC()
+
+	switch schedule.EntryType {
+	case "booking":
+		if financialErr == nil {
+			if _, err := tx.Exec(`
+				UPDATE booking_financials
+				SET quoted_amount = ?, updated_at = ?
+				WHERE id = ?
+			`, schedule.QuotedPrice, now, financial.ID); err != nil {
+				return err
+			}
+		} else {
+			if _, err := tx.Exec(`
+				INSERT INTO booking_financials (
+					schedule_id,
+					quoted_amount,
+					paid,
+					payment_method,
+					created_at,
+					updated_at
+				)
+				VALUES (?, ?, 0, '', ?, ?)
+			`, schedule.ID, schedule.QuotedPrice, now, now); err != nil {
+				return err
+			}
+		}
+	case "training":
+		if financialErr == nil {
+			if financial.Paid {
+				return errors.New("paid bookings cannot be converted to internal training")
+			}
+			if _, err := tx.Exec(`
+				DELETE FROM booking_financials
+				WHERE id = ?
+			`, financial.ID); err != nil {
+				return err
+			}
+		}
 	}
 
 	return tx.Commit()
@@ -11960,6 +12210,15 @@ func scheduleFromRequest(r *http.Request) SpaceSchedule {
 		activity = "training"
 	}
 	quantity, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("quantity")))
+	if optionValue := strings.TrimSpace(r.FormValue("booking_option")); optionValue != "" {
+		parts := strings.SplitN(optionValue, ":", 2)
+		if len(parts) == 2 {
+			activity = strings.ToLower(strings.TrimSpace(parts[0]))
+			if parsedQuantity, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil && parsedQuantity > 0 {
+				quantity = parsedQuantity
+			}
+		}
+	}
 	if quantity <= 0 {
 		quantity = 1
 	}
@@ -12044,6 +12303,85 @@ func prefillPublicBookingDraft(r *http.Request, viewer *User, calendarDate strin
 		draft.RequesterEmail = viewer.Email
 	}
 	return draft
+}
+
+func prefillAdminBookingDraft(r *http.Request, calendarDate string) *SpaceSchedule {
+	draft := &SpaceSchedule{
+		EntryType: "booking",
+		SlotDate:  calendarDate,
+		SlotHour:  strings.TrimSpace(r.URL.Query().Get("hour")),
+		Activity:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("activity"))),
+		Quantity:  1,
+		Title:     strings.TrimSpace(r.URL.Query().Get("title")),
+		Notes:     strings.TrimSpace(r.URL.Query().Get("notes")),
+	}
+	applyAdminBookingQueryDraft(r, draft)
+	if entryType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entry_type"))); entryType == "booking" || entryType == "training" {
+		draft.EntryType = entryType
+	}
+	if quantity, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("quantity"))); err == nil && quantity > 0 {
+		draft.Quantity = quantity
+	}
+	if draft.EntryType == "training" {
+		draft.Activity = "training"
+		draft.Quantity = 1
+	}
+	if draft.Activity == "" {
+		if draft.EntryType == "training" {
+			draft.Activity = "training"
+		} else {
+			draft.Activity = "full_indoor_cricket"
+		}
+	}
+	return draft
+}
+
+func applyAdminBookingQueryDraft(r *http.Request, schedule *SpaceSchedule) {
+	if schedule == nil {
+		return
+	}
+
+	query := r.URL.Query()
+
+	if slotDate := strings.TrimSpace(query.Get("slot_date")); slotDate != "" {
+		schedule.SlotDate = slotDate
+	}
+	if slotHour := strings.TrimSpace(query.Get("slot_hour")); slotHour != "" {
+		schedule.SlotHour = slotHour
+	}
+	if entryType := strings.ToLower(strings.TrimSpace(query.Get("entry_type"))); entryType == "booking" || entryType == "training" {
+		schedule.EntryType = entryType
+	}
+	if title := strings.TrimSpace(query.Get("title")); title != "" {
+		schedule.Title = title
+	}
+	if notes := strings.TrimSpace(query.Get("notes")); notes != "" {
+		schedule.Notes = notes
+	}
+
+	optionValue := strings.TrimSpace(query.Get("booking_option"))
+	if optionValue == "" {
+		activity := strings.ToLower(strings.TrimSpace(query.Get("activity")))
+		if activity != "" {
+			schedule.Activity = activity
+		}
+		if quantity, err := strconv.Atoi(strings.TrimSpace(query.Get("quantity"))); err == nil && quantity > 0 {
+			schedule.Quantity = quantity
+		}
+	} else {
+		parts := strings.SplitN(optionValue, ":", 2)
+		if len(parts) == 2 {
+			schedule.Activity = strings.ToLower(strings.TrimSpace(parts[0]))
+			if quantity, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil && quantity > 0 {
+				schedule.Quantity = quantity
+			}
+		}
+	}
+
+	if schedule.EntryType == "training" {
+		schedule.Activity = "training"
+		schedule.Quantity = 1
+	}
 }
 
 func studentGroupFromRequest(r *http.Request) StudentGroup {
@@ -12589,28 +12927,23 @@ func validateSpaceScheduleInput(schedule SpaceSchedule) error {
 	if schedule.EntryType == "training" {
 		schedule.Activity = "training"
 	}
-	switch schedule.Activity {
-	case "training":
+	if schedule.Activity == "" {
+		return errors.New("activity is required")
+	}
+	if schedule.Activity == "training" {
 		if schedule.EntryType != "training" {
 			return errors.New("training activity must use training entry type")
 		}
 		if schedule.Quantity != 1 {
 			return errors.New("training quantity must be 1")
 		}
-	case "full_indoor_cricket", "futsal", "badminton", "tennis":
-		if schedule.Quantity != 1 {
-			return errors.New("selected activity supports only quantity 1")
-		}
-	case "table_tennis":
-		if schedule.Quantity < 1 || schedule.Quantity > 2 {
-			return errors.New("table tennis quantity must be 1 or 2")
-		}
-	case "cricket_net":
-		if schedule.Quantity < 1 || schedule.Quantity > 3 {
-			return errors.New("cricket net quantity must be between 1 and 3")
-		}
-	default:
-		return errors.New("activity is required")
+		return nil
+	}
+	if schedule.EntryType != "booking" {
+		return errors.New("booking activity must use direct booking entry type")
+	}
+	if schedule.Quantity <= 0 {
+		return errors.New("quantity must be at least 1")
 	}
 	return nil
 }
@@ -13123,6 +13456,221 @@ func filterPricedBookingSlots(slots []BookingSlotAvailability, slotDate string, 
 	return filtered
 }
 
+func buildAdminBookingOptions(
+	schedules []SpaceSchedule,
+	schedule *SpaceSchedule,
+	excludeID int64,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+	closures []CourtClosure,
+	pricings []PricingRule,
+	settings *PricingSettings,
+) ([]AdminBookingOption, string, error) {
+	if schedule == nil {
+		return nil, "", nil
+	}
+	if schedule.SlotDate == "" || schedule.SlotHour == "" {
+		return nil, "Choose a date and hour to review valid booking options.", nil
+	}
+
+	if _, err := time.Parse("2006-01-02", schedule.SlotDate); err != nil {
+		return nil, "Choose a valid booking date to review valid options.", nil
+	}
+	if _, err := time.Parse("15:04", schedule.SlotHour); err != nil {
+		return nil, "Choose a valid booking hour to review valid options.", nil
+	}
+
+	slotSchedules := make([]SpaceSchedule, 0)
+	for _, existing := range schedules {
+		if existing.ID == excludeID {
+			continue
+		}
+		if existing.SlotDate == schedule.SlotDate &&
+			existing.SlotHour == schedule.SlotHour &&
+			scheduleConsumesCourtCapacity(existing) {
+			slotSchedules = append(slotSchedules, existing)
+		}
+	}
+
+	if err := validateBookableScheduleTime(
+		SpaceSchedule{
+			SlotDate: schedule.SlotDate,
+			SlotHour: schedule.SlotHour,
+		},
+		time.Now(),
+	); err != nil {
+		return nil, err.Error(), nil
+	}
+
+	if schedule.EntryType == "training" {
+		candidate := SpaceSchedule{
+			EntryType: "training",
+			Activity:  "training",
+			Quantity:  1,
+			SlotDate:  schedule.SlotDate,
+			SlotHour:  schedule.SlotHour,
+			Status:    "pending",
+		}
+		if err := validateScheduleAgainstClosures(candidate, closures); err != nil {
+			return nil, err.Error(), nil
+		}
+		if err := validateSpaceScheduleSlotAgainstLayouts(slotSchedules, candidate, layouts); err != nil {
+			return nil, err.Error(), nil
+		}
+		return []AdminBookingOption{
+			{
+				Activity:          "training",
+				Quantity:          1,
+				Label:             "Training Session",
+				PriceLabel:        "Internal",
+				AvailabilityState: "Available",
+			},
+		}, "", nil
+	}
+
+	options := bookingOptionCatalog(activities, layouts)
+	adminOptions := make([]AdminBookingOption, 0, len(options))
+
+	for _, option := range options {
+		candidate := SpaceSchedule{
+			EntryType: "booking",
+			Activity:  option.Activity,
+			Quantity:  option.Quantity,
+			SlotDate:  schedule.SlotDate,
+			SlotHour:  schedule.SlotHour,
+			Status:    "pending",
+		}
+
+		if err := validateScheduleAgainstClosures(candidate, closures); err != nil {
+			continue
+		}
+		if err := validateSpaceScheduleSlotAgainstLayouts(slotSchedules, candidate, layouts); err != nil {
+			continue
+		}
+
+		rule := pricingRuleForOption(pricings, option.Activity, option.Quantity)
+		if rule == nil {
+			continue
+		}
+		price := priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour)
+		if price <= 0 {
+			continue
+		}
+
+		maxQuantity := maxAvailableQuantityForActivity(
+			slotSchedules,
+			schedule.SlotDate,
+			schedule.SlotHour,
+			option.Activity,
+			activities,
+			layouts,
+			closures,
+		)
+		remainingCapacity := maxQuantity - option.Quantity
+
+		adminOption := AdminBookingOption{
+			Activity:          option.Activity,
+			Quantity:          option.Quantity,
+			Label:             option.Label,
+			PriceLabel:        money(price),
+			AvailabilityState: "Available",
+			RemainingCapacity: remainingCapacity,
+		}
+		if remainingCapacity > 0 {
+			adminOption.RemainingCapacityLabel = fmt.Sprintf("%d more can still fit in this hour", remainingCapacity)
+		}
+
+		adminOptions = append(adminOptions, adminOption)
+	}
+
+	if len(adminOptions) == 0 {
+		blockedReason := "No valid booking options remain for this slot."
+		for _, closure := range closures {
+			if courtClosureCoversSlot(closure, schedule.SlotDate, schedule.SlotHour) && strings.TrimSpace(closure.Activity) == "" {
+				blockedReason = fmt.Sprintf("The court is unavailable at this time: %s", closure.Title)
+				break
+			}
+		}
+		return nil, blockedReason, nil
+	}
+
+	return adminOptions, "", nil
+}
+
+func maxAvailableQuantityForActivity(
+	existing []SpaceSchedule,
+	slotDate string,
+	slotHour string,
+	activity string,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+	closures []CourtClosure,
+) int {
+	maxConfiguredQuantity := 0
+	for _, option := range bookingOptionCatalog(activities, layouts) {
+		if option.Activity == activity && option.Quantity > maxConfiguredQuantity {
+			maxConfiguredQuantity = option.Quantity
+		}
+	}
+
+	maxAvailableQuantity := 0
+	for quantity := 1; quantity <= maxConfiguredQuantity; quantity++ {
+		candidate := SpaceSchedule{
+			EntryType: "booking",
+			Activity:  activity,
+			Quantity:  quantity,
+			SlotDate:  slotDate,
+			SlotHour:  slotHour,
+			Status:    "pending",
+		}
+		if validateScheduleAgainstClosures(candidate, closures) != nil {
+			continue
+		}
+		if validateSpaceScheduleSlotAgainstLayouts(existing, candidate, layouts) == nil {
+			maxAvailableQuantity = quantity
+		}
+	}
+
+	return maxAvailableQuantity
+}
+
+func (a *App) adminBookingOptionsForSchedule(
+	schedule SpaceSchedule,
+	excludeID int64,
+) ([]AdminBookingOption, string, error) {
+	schedules, err := a.listSpaceSchedules()
+	if err != nil {
+		return nil, "", err
+	}
+	activities, layouts, err := a.activeBookingConfiguration()
+	if err != nil {
+		return nil, "", err
+	}
+	closures, err := a.listActiveCourtClosures()
+	if err != nil {
+		return nil, "", err
+	}
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		return nil, "", err
+	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		return nil, "", err
+	}
+
+	return buildAdminBookingOptions(
+		activeSchedulesOnly(schedules),
+		&schedule,
+		excludeID,
+		activities,
+		layouts,
+		closures,
+		pricings,
+		settings,
+	)
+}
+
 func buildPricedBookingWeekDays(
 	schedules []SpaceSchedule,
 	selectedDate time.Time,
@@ -13421,8 +13969,22 @@ func scheduleSummary(schedule SpaceSchedule) string {
 	}
 }
 
-func optionSummary(option BookingOption) string {
-	return scheduleSummary(SpaceSchedule{Activity: option.Activity, Quantity: option.Quantity})
+func optionSummary(option any) string {
+	switch value := option.(type) {
+	case BookingOption:
+		return scheduleSummary(SpaceSchedule{Activity: value.Activity, Quantity: value.Quantity})
+	case *BookingOption:
+		if value != nil {
+			return scheduleSummary(SpaceSchedule{Activity: value.Activity, Quantity: value.Quantity})
+		}
+	case AdminBookingOption:
+		return scheduleSummary(SpaceSchedule{Activity: value.Activity, Quantity: value.Quantity})
+	case *AdminBookingOption:
+		if value != nil {
+			return scheduleSummary(SpaceSchedule{Activity: value.Activity, Quantity: value.Quantity})
+		}
+	}
+	return ""
 }
 
 func bookingOptionSelected(draft *SpaceSchedule, slotHour, activity string, quantity int) bool {
