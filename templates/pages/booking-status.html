@@ -1,0 +1,109 @@
+{{define "booking-status"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="relative overflow-hidden bg-cloud">
+  <div class="pointer-events-none absolute inset-0 -z-10">
+    <div class="absolute -left-20 top-20 h-72 w-72 rounded-full bg-aqua/20 blur-3xl"></div>
+    <div class="absolute right-0 top-52 h-96 w-96 rounded-full bg-amber/10 blur-3xl"></div>
+    <div class="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-mint/70 blur-3xl"></div>
+  </div>
+
+  <div class="mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20">
+    {{if .BookingStatusUnavailable}}
+    <div class="mx-auto max-w-3xl rounded-[2rem] border border-white/80 bg-white/90 p-8 text-center shadow-[0_28px_80px_rgba(11,18,21,0.08)]">
+      <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate/50">Booking Status</p>
+      <h1 class="mt-4 text-3xl font-semibold text-obsidian sm:text-4xl">Secure link unavailable</h1>
+      <p class="mt-4 text-base leading-8 text-slate/70">{{.BookingStatusUnavailableMessage}}</p>
+      <div class="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+        <a href="/book" class="inline-flex min-h-12 items-center justify-center rounded-full bg-obsidian px-8 py-3 text-sm font-semibold text-cloud transition hover:bg-slate">Return to booking</a>
+        <a href="/contact" class="inline-flex min-h-12 items-center justify-center rounded-full border border-obsidian/10 bg-white px-8 py-3 text-sm font-semibold text-obsidian transition hover:bg-cloud">Contact Mekmaa</a>
+      </div>
+    </div>
+    {{else if .BookingStatusView}}
+    <div class="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(18rem,.9fr)]">
+      <div class="space-y-6">
+        <div class="overflow-hidden rounded-[2rem] bg-obsidian p-7 text-cloud shadow-[0_24px_80px_rgba(11,18,21,0.18)] sm:p-8">
+          <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Secure booking status</p>
+          <div class="mt-5 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p class="font-mono text-sm text-cloud/60">{{.BookingStatusView.Reference}}</p>
+              <h1 class="mt-3 text-3xl font-semibold sm:text-4xl">{{.BookingStatusView.StatusLabel}}</h1>
+              <p class="mt-3 max-w-2xl text-sm leading-7 text-cloud/75">{{.BookingStatusView.StatusSummary}}</p>
+            </div>
+            <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-full border border-white/15 bg-white/10 px-5 text-sm font-semibold text-cloud transition hover:bg-white/15">Print or save</button>
+          </div>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+            <p class="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-slate/45">Booking title</p>
+            <p class="mt-2 text-lg font-semibold text-obsidian">{{.BookingStatusView.Title}}</p>
+            <p class="mt-2 text-sm text-slate/60">{{.BookingStatusView.MaskedIdentity}}</p>
+          </article>
+          <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+            <p class="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-slate/45">Current slot</p>
+            <p class="mt-2 text-lg font-semibold text-obsidian">{{.BookingStatusView.CurrentSlotLabel}}</p>
+          </article>
+          <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+            <p class="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-slate/45">Quoted amount</p>
+            <p class="mt-2 text-lg font-semibold text-emerald-800">{{.BookingStatusView.QuotedAmount}}</p>
+          </article>
+          <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+            <p class="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-slate/45">Payment status</p>
+            <p class="mt-2 text-lg font-semibold text-obsidian">{{.BookingStatusView.PaymentStatus}}</p>
+            {{if .BookingStatusView.PaidAtLabel}}<p class="mt-2 text-sm text-slate/55">Paid at {{.BookingStatusView.PaidAtLabel}}</p>{{end}}
+          </article>
+        </div>
+
+        {{if .BookingStatusView.CustomerMessage}}
+        <div class="rounded-[1.7rem] border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-800/60">Mekmaa message</p>
+          <p class="mt-3 text-sm leading-7 text-emerald-950">{{.BookingStatusView.CustomerMessage}}</p>
+        </div>
+        {{end}}
+
+        {{if .BookingStatusView.PreviousSlotLabel}}
+        <div class="rounded-[1.7rem] border border-white/80 bg-white/90 p-6 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/55">Previous slot</p>
+          <p class="mt-3 text-sm leading-7 text-obsidian">{{.BookingStatusView.PreviousSlotLabel}}</p>
+        </div>
+        {{end}}
+
+        <div class="rounded-[1.7rem] border border-white/80 bg-white/90 p-6 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/55">Timeline</p>
+          <div class="mt-5 grid gap-3">
+            {{range .BookingStatusTimeline}}
+            <div class="rounded-[1.2rem] border border-slate/10 bg-cloud/35 p-4">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
+                <p class="text-xs text-slate/50">{{relativeTime .When}}</p>
+              </div>
+              <p class="mt-2 text-sm leading-6 text-slate/65">{{.Detail}}</p>
+            </div>
+            {{end}}
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <div class="rounded-[1.8rem] border border-white/80 bg-white/90 p-6 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/55">Next steps</p>
+          <p class="mt-3 text-sm leading-7 text-slate/68">{{.BookingStatusView.NextSteps}}</p>
+          <div class="mt-6 grid gap-3">
+            <a href="/book" class="inline-flex min-h-12 items-center justify-center rounded-full bg-obsidian px-6 py-3 text-sm font-semibold text-cloud transition hover:bg-slate">Return to booking</a>
+            <a href="tel:+94772207297" class="inline-flex min-h-12 items-center justify-center rounded-full border border-obsidian/10 bg-white px-6 py-3 text-sm font-semibold text-obsidian transition hover:bg-cloud">Call {{.BookingStatusView.ContactPhone}}</a>
+            <a href="mailto:{{.BookingStatusView.ContactEmail}}?subject={{.BookingStatusView.Reference}}" class="inline-flex min-h-12 items-center justify-center rounded-full border border-obsidian/10 bg-white px-6 py-3 text-sm font-semibold text-obsidian transition hover:bg-cloud">Email Mekmaa</a>
+          </div>
+        </div>
+
+        <div class="rounded-[1.8rem] bg-obsidian p-6 text-cloud shadow-float">
+          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-aqua/75">Venue</p>
+          <p class="mt-3 text-lg font-semibold">{{.BookingStatusView.VenueName}}</p>
+          <p class="mt-2 text-sm leading-7 text-cloud/72">{{.BookingStatusView.VenueAddress}}</p>
+        </div>
+      </div>
+    </div>
+    {{end}}
+  </div>
+</section>
+{{end}}

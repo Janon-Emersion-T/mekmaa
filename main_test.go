@@ -727,6 +727,7 @@ func TestBookingRequestsPreventPastAndConflictingSlots(t *testing.T) {
 		bookingHours(),
 		activities,
 		layouts,
+		nil,
 	)
 
 	if len(days) != 7 || days[0].IsPast {
@@ -905,7 +906,7 @@ func TestReferralCommissionLifecycle(t *testing.T) {
 	if _, err := app.payReferralCommission(referrals[0].ID, "cash", 0); err == nil {
 		t.Fatal("expected pending referral commission payment to be rejected")
 	}
-	if err := app.updateBookingRequestStatus(requestID, "confirmed", ""); err != nil {
+	if _, err := app.updateBookingRequestStatus(requestID, "confirmed", "", ""); err != nil {
 		t.Fatalf("confirm referred booking: %v", err)
 	}
 	transactionID, err := app.payReferralCommission(referrals[0].ID, "bank_transfer", 0)
@@ -1062,7 +1063,7 @@ func TestFinanceBookingAndManualTransactionLifecycle(t *testing.T) {
 	if _, err := app.collectBookingPayment(scheduleID, "cash", 0); err == nil {
 		t.Fatal("expected pending booking collection to be rejected")
 	}
-	if err := app.updateBookingRequestStatus(scheduleID, "confirmed", ""); err != nil {
+	if _, err := app.updateBookingRequestStatus(scheduleID, "confirmed", "", ""); err != nil {
 		t.Fatalf("confirm booking: %v", err)
 	}
 	transactionID, err := app.collectBookingPayment(scheduleID, "card", 0)

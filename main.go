@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"encoding/csv"
@@ -146,6 +148,7 @@ type App struct {
 	sms             SMSConfig
 	uploads         UploadStorage
 	bookingMessages BookingCommunicationSettings
+	bookingAccess   BookingAccessSettings
 }
 
 type UploadStorage struct {
@@ -176,6 +179,12 @@ type BookingCommunicationSettings struct {
 	ContactEmail string
 	VenueName    string
 	VenueAddress string
+}
+
+type BookingAccessSettings struct {
+	BaseURL     string
+	TokenSecret string
+	TokenTTL    time.Duration
 }
 
 type User struct {
@@ -455,6 +464,7 @@ type SpaceSchedule struct {
 	RequesterPhone  string
 	RequestedByUser int64
 	ReviewNote      string
+	CustomerMessage string
 	ReferralCode    string
 	QuotedPrice     float64
 	CreatedAt       time.Time
@@ -552,6 +562,7 @@ type BookingRequestChange struct {
 	NewQuote          float64
 	ActionType        string
 	ReviewNote        string
+	CustomerMessage   string
 	ChangedByUserID   int64
 	ChangedByUserName string
 	ChangedAt         time.Time
@@ -575,6 +586,48 @@ type BookingCommunication struct {
 	SentAt           time.Time
 	CreatedAt        time.Time
 	CreatedByUserID  int64
+}
+
+type BookingAccessToken struct {
+	ID             int64
+	ScheduleID     int64
+	PublicID       string
+	TokenHash      string
+	Purpose        string
+	Active         bool
+	ExpiresAt      time.Time
+	LastAccessedAt time.Time
+	CreatedAt      time.Time
+	RevokedAt      time.Time
+}
+
+type CustomerBookingTimelineItem struct {
+	Label   string
+	Detail  string
+	When    time.Time
+	IsEmail bool
+}
+
+type BookingStatusView struct {
+	Reference         string
+	StatusLabel       string
+	StatusTone        string
+	StatusSummary     string
+	NextSteps         string
+	MaskedIdentity    string
+	CustomerMessage   string
+	CurrentSlotLabel  string
+	PreviousSlotLabel string
+	ActivityLabel     string
+	QuotedAmount      string
+	PaymentStatus     string
+	PaidAtLabel       string
+	Title             string
+	ContactPhone      string
+	ContactEmail      string
+	VenueName         string
+	VenueAddress      string
+	CanPrint          bool
 }
 
 type BookingRequestSnapshot struct {
@@ -731,103 +784,109 @@ type FAQItem struct {
 }
 
 type TemplateData struct {
-	Title                     string
-	Description               string
-	CurrentPath               string
-	User                      *User
-	Viewer                    *User
-	HideChrome                bool
-	CSRFToken                 string
-	Flash                     string
-	Error                     string
-	Stats                     []Stat
-	Features                  []Feature
-	Users                     []User
-	Available                 []string
-	Roles                     []Role
-	Permissions               []string
-	PermissionGroups          []PermissionGroup
-	Admissions                []Admission
-	SelectedAdmission         *Admission
-	AdmissionMode             string
-	StudentGroups             []StudentGroup
-	SelectedGroup             *StudentGroup
-	GroupMode                 string
-	AvailableCoaches          []User
-	AttendanceRecords         []AttendanceRecord
-	AttendanceDate            string
-	RecentDates               []string
-	AttendanceSummary         AttendanceSummary
-	Courts                    []Court
-	SelectedCourt             *Court
-	CourtMode                 string
-	CourtActivities           []CourtActivity
-	CourtLayouts              []CourtLayout
-	SelectedCourtLayout       *CourtLayout
-	CourtLayoutMode           string
-	CourtClosures             []CourtClosure
-	SelectedCourtClosure      *CourtClosure
-	CourtClosureMode          string
-	Schedules                 []SpaceSchedule
-	DaySchedules              []SpaceSchedule
-	PendingSchedules          []SpaceSchedule
-	BookingRequests           []SpaceSchedule
-	SelectedSchedule          *SpaceSchedule
-	DraftSchedule             *SpaceSchedule
-	ScheduleMode              string
-	Pricings                  []PricingRule
-	TrainingPrograms          []TrainingProgram
-	SelectedTrainingProgram   *TrainingProgram
-	TrainingProgramMode       string
-	PricingSettings           *PricingSettings
-	ReferralPartners          []ReferralPartner
-	ReferralPartnerRows       []ReferralPartnerSummary
-	BookingReferrals          []BookingReferral
-	BookingRequestChanges     []BookingRequestChange
-	ReferralStats             []Stat
-	SelectedPricing           *PricingRule
-	PricingMode               string
-	Events                    []Event
-	SelectedEvent             *Event
-	EventMode                 string
-	FinanceTransactions       []FinanceTransaction
-	SelectedFinance           *FinanceTransaction
-	FinanceFilter             FinanceFilter
-	FinanceSummary            FinanceSummary
-	BookingFinancials         []BookingFinancial
-	BookingCommunications     []BookingCommunication
-	Report                    *OperationalReport
-	ReceiptAdmission          *Admission
-	StudentPaymentRows        []StudentPaymentRow
-	PaymentMonth              string
-	PaymentMonthLabel         string
-	PaymentTotalDue           float64
-	PaymentCollected          float64
-	PaymentOutstanding        float64
-	PaymentPaidCount          int
-	PaymentPendingCount       int
-	BookingSlots              []BookingSlotAvailability
-	AdminCalendarHours        []AdminCalendarHour
-	AdminBookingOptions       []AdminBookingOption
-	AdminBookingBlockedReason string
-	WeekDays                  []CalendarDay
-	BookingOptions            []BookingOption
-	Activities                []string
-	Hours                     []string
-	CalendarDate              string
-	PreviousDate              string
-	NextDate                  string
-	TodayDate                 string
-	DailyStats                []Stat
-	BookingRequestStats       []Stat
-	PendingRequestCount       int
-	CalendarCanGoBack         bool
-	PendingEmail              string
-	OTPCodeLength             int
-	ResendAction              string
-	SportsCatalog             []SportPage
-	SelectedSport             *SportPage
-	FAQItems                  []FAQItem
+	Title                           string
+	Description                     string
+	CurrentPath                     string
+	User                            *User
+	Viewer                          *User
+	HideChrome                      bool
+	CSRFToken                       string
+	Flash                           string
+	Error                           string
+	Stats                           []Stat
+	Features                        []Feature
+	Users                           []User
+	Available                       []string
+	Roles                           []Role
+	Permissions                     []string
+	PermissionGroups                []PermissionGroup
+	Admissions                      []Admission
+	SelectedAdmission               *Admission
+	AdmissionMode                   string
+	StudentGroups                   []StudentGroup
+	SelectedGroup                   *StudentGroup
+	GroupMode                       string
+	AvailableCoaches                []User
+	AttendanceRecords               []AttendanceRecord
+	AttendanceDate                  string
+	RecentDates                     []string
+	AttendanceSummary               AttendanceSummary
+	Courts                          []Court
+	SelectedCourt                   *Court
+	CourtMode                       string
+	CourtActivities                 []CourtActivity
+	CourtLayouts                    []CourtLayout
+	SelectedCourtLayout             *CourtLayout
+	CourtLayoutMode                 string
+	CourtClosures                   []CourtClosure
+	SelectedCourtClosure            *CourtClosure
+	CourtClosureMode                string
+	Schedules                       []SpaceSchedule
+	DaySchedules                    []SpaceSchedule
+	PendingSchedules                []SpaceSchedule
+	BookingRequests                 []SpaceSchedule
+	SelectedSchedule                *SpaceSchedule
+	DraftSchedule                   *SpaceSchedule
+	ScheduleMode                    string
+	Pricings                        []PricingRule
+	TrainingPrograms                []TrainingProgram
+	SelectedTrainingProgram         *TrainingProgram
+	TrainingProgramMode             string
+	PricingSettings                 *PricingSettings
+	ReferralPartners                []ReferralPartner
+	ReferralPartnerRows             []ReferralPartnerSummary
+	BookingReferrals                []BookingReferral
+	BookingRequestChanges           []BookingRequestChange
+	ReferralStats                   []Stat
+	SelectedPricing                 *PricingRule
+	PricingMode                     string
+	Events                          []Event
+	SelectedEvent                   *Event
+	EventMode                       string
+	FinanceTransactions             []FinanceTransaction
+	SelectedFinance                 *FinanceTransaction
+	FinanceFilter                   FinanceFilter
+	FinanceSummary                  FinanceSummary
+	BookingFinancials               []BookingFinancial
+	BookingCommunications           []BookingCommunication
+	BookingAccessTokens             []BookingAccessToken
+	SelectedAccessToken             *BookingAccessToken
+	BookingStatusView               *BookingStatusView
+	BookingStatusTimeline           []CustomerBookingTimelineItem
+	BookingStatusUnavailable        bool
+	BookingStatusUnavailableMessage string
+	Report                          *OperationalReport
+	ReceiptAdmission                *Admission
+	StudentPaymentRows              []StudentPaymentRow
+	PaymentMonth                    string
+	PaymentMonthLabel               string
+	PaymentTotalDue                 float64
+	PaymentCollected                float64
+	PaymentOutstanding              float64
+	PaymentPaidCount                int
+	PaymentPendingCount             int
+	BookingSlots                    []BookingSlotAvailability
+	AdminCalendarHours              []AdminCalendarHour
+	AdminBookingOptions             []AdminBookingOption
+	AdminBookingBlockedReason       string
+	WeekDays                        []CalendarDay
+	BookingOptions                  []BookingOption
+	Activities                      []string
+	Hours                           []string
+	CalendarDate                    string
+	PreviousDate                    string
+	NextDate                        string
+	TodayDate                       string
+	DailyStats                      []Stat
+	BookingRequestStats             []Stat
+	PendingRequestCount             int
+	CalendarCanGoBack               bool
+	PendingEmail                    string
+	OTPCodeLength                   int
+	ResendAction                    string
+	SportsCatalog                   []SportPage
+	SelectedSport                   *SportPage
+	FAQItems                        []FAQItem
 }
 
 type Stat struct {
@@ -911,6 +970,15 @@ func main() {
 		VenueName:    envOrDefault("MEKMAA_VENUE_NAME", "Mekmaa (Private Limited)"),
 		VenueAddress: envOrDefault("MEKMAA_VENUE_ADDRESS", "No. 64, Temple Road, Jaffna - 40000, Sri Lanka"),
 	}
+	tokenTTLDays, err := strconv.Atoi(envOrDefault("BOOKING_ACCESS_TOKEN_TTL_DAYS", "180"))
+	if err != nil || tokenTTLDays <= 0 {
+		tokenTTLDays = 180
+	}
+	bookingAccessSettings := BookingAccessSettings{
+		BaseURL:     envOrDefault("MEKMAA_PUBLIC_BASE_URL", "http://localhost:8080"),
+		TokenSecret: envOrDefault("BOOKING_ACCESS_TOKEN_SECRET", "MEKMAA_DEV_BOOKING_ACCESS_TOKEN_SECRET_CHANGE_ME"),
+		TokenTTL:    time.Duration(tokenTTLDays) * 24 * time.Hour,
+	}
 
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -951,6 +1019,7 @@ func main() {
 		sms:             smsConfig,
 		uploads:         uploadStorage,
 		bookingMessages: bookingMessageSettings,
+		bookingAccess:   bookingAccessSettings,
 	}
 
 	mux := http.NewServeMux()
@@ -960,6 +1029,7 @@ func main() {
 	mux.HandleFunc("/about", app.aboutHandler)
 	mux.HandleFunc("/book", app.publicBookingHandler)
 	mux.HandleFunc("/book/request", app.publicBookingRequestHandler)
+	mux.HandleFunc("/booking/status", app.publicBookingStatusHandler)
 	mux.HandleFunc("/booking", app.legacyBookingRedirectHandler)
 	mux.HandleFunc("/contact", app.contactHandler)
 	mux.HandleFunc("/faq", app.faqHandler)
@@ -1137,6 +1207,8 @@ func main() {
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/options", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.adminBookingOptionsHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/communications/resend", app.sessionMiddleware(http.HandlerFunc(app.resendBookingCommunicationHandler)))
+	mux.Handle("/admin/bookings/access/rotate", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.rotateBookingAccessHandler), "space_bookings.manage", "booking_requests.manage")))
+	mux.Handle("/admin/bookings/access/revoke", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.revokeBookingAccessHandler), "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.manage")))
@@ -1471,6 +1543,57 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		a.setFlash(w, "Booking request "+bookingReference(requestID)+" received. Keep this reference; our team will review the request shortly. We could not confirm email delivery automatically.")
 	}
 	http.Redirect(w, r, "/book?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) publicBookingStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/booking/status" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store, private, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")
+
+	data := a.newTemplateData(w, r, nil)
+	data.Title = "Booking Status"
+	data.Description = "Secure Mekmaa booking status"
+
+	schedule, token, err := a.findActiveBookingByAccessToken(r.URL.Query().Get("token"))
+	if err != nil {
+		data.BookingStatusUnavailable = true
+		data.BookingStatusUnavailableMessage = "This booking link is unavailable. Please contact Mekmaa and request a fresh status link."
+		a.render(w, "booking-status", data, http.StatusNotFound)
+		return
+	}
+
+	financials, err := a.listBookingFinancialsForScheduleIDs([]int64{schedule.ID})
+	if err != nil {
+		log.Printf("load booking status financials: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	changes, err := a.listBookingRequestChangesForScheduleIDs([]int64{schedule.ID})
+	if err != nil {
+		log.Printf("load booking status changes: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	communications, err := a.listBookingCommunicationsForScheduleIDs([]int64{schedule.ID})
+	if err != nil {
+		log.Printf("load booking status communications: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data.SelectedSchedule = schedule
+	data.SelectedAccessToken = token
+	data.BookingFinancials = financials
+	data.BookingRequestChanges = changes
+	data.BookingCommunications = communications
+	data.BookingStatusView = a.buildBookingStatusView(schedule, bookingFinancialForSchedule(financials, schedule.ID), changes)
+	data.BookingStatusTimeline = buildCustomerBookingTimeline(*schedule, changes, communications)
+	a.render(w, "booking-status", data, http.StatusOK)
 }
 
 func (a *App) registerHandler(w http.ResponseWriter, r *http.Request) {
@@ -3913,6 +4036,72 @@ func (a *App) resendBookingCommunicationHandler(w http.ResponseWriter, r *http.R
 	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
 }
 
+func (a *App) rotateBookingAccessHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		http.Error(w, "schedule not found", http.StatusNotFound)
+		return
+	}
+	rawToken, err := a.rotateBookingAccessToken(scheduleID, "status")
+	if err != nil {
+		log.Printf("rotate booking access token: %v", err)
+		a.setFlash(w, "Unable to rotate the customer status link.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Customer status link rotated. One-time URL: "+a.bookingTrackingURL(rawToken))
+	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) revokeBookingAccessHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		http.Error(w, "schedule not found", http.StatusNotFound)
+		return
+	}
+	if err := a.revokeBookingAccessToken(scheduleID, "status"); err != nil {
+		log.Printf("revoke booking access token: %v", err)
+		a.setFlash(w, "Unable to revoke the customer status link.")
+	} else {
+		a.setFlash(w, "Customer status link revoked.")
+	}
+	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+}
+
 func (a *App) rescheduleBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -3945,17 +4134,18 @@ func (a *App) rescheduleBookingRequestHandler(w http.ResponseWriter, r *http.Req
 	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
 
 	if err := validateSpaceScheduleInput(schedule); err != nil {
-		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, err.Error(), http.StatusBadRequest)
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, strings.TrimSpace(r.FormValue("customer_message")), err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
-		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, err.Error(), http.StatusBadRequest)
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, strings.TrimSpace(r.FormValue("customer_message")), err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	result, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, "rescheduled", false, changedByUserID)
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	result, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, customerMessage, "rescheduled", false, changedByUserID)
 	if err != nil {
-		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, err.Error(), http.StatusBadRequest)
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, customerMessage, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -4011,17 +4201,18 @@ func (a *App) rescheduleAndConfirmBookingRequestHandler(w http.ResponseWriter, r
 	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
 
 	if err := validateSpaceScheduleInput(schedule); err != nil {
-		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, err.Error(), http.StatusBadRequest)
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, strings.TrimSpace(r.FormValue("customer_message")), err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
-		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, err.Error(), http.StatusBadRequest)
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, strings.TrimSpace(r.FormValue("customer_message")), err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	result, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, "rescheduled_confirmed", true, changedByUserID)
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	result, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, customerMessage, "rescheduled_confirmed", true, changedByUserID)
 	if err != nil {
-		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, err.Error(), http.StatusBadRequest)
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, customerMessage, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -4334,7 +4525,8 @@ func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid schedule id", http.StatusBadRequest)
 		return
 	}
-	if _, err := a.updateBookingRequestStatus(scheduleID, "confirmed", ""); err != nil {
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	if _, err := a.updateBookingRequestStatus(scheduleID, "confirmed", "", customerMessage); err != nil {
 		a.setFlash(w, "Booking could not be confirmed and remains pending: "+err.Error())
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
@@ -4375,12 +4567,18 @@ func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
 	if reviewNote == "" {
 		a.setFlash(w, "Add a clear rejection reason before closing the request.")
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
-	if _, err := a.updateBookingRequestStatus(scheduleID, "rejected", reviewNote); err != nil {
+	if customerMessage == "" {
+		a.setFlash(w, "Add the customer-facing message that should appear on the booking status page.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	if _, err := a.updateBookingRequestStatus(scheduleID, "rejected", reviewNote, customerMessage); err != nil {
 		a.setFlash(w, "Booking could not be rejected: "+err.Error())
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
@@ -4756,6 +4954,10 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		if err != nil {
 			return TemplateData{}, err
 		}
+		data.BookingAccessTokens, err = a.listBookingAccessTokensForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
 		data.WeekDays = buildBookingWeekDays(
 			activeSchedules,
 			selectedDate,
@@ -4816,6 +5018,14 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		data.BookingFinancials = bookingFinancials
 		data.BookingReferrals = bookingReferrals
 		data.BookingRequestChanges = bookingRequestChanges
+		data.BookingCommunications, err = a.listBookingCommunicationsForScheduleIDs(scheduleIDs(data.BookingRequests))
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingAccessTokens, err = a.listBookingAccessTokensForScheduleIDs(scheduleIDs(data.BookingRequests))
+		if err != nil {
+			return TemplateData{}, err
+		}
 
 		activeSchedules := activeSchedulesOnly(schedules)
 		data.DaySchedules = schedulesForDate(activeSchedules, data.CalendarDate)
@@ -5064,6 +5274,7 @@ func (a *App) writeBookingRequestRescheduleError(
 	scheduleID int64,
 	proposed *SpaceSchedule,
 	reviewNote string,
+	customerMessage string,
 	message string,
 	status int,
 ) {
@@ -5089,6 +5300,7 @@ func (a *App) writeBookingRequestRescheduleError(
 			draft.Quantity = proposed.Quantity
 		}
 		draft.ReviewNote = reviewNote
+		draft.CustomerMessage = customerMessage
 		data.SelectedSchedule = selectedRequest
 		data.DraftSchedule = &draft
 
@@ -8195,6 +8407,7 @@ func (a *App) listActiveSpaceSchedulesBetween(
 	rows, err := a.db.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       COALESCE(customer_message, ''),
 		       created_at, updated_at
 		FROM space_schedules
 		WHERE status IN ('pending', 'confirmed')
@@ -8225,6 +8438,7 @@ func (a *App) listActiveSpaceSchedulesBetween(
 			&schedule.RequesterPhone,
 			&schedule.RequestedByUser,
 			&schedule.ReviewNote,
+			&schedule.CustomerMessage,
 			&schedule.CreatedAt,
 			&schedule.UpdatedAt,
 		); err != nil {
@@ -8892,6 +9106,7 @@ func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
 			brch.new_quoted_price,
 			brch.action_type,
 			brch.review_note,
+			COALESCE(brch.customer_message, ''),
 			COALESCE(brch.changed_by_user_id, 0),
 			COALESCE(u.name, ''),
 			brch.changed_at
@@ -8923,6 +9138,7 @@ func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
 			&change.NewQuote,
 			&change.ActionType,
 			&change.ReviewNote,
+			&change.CustomerMessage,
 			&change.ChangedByUserID,
 			&change.ChangedByUserName,
 			&change.ChangedAt,
@@ -8985,6 +9201,7 @@ func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
 	rows, err := a.db.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       COALESCE(customer_message, ''),
 		       created_at, updated_at
 		FROM space_schedules
 		WHERE status = 'pending'
@@ -9013,6 +9230,7 @@ func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
 			&schedule.RequesterPhone,
 			&schedule.RequestedByUser,
 			&schedule.ReviewNote,
+			&schedule.CustomerMessage,
 			&schedule.CreatedAt,
 			&schedule.UpdatedAt,
 		); err != nil {
@@ -9048,6 +9266,7 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 	rows, err := queryer.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       COALESCE(customer_message, ''),
 		       created_at, updated_at
 		FROM space_schedules
 		WHERE slot_date = ? AND slot_hour = ? AND id != ? AND status != 'rejected'
@@ -9076,6 +9295,7 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 			&schedule.RequesterPhone,
 			&schedule.RequestedByUser,
 			&schedule.ReviewNote,
+			&schedule.CustomerMessage,
 			&schedule.CreatedAt,
 			&schedule.UpdatedAt,
 		); err != nil {
@@ -9658,10 +9878,11 @@ func (a *App) createSpaceSchedule(
 			requester_phone,
 			requested_by_user_id,
 			review_note,
+			customer_message,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		schedule.SlotDate,
 		schedule.SlotHour,
@@ -9858,6 +10079,7 @@ func (a *App) createPublicBookingRequest(
 		schedule.RequesterEmail,
 		schedule.RequesterPhone,
 		requestedBy,
+		"",
 		"",
 		now,
 		now,
@@ -10673,6 +10895,7 @@ func (a *App) updateBookingRequestStatus(
 	scheduleID int64,
 	status string,
 	reviewNote string,
+	customerMessage string,
 ) (*SpaceSchedule, error) {
 	if status != "confirmed" &&
 		status != "rejected" {
@@ -10769,12 +10992,14 @@ func (a *App) updateBookingRequestStatus(
 		SET
 			status = ?,
 			review_note = ?,
+			customer_message = ?,
 			updated_at = ?
 		WHERE id = ?
 		  AND status = 'pending'
 	`,
 		status,
 		reviewNote,
+		customerMessage,
 		time.Now().UTC(),
 		scheduleID,
 	)
@@ -10796,6 +11021,7 @@ func (a *App) updateBookingRequestStatus(
 	updated := *schedule
 	updated.Status = status
 	updated.ReviewNote = reviewNote
+	updated.CustomerMessage = customerMessage
 	updated.UpdatedAt = time.Now().UTC()
 
 	if err := tx.Commit(); err != nil {
@@ -10809,6 +11035,7 @@ func (a *App) rescheduleBookingRequest(
 	scheduleID int64,
 	proposed SpaceSchedule,
 	reviewNote string,
+	customerMessage string,
 	actionType string,
 	confirm bool,
 	changedByUserID int64,
@@ -10885,6 +11112,7 @@ func (a *App) rescheduleBookingRequest(
 	updated.Activity = proposed.Activity
 	updated.Quantity = proposed.Quantity
 	updated.ReviewNote = reviewNote
+	updated.CustomerMessage = customerMessage
 	if confirm {
 		updated.Status = "confirmed"
 	} else {
@@ -10898,6 +11126,9 @@ func (a *App) rescheduleBookingRequest(
 
 	if slotChanged && strings.TrimSpace(reviewNote) == "" {
 		return nil, errors.New("review note is required when changing the requested slot")
+	}
+	if slotChanged && strings.TrimSpace(customerMessage) == "" {
+		return nil, errors.New("customer message is required when changing the requested slot")
 	}
 
 	if err := validateBookableScheduleTime(updated, time.Now()); err != nil {
@@ -10942,6 +11173,7 @@ func (a *App) rescheduleBookingRequest(
 			quantity = ?,
 			status = ?,
 			review_note = ?,
+			customer_message = ?,
 			updated_at = ?
 		WHERE id = ?
 		  AND status = 'pending'
@@ -10952,6 +11184,7 @@ func (a *App) rescheduleBookingRequest(
 		updated.Quantity,
 		updated.Status,
 		reviewNote,
+		customerMessage,
 		now,
 		scheduleID,
 	)
@@ -10995,10 +11228,11 @@ func (a *App) rescheduleBookingRequest(
 				new_quoted_price,
 				action_type,
 				review_note,
+				customer_message,
 				changed_by_user_id,
 				changed_at
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			scheduleID,
 			current.SlotDate,
@@ -11013,6 +11247,7 @@ func (a *App) rescheduleBookingRequest(
 			updated.QuotedPrice,
 			actionType,
 			reviewNote,
+			customerMessage,
 			changedBy,
 			now,
 		)
@@ -11516,6 +11751,7 @@ func findSpaceScheduleByIDQuery(queryer scheduleRowQueryer, scheduleID int64) (*
 	row := queryer.QueryRow(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       COALESCE(customer_message, ''),
 		       created_at, updated_at
 		FROM space_schedules
 		WHERE id = ?
@@ -11545,6 +11781,7 @@ func scanSpaceSchedule(row rowScanner) (*SpaceSchedule, error) {
 		&schedule.RequesterPhone,
 		&schedule.RequestedByUser,
 		&schedule.ReviewNote,
+		&schedule.CustomerMessage,
 		&schedule.CreatedAt,
 		&schedule.UpdatedAt,
 	); err != nil {
@@ -11936,6 +12173,7 @@ func runMigrations(db *sql.DB) error {
 			requester_phone TEXT NOT NULL DEFAULT '',
 			requested_by_user_id INTEGER,
 			review_note TEXT NOT NULL DEFAULT '',
+			customer_message TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
@@ -11980,6 +12218,7 @@ func runMigrations(db *sql.DB) error {
 			new_quoted_price REAL NOT NULL DEFAULT 0,
 			action_type TEXT NOT NULL,
 			review_note TEXT NOT NULL DEFAULT '',
+			customer_message TEXT NOT NULL DEFAULT '',
 			changed_by_user_id INTEGER,
 			changed_at DATETIME NOT NULL,
 			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
@@ -12005,6 +12244,19 @@ func runMigrations(db *sql.DB) error {
 			created_by_user_id INTEGER,
 			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
 			FOREIGN KEY (created_by_user_id) REFERENCES users(id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS booking_access_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			schedule_id INTEGER NOT NULL,
+			public_id TEXT NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			purpose TEXT NOT NULL DEFAULT 'status',
+			active INTEGER NOT NULL DEFAULT 1,
+			expires_at DATETIME NOT NULL,
+			last_accessed_at DATETIME,
+			created_at DATETIME NOT NULL,
+			revoked_at DATETIME,
+			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`,
@@ -12053,6 +12305,8 @@ ON court_closures(activity, active, closure_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_communications_status ON booking_communications(status, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_communications_event_type ON booking_communications(event_type, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_communications_created_at ON booking_communications(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_access_tokens_schedule ON booking_access_tokens(schedule_id, active, expires_at DESC)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_access_tokens_public_id ON booking_access_tokens(public_id)`,
 		`ALTER TABLE events ADD COLUMN registration_deadline TEXT`,
 		`ALTER TABLE events ADD COLUMN image_path TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
@@ -12118,6 +12372,32 @@ ON court_closures(activity, active, closure_date)`,
 		END
 		WHERE admission_date IS NULL OR TRIM(admission_date) = ''`); err != nil {
 		return err
+	}
+	for _, migration := range []struct {
+		table  string
+		column string
+		stmt   string
+	}{
+		{
+			table:  "space_schedules",
+			column: "customer_message",
+			stmt:   `ALTER TABLE space_schedules ADD COLUMN customer_message TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "booking_request_changes",
+			column: "customer_message",
+			stmt:   `ALTER TABLE booking_request_changes ADD COLUMN customer_message TEXT NOT NULL DEFAULT ''`,
+		},
+	} {
+		exists, err := tableHasColumn(db, migration.table, migration.column)
+		if err != nil {
+			return fmt.Errorf("check %s %s column: %w", migration.table, migration.column, err)
+		}
+		if !exists {
+			if _, err := db.Exec(migration.stmt); err != nil {
+				return fmt.Errorf("add %s %s column: %w", migration.table, migration.column, err)
+			}
+		}
 	}
 	if _, err := db.Exec(`UPDATE admissions SET practice_type = 'group_practice' WHERE practice_type IS NULL OR TRIM(practice_type) = ''`); err != nil {
 		return err
@@ -12985,6 +13265,246 @@ func hashValue(value string) string {
 	return fmt.Sprintf("%x", sum[:])
 }
 
+func normalizePublicBaseURL(raw string) string {
+	return strings.TrimRight(strings.TrimSpace(raw), "/")
+}
+
+func (a *App) bookingTrackingURL(rawToken string) string {
+	base := normalizePublicBaseURL(a.bookingAccess.BaseURL)
+	if base == "" {
+		base = "http://localhost:8080"
+	}
+	return base + "/booking/status?token=" + url.QueryEscape(rawToken)
+}
+
+func (a *App) bookingAccessTokenExpiry(schedule *SpaceSchedule) time.Time {
+	now := time.Now().UTC()
+	expiresAt := now.Add(a.bookingAccess.TokenTTL)
+	if schedule == nil {
+		return expiresAt
+	}
+	slotDate, err := time.Parse("2006-01-02", strings.TrimSpace(schedule.SlotDate))
+	if err != nil {
+		return expiresAt
+	}
+	scheduleExpiry := time.Date(slotDate.Year(), slotDate.Month(), slotDate.Day(), 23, 59, 59, 0, time.UTC).Add(a.bookingAccess.TokenTTL)
+	if scheduleExpiry.After(expiresAt) {
+		return scheduleExpiry
+	}
+	return expiresAt
+}
+
+func (a *App) bookingAccessTokenSignature(publicID string, scheduleID int64, purpose string) string {
+	mac := hmac.New(sha256.New, []byte(a.bookingAccess.TokenSecret))
+	fmt.Fprintf(mac, "%d:%s:%s", scheduleID, purpose, publicID)
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (a *App) buildBookingAccessToken(scheduleID int64, publicID string, purpose string) string {
+	return publicID + "." + a.bookingAccessTokenSignature(publicID, scheduleID, purpose)
+}
+
+func redactSensitiveValue(value string, secret string) string {
+	if secret == "" {
+		return value
+	}
+	return strings.ReplaceAll(value, secret, "[secure booking status link]")
+}
+
+func compareHashConstantTime(raw string, expectedHash string) bool {
+	actual := hashValue(raw)
+	if len(actual) != len(expectedHash) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(actual), []byte(expectedHash)) == 1
+}
+
+func (a *App) listBookingAccessTokensForScheduleIDs(scheduleIDs []int64) ([]BookingAccessToken, error) {
+	if len(scheduleIDs) == 0 {
+		return nil, nil
+	}
+	query, args := scheduleIDScopedQuery(`
+		SELECT id, schedule_id, public_id, token_hash, purpose, active, expires_at, last_accessed_at, created_at, revoked_at
+		FROM booking_access_tokens
+		WHERE schedule_id IN (%s)
+		ORDER BY created_at DESC, id DESC
+	`, scheduleIDs)
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tokens []BookingAccessToken
+	for rows.Next() {
+		token, err := scanBookingAccessToken(rows)
+		if err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, token)
+	}
+	return tokens, rows.Err()
+}
+
+func scanBookingAccessToken(row rowScanner) (BookingAccessToken, error) {
+	var token BookingAccessToken
+	var active int
+	var lastAccessedAt sql.NullTime
+	var revokedAt sql.NullTime
+	if err := row.Scan(
+		&token.ID,
+		&token.ScheduleID,
+		&token.PublicID,
+		&token.TokenHash,
+		&token.Purpose,
+		&active,
+		&token.ExpiresAt,
+		&lastAccessedAt,
+		&token.CreatedAt,
+		&revokedAt,
+	); err != nil {
+		return BookingAccessToken{}, err
+	}
+	token.Active = active == 1
+	if lastAccessedAt.Valid {
+		token.LastAccessedAt = lastAccessedAt.Time
+	}
+	if revokedAt.Valid {
+		token.RevokedAt = revokedAt.Time
+	}
+	return token, nil
+}
+
+func bookingAccessTokenFor(tokens []BookingAccessToken, scheduleID int64) *BookingAccessToken {
+	now := time.Now().UTC()
+	for i := range tokens {
+		if tokens[i].ScheduleID == scheduleID && tokens[i].Active && tokens[i].RevokedAt.IsZero() && tokens[i].ExpiresAt.After(now) {
+			return &tokens[i]
+		}
+	}
+	for i := range tokens {
+		if tokens[i].ScheduleID == scheduleID {
+			return &tokens[i]
+		}
+	}
+	return nil
+}
+
+func (a *App) ensureActiveBookingAccessToken(scheduleID int64, purpose string) (*BookingAccessToken, string, error) {
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		return nil, "", err
+	}
+	now := time.Now().UTC()
+	row := a.db.QueryRow(`
+		SELECT id, schedule_id, public_id, token_hash, purpose, active, expires_at, last_accessed_at, created_at, revoked_at
+		FROM booking_access_tokens
+		WHERE schedule_id = ?
+		  AND purpose = ?
+		  AND active = 1
+		  AND revoked_at IS NULL
+		ORDER BY created_at DESC, id DESC
+		LIMIT 1
+	`, scheduleID, purpose)
+	token, err := scanBookingAccessToken(row)
+	if err == nil && token.ExpiresAt.After(now) {
+		return &token, a.buildBookingAccessToken(scheduleID, token.PublicID, token.Purpose), nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, "", err
+	}
+
+	publicID, err := generateToken(18)
+	if err != nil {
+		return nil, "", err
+	}
+	rawToken := a.buildBookingAccessToken(scheduleID, publicID, purpose)
+	tokenHash := hashValue(rawToken)
+	expiresAt := a.bookingAccessTokenExpiry(schedule)
+	result, err := a.db.Exec(`
+		INSERT INTO booking_access_tokens (
+			schedule_id, public_id, token_hash, purpose, active, expires_at, last_accessed_at, created_at, revoked_at
+		)
+		VALUES (?, ?, ?, ?, 1, ?, NULL, ?, NULL)
+	`, scheduleID, publicID, tokenHash, purpose, expiresAt, now)
+	if err != nil {
+		return nil, "", err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, "", err
+	}
+	return &BookingAccessToken{
+		ID:         id,
+		ScheduleID: scheduleID,
+		PublicID:   publicID,
+		TokenHash:  tokenHash,
+		Purpose:    purpose,
+		Active:     true,
+		ExpiresAt:  expiresAt,
+		CreatedAt:  now,
+	}, rawToken, nil
+}
+
+func (a *App) rotateBookingAccessToken(scheduleID int64, purpose string) (string, error) {
+	now := time.Now().UTC()
+	if _, err := a.db.Exec(`
+		UPDATE booking_access_tokens
+		SET active = 0, revoked_at = ?, last_accessed_at = COALESCE(last_accessed_at, ?)
+		WHERE schedule_id = ? AND purpose = ? AND active = 1
+	`, now, now, scheduleID, purpose); err != nil {
+		return "", err
+	}
+	_, rawToken, err := a.ensureActiveBookingAccessToken(scheduleID, purpose)
+	return rawToken, err
+}
+
+func (a *App) revokeBookingAccessToken(scheduleID int64, purpose string) error {
+	now := time.Now().UTC()
+	_, err := a.db.Exec(`
+		UPDATE booking_access_tokens
+		SET active = 0, revoked_at = ?
+		WHERE schedule_id = ? AND purpose = ? AND active = 1
+	`, now, scheduleID, purpose)
+	return err
+}
+
+func (a *App) findActiveBookingByAccessToken(rawToken string) (*SpaceSchedule, *BookingAccessToken, error) {
+	rawToken = strings.TrimSpace(rawToken)
+	if rawToken == "" {
+		return nil, nil, sql.ErrNoRows
+	}
+	parts := strings.SplitN(rawToken, ".", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, nil, sql.ErrNoRows
+	}
+	row := a.db.QueryRow(`
+		SELECT id, schedule_id, public_id, token_hash, purpose, active, expires_at, last_accessed_at, created_at, revoked_at
+		FROM booking_access_tokens
+		WHERE public_id = ?
+		LIMIT 1
+	`, parts[0])
+	token, err := scanBookingAccessToken(row)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !token.Active || !token.RevokedAt.IsZero() || !token.ExpiresAt.After(time.Now().UTC()) {
+		return nil, nil, sql.ErrNoRows
+	}
+	expectedRaw := a.buildBookingAccessToken(token.ScheduleID, token.PublicID, token.Purpose)
+	if !compareHashConstantTime(rawToken, token.TokenHash) || subtle.ConstantTimeCompare([]byte(rawToken), []byte(expectedRaw)) != 1 {
+		return nil, nil, sql.ErrNoRows
+	}
+	if _, err := a.db.Exec(`UPDATE booking_access_tokens SET last_accessed_at = ? WHERE id = ?`, time.Now().UTC(), token.ID); err != nil {
+		return nil, nil, err
+	}
+	schedule, err := a.findSpaceScheduleByID(token.ScheduleID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return schedule, &token, nil
+}
+
 func normalizeSMSPhone(phone string) (string, error) {
 	trimmed := strings.TrimSpace(phone)
 	if trimmed == "" {
@@ -13038,12 +13558,13 @@ type bookingEmailFact struct {
 }
 
 type bookingCommunicationContent struct {
-	Subject string
-	Heading string
-	Intro   string
-	Facts   []bookingEmailFact
-	Notes   []string
-	SMSBody string
+	Subject     string
+	Heading     string
+	Intro       string
+	Facts       []bookingEmailFact
+	Notes       []string
+	SMSBody     string
+	TrackingURL string
 }
 
 func (a *App) sendEmailMessage(recipient string, subject string, textBody string, htmlBody string) error {
@@ -13156,8 +13677,13 @@ func (a *App) sendBookingCommunicationEvent(
 	if err != nil {
 		return nil, err
 	}
+	_, rawToken, err := a.ensureActiveBookingAccessToken(scheduleID, "status")
+	if err != nil {
+		return nil, err
+	}
+	trackingURL := a.bookingTrackingURL(rawToken)
 
-	dispatches, err := a.buildBookingCommunicationDispatches(*schedule, bookingFinancialForSchedule(financials, scheduleID), bookingReferralFor(referrals, scheduleID), changes, eventType, relatedEventType)
+	dispatches, err := a.buildBookingCommunicationDispatches(*schedule, bookingFinancialForSchedule(financials, scheduleID), bookingReferralFor(referrals, scheduleID), changes, eventType, relatedEventType, trackingURL)
 	if err != nil {
 		return nil, err
 	}
@@ -13238,16 +13764,19 @@ func (a *App) buildBookingCommunicationDispatches(
 	changes []BookingRequestChange,
 	eventType string,
 	relatedEventType string,
+	trackingURL string,
 ) ([]bookingCommunicationDispatch, error) {
 	effectiveEventType := eventType
 	if eventType == bookingCommEventResent {
 		effectiveEventType = relatedEventType
 	}
 
-	content, err := a.buildBookingCommunicationContent(schedule, financial, referral, changes, effectiveEventType)
+	content, err := a.buildBookingCommunicationContent(schedule, financial, referral, changes, effectiveEventType, trackingURL)
 	if err != nil {
 		return nil, err
 	}
+	textBody := renderBookingEmailText(content)
+	htmlBody := renderBookingEmailHTML(content)
 
 	dispatches := make([]bookingCommunicationDispatch, 0, 2)
 	if emailPattern.MatchString(strings.TrimSpace(schedule.RequesterEmail)) {
@@ -13255,9 +13784,9 @@ func (a *App) buildBookingCommunicationDispatches(
 			Channel:     bookingCommChannelEmail,
 			Recipient:   schedule.RequesterEmail,
 			Subject:     content.Subject,
-			TextBody:    renderBookingEmailText(content),
-			HTMLBody:    renderBookingEmailHTML(content),
-			BodyPreview: truncateString(renderBookingEmailText(content), 240),
+			TextBody:    textBody,
+			HTMLBody:    htmlBody,
+			BodyPreview: truncateString(redactSensitiveValue(textBody, trackingURL), 240),
 		})
 	}
 	if strings.TrimSpace(content.SMSBody) != "" && strings.TrimSpace(schedule.RequesterPhone) != "" {
@@ -13278,6 +13807,7 @@ func (a *App) buildBookingCommunicationContent(
 	referral *BookingReferral,
 	changes []BookingRequestChange,
 	eventType string,
+	trackingURL string,
 ) (bookingCommunicationContent, error) {
 	customerName := strings.TrimSpace(schedule.RequesterName)
 	if customerName == "" {
@@ -13291,7 +13821,7 @@ func (a *App) buildBookingCommunicationContent(
 		title = bookingProductLabel(schedule.Activity, schedule.Quantity)
 	}
 
-	content := bookingCommunicationContent{}
+	content := bookingCommunicationContent{TrackingURL: trackingURL}
 	switch eventType {
 	case bookingCommEventRequestReceived:
 		content.Subject = "Mekmaa booking request received - " + reference
@@ -13332,8 +13862,8 @@ func (a *App) buildBookingCommunicationContent(
 			{Label: "Quoted amount", Value: amountLabel},
 			{Label: "Payment status", Value: paymentLabel},
 		}
-		if strings.TrimSpace(schedule.ReviewNote) != "" {
-			content.Facts = append(content.Facts, bookingEmailFact{Label: "Administrator note", Value: schedule.ReviewNote})
+		if strings.TrimSpace(schedule.CustomerMessage) != "" {
+			content.Facts = append(content.Facts, bookingEmailFact{Label: "Mekmaa message", Value: schedule.CustomerMessage})
 		}
 		content.Notes = []string{
 			"Venue: " + a.bookingMessages.VenueName,
@@ -13361,7 +13891,7 @@ func (a *App) buildBookingCommunicationContent(
 			{Label: "Original requested date", Value: formatCalendarDate(schedule.SlotDate)},
 			{Label: "Original requested time", Value: formatClockTime(schedule.SlotHour)},
 			{Label: "Activity", Value: bookingProductLabel(schedule.Activity, schedule.Quantity)},
-			{Label: "Rejection reason", Value: strings.TrimSpace(schedule.ReviewNote)},
+			{Label: "Mekmaa message", Value: strings.TrimSpace(schedule.CustomerMessage)},
 		}
 		content.Notes = []string{
 			"If you would like help with another booking request, contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
@@ -13381,7 +13911,7 @@ func (a *App) buildBookingCommunicationContent(
 			{Label: "New proposed slot", Value: formatCalendarDate(change.NewSlotDate) + " at " + formatClockTime(change.NewSlotHour) + " • " + bookingProductLabel(change.NewActivity, change.NewQuantity)},
 			{Label: "Previous quoted amount", Value: money(change.PreviousQuote)},
 			{Label: "New quoted amount", Value: money(change.NewQuote)},
-			{Label: "Administrator note", Value: strings.TrimSpace(change.ReviewNote)},
+			{Label: "Mekmaa message", Value: strings.TrimSpace(change.CustomerMessage)},
 		}
 		content.Notes = []string{
 			"The new slot remains pending until Mekmaa confirms it.",
@@ -13403,8 +13933,8 @@ func (a *App) buildBookingCommunicationContent(
 			{Label: "Final quoted amount", Value: amountLabel},
 			{Label: "Payment status", Value: paymentLabel},
 		}
-		if strings.TrimSpace(change.ReviewNote) != "" {
-			content.Facts = append(content.Facts, bookingEmailFact{Label: "Administrator note", Value: change.ReviewNote})
+		if strings.TrimSpace(change.CustomerMessage) != "" {
+			content.Facts = append(content.Facts, bookingEmailFact{Label: "Mekmaa message", Value: change.CustomerMessage})
 		}
 		content.Notes = []string{
 			"Venue: " + a.bookingMessages.VenueName,
@@ -13441,6 +13971,9 @@ func renderBookingEmailText(content bookingCommunicationContent) string {
 			builder.WriteString("- " + note + "\n")
 		}
 	}
+	if strings.TrimSpace(content.TrackingURL) != "" {
+		builder.WriteString("\nView booking status: " + content.TrackingURL + "\n")
+	}
 	return strings.TrimSpace(builder.String())
 }
 
@@ -13468,6 +14001,13 @@ func renderBookingEmailHTML(content bookingCommunicationContent) string {
 		"<tr><td style=\"padding:28px 28px 20px;background:#0f172a;color:#f8fafc;\"><div style=\"font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#67e8f9;\">Mekmaa</div><h1 style=\"margin:12px 0 0;font-size:28px;line-height:1.2;\">" + template.HTMLEscapeString(content.Heading) + "</h1></td></tr>" +
 		"<tr><td style=\"padding:28px;\"><p style=\"margin:0 0 18px;font-size:15px;line-height:1.7;color:#334155;\">" + template.HTMLEscapeString(content.Intro) + "</p>" +
 		"<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;\">" + facts.String() + "</table>" +
+		func() string {
+			if strings.TrimSpace(content.TrackingURL) == "" {
+				return ""
+			}
+			escaped := template.HTMLEscapeString(content.TrackingURL)
+			return "<div style=\"margin:20px 0 0;\"><a href=\"" + escaped + "\" style=\"display:inline-block;background:#0f172a;color:#f8fafc;text-decoration:none;padding:14px 20px;border-radius:999px;font-weight:700;\">View booking status</a><p style=\"margin:14px 0 0;font-size:13px;line-height:1.6;color:#64748b;word-break:break-all;\">" + escaped + "</p></div>"
+		}() +
 		notes.String() +
 		"<p style=\"margin:22px 0 0;font-size:13px;line-height:1.7;color:#64748b;\">This message was sent by Mekmaa regarding your booking record.</p>" +
 		"</td></tr></table></td></tr></table></body></html>"
@@ -13582,6 +14122,140 @@ func latestResendableEventType(schedule *SpaceSchedule, communications []Booking
 	default:
 		return ""
 	}
+}
+
+func maskBookingIdentity(schedule *SpaceSchedule) string {
+	if schedule == nil {
+		return ""
+	}
+	name := strings.TrimSpace(schedule.RequesterName)
+	email := strings.TrimSpace(schedule.RequesterEmail)
+	phone := strings.TrimSpace(schedule.RequesterPhone)
+	firstName := strings.TrimSpace(strings.Split(name, " ")[0])
+	switch {
+	case firstName != "" && email != "":
+		return firstName + " · " + maskEmail(email)
+	case firstName != "" && phone != "":
+		return firstName + " · " + maskPhone(phone)
+	case firstName != "":
+		return firstName
+	case email != "":
+		return maskEmail(email)
+	case phone != "":
+		return maskPhone(phone)
+	default:
+		return "Customer"
+	}
+}
+
+func maskEmail(email string) string {
+	email = strings.TrimSpace(email)
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 || parts[0] == "" {
+		return ""
+	}
+	local := parts[0]
+	if len(local) <= 2 {
+		return local[:1] + "***@" + parts[1]
+	}
+	return local[:1] + strings.Repeat("*", len(local)-2) + local[len(local)-1:] + "@" + parts[1]
+}
+
+func maskPhone(phone string) string {
+	digits := phone
+	if len(digits) <= 4 {
+		return digits
+	}
+	return strings.Repeat("*", len(digits)-4) + digits[len(digits)-4:]
+}
+
+func buildSlotLabel(slotDate string, slotHour string, activity string, quantity int) string {
+	return formatCalendarDate(slotDate) + " at " + formatClockTime(slotHour) + " · " + bookingProductLabel(activity, quantity)
+}
+
+func bookingStatusDetails(status string) (string, string, string, string) {
+	switch status {
+	case "confirmed":
+		return "Confirmed", "emerald", "Your reservation is confirmed.", "Arrive 10 to 15 minutes early. Keep your booking reference ready and contact Mekmaa if anything changes."
+	case "rejected":
+		return "Rejected", "rose", "This request could not be confirmed.", "Use the public booking page to request another slot or contact Mekmaa for help."
+	case "pending":
+		return "Pending", "amber", "Your request is still under review.", "Do not treat the slot or payment as confirmed yet. Mekmaa will contact you once the review is complete."
+	default:
+		if strings.TrimSpace(status) == "" {
+			status = "Booking"
+		} else {
+			status = strings.ToUpper(status[:1]) + status[1:]
+		}
+		return status, "slate", "This booking is being reviewed.", "Contact Mekmaa if you need help with this booking."
+	}
+}
+
+func (a *App) buildBookingStatusView(schedule *SpaceSchedule, financial *BookingFinancial, changes []BookingRequestChange) *BookingStatusView {
+	if schedule == nil {
+		return nil
+	}
+	statusLabel, tone, summary, nextSteps := bookingStatusDetails(schedule.Status)
+	view := &BookingStatusView{
+		Reference:        bookingReference(schedule.ID),
+		StatusLabel:      statusLabel,
+		StatusTone:       tone,
+		StatusSummary:    summary,
+		NextSteps:        nextSteps,
+		MaskedIdentity:   maskBookingIdentity(schedule),
+		CustomerMessage:  strings.TrimSpace(schedule.CustomerMessage),
+		CurrentSlotLabel: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity),
+		ActivityLabel:    bookingProductLabel(schedule.Activity, schedule.Quantity),
+		QuotedAmount:     quotedAmountLabel(financial),
+		PaymentStatus:    bookingPaymentStatusLabel(financial, schedule.Status),
+		Title:            strings.TrimSpace(schedule.Title),
+		ContactPhone:     a.bookingMessages.ContactPhone,
+		ContactEmail:     a.bookingMessages.ContactEmail,
+		VenueName:        a.bookingMessages.VenueName,
+		VenueAddress:     a.bookingMessages.VenueAddress,
+		CanPrint:         schedule.Status == "confirmed",
+	}
+	if financial != nil && financial.PaidAt.After(time.Time{}) {
+		view.PaidAtLabel = formatDateTime(financial.PaidAt)
+	}
+	if history := bookingRequestHistoryFor(changes, schedule.ID); len(history) > 0 {
+		latest := history[0]
+		view.PreviousSlotLabel = buildSlotLabel(latest.PreviousSlotDate, latest.PreviousSlotHour, latest.PreviousActivity, latest.PreviousQuantity)
+		if strings.TrimSpace(view.CustomerMessage) == "" {
+			view.CustomerMessage = strings.TrimSpace(latest.CustomerMessage)
+		}
+	}
+	return view
+}
+
+func buildCustomerBookingTimeline(schedule SpaceSchedule, changes []BookingRequestChange, communications []BookingCommunication) []CustomerBookingTimelineItem {
+	items := []CustomerBookingTimelineItem{{
+		Label:  "Request submitted",
+		Detail: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity),
+		When:   schedule.CreatedAt,
+	}}
+	for _, change := range bookingRequestHistoryFor(changes, schedule.ID) {
+		items = append(items, CustomerBookingTimelineItem{
+			Label:  bookingRequestActionLabel(change.ActionType),
+			Detail: buildSlotLabel(change.NewSlotDate, change.NewSlotHour, change.NewActivity, change.NewQuantity),
+			When:   change.ChangedAt,
+		})
+	}
+	for _, communication := range bookingCommunicationsFor(communications, schedule.ID) {
+		if communication.Status != bookingCommStatusSent {
+			continue
+		}
+		items = append(items, CustomerBookingTimelineItem{
+			Label:   bookingCommunicationEventLabel(communication),
+			Detail:  "Customer " + strings.ToUpper(communication.Channel) + " sent",
+			When:    communication.SentAt,
+			IsEmail: communication.Channel == bookingCommChannelEmail,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].When.After(items[j].When)
+	})
+	return items
 }
 
 func adminBookingCommunicationRedirect(scheduleID int64, status string, slotDate string) string {
@@ -16018,6 +16692,7 @@ func listBookingRequestChangesForScheduleIDsQuery(queryer sqlQueryer, scheduleID
 			brch.new_quoted_price,
 			brch.action_type,
 			brch.review_note,
+			COALESCE(brch.customer_message, ''),
 			COALESCE(brch.changed_by_user_id, 0),
 			COALESCE(u.name, ''),
 			brch.changed_at
@@ -16051,6 +16726,7 @@ func listBookingRequestChangesForScheduleIDsQuery(queryer sqlQueryer, scheduleID
 			&change.NewQuote,
 			&change.ActionType,
 			&change.ReviewNote,
+			&change.CustomerMessage,
 			&change.ChangedByUserID,
 			&change.ChangedByUserName,
 			&change.ChangedAt,
@@ -17522,7 +18198,9 @@ func isIgnorableMigrationError(err error, stmt string) bool {
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_email") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_phone") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requested_by_user_id") ||
-		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN review_note")) &&
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN review_note") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN customer_message") ||
+		strings.Contains(stmt, "ALTER TABLE booking_request_changes ADD COLUMN customer_message")) &&
 		strings.Contains(lowerErr, "duplicate column name")
 }
 
@@ -17620,6 +18298,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"bookingCommunicationEventLabel": bookingCommunicationEventLabel,
 		"bookingCommunicationStatusTone": bookingCommunicationStatusTone,
 		"bookingCommunicationsFor":       bookingCommunicationsFor,
+		"bookingAccessTokenFor":          bookingAccessTokenFor,
 		"bookingStatusTone":              bookingStatusTone,
 		"quotedPriceForSchedule":         quotedPriceForSchedule,
 		"courtLayoutHasActivity":         courtLayoutHasActivity,
@@ -17685,6 +18364,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"home":                        "templates/pages/home.html",
 		"about":                       "templates/pages/about.html",
 		"book":                        "templates/pages/book.html",
+		"booking-status":              "templates/pages/booking-status.html",
 		"contact":                     "templates/pages/contact.html",
 		"coaching":                    "templates/pages/coaching.html",
 		"faq":                         "templates/pages/faq.html",
