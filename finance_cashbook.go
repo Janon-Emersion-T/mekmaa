@@ -229,7 +229,6 @@ func migrateFinanceCashbook(db *sql.DB) error {
 			FOREIGN KEY (superseded_by_reconciliation_id) REFERENCES cash_reconciliations(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_cash_reconciliations_date ON cash_reconciliations(reconciliation_date DESC)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_reconciliations_account_date_active ON cash_reconciliations(finance_account_id, reconciliation_date) WHERE voided_at IS NULL`,
 		`CREATE TABLE IF NOT EXISTS finance_operation_keys (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			operation_scope TEXT NOT NULL,
@@ -289,6 +288,9 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	}
 	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_cash_reconciliations_account_date`); err != nil {
 		return err
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_reconciliations_account_date_active ON cash_reconciliations(finance_account_id, reconciliation_date) WHERE voided_at IS NULL`); err != nil {
+		return fmt.Errorf("create active cash reconciliation unique index: %w", err)
 	}
 	for _, stmt := range []string{
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_account ON finance_transactions(finance_account_id, recorded_at DESC, id DESC)`,

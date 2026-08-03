@@ -2224,6 +2224,140 @@ func TestFinanceCashbookMigrationSkipsLegacyDuplicateSourceUniqueIndex(t *testin
 	}
 }
 
+func TestFinanceCashbookMigrationUpgradesLegacyCashReconciliationsBeforePartialIndex(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:finance-legacy-cash-reconciliation?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	now := time.Now().UTC()
+	statements := []string{
+		`PRAGMA foreign_keys = ON`,
+		`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`,
+		`CREATE TABLE finance_accounts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			account_type TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			opening_balance REAL NOT NULL DEFAULT 0,
+			is_system INTEGER NOT NULL DEFAULT 0,
+			is_active INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			created_by_user_id INTEGER,
+			updated_by_user_id INTEGER
+		)`,
+		`CREATE TABLE finance_transactions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			receipt_number TEXT NOT NULL UNIQUE,
+			category TEXT NOT NULL,
+			reference_type TEXT NOT NULL,
+			reference_id INTEGER,
+			person_name TEXT NOT NULL,
+			description TEXT NOT NULL,
+			payment_method TEXT NOT NULL DEFAULT 'cash',
+			amount REAL NOT NULL DEFAULT 0,
+			recorded_by_user_id INTEGER,
+			recorded_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE student_monthly_payments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			admission_id INTEGER NOT NULL,
+			payment_month TEXT NOT NULL,
+			amount REAL NOT NULL DEFAULT 0,
+			payment_method TEXT NOT NULL DEFAULT 'cash',
+			finance_transaction_id INTEGER NOT NULL,
+			collected_by_user_id INTEGER,
+			collected_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE admissions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			full_name TEXT NOT NULL,
+			payment_collected INTEGER NOT NULL DEFAULT 0,
+			payment_collected_at DATETIME,
+			admission_payment_amount REAL NOT NULL DEFAULT 0,
+			finance_transaction_id INTEGER,
+			updated_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE booking_referrals (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			finance_transaction_id INTEGER,
+			paid INTEGER NOT NULL DEFAULT 0,
+			paid_at DATETIME,
+			payment_method TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE booking_payment_collections (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			finance_transaction_id INTEGER NOT NULL UNIQUE,
+			voided INTEGER NOT NULL DEFAULT 0,
+			void_reason TEXT NOT NULL DEFAULT '',
+			voided_by_user_id INTEGER,
+			voided_at DATETIME
+		)`,
+		`CREATE TABLE cash_reconciliations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			finance_account_id INTEGER NOT NULL,
+			reconciliation_date TEXT NOT NULL,
+			expected_balance REAL NOT NULL DEFAULT 0,
+			counted_balance REAL NOT NULL DEFAULT 0,
+			difference REAL NOT NULL DEFAULT 0,
+			notes TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'balanced',
+			reconciled_by_user_id INTEGER,
+			created_at DATETIME NOT NULL
+		)`,
+		`CREATE UNIQUE INDEX idx_cash_reconciliations_account_date ON cash_reconciliations(finance_account_id, reconciliation_date)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("seed legacy reconciliation schema: %v", err)
+		}
+	}
+	if _, err := db.Exec(`
+		INSERT INTO finance_accounts (name, account_type, description, opening_balance, is_system, is_active, created_at, updated_at)
+		VALUES ('Legacy Cash', 'cash', 'Legacy account', 0, 0, 1, ?, ?)
+	`, now, now); err != nil {
+		t.Fatalf("seed finance account: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := migrateFinanceCashbook(db); err != nil {
+			t.Fatalf("migrate finance cashbook run %d: %v", i+1, err)
+		}
+	}
+
+	for _, column := range []string{"void_reason", "voided_by_user_id", "voided_at", "superseded_by_reconciliation_id"} {
+		exists, err := tableHasColumn(db, "cash_reconciliations", column)
+		if err != nil {
+			t.Fatalf("check migrated column %s: %v", column, err)
+		}
+		if !exists {
+			t.Fatalf("expected migrated cash_reconciliations column %s", column)
+		}
+	}
+
+	var oldIndexCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_cash_reconciliations_account_date'`).Scan(&oldIndexCount); err != nil {
+		t.Fatalf("lookup old reconciliation index: %v", err)
+	}
+	if oldIndexCount != 0 {
+		t.Fatal("expected legacy idx_cash_reconciliations_account_date index to be removed")
+	}
+
+	var newIndexCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_cash_reconciliations_account_date_active'`).Scan(&newIndexCount); err != nil {
+		t.Fatalf("lookup new reconciliation index: %v", err)
+	}
+	if newIndexCount != 1 {
+		t.Fatal("expected idx_cash_reconciliations_account_date_active index to exist")
+	}
+}
+
 func TestBookingCancellationReleasesCapacityAndPreservesPayment(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:booking-cancellation-test?mode=memory&cache=shared")
 	if err != nil {
