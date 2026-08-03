@@ -297,29 +297,29 @@ type FinanceSummary struct {
 }
 
 type BookingFinancial struct {
-	ID                   int64
-	ScheduleID           int64
-	QuotedAmount         float64
-	Paid                 bool
-	PaidAt               time.Time
-	PaymentMethod        string
-	FinanceTransactionID int64
-	SlotDate             string
-	SlotHour             string
-	Activity             string
-	Quantity             int
-	Status               string
-	RequesterName        string
-	RequesterEmail       string
-	RecordedByUserID     int64
-	TotalCollected       float64
-	OutstandingAmount    float64
-	PaymentStatus        string
-	LastPaymentDate      time.Time
-	LastPaymentByUserID  int64
+	ID                    int64
+	ScheduleID            int64
+	QuotedAmount          float64
+	Paid                  bool
+	PaidAt                time.Time
+	PaymentMethod         string
+	FinanceTransactionID  int64
+	SlotDate              string
+	SlotHour              string
+	Activity              string
+	Quantity              int
+	Status                string
+	RequesterName         string
+	RequesterEmail        string
+	RecordedByUserID      int64
+	TotalCollected        float64
+	OutstandingAmount     float64
+	PaymentStatus         string
+	LastPaymentDate       time.Time
+	LastPaymentByUserID   int64
 	LastPaymentByUserName string
-	ActivePaymentCount   int
-	VoidedPaymentCount   int
+	ActivePaymentCount    int
+	VoidedPaymentCount    int
 }
 
 type ReportPeriod struct {
@@ -981,12 +981,12 @@ var (
 	ErrAdmissionFeeNotConfigured = errors.New(
 		"admission fee is not configured for the selected training programme",
 	)
-	ErrStudentPaymentAlreadyCollected = errors.New("student payment already collected")
-	ErrStudentNotAdmittedForMonth     = errors.New("student was not admitted for the selected month")
-	ErrBookingPaymentAlreadyCollected = errors.New("booking payment already collected")
+	ErrStudentPaymentAlreadyCollected     = errors.New("student payment already collected")
+	ErrStudentNotAdmittedForMonth         = errors.New("student was not admitted for the selected month")
+	ErrBookingPaymentAlreadyCollected     = errors.New("booking payment already collected")
 	ErrBookingPaymentNeedsOverpayApproval = errors.New("booking payment exceeds the outstanding balance")
-	ErrRoleAssigned                   = errors.New("role is assigned to one or more users")
-	ErrSystemRoleProtected            = errors.New("system roles are protected")
+	ErrRoleAssigned                       = errors.New("role is assigned to one or more users")
+	ErrSystemRoleProtected                = errors.New("system roles are protected")
 )
 
 const maxBookingCashCollection = 1000000
@@ -1708,6 +1708,12 @@ func (a *App) publicBookingStatusHandler(w http.ResponseWriter, r *http.Request)
 	data.BookingFinancials = financials
 	data.BookingRequestChanges = changes
 	data.BookingCommunications = communications
+	data.BookingPaymentCollections, err = a.listBookingPaymentCollectionsForScheduleIDs([]int64{schedule.ID})
+	if err != nil {
+		log.Printf("load booking payment collections: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	requests, reqErr := a.listBookingCancellationRequestsForScheduleIDs([]int64{schedule.ID})
 	if reqErr != nil {
 		log.Printf("load booking cancellation requests: %v", reqErr)
@@ -2743,9 +2749,9 @@ func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	bookingFinancials, err := a.listOutstandingBookingFinancials()
+	bookingFinancials, err := a.listBookingFinancials()
 	if err != nil {
-		log.Printf("list booking receivables: %v", err)
+		log.Printf("list booking financials: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -3131,6 +3137,12 @@ func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 		data.ReceiptBookingSchedule, _ = a.findSpaceScheduleByID(transaction.ReferenceID)
 		financials, _ := a.listBookingFinancialsForScheduleIDs([]int64{transaction.ReferenceID})
 		data.ReceiptBookingFinancial = bookingFinancialForSchedule(financials, transaction.ReferenceID)
+		data.BookingStatusView = &BookingStatusView{
+			ContactPhone: a.bookingMessages.ContactPhone,
+			ContactEmail: a.bookingMessages.ContactEmail,
+			VenueName:    a.bookingMessages.VenueName,
+			VenueAddress: a.bookingMessages.VenueAddress,
+		}
 	}
 	a.render(w, "finance-receipt", data, http.StatusOK)
 }
@@ -17669,9 +17681,7 @@ func buildAdminCalendarHours(
 			}
 			if financial := bookingFinancialForSchedule(financials, schedule.ID); financial != nil {
 				row.ExpectedRevenue += financial.QuotedAmount
-				if financial.Paid {
-					row.CollectedRevenue += financial.QuotedAmount
-				}
+				row.CollectedRevenue += financial.TotalCollected
 			}
 		}
 
@@ -17748,20 +17758,28 @@ func buildAdminCalendarItem(
 	}
 
 	item.PriceLabel = money(financial.QuotedAmount)
-	switch {
-	case financial.Paid:
+	switch financial.PaymentStatus {
+	case "paid":
 		item.PaymentLabel = "Paid"
-		if strings.TrimSpace(financial.PaymentMethod) != "" {
-			item.PaymentLabel += " • " + financial.PaymentMethod
-		}
 		item.PaymentTone = "text-emerald-700"
-	case schedule.Status == "confirmed":
-		item.PaymentLabel = "Unpaid"
-		item.PaymentTone = "text-red-700"
-		item.IsUnpaid = true
-	default:
-		item.PaymentLabel = "Quoted"
+	case "partially_paid":
+		item.PaymentLabel = "Part-paid"
 		item.PaymentTone = "text-amber-700"
+	case "overpaid":
+		item.PaymentLabel = "Overpaid"
+		item.PaymentTone = "text-sky-700"
+	case "voided":
+		item.PaymentLabel = "Voided"
+		item.PaymentTone = "text-slate/55"
+	default:
+		if bookingPaymentCollectibleStatus(schedule.Status) {
+			item.PaymentLabel = "Unpaid"
+			item.PaymentTone = "text-red-700"
+			item.IsUnpaid = true
+		} else {
+			item.PaymentLabel = "Quoted"
+			item.PaymentTone = "text-amber-700"
+		}
 	}
 	return item
 }
@@ -18288,12 +18306,90 @@ func bookingPaymentsForSchedule(collections []BookingPaymentCollection, schedule
 	return filtered
 }
 
+func activeBookingPaymentsForSchedule(collections []BookingPaymentCollection, scheduleID int64) []BookingPaymentCollection {
+	filtered := make([]BookingPaymentCollection, 0)
+	for _, collection := range collections {
+		if collection.ScheduleID == scheduleID && !collection.Voided {
+			filtered = append(filtered, collection)
+		}
+	}
+	return filtered
+}
+
+func customerVisibleBookingPaymentsForSchedule(collections []BookingPaymentCollection, scheduleID int64) []BookingPaymentCollection {
+	filtered := make([]BookingPaymentCollection, 0)
+	for _, collection := range collections {
+		if collection.ScheduleID != scheduleID {
+			continue
+		}
+		if collection.Voided {
+			filtered = append(filtered, BookingPaymentCollection{
+				ReceiptNumber: collection.ReceiptNumber,
+				Amount:        collection.Amount,
+				PaymentMethod: collection.PaymentMethod,
+				CollectedAt:   collection.CollectedAt,
+				Voided:        true,
+			})
+			continue
+		}
+		filtered = append(filtered, BookingPaymentCollection{
+			ReceiptNumber: collection.ReceiptNumber,
+			Amount:        collection.Amount,
+			PaymentMethod: collection.PaymentMethod,
+			CollectedAt:   collection.CollectedAt,
+			Voided:        false,
+		})
+	}
+	return filtered
+}
+
 func scheduleIDsFromFinancials(financials []BookingFinancial) []int64 {
 	ids := make([]int64, 0, len(financials))
 	for _, financial := range financials {
 		ids = appendInt64Unique(ids, financial.ScheduleID)
 	}
 	return ids
+}
+
+func bookingCanCollectPayment(user *User, schedule *SpaceSchedule) bool {
+	if user == nil || schedule == nil {
+		return false
+	}
+	if schedule.EntryType != "booking" {
+		return false
+	}
+	if !bookingPaymentCollectibleStatus(schedule.Status) {
+		return false
+	}
+	return containsPermission(user.Permissions, "finance.manage") ||
+		containsPermission(user.Permissions, "space_bookings.manage") ||
+		containsPermission(user.Permissions, "booking_requests.manage")
+}
+
+func bookingCanVoidPayment(user *User) bool {
+	return user != nil && containsPermission(user.Permissions, "finance.manage")
+}
+
+func bookingPaymentInactiveMessage(schedule *SpaceSchedule) string {
+	if schedule == nil {
+		return "Cash collection is unavailable for this booking."
+	}
+	switch schedule.Status {
+	case bookingStatusPending, bookingStatusHeld, bookingStatusReschedulePending:
+		return "Cash collection becomes available after the booking is confirmed."
+	case bookingStatusRejected, bookingStatusExpired:
+		return "Cash collection is unavailable because this request was not confirmed."
+	default:
+		return "Cash collection is unavailable for this booking."
+	}
+}
+
+func bookingOutstandingExcess(amount, outstanding float64) float64 {
+	excess := normalizeMoney(amount - outstanding)
+	if excess < 0 {
+		return 0
+	}
+	return excess
 }
 
 func bookingCommunicationsFor(communications []BookingCommunication, scheduleID int64) []BookingCommunication {
@@ -20270,53 +20366,62 @@ func buildTemplates() (map[string]*template.Template, error) {
 			}
 			return containsPermission(user.Permissions, permission)
 		},
-		"admissionSelected":              admissionSelected,
-		"userSelected":                   userSelected,
-		"admissionAge":                   admissionAge,
-		"attendanceCount":                attendanceCount,
-		"attendanceRecordFor":            attendanceRecordFor,
-		"attendanceStatus":               attendanceStatus,
-		"activityLabel":                  activityLabel,
-		"bookingProductLabel":            bookingProductLabel,
-		"optionSummary":                  optionSummary,
-		"bookingOptionSelected":          bookingOptionSelected,
-		"bookingReference":               bookingReference,
-		"bookingOpenHourCount":           bookingOpenHourCount,
-		"bookingReferralFor":             bookingReferralFor,
-		"bookingRequestHistoryFor":       bookingRequestHistoryFor,
-		"bookingRequestOriginalSnapshot": bookingRequestOriginalSnapshot,
-		"bookingRequestActionLabel":      bookingRequestActionLabel,
-		"bookingCommunicationEventLabel": bookingCommunicationEventLabel,
-		"bookingCommunicationStatusTone": bookingCommunicationStatusTone,
-		"bookingCommunicationsFor":       bookingCommunicationsFor,
-		"bookingAccessTokenFor":          bookingAccessTokenFor,
-		"pendingCancellationRequestFor":  pendingCancellationRequestFor,
-		"bookingStatusTone":              bookingStatusTone,
-		"quotedPriceForSchedule":         quotedPriceForSchedule,
-		"courtLayoutHasActivity":         courtLayoutHasActivity,
-		"courtLayoutActivityQuantity":    courtLayoutActivityQuantity,
-		"pricingForOption":               pricingForOption,
-		"pricingForSchedule":             pricingForSchedule,
-		"pricingTierLabel":               pricingTierLabel,
-		"financeCategoryLabel":           financeCategoryLabel,
-		"paymentMonthLabel":              paymentMonthLabel,
-		"formatDateTime":                 formatDateTime,
-		"relativeTime":                   relativeTime,
-		"formatCalendarDate":             formatCalendarDate,
-		"formatClockTime":                formatClockTime,
-		"formatEventTiming":              formatEventTiming,
-		"eventScheduleLabel":             eventScheduleLabel,
-		"hasTime":                        hasTime,
-		"hasRegistrationDeadline":        hasRegistrationDeadline,
-		"isPastEventDate":                isPastEventDate,
-		"money":                          money,
-		"negate":                         negate,
-		"reportBarWidth":                 reportBarWidth,
-		"registrationDeadlineLabel":      registrationDeadlineLabel,
-		"scheduleToneClasses":            scheduleToneClasses,
-		"scheduleBadgeClasses":           scheduleBadgeClasses,
-		"schedulesForCalendarSlot":       schedulesForCalendarSlot,
-		"scheduleSummary":                scheduleSummary,
+		"admissionSelected":                         admissionSelected,
+		"userSelected":                              userSelected,
+		"admissionAge":                              admissionAge,
+		"attendanceCount":                           attendanceCount,
+		"attendanceRecordFor":                       attendanceRecordFor,
+		"attendanceStatus":                          attendanceStatus,
+		"activityLabel":                             activityLabel,
+		"bookingProductLabel":                       bookingProductLabel,
+		"optionSummary":                             optionSummary,
+		"bookingOptionSelected":                     bookingOptionSelected,
+		"bookingReference":                          bookingReference,
+		"bookingOpenHourCount":                      bookingOpenHourCount,
+		"bookingReferralFor":                        bookingReferralFor,
+		"bookingRequestHistoryFor":                  bookingRequestHistoryFor,
+		"bookingRequestOriginalSnapshot":            bookingRequestOriginalSnapshot,
+		"bookingRequestActionLabel":                 bookingRequestActionLabel,
+		"bookingCommunicationEventLabel":            bookingCommunicationEventLabel,
+		"bookingCommunicationStatusTone":            bookingCommunicationStatusTone,
+		"bookingCommunicationsFor":                  bookingCommunicationsFor,
+		"bookingAccessTokenFor":                     bookingAccessTokenFor,
+		"bookingFinancialForSchedule":               bookingFinancialForSchedule,
+		"bookingPaymentsForSchedule":                bookingPaymentsForSchedule,
+		"activeBookingPaymentsForSchedule":          activeBookingPaymentsForSchedule,
+		"customerVisibleBookingPaymentsForSchedule": customerVisibleBookingPaymentsForSchedule,
+		"bookingCanCollectPayment":                  bookingCanCollectPayment,
+		"bookingCanVoidPayment":                     bookingCanVoidPayment,
+		"bookingPaymentInactiveMessage":             bookingPaymentInactiveMessage,
+		"bookingPaymentStatusBadge":                 bookingPaymentStatusBadge,
+		"bookingPaymentStatusTone":                  bookingPaymentStatusTone,
+		"pendingCancellationRequestFor":             pendingCancellationRequestFor,
+		"bookingStatusTone":                         bookingStatusTone,
+		"quotedPriceForSchedule":                    quotedPriceForSchedule,
+		"courtLayoutHasActivity":                    courtLayoutHasActivity,
+		"courtLayoutActivityQuantity":               courtLayoutActivityQuantity,
+		"pricingForOption":                          pricingForOption,
+		"pricingForSchedule":                        pricingForSchedule,
+		"pricingTierLabel":                          pricingTierLabel,
+		"financeCategoryLabel":                      financeCategoryLabel,
+		"paymentMonthLabel":                         paymentMonthLabel,
+		"formatDateTime":                            formatDateTime,
+		"relativeTime":                              relativeTime,
+		"formatCalendarDate":                        formatCalendarDate,
+		"formatClockTime":                           formatClockTime,
+		"formatEventTiming":                         formatEventTiming,
+		"eventScheduleLabel":                        eventScheduleLabel,
+		"hasTime":                                   hasTime,
+		"hasRegistrationDeadline":                   hasRegistrationDeadline,
+		"isPastEventDate":                           isPastEventDate,
+		"money":                                     money,
+		"negate":                                    negate,
+		"reportBarWidth":                            reportBarWidth,
+		"registrationDeadlineLabel":                 registrationDeadlineLabel,
+		"scheduleToneClasses":                       scheduleToneClasses,
+		"scheduleBadgeClasses":                      scheduleBadgeClasses,
+		"schedulesForCalendarSlot":                  schedulesForCalendarSlot,
+		"scheduleSummary":                           scheduleSummary,
 		"seq": func(n int) []int {
 			if n <= 0 {
 				return nil

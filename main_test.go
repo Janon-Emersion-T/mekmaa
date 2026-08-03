@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -109,11 +110,37 @@ func newBookingWorkflowTestApp(t *testing.T) *App {
 	}
 	return &App{
 		db: db,
+		bookingMessages: BookingCommunicationSettings{
+			VenueName:    "Mekmaa",
+			VenueAddress: "No. 64, Temple Road, Jaffna 40000",
+			ContactPhone: "+94772207297",
+			ContactEmail: "bookings@mekmaa.example",
+		},
 		bookingAccess: BookingAccessSettings{
 			BaseURL:     "http://localhost:8080",
 			TokenSecret: "test-secret",
 			TokenTTL:    180 * 24 * time.Hour,
 		},
+	}
+}
+
+func renderTemplateToString(t *testing.T, templates map[string]*template.Template, name string, data TemplateData) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := templates[name].ExecuteTemplate(&buf, "base", data); err != nil {
+		t.Fatalf("render %s: %v", name, err)
+	}
+	return buf.String()
+}
+
+func bookingTestDataForRequestPage(user *User, schedules []SpaceSchedule, financials []BookingFinancial, collections []BookingPaymentCollection) TemplateData {
+	return TemplateData{
+		User:                      user,
+		CSRFToken:                 "test-token",
+		BookingRequestStats:       buildBookingRequestStats(schedules),
+		BookingRequests:           schedules,
+		BookingFinancials:         financials,
+		BookingPaymentCollections: collections,
 	}
 }
 
@@ -752,6 +779,285 @@ func TestBookingSystemTemplatesRender(t *testing.T) {
 		if !strings.Contains(html, marker) {
 			t.Fatalf("selected booking experience is missing %q", marker)
 		}
+	}
+}
+
+func TestBookingRequestPaymentUIByStatusAndPermission(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	now := time.Now()
+	confirmed := SpaceSchedule{
+		ID:             101,
+		SlotDate:       now.AddDate(0, 0, 2).Format("2006-01-02"),
+		SlotHour:       "18:00",
+		EntryType:      "booking",
+		Activity:       "badminton",
+		Quantity:       1,
+		Title:          "Confirmed Booking",
+		Status:         bookingStatusConfirmed,
+		RequesterName:  "Confirmed Customer",
+		RequesterEmail: "confirmed@example.com",
+		RequesterPhone: "0700000001",
+		CreatedAt:      now.Add(-2 * time.Hour),
+		UpdatedAt:      now.Add(-time.Hour),
+	}
+	pending := confirmed
+	pending.ID = 102
+	pending.Title = "Pending Booking"
+	pending.Status = bookingStatusPending
+	pending.RequesterEmail = "pending@example.com"
+	pending.RequesterPhone = "0700000002"
+	held := confirmed
+	held.ID = 103
+	held.Title = "Held Booking"
+	held.Status = bookingStatusHeld
+	held.RequesterEmail = "held@example.com"
+	held.RequesterPhone = "0700000003"
+
+	financials := []BookingFinancial{
+		{ScheduleID: confirmed.ID, QuotedAmount: 5000, TotalCollected: 2000, OutstandingAmount: 3000, PaymentStatus: "partially_paid", LastPaymentDate: now.Add(-30 * time.Minute)},
+		{ScheduleID: pending.ID, QuotedAmount: 2500, TotalCollected: 0, OutstandingAmount: 2500, PaymentStatus: "unpaid"},
+		{ScheduleID: held.ID, QuotedAmount: 2500, TotalCollected: 0, OutstandingAmount: 2500, PaymentStatus: "unpaid"},
+	}
+	collections := []BookingPaymentCollection{
+		{ID: 1, ScheduleID: confirmed.ID, FinanceTransactionID: 501, ReceiptNumber: "MKM-BKG-2026-000501", Amount: 2000, PaymentMethod: "cash", CollectedAt: now.Add(-30 * time.Minute)},
+		{ID: 2, ScheduleID: confirmed.ID, FinanceTransactionID: 502, ReceiptNumber: "MKM-BKG-2026-000502", Amount: 3000, PaymentMethod: "cash", CollectedAt: now.Add(-20 * time.Minute), Voided: true, VoidReason: "Duplicate cash entry", VoidedAt: now.Add(-10 * time.Minute)},
+	}
+
+	bookingStaff := &User{Name: "Booking Staff", Permissions: []string{"space_bookings.manage"}}
+	financeUser := &User{Name: "Finance Staff", Permissions: []string{"finance.manage"}}
+
+	confirmedHTML := renderTemplateToString(t, templates, "booking-requests", bookingTestDataForRequestPage(bookingStaff, []SpaceSchedule{confirmed}, financials, collections))
+	if !strings.Contains(confirmedHTML, "LKR 5000.00") {
+		t.Fatal("confirmed booking request did not render quoted amount")
+	}
+	if !strings.Contains(confirmedHTML, `action="/admin/bookings/payments/collect"`) {
+		t.Fatal("confirmed booking request did not render booking payment form")
+	}
+	if !strings.Contains(confirmedHTML, `name="payment_method" value="cash"`) {
+		t.Fatal("confirmed booking request did not post cash only")
+	}
+	if !strings.Contains(confirmedHTML, "MKM-BKG-2026-000501") || !strings.Contains(confirmedHTML, "MKM-BKG-2026-000502") {
+		t.Fatal("confirmed booking request did not render multiple payment collections")
+	}
+	if !strings.Contains(confirmedHTML, "Voided") {
+		t.Fatal("confirmed booking request did not render voided payment state")
+	}
+	if strings.Contains(confirmedHTML, "Void</button>") {
+		t.Fatal("booking staff should not see void action")
+	}
+
+	financeHTML := renderTemplateToString(t, templates, "booking-requests", bookingTestDataForRequestPage(financeUser, []SpaceSchedule{confirmed}, financials, collections))
+	if !strings.Contains(financeHTML, "Void</button>") {
+		t.Fatal("finance user should see void action on booking requests")
+	}
+
+	pendingHTML := renderTemplateToString(t, templates, "booking-requests", bookingTestDataForRequestPage(bookingStaff, []SpaceSchedule{pending}, financials, nil))
+	if strings.Contains(pendingHTML, `action="/admin/bookings/payments/collect"`) {
+		t.Fatal("pending booking request should not render active payment form")
+	}
+	if !strings.Contains(pendingHTML, "Cash collection becomes available after the booking is confirmed.") {
+		t.Fatal("pending booking request should explain that collection is unavailable")
+	}
+
+	heldHTML := renderTemplateToString(t, templates, "booking-requests", bookingTestDataForRequestPage(bookingStaff, []SpaceSchedule{held}, financials, nil))
+	if strings.Contains(heldHTML, `action="/admin/bookings/payments/collect"`) {
+		t.Fatal("held booking request should not render active payment form")
+	}
+}
+
+func TestBookingManagementPaymentHistoryAcrossLifecycleStatuses(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	now := time.Now()
+	user := &User{Name: "Finance Staff", Permissions: []string{"finance.manage"}}
+	statuses := []string{bookingStatusCancelled, bookingStatusCompleted, bookingStatusNoShow}
+	for _, status := range statuses {
+		schedule := SpaceSchedule{
+			ID:             200,
+			SlotDate:       now.AddDate(0, 0, 2).Format("2006-01-02"),
+			SlotHour:       "19:00",
+			EntryType:      "booking",
+			Activity:       "full_indoor_cricket",
+			Quantity:       1,
+			Title:          "Lifecycle " + status,
+			Status:         status,
+			RequesterName:  "Lifecycle Customer",
+			RequesterEmail: "lifecycle@example.com",
+			RequesterPhone: "0700000000",
+			CreatedAt:      now.Add(-3 * time.Hour),
+			UpdatedAt:      now.Add(-time.Hour),
+		}
+		financial := BookingFinancial{ScheduleID: schedule.ID, QuotedAmount: 5000, TotalCollected: 2000, OutstandingAmount: 3000, PaymentStatus: "partially_paid", LastPaymentDate: now.Add(-25 * time.Minute)}
+		collections := []BookingPaymentCollection{
+			{ID: 1, ScheduleID: schedule.ID, FinanceTransactionID: 601, ReceiptNumber: "MKM-BKG-2026-000601", Amount: 2000, PaymentMethod: "cash", CollectedAt: now.Add(-25 * time.Minute)},
+			{ID: 2, ScheduleID: schedule.ID, FinanceTransactionID: 602, ReceiptNumber: "MKM-BKG-2026-000602", Amount: 3000, PaymentMethod: "cash", CollectedAt: now.Add(-20 * time.Minute), Voided: true, VoidReason: "Entry error", VoidedAt: now.Add(-10 * time.Minute)},
+		}
+		html := renderTemplateToString(t, templates, "booking-management", TemplateData{
+			User:                      user,
+			CSRFToken:                 "test-token",
+			CalendarDate:              schedule.SlotDate,
+			TodayDate:                 now.Format("2006-01-02"),
+			PreviousDate:              now.AddDate(0, 0, 1).Format("2006-01-02"),
+			NextDate:                  now.AddDate(0, 0, 3).Format("2006-01-02"),
+			Hours:                     []string{"19:00"},
+			WeekDays:                  []CalendarDay{{Date: schedule.SlotDate, DayLabel: "Mon", MonthLabel: "Aug", DayNumber: "03", OpenSlotCount: 1, IsSelected: true}},
+			DailyStats:                []Stat{{Label: "Open hours", Value: "1"}},
+			ScheduleMode:              "view",
+			SelectedSchedule:          &schedule,
+			DaySchedules:              []SpaceSchedule{schedule},
+			BookingFinancials:         []BookingFinancial{financial},
+			BookingPaymentCollections: collections,
+			AdminCalendarHours:        []AdminCalendarHour{},
+		})
+		if !strings.Contains(html, "Booking payments") {
+			t.Fatalf("%s booking detail did not render payment panel", status)
+		}
+		if !strings.Contains(html, "MKM-BKG-2026-000601") || !strings.Contains(html, "MKM-BKG-2026-000602") {
+			t.Fatalf("%s booking detail did not retain visible payment history", status)
+		}
+		if !strings.Contains(html, "Cash was previously collected") && status == bookingStatusCancelled {
+			t.Fatal("cancelled booking should warn when cash was previously collected")
+		}
+	}
+}
+
+func TestBookingFinanceReceiptTemplateRendersBookingPaymentDetails(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	now := time.Now()
+	html := renderTemplateToString(t, templates, "finance-receipt", TemplateData{
+		User: &User{Name: "Finance Staff", Permissions: []string{"finance.manage"}},
+		SelectedFinance: &FinanceTransaction{
+			ID:            701,
+			ReceiptNumber: "MKM-BKG-2026-000701",
+			Category:      "booking_payment",
+			Amount:        3500,
+			PaymentMethod: "cash",
+			RecordedAt:    now,
+		},
+		ReceiptBookingPayment: &BookingPaymentCollection{
+			ID:                   1,
+			ScheduleID:           300,
+			FinanceTransactionID: 701,
+			ReceiptNumber:        "MKM-BKG-2026-000701",
+			Amount:               3500,
+			PaymentMethod:        "cash",
+			PaymentNote:          "Collected at venue",
+			CollectedAt:          now,
+			Voided:               true,
+			VoidReason:           "Duplicate receipt",
+			VoidedAt:             now.Add(5 * time.Minute),
+			VoidedByUserName:     "Finance Lead",
+		},
+		ReceiptBookingSchedule: &SpaceSchedule{
+			ID:             300,
+			SlotDate:       now.AddDate(0, 0, 2).Format("2006-01-02"),
+			SlotHour:       "18:00",
+			Activity:       "badminton",
+			Quantity:       1,
+			Status:         bookingStatusConfirmed,
+			RequesterName:  "Receipt Customer",
+			RequesterEmail: "receipt@example.com",
+			RequesterPhone: "0700000000",
+		},
+		ReceiptBookingFinancial: &BookingFinancial{
+			ScheduleID:        300,
+			QuotedAmount:      5000,
+			TotalCollected:    3500,
+			OutstandingAmount: 1500,
+			PaymentStatus:     "partially_paid",
+		},
+		BookingStatusView: &BookingStatusView{ContactPhone: "+94772207297", ContactEmail: "bookings@mekmaa.example"},
+	})
+	for _, marker := range []string{"MKM-BKG-2026-000701", "Booking Cash Receipt", bookingReference(300), "LKR 3500.00", "LKR 1500.00", "Voided receipt"} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("booking receipt is missing %q", marker)
+		}
+	}
+}
+
+func TestCustomerBookingStatusPaymentVisibilityAndTotals(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	scheduleID := createConfirmedFutureBooking(t, app, 3, "18:00")
+	if _, err := app.collectBookingPayment(scheduleID, "cash", 2000, "safe note", 0, false); err != nil {
+		t.Fatalf("collect active payment: %v", err)
+	}
+	if _, err := app.collectBookingPayment(scheduleID, "cash", 3000, "internal note should stay hidden", 0, true); err != nil {
+		t.Fatalf("collect second payment: %v", err)
+	}
+	collections, err := app.listBookingPaymentCollectionsForScheduleIDs([]int64{scheduleID})
+	if err != nil {
+		t.Fatalf("list collections: %v", err)
+	}
+	if len(collections) != 2 {
+		t.Fatalf("expected 2 collections, got %d", len(collections))
+	}
+	if err := app.voidBookingPayment(collections[0].ID, "staff correction reason", 0); err != nil {
+		t.Fatalf("void payment: %v", err)
+	}
+	_, rawToken, err := app.ensureActiveBookingAccessToken(scheduleID, "status")
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/booking/status?token="+url.QueryEscape(rawToken), nil)
+	rec := httptest.NewRecorder()
+	app.publicBookingStatusHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected booking status page, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, marker := range []string{"LKR 3000.00", "LKR 2000.00", "MKM-BKG-", "A previous payment record was corrected."} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("customer status page missing %q", marker)
+		}
+	}
+	for _, forbidden := range []string{"internal note should stay hidden", "staff correction reason", "safe note"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("customer status page exposed %q", forbidden)
+		}
+	}
+}
+
+func TestCollectBookingPaymentHandlerOverpaymentFlashAndReturnURL(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 4, "20:00")
+
+	form := url.Values{
+		"csrf_token":     {"test-csrf"},
+		"schedule_id":    {fmt.Sprint(scheduleID)},
+		"payment_method": {"cash"},
+		"amount":         {"6000"},
+		"payment_note":   {"counter cash"},
+		"return_to":      {"/admin/bookings?action=view&id=" + fmt.Sprint(scheduleID)},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/bookings/payments/collect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{ID: 1, Name: "Booking Staff", Permissions: []string{"space_bookings.manage"}}))
+	rec := httptest.NewRecorder()
+	app.collectBookingPaymentHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect, got %d", rec.Code)
+	}
+	if location := rec.Header().Get("Location"); location != "/admin/bookings?action=view&id="+fmt.Sprint(scheduleID) {
+		t.Fatalf("unexpected return location: %s", location)
+	}
+	if !strings.Contains(rec.Header().Get("Set-Cookie"), "flash=") {
+		t.Fatal("overpayment flash message was not set")
 	}
 }
 

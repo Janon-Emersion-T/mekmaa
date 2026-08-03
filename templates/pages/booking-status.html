@@ -53,6 +53,38 @@
             <p class="mt-2 text-lg font-semibold text-obsidian">{{.BookingStatusView.PaymentStatus}}</p>
             {{if .BookingStatusView.PaidAtLabel}}<p class="mt-2 text-sm text-slate/55">Paid at {{.BookingStatusView.PaidAtLabel}}</p>{{end}}
           </article>
+          <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+            <p class="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-slate/45">Total paid</p>
+            <p class="mt-2 text-lg font-semibold text-emerald-800">{{.BookingStatusView.TotalCollected}}</p>
+          </article>
+          <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+            <p class="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-slate/45">Outstanding balance</p>
+            <p class="mt-2 text-lg font-semibold text-obsidian">{{.BookingStatusView.OutstandingAmount}}</p>
+          </article>
+        </div>
+
+        <div class="rounded-[1.7rem] border border-white/80 bg-white/90 p-6 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/55">Payment history</p>
+          <div class="mt-5 grid gap-3">
+            {{range customerVisibleBookingPaymentsForSchedule .BookingPaymentCollections .SelectedSchedule.ID}}
+            <div class="rounded-[1.2rem] border border-slate/10 bg-cloud/35 p-4">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="font-mono text-sm font-semibold text-obsidian">{{.ReceiptNumber}}</p>
+                  <span class="rounded-full bg-white px-2.5 py-1 text-[0.6rem] font-bold uppercase tracking-wider text-slate">Cash payment</span>
+                  {{if .Voided}}<span class="rounded-full border border-slate/10 bg-white px-2.5 py-1 text-[0.6rem] font-bold uppercase tracking-wider text-slate">Corrected</span>{{else}}<span class="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[0.6rem] font-bold uppercase tracking-wider text-emerald-700">Active</span>{{end}}
+                </div>
+                <p class="text-sm font-semibold {{if .Voided}}text-slate/60{{else}}text-emerald-800{{end}}">{{money .Amount}}</p>
+              </div>
+              <p class="mt-2 text-sm text-slate/65">{{formatDateTime .CollectedAt}}</p>
+              {{if .Voided}}
+              <p class="mt-2 text-sm leading-6 text-slate/60">A previous payment record was corrected.</p>
+              {{end}}
+            </div>
+            {{else}}
+            <p class="rounded-[1.2rem] border border-dashed border-slate/15 bg-cloud/25 px-4 py-4 text-sm text-slate/55">No cash payment has been recorded on this booking yet.</p>
+            {{end}}
+          </div>
         </div>
 
         {{if .BookingStatusView.CustomerMessage}}

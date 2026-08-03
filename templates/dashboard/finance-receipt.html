@@ -66,36 +66,118 @@
     }
   </style>
 
-  <div
-    class="thermal-receipt mx-auto overflow-hidden rounded-[1.5rem] border border-slate/10 bg-white p-5 text-obsidian shadow-sm"
-  >
-    <!-- Logos -->
+  <div class="thermal-receipt mx-auto overflow-hidden rounded-[1.5rem] border border-slate/10 bg-white p-5 text-obsidian shadow-sm">
     <div class="flex items-center justify-center gap-3 pb-3">
-      <img
-        src="/images/mekmaa-private-limited.jpeg"
-        alt="Mekmaa Private Limited"
-        class="receipt-logo h-14 max-w-[44%] rounded-lg object-contain"
-      />
-
+      <img src="/images/mekmaa-private-limited.jpeg" alt="Mekmaa Private Limited" class="receipt-logo h-14 max-w-[44%] rounded-lg object-contain" />
       <div class="h-11 w-px bg-slate/20"></div>
-
-      <img
-        src="/images/mekmaa-cricket-academy.jpeg"
-        alt="Mekmaa Cricket Academy"
-        class="receipt-logo h-14 max-w-[44%] rounded-lg object-contain"
-      />
+      <img src="/images/mekmaa-cricket-academy.jpeg" alt="Mekmaa Cricket Academy" class="receipt-logo h-14 max-w-[44%] rounded-lg object-contain" />
     </div>
 
-    <!-- Receipt heading -->
+    {{if and (eq .SelectedFinance.Category "booking_payment") .ReceiptBookingPayment .ReceiptBookingSchedule .ReceiptBookingFinancial}}
+    <div class="text-center">
+      {{if .ReceiptBookingPayment.Voided}}<p class="mb-3 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-[0.72rem] font-extrabold uppercase tracking-[0.2em] text-red-700">Voided receipt</p>{{end}}
+      <h1 class="text-[1.05rem] font-extrabold uppercase tracking-[0.12em] text-obsidian">Booking Cash Receipt</h1>
+      <p class="mt-2 text-[0.72rem] font-medium leading-5 text-slate/65">
+        No. 64, Temple Road<br />
+        Jaffna 40000, Sri Lanka<br />
+        {{.BookingStatusView.ContactPhone}}{{if .BookingStatusView.ContactEmail}} · {{.BookingStatusView.ContactEmail}}{{end}}
+      </p>
+    </div>
+
+    <div class="receipt-divider mt-4"></div>
+
+    <dl class="space-y-2.5 py-4 text-[0.78rem] leading-5">
+      <div class="flex items-start justify-between gap-4">
+        <dt class="shrink-0 font-medium text-slate/60">Receipt No.</dt>
+        <dd class="break-all text-right font-mono font-bold text-obsidian">{{.SelectedFinance.ReceiptNumber}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-4">
+        <dt class="shrink-0 font-medium text-slate/60">Printed</dt>
+        <dd class="text-right font-semibold text-obsidian">{{formatDateTime .SelectedFinance.RecordedAt}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-4">
+        <dt class="shrink-0 font-medium text-slate/60">Payment method</dt>
+        <dd class="text-right font-bold uppercase text-obsidian">Cash</dd>
+      </div>
+      <div class="flex items-start justify-between gap-4">
+        <dt class="shrink-0 font-medium text-slate/60">Booking reference</dt>
+        <dd class="text-right font-mono font-bold text-obsidian">{{bookingReference .ReceiptBookingSchedule.ID}}</dd>
+      </div>
+    </dl>
+
+    <div class="receipt-divider"></div>
+
+    <dl class="space-y-3 py-4 text-[0.78rem] leading-5">
+      <div>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">Received from</dt>
+        <dd class="mt-1 text-sm font-bold text-obsidian">{{.ReceiptBookingSchedule.RequesterName}}</dd>
+        <dd class="mt-1 text-xs text-slate/60">{{.ReceiptBookingSchedule.RequesterPhone}}{{if .ReceiptBookingSchedule.RequesterEmail}} · {{.ReceiptBookingSchedule.RequesterEmail}}{{end}}</dd>
+      </div>
+      <div>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">Booking</dt>
+        <dd class="mt-1 font-semibold text-obsidian">{{bookingProductLabel .ReceiptBookingSchedule.Activity .ReceiptBookingSchedule.Quantity}}</dd>
+        <dd class="mt-1 text-xs text-slate/60">{{formatCalendarDate .ReceiptBookingSchedule.SlotDate}} · {{formatClockTime .ReceiptBookingSchedule.SlotHour}} · {{.ReceiptBookingSchedule.Status}}</dd>
+      </div>
+      <div>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">Collected by</dt>
+        <dd class="mt-1 font-semibold text-obsidian">{{if .ReceiptBookingPayment.CollectedByUserName}}{{.ReceiptBookingPayment.CollectedByUserName}}{{else}}Mekmaa staff{{end}}</dd>
+        <dd class="mt-1 text-xs text-slate/60">{{formatDateTime .ReceiptBookingPayment.CollectedAt}}</dd>
+      </div>
+      {{if .ReceiptBookingPayment.PaymentNote}}
+      <div>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">Payment note</dt>
+        <dd class="mt-1 font-medium text-obsidian">{{.ReceiptBookingPayment.PaymentNote}}</dd>
+      </div>
+      {{end}}
+    </dl>
+
+    <div class="receipt-divider"></div>
+
+    <dl class="space-y-3 py-4 text-[0.78rem] leading-5">
+      <div class="flex items-start justify-between gap-4">
+        <dt class="font-medium text-slate/60">Quoted booking amount</dt>
+        <dd class="font-semibold text-obsidian">{{money .ReceiptBookingFinancial.QuotedAmount}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-4">
+        <dt class="font-medium text-slate/60">Received in this receipt</dt>
+        <dd class="font-semibold text-obsidian">{{money .ReceiptBookingPayment.Amount}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-4">
+        <dt class="font-medium text-slate/60">Total received after receipt</dt>
+        <dd class="font-semibold text-emerald-800">{{money .ReceiptBookingFinancial.TotalCollected}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-4">
+        <dt class="font-medium text-slate/60">Outstanding balance</dt>
+        <dd class="font-semibold {{if gt .ReceiptBookingFinancial.OutstandingAmount 0.0}}text-amber-900{{else}}text-emerald-800{{end}}">{{money .ReceiptBookingFinancial.OutstandingAmount}}</dd>
+      </div>
+      <div class="flex items-start justify-between gap-4">
+        <dt class="font-medium text-slate/60">Payment status</dt>
+        <dd class="font-semibold text-obsidian">{{bookingPaymentStatusBadge .ReceiptBookingFinancial.PaymentStatus}}</dd>
+      </div>
+    </dl>
+
+    {{if .ReceiptBookingPayment.Voided}}
+    <div class="receipt-divider"></div>
+    <div class="py-4 text-[0.78rem] leading-5">
+      <p class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-red-700">Void information</p>
+      <p class="mt-2 font-semibold text-red-900">This cash collection was voided on {{formatDateTime .ReceiptBookingPayment.VoidedAt}}{{if .ReceiptBookingPayment.VoidedByUserName}} by {{.ReceiptBookingPayment.VoidedByUserName}}{{end}}.</p>
+      {{if .ReceiptBookingPayment.VoidReason}}<p class="mt-2 text-slate/70">{{.ReceiptBookingPayment.VoidReason}}</p>{{end}}
+    </div>
+    {{end}}
+
+    <div class="receipt-divider"></div>
+
+    <div class="pt-4 text-center">
+      <p class="text-sm font-bold text-obsidian">Thank you</p>
+      <p class="mt-1 text-[0.68rem] font-medium leading-5 text-slate/55">Computer-generated cash receipt</p>
+      <p class="mt-3 text-[0.68rem] font-medium leading-5 text-slate/55">For assistance contact Mekmaa at {{.BookingStatusView.ContactPhone}}{{if .BookingStatusView.ContactEmail}} or {{.BookingStatusView.ContactEmail}}{{end}}.</p>
+      <p class="mt-3 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/45">Mekmaa</p>
+    </div>
+    {{else}}
     <div class="text-center">
       <h1 class="text-[1.05rem] font-extrabold uppercase tracking-[0.12em] text-obsidian">
-        {{if lt .SelectedFinance.Amount 0.0}}
-          Expense Voucher
-        {{else}}
-          Payment Receipt
-        {{end}}
+        {{if lt .SelectedFinance.Amount 0.0}}Expense Voucher{{else}}Payment Receipt{{end}}
       </h1>
-
       <p class="mt-2 text-[0.72rem] font-medium leading-5 text-slate/65">
         No. 64, Temple Road<br />
         Jaffna 40000, Sri Lanka
@@ -104,174 +186,73 @@
 
     <div class="receipt-divider mt-4"></div>
 
-    <!-- Receipt information -->
     <dl class="space-y-2.5 py-4 text-[0.78rem] leading-5">
       <div class="flex items-start justify-between gap-4">
-        <dt class="shrink-0 font-medium text-slate/60">
-          Receipt No.
-        </dt>
-
-        <dd class="break-all text-right font-mono font-bold text-obsidian">
-          {{.SelectedFinance.ReceiptNumber}}
-        </dd>
+        <dt class="shrink-0 font-medium text-slate/60">Receipt No.</dt>
+        <dd class="break-all text-right font-mono font-bold text-obsidian">{{.SelectedFinance.ReceiptNumber}}</dd>
       </div>
-
       <div class="flex items-start justify-between gap-4">
-        <dt class="shrink-0 font-medium text-slate/60">
-          Date
-        </dt>
-
-        <dd class="text-right font-semibold text-obsidian">
-          {{formatDateTime .SelectedFinance.RecordedAt}}
-        </dd>
+        <dt class="shrink-0 font-medium text-slate/60">Date</dt>
+        <dd class="text-right font-semibold text-obsidian">{{formatDateTime .SelectedFinance.RecordedAt}}</dd>
       </div>
-
       <div class="flex items-start justify-between gap-4">
-        <dt class="shrink-0 font-medium text-slate/60">
-          Category
-        </dt>
-
-        <dd class="text-right font-semibold text-obsidian">
-          {{financeCategoryLabel .SelectedFinance.Category}}
-        </dd>
+        <dt class="shrink-0 font-medium text-slate/60">Category</dt>
+        <dd class="text-right font-semibold text-obsidian">{{financeCategoryLabel .SelectedFinance.Category}}</dd>
       </div>
-
       <div class="flex items-start justify-between gap-4">
-        <dt class="shrink-0 font-medium text-slate/60">
-          Payment method
-        </dt>
-
-        <dd class="text-right font-bold uppercase text-obsidian">
-          {{.SelectedFinance.PaymentMethod}}
-        </dd>
+        <dt class="shrink-0 font-medium text-slate/60">Payment method</dt>
+        <dd class="text-right font-bold uppercase text-obsidian">{{.SelectedFinance.PaymentMethod}}</dd>
       </div>
     </dl>
 
     <div class="receipt-divider"></div>
 
-    <!-- Customer and student information -->
     <dl class="space-y-3 py-4 text-[0.78rem] leading-5">
       <div>
-        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">
-          {{if lt .SelectedFinance.Amount 0.0}}
-            Paid to
-          {{else}}
-            Received from
-          {{end}}
-        </dt>
-
-        <dd class="mt-1 text-sm font-bold text-obsidian">
-          {{.SelectedFinance.PersonName}}
-        </dd>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">{{if lt .SelectedFinance.Amount 0.0}}Paid to{{else}}Received from{{end}}</dt>
+        <dd class="mt-1 text-sm font-bold text-obsidian">{{.SelectedFinance.PersonName}}</dd>
       </div>
-
       {{if .ReceiptAdmission}}
       <div>
-        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">
-          Student ID
-        </dt>
-
-        <dd class="mt-1 font-bold text-obsidian">
-          {{.ReceiptAdmission.StudentID}}
-        </dd>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">Student ID</dt>
+        <dd class="mt-1 font-bold text-obsidian">{{.ReceiptAdmission.StudentID}}</dd>
       </div>
-
       <div>
-        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">
-          Training programme
-        </dt>
-
-        <dd class="mt-1 font-semibold text-obsidian">
-          {{if .ReceiptAdmission.TrainingProgramName}}
-            {{.ReceiptAdmission.TrainingProgramName}}
-          {{else}}
-            Legacy programme
-          {{end}}
-        </dd>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">Training programme</dt>
+        <dd class="mt-1 font-semibold text-obsidian">{{if .ReceiptAdmission.TrainingProgramName}}{{.ReceiptAdmission.TrainingProgramName}}{{else}}Legacy programme{{end}}</dd>
       </div>
       {{end}}
-
       <div>
-        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">
-          Description
-        </dt>
-
-        <dd class="mt-1 font-medium text-obsidian">
-          {{.SelectedFinance.Description}}
-        </dd>
+        <dt class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate/50">Description</dt>
+        <dd class="mt-1 font-medium text-obsidian">{{.SelectedFinance.Description}}</dd>
       </div>
     </dl>
 
     <div class="receipt-divider"></div>
 
-    <!-- Total -->
     <div class="py-5 text-center">
-      <p class="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-slate/55">
-        {{if lt .SelectedFinance.Amount 0.0}}
-          Total paid
-        {{else}}
-          Total received
-        {{end}}
-      </p>
-
-      <p class="mt-2 text-[1.8rem] font-black tracking-tight text-obsidian">
-        {{if lt .SelectedFinance.Amount 0.0}}
-          {{money (negate .SelectedFinance.Amount)}}
-        {{else}}
-          {{money .SelectedFinance.Amount}}
-        {{end}}
-      </p>
+      <p class="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-slate/55">{{if lt .SelectedFinance.Amount 0.0}}Total paid{{else}}Total received{{end}}</p>
+      <p class="mt-2 text-[1.8rem] font-black tracking-tight text-obsidian">{{if lt .SelectedFinance.Amount 0.0}}{{money (negate .SelectedFinance.Amount)}}{{else}}{{money .SelectedFinance.Amount}}{{end}}</p>
     </div>
 
     <div class="receipt-divider"></div>
 
-    <!-- Footer -->
     <div class="pt-4 text-center">
-      <p class="text-sm font-bold text-obsidian">
-        Thank you
-      </p>
-
-      <p class="mt-1 text-[0.68rem] font-medium leading-5 text-slate/55">
-        Learn · Play · Achieve
-      </p>
-
-      <p class="mt-3 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/45">
-        Mekmaa
-      </p>
+      <p class="text-sm font-bold text-obsidian">Thank you</p>
+      <p class="mt-1 text-[0.68rem] font-medium leading-5 text-slate/55">Learn · Play · Achieve</p>
+      <p class="mt-3 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/45">Mekmaa</p>
     </div>
+    {{end}}
   </div>
 
-  <!-- Screen-only actions -->
   <div class="receipt-actions mx-auto mt-5 flex max-w-[4in] flex-col gap-3 sm:flex-row">
-    <button
-      type="button"
-      onclick="window.print()"
-      class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate"
-    >
-      Print receipt
-    </button>
+    <button type="button" onclick="window.print()" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Print receipt</button>
 
-    <a
-      href="{{if eq .SelectedFinance.Category "student_monthly_payment"}}/admin/student-payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}/admin/referrals{{else if eq .SelectedFinance.Category "admission_payment"}}/admin/admissions{{else}}/admin/finance{{end}}"
-      class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud"
-    >
-      {{if eq .SelectedFinance.Category "student_monthly_payment"}}
-        Back to payments
-      {{else if eq .SelectedFinance.Category "referral_commission_payment"}}
-        Back to referrals
-      {{else if eq .SelectedFinance.Category "admission_payment"}}
-        Back to admissions
-      {{else}}
-        Back to finance
-      {{end}}
+    <a href="{{if eq .SelectedFinance.Category "student_monthly_payment"}}/admin/student-payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}/admin/referrals{{else if eq .SelectedFinance.Category "admission_payment"}}/admin/admissions{{else if and .ReceiptBookingSchedule (ne .ReceiptBookingSchedule.SlotDate "")}}/admin/bookings?action=view&id={{.ReceiptBookingSchedule.ID}}&date={{.ReceiptBookingSchedule.SlotDate}}#schedule-view{{else}}/admin/finance{{end}}" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud">
+      {{if eq .SelectedFinance.Category "student_monthly_payment"}}Back to payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}Back to referrals{{else if eq .SelectedFinance.Category "admission_payment"}}Back to admissions{{else if eq .SelectedFinance.Category "booking_payment"}}Back to booking{{else}}Back to finance{{end}}
     </a>
 
-    <a
-      href="/admin/finance"
-      class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud"
-    >
-      Open finance
-    </a>
+    <a href="/admin/finance" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud">Open finance</a>
   </div>
 
   <script>
