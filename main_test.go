@@ -1146,13 +1146,13 @@ func TestFinanceBookingAndManualTransactionLifecycle(t *testing.T) {
 	if quotedAmount != 7250 {
 		t.Fatalf("unexpected booking price snapshot: %.2f", quotedAmount)
 	}
-	if _, err := app.collectBookingPayment(scheduleID, "cash", 0); err == nil {
+	if _, err := app.collectBookingPayment(scheduleID, "cash", 7250, "", 0, false); err == nil {
 		t.Fatal("expected pending booking collection to be rejected")
 	}
 	if _, err := app.updateBookingRequestStatus(scheduleID, "confirmed", "", ""); err != nil {
 		t.Fatalf("confirm booking: %v", err)
 	}
-	transactionID, err := app.collectBookingPayment(scheduleID, "cash", 0)
+	transactionID, err := app.collectBookingPayment(scheduleID, "cash", 7250, "", 0, false)
 	if err != nil {
 		t.Fatalf("collect booking payment: %v", err)
 	}
@@ -1164,7 +1164,7 @@ func TestFinanceBookingAndManualTransactionLifecycle(t *testing.T) {
 	if category != "booking_payment" || amount != 7250 {
 		t.Fatalf("unexpected booking transaction: category=%q amount=%.2f", category, amount)
 	}
-	if _, err := app.collectBookingPayment(scheduleID, "cash", 0); !errors.Is(err, ErrBookingPaymentAlreadyCollected) {
+	if _, err := app.collectBookingPayment(scheduleID, "cash", 7250, "", 0, false); !errors.Is(err, ErrBookingPaymentAlreadyCollected) {
 		t.Fatalf("expected duplicate booking payment error, got %v", err)
 	}
 
@@ -1219,7 +1219,7 @@ func TestBookingCancellationReleasesCapacityAndPreservesPayment(t *testing.T) {
 	app := &App{db: db}
 
 	scheduleID := createConfirmedFutureBooking(t, app, 5, "18:00")
-	if _, err := app.collectBookingPayment(scheduleID, "cash", 42); err != nil {
+	if _, err := app.collectBookingPayment(scheduleID, "cash", 2500, "", 42, false); err != nil {
 		t.Fatalf("collect booking payment: %v", err)
 	}
 	updated, _, err := app.transitionManagedBookingStatus(scheduleID, bookingStatusCancelled, "Customer cannot attend", "", "Customer cannot attend", "cash retained", "admin", 0)

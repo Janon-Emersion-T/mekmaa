@@ -258,6 +258,27 @@ type FinanceTransaction struct {
 	CreatedAt      time.Time
 }
 
+type BookingPaymentCollection struct {
+	ID                   int64
+	ScheduleID           int64
+	FinanceTransactionID int64
+	ReceiptNumber        string
+	PersonName           string
+	Description          string
+	Amount               float64
+	PaymentMethod        string
+	PaymentNote          string
+	CollectedByUserID    int64
+	CollectedByUserName  string
+	CollectedAt          time.Time
+	CreatedAt            time.Time
+	Voided               bool
+	VoidReason           string
+	VoidedByUserID       int64
+	VoidedByUserName     string
+	VoidedAt             time.Time
+}
+
 type FinanceFilter struct {
 	From      string
 	To        string
@@ -291,6 +312,14 @@ type BookingFinancial struct {
 	RequesterName        string
 	RequesterEmail       string
 	RecordedByUserID     int64
+	TotalCollected       float64
+	OutstandingAmount    float64
+	PaymentStatus        string
+	LastPaymentDate      time.Time
+	LastPaymentByUserID  int64
+	LastPaymentByUserName string
+	ActivePaymentCount   int
+	VoidedPaymentCount   int
 }
 
 type ReportPeriod struct {
@@ -645,6 +674,8 @@ type BookingStatusView struct {
 	QuotedAmount               string
 	PaymentStatus              string
 	PaidAtLabel                string
+	TotalCollected             string
+	OutstandingAmount          string
 	Title                      string
 	ContactPhone               string
 	ContactEmail               string
@@ -883,6 +914,7 @@ type TemplateData struct {
 	FinanceFilter                   FinanceFilter
 	FinanceSummary                  FinanceSummary
 	BookingFinancials               []BookingFinancial
+	BookingPaymentCollections       []BookingPaymentCollection
 	BookingCommunications           []BookingCommunication
 	BookingAccessTokens             []BookingAccessToken
 	BookingCancellationRequests     []BookingCancellationRequest
@@ -894,6 +926,9 @@ type TemplateData struct {
 	BookingStatusUnavailableMessage string
 	Report                          *OperationalReport
 	ReceiptAdmission                *Admission
+	ReceiptBookingPayment           *BookingPaymentCollection
+	ReceiptBookingSchedule          *SpaceSchedule
+	ReceiptBookingFinancial         *BookingFinancial
 	StudentPaymentRows              []StudentPaymentRow
 	PaymentMonth                    string
 	PaymentMonthLabel               string
@@ -949,9 +984,12 @@ var (
 	ErrStudentPaymentAlreadyCollected = errors.New("student payment already collected")
 	ErrStudentNotAdmittedForMonth     = errors.New("student was not admitted for the selected month")
 	ErrBookingPaymentAlreadyCollected = errors.New("booking payment already collected")
+	ErrBookingPaymentNeedsOverpayApproval = errors.New("booking payment exceeds the outstanding balance")
 	ErrRoleAssigned                   = errors.New("role is assigned to one or more users")
 	ErrSystemRoleProtected            = errors.New("system roles are protected")
 )
+
+const maxBookingCashCollection = 1000000
 
 const (
 	bookingCommEventRequestReceived       = "booking_request_received"
@@ -1273,6 +1311,9 @@ func main() {
 	mux.Handle("/admin/bookings/no-show", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.noShowBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/cancellation-requests/approve", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.approveBookingCancellationRequestHandler), "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/bookings/cancellation-requests/reject", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.rejectBookingCancellationRequestHandler), "space_bookings.manage", "booking_requests.manage")))
+	mux.Handle("/admin/bookings/payments/collect", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance.manage", "space_bookings.manage", "booking_requests.manage")))
+	mux.Handle("/admin/bookings/payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidBookingPaymentHandler), "finance.manage")))
+	mux.Handle("/admin/bookings/payments/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.manage")))
@@ -1293,7 +1334,7 @@ func main() {
 	mux.Handle("/admin/events/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEventHandler), "events.manage")))
 	mux.Handle("/admin/finance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transactions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransactionHandler), "finance.manage")))
-	mux.Handle("/admin/finance/bookings/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance.manage")))
+	mux.Handle("/admin/finance/bookings/collect", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/finance/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeExportHandler), "finance.manage")))
 	mux.Handle("/admin/reports", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsHandler), "reports.view")))
 	mux.Handle("/admin/reports/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsExportHandler), "reports.view")))
@@ -1305,7 +1346,7 @@ func main() {
 	mux.Handle("/admin/referrals/pay", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payReferralCommissionHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentPaymentsHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStudentPaymentHandler), "finance.manage")))
-	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage")))
+	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 
 	log.Printf("server listening on %s", addr)
 	if err := http.ListenAndServe(addr, app.securityHeaders(mux)); err != nil {
@@ -2727,6 +2768,7 @@ func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.FinanceTransactions = financeTransactions
 	data.FinanceFilter = filter
 	data.BookingFinancials = bookingFinancials
+	data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
 	data.FinanceSummary = buildFinanceSummary(allTransactions, bookingFinancials, monthlyRows, referrals)
 	data.Stats = buildFinanceStats(allTransactions)
 	data.TodayDate = time.Now().Format("2006-01-02")
@@ -2803,23 +2845,70 @@ func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	amount, amountErr := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
-	if err != nil || scheduleID <= 0 || paymentMethod != "cash" {
+	paymentNote := strings.TrimSpace(r.FormValue("payment_note"))
+	allowOverpayment := r.FormValue("allow_overpayment") == "1" || r.FormValue("allow_overpayment") == "on"
+	returnTo := strings.TrimSpace(r.FormValue("return_to"))
+	if err != nil || amountErr != nil || scheduleID <= 0 || paymentMethod != "cash" {
 		http.Error(w, "booking payments are recorded in cash only", http.StatusBadRequest)
 		return
+	}
+	if returnTo == "" {
+		returnTo = "/admin/finance#booking-receivables"
 	}
 	currentUser, _ := a.currentUser(r.Context())
 	recordedBy := int64(0)
 	if currentUser != nil {
 		recordedBy = currentUser.ID
 	}
-	transactionID, err := a.collectBookingPayment(scheduleID, paymentMethod, recordedBy)
+	transactionID, err := a.collectBookingPayment(scheduleID, paymentMethod, amount, paymentNote, recordedBy, allowOverpayment)
 	if err != nil {
-		a.setFlash(w, "Booking payment could not be collected: "+err.Error())
-		http.Redirect(w, r, "/admin/finance#booking-receivables", http.StatusSeeOther)
+		if errors.Is(err, ErrBookingPaymentNeedsOverpayApproval) {
+			a.setFlash(w, "Booking payment exceeds the current balance. Tick the overpayment confirmation box to continue.")
+		} else {
+			a.setFlash(w, "Booking payment could not be collected: "+err.Error())
+		}
+		http.Redirect(w, r, returnTo, http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/bookings/payments/receipt?id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) voidBookingPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	collectionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("collection_id")), 10, 64)
+	if err != nil || collectionID <= 0 {
+		http.Error(w, "invalid payment entry", http.StatusBadRequest)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	voidedBy := int64(0)
+	if currentUser != nil {
+		voidedBy = currentUser.ID
+	}
+	if err := a.voidBookingPayment(collectionID, strings.TrimSpace(r.FormValue("void_reason")), voidedBy); err != nil {
+		a.setFlash(w, "Booking payment could not be collected: "+err.Error())
+		http.Redirect(w, r, strings.TrimSpace(r.FormValue("return_to")), http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Booking payment was voided and the balance was recalculated.")
+	returnTo := strings.TrimSpace(r.FormValue("return_to"))
+	if returnTo == "" {
+		returnTo = "/admin/finance#booking-receivables"
+	}
+	http.Redirect(w, r, returnTo, http.StatusSeeOther)
 }
 
 func (a *App) financeExportHandler(w http.ResponseWriter, r *http.Request) {
@@ -2997,7 +3086,11 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	transactionID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("transaction_id")), 10, 64)
+	rawID := strings.TrimSpace(r.URL.Query().Get("transaction_id"))
+	if rawID == "" {
+		rawID = strings.TrimSpace(r.URL.Query().Get("id"))
+	}
+	transactionID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || transactionID <= 0 {
 		http.Error(w, "invalid transaction id", http.StatusBadRequest)
 		return
@@ -3008,7 +3101,10 @@ func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "receipt not found", http.StatusNotFound)
 		return
 	}
-	if user == nil || (!containsPermission(user.Permissions, "finance.manage") && transaction.Category != "admission_payment") {
+	canViewAdmission := transaction.Category == "admission_payment" && containsPermission(user.Permissions, "admissions.manage")
+	canViewBooking := transaction.Category == "booking_payment" && (containsPermission(user.Permissions, "finance.manage") || containsPermission(user.Permissions, "space_bookings.manage") || containsPermission(user.Permissions, "booking_requests.manage"))
+	canViewFinance := containsPermission(user.Permissions, "finance.manage")
+	if user == nil || (!canViewAdmission && !canViewBooking && !canViewFinance) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3024,6 +3120,18 @@ func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 	data.HideChrome = true
 	data.SelectedFinance = transaction
 	data.ReceiptAdmission = receiptAdmission
+	if transaction.Category == "booking_payment" && transaction.ReferenceID > 0 {
+		collections, _ := a.listBookingPaymentCollectionsForScheduleIDs([]int64{transaction.ReferenceID})
+		for _, collection := range collections {
+			if collection.FinanceTransactionID == transaction.ID {
+				data.ReceiptBookingPayment = &collection
+				break
+			}
+		}
+		data.ReceiptBookingSchedule, _ = a.findSpaceScheduleByID(transaction.ReferenceID)
+		financials, _ := a.listBookingFinancialsForScheduleIDs([]int64{transaction.ReferenceID})
+		data.ReceiptBookingFinancial = bookingFinancialForSchedule(financials, transaction.ReferenceID)
+	}
 	a.render(w, "finance-receipt", data, http.StatusOK)
 }
 
@@ -5396,6 +5504,10 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		if err != nil {
 			return TemplateData{}, err
 		}
+		data.BookingPaymentCollections, err = a.listBookingPaymentCollectionsForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
 		data.BookingReferrals, err = a.listBookingReferralsForScheduleIDs(relevantScheduleIDs)
 		if err != nil {
 			return TemplateData{}, err
@@ -5485,6 +5597,10 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		data.BookingReminders = buildBookingReminders(data.BookingRequests, now)
 		data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, data.PendingRequestCount, data.HeldRequestCount)
 		data.BookingFinancials = bookingFinancials
+		data.BookingPaymentCollections, err = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
+		if err != nil {
+			return TemplateData{}, err
+		}
 		data.BookingReferrals = bookingReferrals
 		data.BookingRequestChanges = bookingRequestChanges
 		data.BookingCommunications, err = a.listBookingCommunicationsForScheduleIDs(scheduleIDs(data.BookingRequests))
@@ -9322,40 +9438,24 @@ func (a *App) listFinanceTransactionsFiltered(filter FinanceFilter) ([]FinanceTr
 }
 
 func (a *App) listOutstandingBookingFinancials() ([]BookingFinancial, error) {
-	rows, err := a.db.Query(`
-		SELECT bf.id, bf.schedule_id, bf.quoted_amount, bf.paid, bf.paid_at,
-		       bf.payment_method, COALESCE(bf.finance_transaction_id, 0),
-		       s.slot_date, s.slot_hour, s.activity, s.quantity, s.status,
-		       COALESCE(s.requester_name, ''), COALESCE(s.requester_email, '')
-		FROM booking_financials bf
-		JOIN space_schedules s ON s.id = bf.schedule_id
-		WHERE bf.paid = 0 AND bf.quoted_amount > 0 AND s.status = 'confirmed'
-		ORDER BY s.slot_date ASC, s.slot_hour ASC, bf.id ASC
-	`)
+	financials, err := a.listBookingFinancials()
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var financials []BookingFinancial
-	for rows.Next() {
-		var financial BookingFinancial
-		var paid int
-		var paidAt sql.NullTime
-		if err := rows.Scan(
-			&financial.ID, &financial.ScheduleID, &financial.QuotedAmount, &paid, &paidAt,
-			&financial.PaymentMethod, &financial.FinanceTransactionID, &financial.SlotDate,
-			&financial.SlotHour, &financial.Activity, &financial.Quantity, &financial.Status,
-			&financial.RequesterName, &financial.RequesterEmail,
-		); err != nil {
-			return nil, err
+	filtered := make([]BookingFinancial, 0, len(financials))
+	for _, financial := range financials {
+		if financial.QuotedAmount <= 0 {
+			continue
 		}
-		financial.Paid = paid == 1
-		if paidAt.Valid {
-			financial.PaidAt = paidAt.Time
+		if !bookingPaymentCollectibleStatus(financial.Status) {
+			continue
 		}
-		financials = append(financials, financial)
+		if financial.OutstandingAmount <= 0.004 {
+			continue
+		}
+		filtered = append(filtered, financial)
 	}
-	return financials, rows.Err()
+	return filtered, nil
 }
 
 func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, error) {
@@ -9562,64 +9662,28 @@ func (a *App) listBookingReferralsForScheduleIDs(scheduleIDs []int64) ([]Booking
 	return listBookingReferralsForScheduleIDsQuery(a.db, scheduleIDs)
 }
 
+func (a *App) listBookingPaymentCollectionsForScheduleIDs(scheduleIDs []int64) ([]BookingPaymentCollection, error) {
+	return listBookingPaymentCollectionsForScheduleIDsQuery(a.db, scheduleIDs)
+}
+
 func (a *App) listBookingFinancials() ([]BookingFinancial, error) {
-	rows, err := a.db.Query(`
-		SELECT
-			bf.id,
-			bf.schedule_id,
-			bf.quoted_amount,
-			bf.paid,
-			bf.paid_at,
-			bf.payment_method,
-			COALESCE(bf.finance_transaction_id, 0),
-			s.slot_date,
-			s.slot_hour,
-			s.activity,
-			s.quantity,
-			s.status,
-			COALESCE(s.requester_name, ''),
-			COALESCE(s.requester_email, '')
-		FROM booking_financials bf
-		JOIN space_schedules s
-			ON s.id = bf.schedule_id
-		ORDER BY s.slot_date ASC, s.slot_hour ASC, bf.id ASC
-	`)
+	rows, err := a.db.Query(`SELECT schedule_id FROM booking_financials ORDER BY schedule_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	var financials []BookingFinancial
+	var scheduleIDs []int64
 	for rows.Next() {
-		var financial BookingFinancial
-		var paid int
-		var paidAt sql.NullTime
-		if err := rows.Scan(
-			&financial.ID,
-			&financial.ScheduleID,
-			&financial.QuotedAmount,
-			&paid,
-			&paidAt,
-			&financial.PaymentMethod,
-			&financial.FinanceTransactionID,
-			&financial.SlotDate,
-			&financial.SlotHour,
-			&financial.Activity,
-			&financial.Quantity,
-			&financial.Status,
-			&financial.RequesterName,
-			&financial.RequesterEmail,
-		); err != nil {
+		var scheduleID int64
+		if err := rows.Scan(&scheduleID); err != nil {
 			return nil, err
 		}
-		financial.Paid = paid == 1
-		if paidAt.Valid {
-			financial.PaidAt = paidAt.Time
-		}
-		financials = append(financials, financial)
+		scheduleIDs = append(scheduleIDs, scheduleID)
 	}
-
-	return financials, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return listBookingFinancialsForScheduleIDsQuery(a.db, scheduleIDs)
 }
 
 func (a *App) listBookingFinancialsForScheduleIDs(scheduleIDs []int64) ([]BookingFinancial, error) {
@@ -11459,9 +11523,105 @@ func (a *App) createManualFinanceTransaction(category, personName, description, 
 	return result.LastInsertId()
 }
 
-func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, recordedByUserID int64) (int64, error) {
+func (a *App) nextReceiptNumberTx(tx *sql.Tx, scope string, now time.Time) (string, error) {
+	year := now.UTC().Year()
+	if _, err := tx.Exec(`
+		INSERT INTO receipt_sequences (scope, year, next_value)
+		VALUES (?, ?, 2)
+		ON CONFLICT(scope, year) DO UPDATE
+		SET next_value = next_value + 1
+	`, scope, year); err != nil {
+		return "", err
+	}
+	var nextValue int
+	if err := tx.QueryRow(`SELECT next_value - 1 FROM receipt_sequences WHERE scope = ? AND year = ?`, scope, year).Scan(&nextValue); err != nil {
+		return "", err
+	}
+	if scope == "booking_payment" {
+		return fmt.Sprintf("MKM-BKG-%d-%06d", year, nextValue), nil
+	}
+	return fmt.Sprintf("%s-%d-%06d", strings.ToUpper(scope), year, nextValue), nil
+}
+
+func normalizeMoney(value float64) float64 {
+	return math.Round(value*100) / 100
+}
+
+func moneyEquals(left, right float64) bool {
+	return math.Abs(normalizeMoney(left)-normalizeMoney(right)) < 0.005
+}
+
+func bookingPaymentCollectibleStatus(status string) bool {
+	switch status {
+	case bookingStatusConfirmed, bookingStatusCompleted, bookingStatusNoShow, bookingStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *App) syncBookingFinancialSnapshotTx(tx *sql.Tx, scheduleID int64) error {
+	financials, err := listBookingFinancialsForScheduleIDsQuery(tx, []int64{scheduleID})
+	if err != nil {
+		return err
+	}
+	financial := bookingFinancialForSchedule(financials, scheduleID)
+	if financial == nil {
+		return nil
+	}
+	var paidAt any
+	var paymentMethod any
+	var financeTransactionID any
+	if financial.ActivePaymentCount > 0 {
+		paidAt = financial.LastPaymentDate.UTC()
+		paymentMethod = "cash"
+		collections, err := listBookingPaymentCollectionsForScheduleIDsQuery(tx, []int64{scheduleID})
+		if err != nil {
+			return err
+		}
+		for _, collection := range collections {
+			if !collection.Voided {
+				financeTransactionID = collection.FinanceTransactionID
+				break
+			}
+		}
+	}
+	paidFlag := 0
+	if financial.ActivePaymentCount > 0 {
+		paidFlag = 1
+	}
+	_, err = tx.Exec(`
+		UPDATE booking_financials
+		SET paid = ?, paid_at = ?, payment_method = COALESCE(?, ''), finance_transaction_id = ?, updated_at = ?
+		WHERE schedule_id = ?
+	`, paidFlag, paidAt, paymentMethod, financeTransactionID, time.Now().UTC(), scheduleID)
+	return err
+}
+
+func nullableExistingUserIDTx(tx *sql.Tx, userID int64) any {
+	if userID <= 0 {
+		return nil
+	}
+	var exists int
+	if err := tx.QueryRow(`SELECT 1 FROM users WHERE id = ?`, userID).Scan(&exists); err != nil {
+		return nil
+	}
+	return userID
+}
+
+func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amount float64, paymentNote string, recordedByUserID int64, allowOverpayment bool) (int64, error) {
 	if paymentMethod != "cash" {
 		return 0, errors.New("booking payments must be recorded in cash")
+	}
+	if math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return 0, errors.New("booking payment amount is invalid")
+	}
+	amount = normalizeMoney(amount)
+	if amount <= 0 {
+		return 0, errors.New("booking payment amount must be greater than zero")
+	}
+	if amount > maxBookingCashCollection {
+		return 0, errors.New("booking payment amount exceeds the allowed limit")
 	}
 	tx, err := a.db.Begin()
 	if err != nil {
@@ -11485,28 +11645,45 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, reco
 		}
 		return 0, err
 	}
-	if financial.Status != "confirmed" {
-		return 0, errors.New("only confirmed bookings can be paid")
-	}
-	if paid == 1 {
-		return 0, ErrBookingPaymentAlreadyCollected
+	if !bookingPaymentCollectibleStatus(financial.Status) {
+		return 0, errors.New("this booking cannot receive a payment in its current state")
 	}
 	if financial.QuotedAmount <= 0 {
 		return 0, errors.New("booking has no collectible price")
 	}
+	financials, err := listBookingFinancialsForScheduleIDsQuery(tx, []int64{scheduleID})
+	if err != nil {
+		return 0, err
+	}
+	current := bookingFinancialForSchedule(financials, scheduleID)
+	outstanding := financial.QuotedAmount
+	if current != nil {
+		outstanding = current.OutstandingAmount
+		if current.OutstandingAmount < 0.005 && !allowOverpayment {
+			return 0, ErrBookingPaymentAlreadyCollected
+		}
+	}
+	if amount > outstanding+0.005 && !allowOverpayment {
+		return 0, ErrBookingPaymentNeedsOverpayApproval
+	}
+	_ = paid
 	personName := financial.RequesterName
 	if personName == "" {
 		personName = "Booking customer"
 	}
 	now := time.Now().UTC()
-	receiptNumber := fmt.Sprintf("BKG-%s-%06d", now.Format("20060102150405"), scheduleID)
-	description := fmt.Sprintf("%s payment for %s", bookingProductLabel(financial.Activity, financial.Quantity), bookingReference(scheduleID))
+	recordedByRef := nullableExistingUserIDTx(tx, recordedByUserID)
+	receiptNumber, err := a.nextReceiptNumberTx(tx, "booking_payment", now)
+	if err != nil {
+		return 0, err
+	}
+	description := fmt.Sprintf("%s cash collection for %s", bookingProductLabel(financial.Activity, financial.Quantity), bookingReference(scheduleID))
 	result, err := tx.Exec(`
 		INSERT INTO finance_transactions (
 			receipt_number, category, reference_type, reference_id, person_name, description,
 			payment_method, amount, recorded_by_user_id, recorded_at, created_at
 		) VALUES (?, 'booking_payment', 'space_schedule', ?, ?, ?, ?, ?, ?, ?, ?)
-	`, receiptNumber, scheduleID, personName, description, paymentMethod, financial.QuotedAmount, nullIfZero(recordedByUserID), now, now)
+	`, receiptNumber, scheduleID, personName, description, paymentMethod, amount, recordedByRef, now, now)
 	if err != nil {
 		return 0, err
 	}
@@ -11514,25 +11691,67 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, reco
 	if err != nil {
 		return 0, err
 	}
-	update, err := tx.Exec(`
-		UPDATE booking_financials
-		SET paid = 1, paid_at = ?, payment_method = ?, finance_transaction_id = ?, updated_at = ?
-		WHERE id = ? AND paid = 0
-	`, now, paymentMethod, transactionID, now, financial.ID)
-	if err != nil {
+	if _, err := tx.Exec(`
+		INSERT INTO booking_payment_collections (
+			schedule_id,
+			finance_transaction_id,
+			amount,
+			payment_method,
+			payment_note,
+			collected_by_user_id,
+			collected_at,
+			created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, scheduleID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), recordedByRef, now, now); err != nil {
 		return 0, err
 	}
-	affected, err := update.RowsAffected()
-	if err != nil {
+	if err := a.syncBookingFinancialSnapshotTx(tx, scheduleID); err != nil {
 		return 0, err
-	}
-	if affected != 1 {
-		return 0, ErrBookingPaymentAlreadyCollected
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return transactionID, nil
+}
+
+func (a *App) voidBookingPayment(collectionID int64, reason string, voidedByUserID int64) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("void reason is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var scheduleID int64
+	var voided int
+	if err := tx.QueryRow(`
+		SELECT schedule_id, voided
+		FROM booking_payment_collections
+		WHERE id = ?
+	`, collectionID).Scan(&scheduleID, &voided); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("booking payment was not found")
+		}
+		return err
+	}
+	if voided == 1 {
+		return errors.New("booking payment has already been voided")
+	}
+	voidedByRef := nullableExistingUserIDTx(tx, voidedByUserID)
+	if _, err := tx.Exec(`
+		UPDATE booking_payment_collections
+		SET voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ?
+		WHERE id = ? AND voided = 0
+	`, reason, voidedByRef, time.Now().UTC(), collectionID); err != nil {
+		return err
+	}
+	if err := a.syncBookingFinancialSnapshotTx(tx, scheduleID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func (a *App) updateBookingRequestStatus(
 	scheduleID int64,
@@ -12868,6 +13087,31 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
 			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS booking_payment_collections (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			schedule_id INTEGER NOT NULL,
+			finance_transaction_id INTEGER NOT NULL UNIQUE,
+			amount REAL NOT NULL DEFAULT 0,
+			payment_method TEXT NOT NULL DEFAULT 'cash',
+			payment_note TEXT NOT NULL DEFAULT '',
+			collected_by_user_id INTEGER,
+			collected_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL,
+			voided INTEGER NOT NULL DEFAULT 0,
+			void_reason TEXT NOT NULL DEFAULT '',
+			voided_by_user_id INTEGER,
+			voided_at DATETIME,
+			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
+			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id),
+			FOREIGN KEY (collected_by_user_id) REFERENCES users(id),
+			FOREIGN KEY (voided_by_user_id) REFERENCES users(id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS receipt_sequences (
+			scope TEXT NOT NULL,
+			year INTEGER NOT NULL,
+			next_value INTEGER NOT NULL DEFAULT 1,
+			PRIMARY KEY (scope, year)
+		)`,
 		`CREATE TABLE IF NOT EXISTS booking_request_changes (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			schedule_id INTEGER NOT NULL,
@@ -12982,6 +13226,8 @@ ON court_closures(activity, active, closure_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_referrals_partner ON booking_referrals(partner_id, paid)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_financials_paid ON booking_financials(paid, schedule_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_payment_collections_schedule ON booking_payment_collections(schedule_id, collected_at DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_payment_collections_voided ON booking_payment_collections(voided, schedule_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_request_changes_schedule ON booking_request_changes(schedule_id, changed_at DESC)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_communications_event_channel ON booking_communications(event_key, channel)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_communications_schedule ON booking_communications(schedule_id, created_at DESC)`,
@@ -13153,6 +13399,90 @@ ON court_closures(activity, active, closure_date)`,
 		return err
 	}
 	if _, err := db.Exec(`UPDATE booking_request_changes SET finance_note = '' WHERE finance_note IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE booking_payment_collections SET payment_note = '' WHERE payment_note IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+		INSERT INTO booking_payment_collections (
+			schedule_id,
+			finance_transaction_id,
+			amount,
+			payment_method,
+			payment_note,
+			collected_by_user_id,
+			collected_at,
+			created_at,
+			voided,
+			void_reason,
+			voided_by_user_id,
+			voided_at
+		)
+		SELECT
+			bf.schedule_id,
+			ft.id,
+			ft.amount,
+			CASE WHEN TRIM(COALESCE(ft.payment_method, '')) = '' THEN 'cash' ELSE ft.payment_method END,
+			'',
+			ft.recorded_by_user_id,
+			ft.recorded_at,
+			ft.created_at,
+			0,
+			'',
+			NULL,
+			NULL
+		FROM booking_financials bf
+		JOIN finance_transactions ft
+			ON ft.id = bf.finance_transaction_id
+		WHERE bf.finance_transaction_id IS NOT NULL
+			AND bf.finance_transaction_id > 0
+			AND NOT EXISTS (
+				SELECT 1
+				FROM booking_payment_collections bpc
+				WHERE bpc.finance_transaction_id = ft.id
+			)
+	`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+		INSERT INTO booking_payment_collections (
+			schedule_id,
+			finance_transaction_id,
+			amount,
+			payment_method,
+			payment_note,
+			collected_by_user_id,
+			collected_at,
+			created_at,
+			voided,
+			void_reason,
+			voided_by_user_id,
+			voided_at
+		)
+		SELECT
+			ft.reference_id,
+			ft.id,
+			ft.amount,
+			CASE WHEN TRIM(COALESCE(ft.payment_method, '')) = '' THEN 'cash' ELSE ft.payment_method END,
+			'',
+			ft.recorded_by_user_id,
+			ft.recorded_at,
+			ft.created_at,
+			0,
+			'',
+			NULL,
+			NULL
+		FROM finance_transactions ft
+		WHERE ft.category = 'booking_payment'
+			AND ft.reference_type = 'space_schedule'
+			AND COALESCE(ft.reference_id, 0) > 0
+			AND NOT EXISTS (
+				SELECT 1
+				FROM booking_payment_collections bpc
+				WHERE bpc.finance_transaction_id = ft.id
+			)
+	`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_space_schedules_status_changed_at ON space_schedules(status, status_changed_at DESC)`); err != nil {
@@ -15248,14 +15578,48 @@ func bookingPaymentStatusLabel(financial *BookingFinancial, scheduleStatus strin
 	switch {
 	case financial == nil:
 		return "No finance record"
-	case financial.Paid && strings.TrimSpace(financial.PaymentMethod) != "":
-		return "Paid via " + financial.PaymentMethod
-	case financial.Paid:
+	case financial.PaymentStatus == "overpaid":
+		return "Overpaid"
+	case financial.PaymentStatus == "paid":
 		return "Paid"
-	case scheduleStatus == "confirmed":
+	case financial.PaymentStatus == "partially_paid":
+		return "Part-paid"
+	case financial.PaymentStatus == "voided":
+		return "Voided"
+	case bookingPaymentCollectibleStatus(scheduleStatus):
 		return "Unpaid"
 	default:
 		return "No payment confirmed"
+	}
+}
+
+func bookingPaymentStatusBadge(value string) string {
+	switch strings.TrimSpace(value) {
+	case "paid":
+		return "Paid"
+	case "partially_paid":
+		return "Part-paid"
+	case "overpaid":
+		return "Overpaid"
+	case "voided":
+		return "Voided"
+	default:
+		return "Unpaid"
+	}
+}
+
+func bookingPaymentStatusTone(value string) string {
+	switch strings.TrimSpace(value) {
+	case "paid":
+		return "border-emerald-200 bg-emerald-50 text-emerald-900"
+	case "partially_paid":
+		return "border-amber-200 bg-amber-50 text-amber-950"
+	case "overpaid":
+		return "border-sky-200 bg-sky-50 text-sky-900"
+	case "voided":
+		return "border-slate/10 bg-cloud text-slate"
+	default:
+		return "border-red-200 bg-red-50 text-red-900"
 	}
 }
 
@@ -15441,6 +15805,8 @@ func (a *App) buildBookingStatusView(schedule *SpaceSchedule, financial *Booking
 		ActivityLabel:              bookingProductLabel(schedule.Activity, schedule.Quantity),
 		QuotedAmount:               quotedAmountLabel(financial),
 		PaymentStatus:              bookingPaymentStatusLabel(financial, schedule.Status),
+		TotalCollected:             money(0),
+		OutstandingAmount:          money(0),
 		Title:                      strings.TrimSpace(schedule.Title),
 		ContactPhone:               a.bookingMessages.ContactPhone,
 		ContactEmail:               a.bookingMessages.ContactEmail,
@@ -15452,6 +15818,12 @@ func (a *App) buildBookingStatusView(schedule *SpaceSchedule, financial *Booking
 	}
 	if financial != nil && financial.PaidAt.After(time.Time{}) {
 		view.PaidAtLabel = formatDateTime(financial.PaidAt)
+	}
+	if financial != nil {
+		view.TotalCollected = money(financial.TotalCollected)
+		if financial.OutstandingAmount > 0 {
+			view.OutstandingAmount = money(financial.OutstandingAmount)
+		}
 	}
 	if history := bookingRequestHistoryFor(changes, schedule.ID); len(history) > 0 {
 		latest := history[0]
@@ -17906,6 +18278,24 @@ func bookingFinancialForSchedule(financials []BookingFinancial, scheduleID int64
 	return nil
 }
 
+func bookingPaymentsForSchedule(collections []BookingPaymentCollection, scheduleID int64) []BookingPaymentCollection {
+	filtered := make([]BookingPaymentCollection, 0)
+	for _, collection := range collections {
+		if collection.ScheduleID == scheduleID {
+			filtered = append(filtered, collection)
+		}
+	}
+	return filtered
+}
+
+func scheduleIDsFromFinancials(financials []BookingFinancial) []int64 {
+	ids := make([]int64, 0, len(financials))
+	for _, financial := range financials {
+		ids = appendInt64Unique(ids, financial.ScheduleID)
+	}
+	return ids
+}
+
 func bookingCommunicationsFor(communications []BookingCommunication, scheduleID int64) []BookingCommunication {
 	filtered := make([]BookingCommunication, 0)
 	for _, communication := range communications {
@@ -18031,7 +18421,159 @@ func listBookingFinancialsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []
 		}
 		financials = append(financials, financial)
 	}
-	return financials, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	collections, err := listBookingPaymentCollectionsForScheduleIDsQuery(queryer, scheduleIDs)
+	if err != nil {
+		return nil, err
+	}
+	return enrichBookingFinancials(financials, collections), nil
+}
+
+func listBookingPaymentCollectionsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingPaymentCollection, error) {
+	if len(scheduleIDs) == 0 {
+		return nil, nil
+	}
+	query, args := scheduleIDScopedQuery(`
+		SELECT
+			bpc.id,
+			bpc.schedule_id,
+			bpc.finance_transaction_id,
+			ft.receipt_number,
+			ft.person_name,
+			ft.description,
+			bpc.amount,
+			bpc.payment_method,
+			COALESCE(bpc.payment_note, ''),
+			COALESCE(bpc.collected_by_user_id, 0),
+			COALESCE(collector.name, ''),
+			bpc.collected_at,
+			bpc.created_at,
+			bpc.voided,
+			COALESCE(bpc.void_reason, ''),
+			COALESCE(bpc.voided_by_user_id, 0),
+			COALESCE(voider.name, ''),
+			bpc.voided_at
+		FROM booking_payment_collections bpc
+		JOIN finance_transactions ft
+			ON ft.id = bpc.finance_transaction_id
+		LEFT JOIN users collector
+			ON collector.id = bpc.collected_by_user_id
+		LEFT JOIN users voider
+			ON voider.id = bpc.voided_by_user_id
+		WHERE bpc.schedule_id IN (%s)
+		ORDER BY bpc.collected_at DESC, bpc.id DESC
+	`, scheduleIDs)
+	rows, err := queryer.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var collections []BookingPaymentCollection
+	for rows.Next() {
+		var collection BookingPaymentCollection
+		var voided int
+		var voidedAt sql.NullTime
+		if err := rows.Scan(
+			&collection.ID,
+			&collection.ScheduleID,
+			&collection.FinanceTransactionID,
+			&collection.ReceiptNumber,
+			&collection.PersonName,
+			&collection.Description,
+			&collection.Amount,
+			&collection.PaymentMethod,
+			&collection.PaymentNote,
+			&collection.CollectedByUserID,
+			&collection.CollectedByUserName,
+			&collection.CollectedAt,
+			&collection.CreatedAt,
+			&voided,
+			&collection.VoidReason,
+			&collection.VoidedByUserID,
+			&collection.VoidedByUserName,
+			&voidedAt,
+		); err != nil {
+			return nil, err
+		}
+		collection.Voided = voided == 1
+		if voidedAt.Valid {
+			collection.VoidedAt = voidedAt.Time
+		}
+		collections = append(collections, collection)
+	}
+	return collections, rows.Err()
+}
+
+func bookingPaymentStatusValue(financial BookingFinancial, collections []BookingPaymentCollection) string {
+	activeCount := 0
+	voidedCount := 0
+	totalCollected := 0.0
+	for _, collection := range collections {
+		if collection.Voided {
+			voidedCount++
+			continue
+		}
+		activeCount++
+		totalCollected = normalizeMoney(totalCollected + collection.Amount)
+	}
+	if activeCount == 0 {
+		if voidedCount > 0 {
+			return "voided"
+		}
+		return "unpaid"
+	}
+	switch {
+	case moneyEquals(totalCollected, financial.QuotedAmount):
+		return "paid"
+	case totalCollected > financial.QuotedAmount:
+		return "overpaid"
+	default:
+		return "partially_paid"
+	}
+}
+
+func enrichBookingFinancials(financials []BookingFinancial, collections []BookingPaymentCollection) []BookingFinancial {
+	bySchedule := make(map[int64][]BookingPaymentCollection)
+	for _, collection := range collections {
+		bySchedule[collection.ScheduleID] = append(bySchedule[collection.ScheduleID], collection)
+	}
+	for i := range financials {
+		scheduleCollections := bySchedule[financials[i].ScheduleID]
+		totalCollected := 0.0
+		activeCount := 0
+		voidedCount := 0
+		for _, collection := range scheduleCollections {
+			if collection.Voided {
+				voidedCount++
+				continue
+			}
+			activeCount++
+			totalCollected = normalizeMoney(totalCollected + collection.Amount)
+			if financials[i].LastPaymentDate.IsZero() || collection.CollectedAt.After(financials[i].LastPaymentDate) {
+				financials[i].LastPaymentDate = collection.CollectedAt
+				financials[i].LastPaymentByUserID = collection.CollectedByUserID
+				financials[i].LastPaymentByUserName = collection.CollectedByUserName
+			}
+		}
+		financials[i].TotalCollected = totalCollected
+		financials[i].OutstandingAmount = normalizeMoney(financials[i].QuotedAmount - totalCollected)
+		financials[i].ActivePaymentCount = activeCount
+		financials[i].VoidedPaymentCount = voidedCount
+		financials[i].PaymentStatus = bookingPaymentStatusValue(financials[i], scheduleCollections)
+		financials[i].Paid = financials[i].PaymentStatus == "paid" || financials[i].PaymentStatus == "overpaid"
+		if activeCount == 0 {
+			financials[i].PaymentMethod = ""
+			financials[i].PaidAt = time.Time{}
+			financials[i].FinanceTransactionID = 0
+		} else {
+			financials[i].PaymentMethod = "cash"
+			financials[i].PaidAt = financials[i].LastPaymentDate
+		}
+	}
+	return financials
 }
 
 func listBookingReferralsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingReferral, error) {
@@ -19283,7 +19825,9 @@ func buildFinanceSummary(transactions []FinanceTransaction, bookings []BookingFi
 	}
 	summary.NetCash = summary.GrossIncome - summary.TotalExpenses
 	for _, booking := range bookings {
-		summary.OutstandingBooking += booking.QuotedAmount
+		if booking.OutstandingAmount > 0 {
+			summary.OutstandingBooking += booking.OutstandingAmount
+		}
 	}
 	for _, row := range monthly {
 		if row.Payment == nil {
