@@ -1740,6 +1740,58 @@ func TestBookingReminderBoundariesAndMidnight(t *testing.T) {
 	}
 }
 
+func TestBookingAttentionCountersIgnoreNonBookingSchedules(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	now := time.Now().UTC()
+	rows := []struct {
+		slotHour  string
+		entryType string
+		status    string
+		title     string
+	}{
+		{slotHour: "18:00", entryType: "booking", status: bookingStatusPending, title: "Pending Booking"},
+		{slotHour: "19:00", entryType: "booking", status: bookingStatusHeld, title: "Held Booking"},
+		{slotHour: "20:00", entryType: "booking", status: bookingStatusReschedulePending, title: "Reschedule Booking"},
+		{slotHour: "18:30", entryType: "event", status: bookingStatusPending, title: "Pending Event"},
+		{slotHour: "19:30", entryType: "training", status: bookingStatusHeld, title: "Held Training"},
+		{slotHour: "20:30", entryType: "maintenance", status: bookingStatusReschedulePending, title: "Reschedule Maintenance"},
+	}
+	for _, row := range rows {
+		if _, err := app.db.Exec(`
+			INSERT INTO space_schedules (
+				slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+				requester_name, requester_email, requester_phone, created_at, updated_at
+			) VALUES (?, ?, ?, 'badminton', 1, ?, '', ?, 'Requester', 'requester@example.com', '0700000000', ?, ?)
+		`, "2026-08-05", row.slotHour, row.entryType, row.title, row.status, now, now); err != nil {
+			t.Fatalf("insert %s %s schedule: %v", row.entryType, row.status, err)
+		}
+	}
+
+	pendingCount, err := app.countPendingSpaceSchedules()
+	if err != nil {
+		t.Fatalf("count pending booking schedules: %v", err)
+	}
+	if pendingCount != 1 {
+		t.Fatalf("pending booking count = %d, want 1", pendingCount)
+	}
+
+	heldCount, err := app.countHeldSpaceSchedules()
+	if err != nil {
+		t.Fatalf("count held booking schedules: %v", err)
+	}
+	if heldCount != 1 {
+		t.Fatalf("held booking count = %d, want 1", heldCount)
+	}
+
+	reschedulePendingCount, err := app.countReschedulePendingSpaceSchedules()
+	if err != nil {
+		t.Fatalf("count reschedule pending booking schedules: %v", err)
+	}
+	if reschedulePendingCount != 1 {
+		t.Fatalf("reschedule pending booking count = %d, want 1", reschedulePendingCount)
+	}
+}
+
 func TestPublicBookingStatusHandlerExpiresOverdueUnresolvedBooking(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	templates, err := buildTemplates()

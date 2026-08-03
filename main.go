@@ -9886,7 +9886,7 @@ func (a *App) countPendingSpaceSchedules() (int, error) {
 	row := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM space_schedules
-		WHERE status = 'pending'
+		WHERE entry_type = 'booking' AND status = 'pending'
 	`)
 	var count int
 	if err := row.Scan(&count); err != nil {
@@ -9899,7 +9899,7 @@ func (a *App) countHeldSpaceSchedules() (int, error) {
 	row := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM space_schedules
-		WHERE status = 'held'
+		WHERE entry_type = 'booking' AND status = 'held'
 	`)
 	var count int
 	if err := row.Scan(&count); err != nil {
@@ -9912,7 +9912,7 @@ func (a *App) countReschedulePendingSpaceSchedules() (int, error) {
 	row := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM space_schedules
-		WHERE status = 'reschedule_pending'
+		WHERE entry_type = 'booking' AND status = 'reschedule_pending'
 	`)
 	var count int
 	if err := row.Scan(&count); err != nil {
