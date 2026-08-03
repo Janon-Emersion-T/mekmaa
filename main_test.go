@@ -145,6 +145,44 @@ func newReadinessTestApp(t *testing.T) *App {
 	return app
 }
 
+func newProductionReadinessTestApp(t *testing.T) *App {
+	t.Helper()
+	app := newBookingWorkflowTestApp(t)
+	root, err := os.MkdirTemp(".", "mekmaa-prod-test-*")
+	if err != nil {
+		t.Fatalf("create production-style test root: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	storage, err := prepareUploadStorage(filepath.Join(root, "uploads"))
+	if err != nil {
+		t.Fatalf("prepare production-style upload storage: %v", err)
+	}
+	if _, err := app.db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 2500, weekday_peak_price = 3000,
+		    weekend_offpeak_price = 2800, weekend_peak_price = 3200
+	`); err != nil {
+		t.Fatalf("configure production-style pricing: %v", err)
+	}
+	app.uploads = storage
+	app.runtimeConfig = AppRuntimeConfig{
+		Env:           appEnvProduction,
+		Addr:          ":8080",
+		DBPath:        filepath.Join(root, "app.db"),
+		UploadRoot:    storage.Root,
+		PublicBaseURL: "https://mekmaa.com",
+		CookieSecure:  true,
+	}
+	app.bookingAccess = BookingAccessSettings{
+		BaseURL:     "https://mekmaa.com",
+		TokenSecret: strings.Repeat("s", 32),
+		TokenTTL:    180 * 24 * time.Hour,
+	}
+	app.bookingMessages.EmailEnabled = false
+	app.bookingMessages.SMSEnabled = false
+	return app
+}
+
 func renderTemplateToString(t *testing.T, templates map[string]*template.Template, name string, data TemplateData) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -1932,6 +1970,53 @@ func TestReadyHandlerSucceedsWithValidDatabaseAndUploadDirectory(t *testing.T) {
 	}
 }
 
+func TestReadyHandlerProductionSucceedsWithFullyPricedActivities(t *testing.T) {
+	app := newProductionReadinessTestApp(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	app.readyHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ready status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"status":"ready"`) {
+		t.Fatalf("ready body missing ready status: %s", body)
+	}
+	if strings.Contains(body, `"warnings"`) {
+		t.Fatalf("ready body unexpectedly included warnings: %s", body)
+	}
+}
+
+func TestReadyHandlerProductionWarnsButStaysReadyWhenActivityIsUnpriced(t *testing.T) {
+	app := newProductionReadinessTestApp(t)
+	if _, err := app.db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 0, weekday_peak_price = 0, weekend_offpeak_price = 0, weekend_peak_price = 0
+		WHERE activity = 'badminton' AND quantity = 1
+	`); err != nil {
+		t.Fatalf("zero badminton pricing: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	app.readyHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ready status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"status":"ready"`) {
+		t.Fatalf("ready body missing ready status: %s", body)
+	}
+	if !strings.Contains(body, `"warnings":["1 active booking options are missing complete public pricing"]`) {
+		t.Fatalf("ready body missing safe pricing warning: %s", body)
+	}
+	if !strings.Contains(body, `"name":"booking_pricing","status":"ok"`) {
+		t.Fatalf("booking pricing check should stay operationally ok: %s", body)
+	}
+	if strings.Contains(strings.ToLower(body), "badminton") || strings.Contains(body, `"id"`) || strings.Contains(body, app.bookingAccess.TokenSecret) {
+		t.Fatalf("ready body exposed internal pricing details: %s", body)
+	}
+}
+
 func TestReadyHandlerFailsWhenDatabaseIsUnavailable(t *testing.T) {
 	app := newReadinessTestApp(t)
 	if err := app.db.Close(); err != nil {
@@ -1950,9 +2035,7 @@ func TestReadyHandlerFailsWhenDatabaseIsUnavailable(t *testing.T) {
 
 func TestReadyHandlerFailsWhenUploadDirectoryIsUnwritable(t *testing.T) {
 	app := newReadinessTestApp(t)
-	if err := os.Chmod(app.uploads.EventDir, 0o500); err != nil {
-		t.Fatalf("chmod upload dir: %v", err)
-	}
+	app.uploads.EventDir = filepath.Join(t.TempDir(), "missing-events")
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	app.readyHandler(rec, req)
@@ -1987,6 +2070,76 @@ func TestSetupWarningsExcludeFullyPricedActivity(t *testing.T) {
 	warnings := app.setupWarningsForUser(&User{Permissions: []string{"pricing.manage"}})
 	if len(warnings) != 0 {
 		t.Fatalf("expected no setup warnings once all pricing is configured, got %#v", warnings)
+	}
+}
+
+func TestDashboardHandlerDisplaysPricingWarningToAuthorizedStaff(t *testing.T) {
+	app := newReadinessTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+	if _, err := app.db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 0, weekday_peak_price = 0, weekend_offpeak_price = 0, weekend_peak_price = 0
+		WHERE activity = 'badminton' AND quantity = 1
+	`); err != nil {
+		t.Fatalf("zero badminton pricing: %v", err)
+	}
+	user := &User{
+		ID:          1,
+		Email:       "pricing@example.com",
+		Name:        "Pricing Manager",
+		Roles:       []string{"Staff"},
+		Permissions: []string{"dashboard.view", "pricing.manage"},
+		Verified:    true,
+	}
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.dashboardHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dashboard status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Booking pricing setup incomplete") || !strings.Contains(body, "pricing-unavailable message") {
+		t.Fatalf("dashboard did not render pricing setup warning: %s", body)
+	}
+}
+
+func TestPricingManagementHandlerDisplaysPricingWarningToAuthorizedStaff(t *testing.T) {
+	app := newReadinessTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+	if _, err := app.db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 0, weekday_peak_price = 0, weekend_offpeak_price = 0, weekend_peak_price = 0
+		WHERE activity = 'badminton' AND quantity = 1
+	`); err != nil {
+		t.Fatalf("zero badminton pricing: %v", err)
+	}
+	user := &User{
+		ID:          1,
+		Email:       "pricing@example.com",
+		Name:        "Pricing Manager",
+		Roles:       []string{"Staff"},
+		Permissions: []string{"pricing.manage"},
+		Verified:    true,
+	}
+	req := httptest.NewRequest(http.MethodGet, "/admin/pricing", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.pricingManagementHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pricing management status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Booking pricing setup incomplete") || !strings.Contains(body, "pricing-unavailable message") {
+		t.Fatalf("pricing management page did not render pricing setup warning: %s", body)
 	}
 }
 
@@ -2075,6 +2228,30 @@ func TestHealthHandlerExposesNoSecrets(t *testing.T) {
 	body := rec.Body.String()
 	if strings.Contains(body, app.bookingAccess.TokenSecret) {
 		t.Fatalf("health body exposed booking secret: %s", body)
+	}
+}
+
+func TestHealthHandlerStaysOKWhenPricingWarningsExist(t *testing.T) {
+	app := newReadinessTestApp(t)
+	if _, err := app.db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 0, weekday_peak_price = 0, weekend_offpeak_price = 0, weekend_peak_price = 0
+		WHERE activity = 'badminton' AND quantity = 1
+	`); err != nil {
+		t.Fatalf("zero badminton pricing: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	app.healthHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("health status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"status":"ok"`) {
+		t.Fatalf("health body missing ok status: %s", body)
+	}
+	if strings.Contains(strings.ToLower(body), "pricing") {
+		t.Fatalf("health body should not include pricing state: %s", body)
 	}
 }
 

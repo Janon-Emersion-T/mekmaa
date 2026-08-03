@@ -12,7 +12,11 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$TARGET_DIR"
+mkdir -p "$BACKUP_DEST"
+if ! mkdir "$TARGET_DIR"; then
+  echo "backup destination already exists: $TARGET_DIR" >&2
+  exit 1
+fi
 
 if [ ! -f "$DB_PATH" ]; then
   echo "database file not found: $DB_PATH" >&2
