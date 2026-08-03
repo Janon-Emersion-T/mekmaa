@@ -1388,11 +1388,14 @@ func main() {
 
 	bookingMessageSettings := BookingCommunicationSettings{
 		EmailEnabled: envOrDefault("BOOKING_EMAIL_ENABLED", "true") != "false",
-		SMSEnabled:   envOrDefault("BOOKING_SMS_ENABLED", "true") != "false",
+		SMSEnabled:   envOrDefault("BOOKING_SMS_ENABLED", "false") == "true" && smsConfig.Enabled,
 		ContactPhone: envOrDefault("MEKMAA_CONTACT_PHONE", "077 220 7297"),
 		ContactEmail: envOrDefault("MEKMAA_CONTACT_EMAIL", "mekmaa.jo@gmail.com"),
 		VenueName:    envOrDefault("MEKMAA_VENUE_NAME", "Mekmaa (Private Limited)"),
 		VenueAddress: envOrDefault("MEKMAA_VENUE_ADDRESS", "No. 64, Temple Road, Jaffna - 40000, Sri Lanka"),
+	}
+	if envOrDefault("BOOKING_SMS_ENABLED", "false") == "true" && !smsConfig.Enabled {
+		log.Printf("startup booking SMS disabled: SMS credentials are incomplete")
 	}
 	tokenTTLDays, err := strconv.Atoi(envOrDefault("BOOKING_ACCESS_TOKEN_TTL_DAYS", "180"))
 	if err != nil || tokenTTLDays <= 0 {
