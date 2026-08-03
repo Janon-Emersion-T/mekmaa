@@ -166,6 +166,23 @@
               </p>
             </div>
           </div>
+          <div class="mt-3 rounded-2xl border border-slate/10 bg-white px-4 py-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate/40">Auto-accept public bookings</p>
+                <p class="mt-1 text-xs text-slate/60">When enabled, valid `/book` requests for this activity are confirmed immediately.</p>
+              </div>
+              <form action="/admin/courts/activities/auto-accept" method="post" class="flex items-center gap-2">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                <input type="hidden" name="court_id" value="{{$.SelectedCourt.ID}}" />
+                <input type="hidden" name="activity_id" value="{{.ID}}" />
+                <input type="hidden" name="auto_accept" value="{{if .AutoAccept}}0{{else}}1{{end}}" />
+                <button class="{{if .AutoAccept}}border-emerald-200 bg-emerald-50 text-emerald-800{{else}}border-slate/10 bg-cloud text-slate{{end}} inline-flex h-10 items-center justify-center rounded-xl border px-4 text-xs font-bold uppercase tracking-[0.14em]">
+                  {{if .AutoAccept}}Enabled{{else}}Disabled{{end}}
+                </button>
+              </form>
+            </div>
+          </div>
           {{else}}
           <div class="rounded-2xl border border-dashed border-slate/20 bg-cloud/50 px-4 py-8 text-center">
             <p class="text-sm text-slate/60">

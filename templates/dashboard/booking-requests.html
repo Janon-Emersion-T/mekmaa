@@ -8,7 +8,7 @@
       <div>
         <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Booking operations</p>
         <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Request inbox</h1>
-        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/65">Review customer requests, verify the quoted slot, and make a clear decision from one queue.</p>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/65">Review customer requests, verify the quoted slot, place requests on hold when needed, and act before the playing time window closes.</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <a href="/admin/bookings" class="inline-flex h-11 items-center rounded-2xl border border-white/10 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">Open calendar</a>
@@ -206,7 +206,9 @@
   <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
       <div class="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]" data-request-filters>
-        <button type="button" data-request-filter="pending" class="whitespace-nowrap rounded-full bg-obsidian px-4 py-2.5 text-xs font-bold text-cloud">Needs review</button>
+        <button type="button" data-request-filter="pending" class="whitespace-nowrap rounded-full bg-obsidian px-4 py-2.5 text-xs font-bold text-cloud">Pending</button>
+        <button type="button" data-request-filter="held" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Held</button>
+        <button type="button" data-request-filter="reschedule_pending" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Reschedule pending</button>
         <button type="button" data-request-filter="all" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">All requests</button>
         <button type="button" data-request-filter="confirmed" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Confirmed</button>
         <button type="button" data-request-filter="rejected" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Rejected</button>
@@ -341,15 +343,22 @@
                 </div>
               </div>
 
-              {{if eq .Status "pending"}}
+              {{if or (eq .Status "pending") (eq .Status "held") (eq .Status "reschedule_pending")}}
               <div class="rounded-[1.3rem] border border-slate/10 bg-cloud/50 p-3">
                 <p class="text-xs font-semibold text-obsidian">Decision</p>
-                <p class="mt-1 text-[0.68rem] leading-5 text-slate/50">Confirm only after checking the calendar and customer details.</p>
+                <p class="mt-1 text-[0.68rem] leading-5 text-slate/50">Confirm only after checking the calendar and customer details. Holds continue to reserve the slot until staff take a final action.</p>
                 <form action="/admin/booking-requests/confirm" method="post" class="mt-3" onsubmit="return confirm('Confirm {{bookingReference .ID}} for {{.RequesterName}}?')">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="schedule_id" value="{{.ID}}" />
                   <textarea name="customer_message" rows="3" placeholder="Optional customer message for the confirmed booking" class="mb-2 w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
                   <button class="h-11 w-full rounded-xl bg-obsidian text-sm font-bold text-cloud transition hover:bg-slate">Confirm booking</button>
+                </form>
+                <form action="/admin/booking-requests/hold" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Place {{bookingReference .ID}} on hold?')">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                  <input type="text" name="review_note" placeholder="Internal hold note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+                  <textarea name="customer_message" rows="3" placeholder="Optional customer-facing hold message" class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
+                  <button class="h-10 w-full rounded-xl border border-violet-200 bg-violet-50 text-xs font-bold text-violet-800 transition hover:bg-violet-100">Place on hold</button>
                 </form>
                 <a href="/admin/booking-requests?action=reschedule&id={{.ID}}#request-reschedule" class="mt-2 inline-flex h-10 w-full items-center justify-center rounded-xl border border-aqua/25 bg-aqua/10 text-xs font-bold text-emerald-900 transition hover:bg-aqua/20">Reschedule</a>
                 <form action="/admin/booking-requests/reject" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Reject {{bookingReference .ID}}?')">

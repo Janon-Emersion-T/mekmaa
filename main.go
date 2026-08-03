@@ -290,6 +290,7 @@ type BookingFinancial struct {
 	Status               string
 	RequesterName        string
 	RequesterEmail       string
+	RecordedByUserID     int64
 }
 
 type ReportPeriod struct {
@@ -408,6 +409,7 @@ type CourtActivity struct {
 	Activity    string
 	DisplayName string
 	MaxQuantity int
+	AutoAccept  bool
 	Active      bool
 	SortOrder   int
 	CreatedAt   time.Time
@@ -450,25 +452,30 @@ type CourtClosure struct {
 }
 
 type SpaceSchedule struct {
-	ID              int64
-	SlotDate        string
-	SlotHour        string
-	EntryType       string
-	Activity        string
-	Quantity        int
-	Title           string
-	Notes           string
-	Status          string
-	RequesterName   string
-	RequesterEmail  string
-	RequesterPhone  string
-	RequestedByUser int64
-	ReviewNote      string
-	CustomerMessage string
-	ReferralCode    string
-	QuotedPrice     float64
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                      int64
+	SlotDate                string
+	SlotHour                string
+	EntryType               string
+	Activity                string
+	Quantity                int
+	Title                   string
+	Notes                   string
+	Status                  string
+	RequesterName           string
+	RequesterEmail          string
+	RequesterPhone          string
+	RequestedByUser         int64
+	ReviewNote              string
+	CustomerMessage         string
+	StatusChangedAt         time.Time
+	StatusChangedBy         int64
+	StatusSource            string
+	CancellationReason      string
+	CancellationFinanceNote string
+	ReferralCode            string
+	QuotedPrice             float64
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 type BookingOption struct {
@@ -561,6 +568,10 @@ type BookingRequestChange struct {
 	NewQuantity       int
 	NewQuote          float64
 	ActionType        string
+	PreviousStatus    string
+	NewStatus         string
+	ChangeSource      string
+	FinanceNote       string
 	ReviewNote        string
 	CustomerMessage   string
 	ChangedByUserID   int64
@@ -601,6 +612,18 @@ type BookingAccessToken struct {
 	RevokedAt      time.Time
 }
 
+type BookingCancellationRequest struct {
+	ID               int64
+	ScheduleID       int64
+	Status           string
+	RequestReason    string
+	RequestedAt      time.Time
+	TokenID          int64
+	ReviewNote       string
+	ReviewedAt       time.Time
+	ReviewedByUserID int64
+}
+
 type CustomerBookingTimelineItem struct {
 	Label   string
 	Detail  string
@@ -609,25 +632,37 @@ type CustomerBookingTimelineItem struct {
 }
 
 type BookingStatusView struct {
-	Reference         string
-	StatusLabel       string
-	StatusTone        string
-	StatusSummary     string
-	NextSteps         string
-	MaskedIdentity    string
-	CustomerMessage   string
-	CurrentSlotLabel  string
-	PreviousSlotLabel string
-	ActivityLabel     string
-	QuotedAmount      string
-	PaymentStatus     string
-	PaidAtLabel       string
-	Title             string
-	ContactPhone      string
-	ContactEmail      string
-	VenueName         string
-	VenueAddress      string
-	CanPrint          bool
+	Reference                  string
+	StatusLabel                string
+	StatusTone                 string
+	StatusSummary              string
+	NextSteps                  string
+	MaskedIdentity             string
+	CustomerMessage            string
+	CurrentSlotLabel           string
+	PreviousSlotLabel          string
+	ActivityLabel              string
+	QuotedAmount               string
+	PaymentStatus              string
+	PaidAtLabel                string
+	Title                      string
+	ContactPhone               string
+	ContactEmail               string
+	VenueName                  string
+	VenueAddress               string
+	CanPrint                   bool
+	CanRequestCancellation     bool
+	PendingCancellationRequest bool
+}
+
+type BookingReminder struct {
+	Schedule            SpaceSchedule
+	MinutesUntilStart   int
+	UrgencyLabel        string
+	UrgencyTone         string
+	RemainingLabel      string
+	IsOverdue           bool
+	IsApproachingWindow bool
 }
 
 type BookingRequestSnapshot struct {
@@ -850,8 +885,10 @@ type TemplateData struct {
 	BookingFinancials               []BookingFinancial
 	BookingCommunications           []BookingCommunication
 	BookingAccessTokens             []BookingAccessToken
+	BookingCancellationRequests     []BookingCancellationRequest
 	SelectedAccessToken             *BookingAccessToken
 	BookingStatusView               *BookingStatusView
+	BookingStatusToken              string
 	BookingStatusTimeline           []CustomerBookingTimelineItem
 	BookingStatusUnavailable        bool
 	BookingStatusUnavailableMessage string
@@ -880,6 +917,9 @@ type TemplateData struct {
 	DailyStats                      []Stat
 	BookingRequestStats             []Stat
 	PendingRequestCount             int
+	HeldRequestCount                int
+	BookingReminders                []BookingReminder
+	BookingAttentionStats           []Stat
 	CalendarCanGoBack               bool
 	PendingEmail                    string
 	OTPCodeLength                   int
@@ -914,17 +954,34 @@ var (
 )
 
 const (
-	bookingCommEventRequestReceived      = "booking_request_received"
-	bookingCommEventConfirmed            = "booking_confirmed"
-	bookingCommEventRejected             = "booking_rejected"
-	bookingCommEventRescheduledPending   = "booking_rescheduled_pending"
-	bookingCommEventRescheduledConfirmed = "booking_rescheduled_confirmed"
-	bookingCommEventResent               = "booking_message_resent"
-	bookingCommChannelEmail              = "email"
-	bookingCommChannelSMS                = "sms"
-	bookingCommStatusPending             = "pending"
-	bookingCommStatusSent                = "sent"
-	bookingCommStatusFailed              = "failed"
+	bookingCommEventRequestReceived       = "booking_request_received"
+	bookingCommEventConfirmed             = "booking_confirmed"
+	bookingCommEventHeld                  = "booking_held"
+	bookingCommEventRejected              = "booking_rejected"
+	bookingCommEventRescheduledPending    = "booking_rescheduled_pending"
+	bookingCommEventRescheduledConfirmed  = "booking_rescheduled_confirmed"
+	bookingCommEventResent                = "booking_message_resent"
+	bookingCommEventCancellationRequested = "booking_cancellation_requested"
+	bookingCommEventCancellationApproved  = "booking_cancellation_approved"
+	bookingCommEventCancellationRejected  = "booking_cancellation_rejected"
+	bookingCommEventCancelledByAdmin      = "booking_cancelled_by_admin"
+	bookingCommEventCompleted             = "booking_completed"
+	bookingCommEventNoShow                = "booking_no_show"
+	bookingCommEventExpired               = "booking_expired"
+	bookingCommChannelEmail               = "email"
+	bookingCommChannelSMS                 = "sms"
+	bookingCommStatusPending              = "pending"
+	bookingCommStatusSent                 = "sent"
+	bookingCommStatusFailed               = "failed"
+	bookingStatusPending                  = "pending"
+	bookingStatusHeld                     = "held"
+	bookingStatusConfirmed                = "confirmed"
+	bookingStatusRejected                 = "rejected"
+	bookingStatusReschedulePending        = "reschedule_pending"
+	bookingStatusCancelled                = "cancelled"
+	bookingStatusCompleted                = "completed"
+	bookingStatusNoShow                   = "no_show"
+	bookingStatusExpired                  = "expired"
 )
 
 func main() {
@@ -1030,6 +1087,7 @@ func main() {
 	mux.HandleFunc("/book", app.publicBookingHandler)
 	mux.HandleFunc("/book/request", app.publicBookingRequestHandler)
 	mux.HandleFunc("/booking/status", app.publicBookingStatusHandler)
+	mux.HandleFunc("/booking/status/cancellation-request", app.publicBookingCancellationRequestHandler)
 	mux.HandleFunc("/booking", app.legacyBookingRedirectHandler)
 	mux.HandleFunc("/contact", app.contactHandler)
 	mux.HandleFunc("/faq", app.faqHandler)
@@ -1204,15 +1262,22 @@ func main() {
 			),
 		),
 	)
+	mux.Handle("/admin/courts/activities/auto-accept", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateCourtActivityAutoAcceptHandler), "courts.manage")))
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/options", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.adminBookingOptionsHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/communications/resend", app.sessionMiddleware(http.HandlerFunc(app.resendBookingCommunicationHandler)))
 	mux.Handle("/admin/bookings/access/rotate", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.rotateBookingAccessHandler), "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/bookings/access/revoke", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.revokeBookingAccessHandler), "space_bookings.manage", "booking_requests.manage")))
+	mux.Handle("/admin/bookings/cancel", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.cancelBookingHandler), "space_bookings.manage")))
+	mux.Handle("/admin/bookings/complete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.completeBookingHandler), "space_bookings.manage")))
+	mux.Handle("/admin/bookings/no-show", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.noShowBookingHandler), "space_bookings.manage")))
+	mux.Handle("/admin/bookings/cancellation-requests/approve", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.approveBookingCancellationRequestHandler), "space_bookings.manage", "booking_requests.manage")))
+	mux.Handle("/admin/bookings/cancellation-requests/reject", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.rejectBookingCancellationRequestHandler), "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/booking-requests", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingRequestsHandler), "booking_requests.manage")))
+	mux.Handle("/admin/booking-requests/hold", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.holdBookingRequestHandler), "booking_requests.manage")))
 	mux.Handle("/admin/booking-requests/reschedule", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.rescheduleBookingRequestHandler), "booking_requests.manage")))
 	mux.Handle("/admin/booking-requests/reschedule-confirm", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.rescheduleAndConfirmBookingRequestHandler), "booking_requests.manage")))
 	mux.Handle("/admin/booking-requests/confirm", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.confirmBookingRequestHandler), "booking_requests.manage")))
@@ -1520,27 +1585,36 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	schedule.QuotedPrice = priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour)
-	requestID, err := a.createPublicBookingRequest(schedule)
+	created, changeID, err := a.createPublicBookingRequestDetailed(schedule)
 	if err != nil {
 		a.writePublicBookingError(w, r, &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
+	requestID := created.ID
+	eventType := bookingCommEventRequestReceived
+	eventKey := fmt.Sprintf("schedule:%d:%s", requestID, bookingCommEventRequestReceived)
+	flashMessage := "Booking request " + bookingReference(requestID) + " received. Keep this reference while our team reviews the request."
+	if created.Status == bookingStatusConfirmed {
+		eventType = bookingCommEventConfirmed
+		eventKey = fmt.Sprintf("schedule:%d:%s:change:%d", requestID, bookingCommEventConfirmed, changeID)
+		flashMessage = "Booking " + bookingReference(requestID) + " was confirmed immediately. Check your booking status link for the latest details."
+	}
 
 	results, commErr := a.sendBookingCommunicationEvent(
 		requestID,
-		bookingCommEventRequestReceived,
+		eventType,
 		"",
-		fmt.Sprintf("schedule:%d:%s", requestID, bookingCommEventRequestReceived),
+		eventKey,
 		0,
 	)
 	if commErr != nil {
-		log.Printf("send booking request received communication: %v", commErr)
+		log.Printf("send booking request communication: %v", commErr)
 	}
-	emailSent := communicationDelivered(results, bookingCommChannelEmail)
-	if emailSent {
-		a.setFlash(w, "Booking request "+bookingReference(requestID)+" received. We emailed the pending request details to you.")
+	smsSent := communicationDelivered(results, bookingCommChannelSMS)
+	if smsSent {
+		a.setFlash(w, flashMessage)
 	} else {
-		a.setFlash(w, "Booking request "+bookingReference(requestID)+" received. Keep this reference; our team will review the request shortly. We could not confirm email delivery automatically.")
+		a.setFlash(w, flashMessage+" We could not confirm SMS delivery automatically.")
 	}
 	http.Redirect(w, r, "/book?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
 }
@@ -1588,12 +1662,102 @@ func (a *App) publicBookingStatusHandler(w http.ResponseWriter, r *http.Request)
 
 	data.SelectedSchedule = schedule
 	data.SelectedAccessToken = token
+	data.BookingStatusToken = strings.TrimSpace(r.URL.Query().Get("token"))
 	data.BookingFinancials = financials
 	data.BookingRequestChanges = changes
 	data.BookingCommunications = communications
-	data.BookingStatusView = a.buildBookingStatusView(schedule, bookingFinancialForSchedule(financials, schedule.ID), changes)
+	requests, reqErr := a.listBookingCancellationRequestsForScheduleIDs([]int64{schedule.ID})
+	if reqErr != nil {
+		log.Printf("load booking cancellation requests: %v", reqErr)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.BookingCancellationRequests = requests
+	data.BookingStatusView = a.buildBookingStatusView(schedule, bookingFinancialForSchedule(financials, schedule.ID), changes, requests)
 	data.BookingStatusTimeline = buildCustomerBookingTimeline(*schedule, changes, communications)
 	a.render(w, "booking-status", data, http.StatusOK)
+}
+
+func (a *App) publicBookingCancellationRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	rawToken := strings.TrimSpace(r.FormValue("token"))
+	reason := strings.TrimSpace(r.FormValue("request_reason"))
+	if reason == "" {
+		http.Error(w, "cancellation reason is required", http.StatusBadRequest)
+		return
+	}
+	schedule, token, err := a.findActiveBookingByAccessToken(rawToken)
+	if err != nil {
+		http.Error(w, "booking status link is unavailable", http.StatusNotFound)
+		return
+	}
+	if !bookingEligibleForCustomerCancellation(schedule, time.Now()) {
+		http.Error(w, "this booking cannot accept a cancellation request", http.StatusBadRequest)
+		return
+	}
+	existing, err := a.listBookingCancellationRequestsForScheduleIDs([]int64{schedule.ID})
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if pendingCancellationRequestFor(existing, schedule.ID) != nil {
+		http.Error(w, "a cancellation request is already pending", http.StatusConflict)
+		return
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`
+		INSERT INTO booking_cancellation_requests (
+			schedule_id, status, request_reason, requested_at, token_id, review_note, reviewed_at, reviewed_by_user_id
+		)
+		VALUES (?, 'pending', ?, ?, ?, '', NULL, NULL)
+	`, schedule.ID, reason, time.Now().UTC(), nullIfZero(token.ID))
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "a cancellation request is already pending", http.StatusConflict)
+			return
+		}
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	requestID, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(tx, schedule.ID), schedule.ID)
+	if financial != nil {
+		schedule.QuotedPrice = financial.QuotedAmount
+	}
+	if _, err := a.recordBookingLifecycleChangeTx(tx, schedule, "cancellation_requested", schedule.Status, schedule.Status, "", reason, "", "customer", 0); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	_, commErr := a.sendBookingCommunicationEvent(schedule.ID, bookingCommEventCancellationRequested, "", fmt.Sprintf("schedule:%d:%s:req:%d", schedule.ID, bookingCommEventCancellationRequested, requestID), 0)
+	if commErr != nil {
+		log.Printf("send cancellation requested communication: %v", commErr)
+	}
+	http.Redirect(w, r, "/booking/status?token="+url.QueryEscape(rawToken), http.StatusSeeOther)
 }
 
 func (a *App) registerHandler(w http.ResponseWriter, r *http.Request) {
@@ -1862,6 +2026,8 @@ func (a *App) logoutHandler(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
+	now := time.Now()
+	a.expireOverdueBookingRequests(now)
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Dashboard"
 	data.Description = "Authenticated user dashboard."
@@ -1869,6 +2035,17 @@ func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		{Value: strconv.FormatInt(user.ID, 10), Label: "User ID"},
 		{Value: strings.Join(user.Roles, ", "), Label: "Assigned roles"},
 		{Value: verifiedLabel(user.Verified), Label: "Email status"},
+	}
+	if containsPermission(user.Permissions, "booking_requests.manage") || containsPermission(user.Permissions, "space_bookings.manage") {
+		requests, err := a.listPendingSpaceSchedules()
+		if err == nil {
+			pendingCount, _ := a.countPendingSpaceSchedules()
+			heldCount, _ := a.countHeldSpaceSchedules()
+			data.PendingRequestCount = pendingCount
+			data.HeldRequestCount = heldCount
+			data.BookingReminders = buildBookingReminders(requests, now)
+			data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, pendingCount, heldCount)
+		}
 	}
 	a.render(w, "dashboard", data, http.StatusOK)
 }
@@ -2626,8 +2803,8 @@ func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
-	if err != nil || scheduleID <= 0 || !validPaymentMethod(paymentMethod) {
-		http.Error(w, "valid booking and payment method are required", http.StatusBadRequest)
+	if err != nil || scheduleID <= 0 || paymentMethod != "cash" {
+		http.Error(w, "booking payments are recorded in cash only", http.StatusBadRequest)
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
@@ -3941,7 +4118,7 @@ func (a *App) bookingRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Title = "Booking Requests"
-	data.Description = "Review pending booking requests."
+	data.Description = "Review unresolved booking requests."
 	data.BookingCommunications, err = a.listBookingCommunicationsForScheduleIDs(scheduleIDs(data.BookingRequests))
 	if err != nil {
 		log.Printf("list booking communications: %v", err)
@@ -3952,7 +4129,7 @@ func (a *App) bookingRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("action")), "reschedule") {
 		if requestID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64); err == nil && requestID > 0 {
 			if selectedRequest, err := a.findSpaceScheduleByID(requestID); err == nil &&
-				selectedRequest.Status == "pending" &&
+				unresolvedBookingRequestStatus(selectedRequest.Status) &&
 				selectedRequest.EntryType == "booking" &&
 				(selectedRequest.RequesterName != "" || selectedRequest.RequesterEmail != "" || selectedRequest.RequestedByUser > 0) {
 				draft := *selectedRequest
@@ -4100,6 +4277,270 @@ func (a *App) revokeBookingAccessHandler(w http.ResponseWriter, r *http.Request)
 		a.setFlash(w, "Customer status link revoked.")
 	}
 	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) cancelBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	reason := strings.TrimSpace(r.FormValue("cancellation_reason"))
+	financeNote := strings.TrimSpace(r.FormValue("cancellation_finance_note"))
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	updated, changeID, err := a.transitionManagedBookingStatus(scheduleID, bookingStatusCancelled, reason, customerMessage, reason, financeNote, "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be cancelled: "+err.Error())
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
+		return
+	}
+	requests, _ := a.listBookingCancellationRequestsForScheduleIDs([]int64{scheduleID})
+	if pending := pendingCancellationRequestFor(requests, scheduleID); pending != nil {
+		_, _ = a.db.Exec(`
+			UPDATE booking_cancellation_requests
+			SET status = 'approved', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
+			WHERE id = ? AND status = 'pending'
+		`, reason, time.Now().UTC(), nullIfZero(currentUserID(r)), pending.ID)
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventCancelledByAdmin, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventCancelledByAdmin, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send admin cancellation communication: %v", commErr)
+	}
+	a.setFlash(w, "Booking cancelled.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) completeBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	updated, changeID, err := a.transitionManagedBookingStatus(scheduleID, bookingStatusCompleted, "", customerMessage, "", "", "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be marked completed: "+err.Error())
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
+		return
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventCompleted, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventCompleted, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send booking completed communication: %v", commErr)
+	}
+	a.setFlash(w, "Booking marked completed.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) noShowBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	updated, changeID, err := a.transitionManagedBookingStatus(scheduleID, bookingStatusNoShow, "", customerMessage, "", "", "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be marked no-show: "+err.Error())
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
+		return
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventNoShow, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventNoShow, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send booking no-show communication: %v", commErr)
+		a.setFlash(w, "Booking marked no-show, but the customer communication could not be prepared automatically.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Booking marked no-show.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) holdBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	updated, changeID, err := a.transitionBookingRequestStatus(scheduleID, bookingStatusHeld, reviewNote, customerMessage, "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be placed on hold: "+err.Error())
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	communications, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventHeld, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventHeld, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send booking hold communication: %v", commErr)
+		a.setFlash(w, "Booking request placed on hold, but the customer communication could not be prepared automatically.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, communicationFlashMessage("Booking request placed on hold.", communications))
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) approveBookingCancellationRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	requestID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("request_id")), 10, 64)
+	if err != nil || requestID <= 0 {
+		http.Error(w, "invalid request id", http.StatusBadRequest)
+		return
+	}
+	row := a.db.QueryRow(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
+	var scheduleID int64
+	var reason string
+	var status string
+	if err := row.Scan(&scheduleID, &reason, &status); err != nil {
+		http.Error(w, "request not found", http.StatusNotFound)
+		return
+	}
+	if status != bookingStatusPending {
+		http.Error(w, "request is no longer pending", http.StatusBadRequest)
+		return
+	}
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	financeNote := strings.TrimSpace(r.FormValue("cancellation_finance_note"))
+	updated, changeID, err := a.transitionManagedBookingStatus(scheduleID, bookingStatusCancelled, reason, customerMessage, reason, financeNote, "customer_request_approved", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Cancellation request could not be approved: "+err.Error())
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
+		return
+	}
+	if _, err := a.db.Exec(`
+		UPDATE booking_cancellation_requests
+		SET status = 'approved', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
+		WHERE id = ? AND status = 'pending'
+	`, strings.TrimSpace(r.FormValue("review_note")), time.Now().UTC(), nullIfZero(currentUserID(r)), requestID); err != nil {
+		log.Printf("approve cancellation request row: %v", err)
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventCancellationApproved, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventCancellationApproved, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send cancellation approved communication: %v", commErr)
+	}
+	a.setFlash(w, "Cancellation request approved.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) rejectBookingCancellationRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	requestID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("request_id")), 10, 64)
+	if err != nil || requestID <= 0 {
+		http.Error(w, "invalid request id", http.StatusBadRequest)
+		return
+	}
+	row := a.db.QueryRow(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
+	var scheduleID int64
+	var reason string
+	var status string
+	if err := row.Scan(&scheduleID, &reason, &status); err != nil {
+		http.Error(w, "request not found", http.StatusNotFound)
+		return
+	}
+	if status != bookingStatusPending {
+		http.Error(w, "request is no longer pending", http.StatusBadRequest)
+		return
+	}
+	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	if reviewNote == "" {
+		http.Error(w, "review note is required", http.StatusBadRequest)
+		return
+	}
+	if _, err := a.db.Exec(`
+		UPDATE booking_cancellation_requests
+		SET status = 'rejected', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
+		WHERE id = ? AND status = 'pending'
+	`, reviewNote, time.Now().UTC(), nullIfZero(currentUserID(r)), requestID); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	schedule, _ := a.findSpaceScheduleByID(scheduleID)
+	if schedule != nil {
+		financial := bookingFinancialForSchedule(mustListBookingFinancialsTxMust(a.db, scheduleID), scheduleID)
+		if financial != nil {
+			schedule.QuotedPrice = financial.QuotedAmount
+		}
+		if _, err := a.recordBookingLifecycleChange(schedule, "cancellation_request_rejected", schedule.Status, schedule.Status, reviewNote, customerMessage, "", "admin", currentUserID(r)); err != nil {
+			log.Printf("record cancellation rejection history: %v", err)
+		}
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventCancellationRejected, "", fmt.Sprintf("schedule:%d:%s:req:%d", scheduleID, bookingCommEventCancellationRejected, requestID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send cancellation rejected communication: %v", commErr)
+	}
+	a.setFlash(w, "Cancellation request rejected.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
 }
 
 func (a *App) rescheduleBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
@@ -4526,7 +4967,8 @@ func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
-	if _, err := a.updateBookingRequestStatus(scheduleID, "confirmed", "", customerMessage); err != nil {
+	updated, changeID, err := a.transitionBookingRequestStatus(scheduleID, bookingStatusConfirmed, "", customerMessage, "admin", currentUserID(r))
+	if err != nil {
 		a.setFlash(w, "Booking could not be confirmed and remains pending: "+err.Error())
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
@@ -4535,17 +4977,17 @@ func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Reques
 		scheduleID,
 		bookingCommEventConfirmed,
 		"",
-		fmt.Sprintf("schedule:%d:%s", scheduleID, bookingCommEventConfirmed),
+		fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventConfirmed, changeID),
 		currentUserID(r),
 	)
 	if commErr != nil {
 		log.Printf("send booking confirmation communication: %v", commErr)
 		a.setFlash(w, "Booking request confirmed, but the customer communication could not be prepared automatically.")
-		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, communicationFlashMessage("Booking request confirmed.", communications))
-	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
 }
 
 func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
@@ -4578,7 +5020,8 @@ func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
 	}
-	if _, err := a.updateBookingRequestStatus(scheduleID, "rejected", reviewNote, customerMessage); err != nil {
+	updated, changeID, err := a.transitionBookingRequestStatus(scheduleID, bookingStatusRejected, reviewNote, customerMessage, "admin", currentUserID(r))
+	if err != nil {
 		a.setFlash(w, "Booking could not be rejected: "+err.Error())
 		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
 		return
@@ -4587,13 +5030,13 @@ func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		scheduleID,
 		bookingCommEventRejected,
 		"",
-		fmt.Sprintf("schedule:%d:%s", scheduleID, bookingCommEventRejected),
+		fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventRejected, changeID),
 		currentUserID(r),
 	)
 	if commErr != nil {
 		log.Printf("send booking rejection communication: %v", commErr)
 		a.setFlash(w, "Booking request rejected, but the rejection email could not be prepared automatically.")
-		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
 		return
 	}
 	if communicationDelivered(communications, bookingCommChannelEmail) {
@@ -4601,7 +5044,7 @@ func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request
 	} else {
 		a.setFlash(w, "Booking request rejected, but the rejection email failed or is not configured.")
 	}
-	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
 }
 
 func (a *App) createPricingHandler(w http.ResponseWriter, r *http.Request) {
@@ -4858,6 +5301,8 @@ func (a *App) deleteEventHandler(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, user *User) (TemplateData, error) {
 	isBookingCalendar := r.URL.Path == "/admin/bookings"
+	now := time.Now()
+	a.expireOverdueBookingRequests(now)
 
 	pricings, err := a.listPricingRules()
 	if err != nil {
@@ -4911,7 +5356,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 
 	if isBookingCalendar {
 		weekStart, weekEnd := bookingCalendarWindow(selectedDate)
-		activeSchedules, err := a.listActiveSpaceSchedulesBetween(
+		rangeSchedules, err := a.listActiveSpaceSchedulesBetween(
 			weekStart.Format("2006-01-02"),
 			weekEnd.Format("2006-01-02"),
 		)
@@ -4922,16 +5367,24 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		if err != nil {
 			return TemplateData{}, err
 		}
+		heldCount, err := a.countHeldSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
 		filteredClosures := courtClosuresBetween(
 			courtClosures,
 			weekStart.Format("2006-01-02"),
 			weekEnd.Format("2006-01-02"),
 		)
 
-		data.Schedules = activeSchedules
+		activeSchedules := activeSchedulesOnly(rangeSchedules)
+		data.Schedules = rangeSchedules
 		data.PendingRequestCount = pendingCount
-		data.DaySchedules = schedulesForDate(activeSchedules, data.CalendarDate)
+		data.HeldRequestCount = heldCount
+		data.DaySchedules = schedulesForDate(rangeSchedules, data.CalendarDate)
 		data.BookingRequests = customerBookingRequests(data.DaySchedules)
+		data.BookingReminders = buildBookingReminders(customerBookingRequests(rangeSchedules), now)
+		data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, pendingCount, heldCount)
 
 		relevantScheduleIDs := scheduleIDs(data.DaySchedules)
 		if selectedScheduleID > 0 {
@@ -4955,6 +5408,10 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 			return TemplateData{}, err
 		}
 		data.BookingAccessTokens, err = a.listBookingAccessTokensForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingCancellationRequests, err = a.listBookingCancellationRequestsForScheduleIDs(relevantScheduleIDs)
 		if err != nil {
 			return TemplateData{}, err
 		}
@@ -5012,9 +5469,20 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 
 		data.Schedules = schedules
 		data.PendingSchedules = pending
-		data.PendingRequestCount = len(pending)
+		data.PendingRequestCount = 0
+		data.HeldRequestCount = 0
+		for _, schedule := range pending {
+			if schedule.Status == bookingStatusPending {
+				data.PendingRequestCount++
+			}
+			if schedule.Status == bookingStatusHeld {
+				data.HeldRequestCount++
+			}
+		}
 		data.BookingRequests = customerBookingRequests(schedules)
 		data.BookingRequestStats = buildBookingRequestStats(data.BookingRequests)
+		data.BookingReminders = buildBookingReminders(data.BookingRequests, now)
+		data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, data.PendingRequestCount, data.HeldRequestCount)
 		data.BookingFinancials = bookingFinancials
 		data.BookingReferrals = bookingReferrals
 		data.BookingRequestChanges = bookingRequestChanges
@@ -5023,6 +5491,10 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 			return TemplateData{}, err
 		}
 		data.BookingAccessTokens, err = a.listBookingAccessTokensForScheduleIDs(scheduleIDs(data.BookingRequests))
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingCancellationRequests, err = a.listBookingCancellationRequestsForScheduleIDs(scheduleIDs(data.BookingRequests))
 		if err != nil {
 			return TemplateData{}, err
 		}
@@ -5565,6 +6037,39 @@ func (a *App) updateRolesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	a.setFlash(w, "Roles updated.")
 	http.Redirect(w, r, redirectTo, http.StatusSeeOther)
+}
+
+func (a *App) updateCourtActivityAutoAcceptHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	activityID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("activity_id")), 10, 64)
+	if err != nil || activityID <= 0 {
+		http.Error(w, "invalid activity id", http.StatusBadRequest)
+		return
+	}
+	courtID := strings.TrimSpace(r.FormValue("court_id"))
+	autoAccept := r.FormValue("auto_accept") == "1"
+	if _, err := a.db.Exec(`
+		UPDATE court_activities
+		SET auto_accept = ?, updated_at = ?
+		WHERE id = ?
+	`, boolToInt(autoAccept), time.Now().UTC(), activityID); err != nil {
+		log.Printf("update court activity auto accept: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Activity auto-accept setting updated.")
+	http.Redirect(w, r, "/admin/courts?court_id="+url.QueryEscape(courtID), http.StatusSeeOther)
 }
 
 func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
@@ -7483,6 +7988,7 @@ func (a *App) listCourtActivities(
 			activity,
 			display_name,
 			max_quantity,
+			auto_accept,
 			active,
 			sort_order,
 			created_at,
@@ -7507,6 +8013,7 @@ func (a *App) listCourtActivities(
 
 	for rows.Next() {
 		var activity CourtActivity
+		var autoAccept int
 
 		err := rows.Scan(
 			&activity.ID,
@@ -7514,6 +8021,7 @@ func (a *App) listCourtActivities(
 			&activity.Activity,
 			&activity.DisplayName,
 			&activity.MaxQuantity,
+			&autoAccept,
 			&activity.Active,
 			&activity.SortOrder,
 			&activity.CreatedAt,
@@ -7522,6 +8030,7 @@ func (a *App) listCourtActivities(
 		if err != nil {
 			return nil, err
 		}
+		activity.AutoAccept = autoAccept == 1
 
 		activities = append(activities, activity)
 	}
@@ -7900,6 +8409,7 @@ func activeBookingConfigurationQuery(
 			ca.activity,
 			ca.display_name,
 			ca.max_quantity,
+			ca.auto_accept,
 			ca.active,
 			ca.sort_order,
 			ca.created_at,
@@ -7922,12 +8432,14 @@ func activeBookingConfigurationQuery(
 	var activities []CourtActivity
 	for activitiesRows.Next() {
 		var activity CourtActivity
+		var autoAccept int
 		if err := activitiesRows.Scan(
 			&activity.ID,
 			&activity.CourtID,
 			&activity.Activity,
 			&activity.DisplayName,
 			&activity.MaxQuantity,
+			&autoAccept,
 			&activity.Active,
 			&activity.SortOrder,
 			&activity.CreatedAt,
@@ -7935,6 +8447,7 @@ func activeBookingConfigurationQuery(
 		); err != nil {
 			return nil, nil, err
 		}
+		activity.AutoAccept = autoAccept == 1
 		activities = append(activities, activity)
 	}
 	if err := activitiesRows.Err(); err != nil {
@@ -8363,6 +8876,9 @@ func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 	rows, err := a.db.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       COALESCE(customer_message, ''),
+		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
+		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
 		       created_at, updated_at
 		FROM space_schedules
 		ORDER BY slot_date ASC, slot_hour ASC, entry_type ASC, id ASC
@@ -8375,54 +8891,7 @@ func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 	var schedules []SpaceSchedule
 	for rows.Next() {
 		var schedule SpaceSchedule
-		if err := rows.Scan(
-			&schedule.ID,
-			&schedule.SlotDate,
-			&schedule.SlotHour,
-			&schedule.EntryType,
-			&schedule.Activity,
-			&schedule.Quantity,
-			&schedule.Title,
-			&schedule.Notes,
-			&schedule.Status,
-			&schedule.RequesterName,
-			&schedule.RequesterEmail,
-			&schedule.RequesterPhone,
-			&schedule.RequestedByUser,
-			&schedule.ReviewNote,
-			&schedule.CreatedAt,
-			&schedule.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		schedules = append(schedules, schedule)
-	}
-	return schedules, rows.Err()
-}
-
-func (a *App) listActiveSpaceSchedulesBetween(
-	startDate string,
-	endDate string,
-) ([]SpaceSchedule, error) {
-	rows, err := a.db.Query(`
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
-		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
-		       COALESCE(customer_message, ''),
-		       created_at, updated_at
-		FROM space_schedules
-		WHERE status IN ('pending', 'confirmed')
-		  AND slot_date >= ?
-		  AND slot_date <= ?
-		ORDER BY slot_date ASC, slot_hour ASC, entry_type ASC, id ASC
-	`, startDate, endDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var schedules []SpaceSchedule
-	for rows.Next() {
-		var schedule SpaceSchedule
+		var statusChangedAt sql.NullTime
 		if err := rows.Scan(
 			&schedule.ID,
 			&schedule.SlotDate,
@@ -8439,10 +8908,77 @@ func (a *App) listActiveSpaceSchedulesBetween(
 			&schedule.RequestedByUser,
 			&schedule.ReviewNote,
 			&schedule.CustomerMessage,
+			&statusChangedAt,
+			&schedule.StatusChangedBy,
+			&schedule.StatusSource,
+			&schedule.CancellationReason,
+			&schedule.CancellationFinanceNote,
 			&schedule.CreatedAt,
 			&schedule.UpdatedAt,
 		); err != nil {
 			return nil, err
+		}
+		if statusChangedAt.Valid {
+			schedule.StatusChangedAt = statusChangedAt.Time
+		}
+		schedules = append(schedules, schedule)
+	}
+	return schedules, rows.Err()
+}
+
+func (a *App) listActiveSpaceSchedulesBetween(
+	startDate string,
+	endDate string,
+) ([]SpaceSchedule, error) {
+	rows, err := a.db.Query(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       COALESCE(customer_message, ''),
+		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
+		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
+		       created_at, updated_at
+		FROM space_schedules
+		WHERE slot_date >= ?
+		  AND slot_date <= ?
+		ORDER BY slot_date ASC, slot_hour ASC, entry_type ASC, id ASC
+	`, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []SpaceSchedule
+	for rows.Next() {
+		var schedule SpaceSchedule
+		var statusChangedAt sql.NullTime
+		if err := rows.Scan(
+			&schedule.ID,
+			&schedule.SlotDate,
+			&schedule.SlotHour,
+			&schedule.EntryType,
+			&schedule.Activity,
+			&schedule.Quantity,
+			&schedule.Title,
+			&schedule.Notes,
+			&schedule.Status,
+			&schedule.RequesterName,
+			&schedule.RequesterEmail,
+			&schedule.RequesterPhone,
+			&schedule.RequestedByUser,
+			&schedule.ReviewNote,
+			&schedule.CustomerMessage,
+			&statusChangedAt,
+			&schedule.StatusChangedBy,
+			&schedule.StatusSource,
+			&schedule.CancellationReason,
+			&schedule.CancellationFinanceNote,
+			&schedule.CreatedAt,
+			&schedule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if statusChangedAt.Valid {
+			schedule.StatusChangedAt = statusChangedAt.Time
 		}
 		schedules = append(schedules, schedule)
 	}
@@ -9105,6 +9641,10 @@ func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
 			brch.new_quantity,
 			brch.new_quoted_price,
 			brch.action_type,
+			COALESCE(brch.previous_status, ''),
+			COALESCE(brch.new_status, ''),
+			COALESCE(brch.change_source, ''),
+			COALESCE(brch.finance_note, ''),
 			brch.review_note,
 			COALESCE(brch.customer_message, ''),
 			COALESCE(brch.changed_by_user_id, 0),
@@ -9137,6 +9677,10 @@ func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
 			&change.NewQuantity,
 			&change.NewQuote,
 			&change.ActionType,
+			&change.PreviousStatus,
+			&change.NewStatus,
+			&change.ChangeSource,
+			&change.FinanceNote,
 			&change.ReviewNote,
 			&change.CustomerMessage,
 			&change.ChangedByUserID,
@@ -9202,10 +9746,12 @@ func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
+		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
+		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
 		       created_at, updated_at
 		FROM space_schedules
-		WHERE status = 'pending'
-		ORDER BY created_at ASC, id ASC
+		WHERE status IN ('pending', 'held', 'reschedule_pending')
+		ORDER BY slot_date ASC, slot_hour ASC, created_at ASC, id ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -9215,6 +9761,7 @@ func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
 	var schedules []SpaceSchedule
 	for rows.Next() {
 		var schedule SpaceSchedule
+		var statusChangedAt sql.NullTime
 		if err := rows.Scan(
 			&schedule.ID,
 			&schedule.SlotDate,
@@ -9231,10 +9778,18 @@ func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
 			&schedule.RequestedByUser,
 			&schedule.ReviewNote,
 			&schedule.CustomerMessage,
+			&statusChangedAt,
+			&schedule.StatusChangedBy,
+			&schedule.StatusSource,
+			&schedule.CancellationReason,
+			&schedule.CancellationFinanceNote,
 			&schedule.CreatedAt,
 			&schedule.UpdatedAt,
 		); err != nil {
 			return nil, err
+		}
+		if statusChangedAt.Valid {
+			schedule.StatusChangedAt = statusChangedAt.Time
 		}
 		schedules = append(schedules, schedule)
 	}
@@ -9246,6 +9801,19 @@ func (a *App) countPendingSpaceSchedules() (int, error) {
 		SELECT COUNT(*)
 		FROM space_schedules
 		WHERE status = 'pending'
+	`)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (a *App) countHeldSpaceSchedules() (int, error) {
+	row := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM space_schedules
+		WHERE status = 'held'
 	`)
 	var count int
 	if err := row.Scan(&count); err != nil {
@@ -9267,9 +9835,11 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
+		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
+		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
 		       created_at, updated_at
 		FROM space_schedules
-		WHERE slot_date = ? AND slot_hour = ? AND id != ? AND status != 'rejected'
+		WHERE slot_date = ? AND slot_hour = ? AND id != ? AND status IN ('pending', 'confirmed')
 		ORDER BY id ASC
 	`, slotDate, slotHour, excludeID)
 	if err != nil {
@@ -9280,6 +9850,7 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 	var schedules []SpaceSchedule
 	for rows.Next() {
 		var schedule SpaceSchedule
+		var statusChangedAt sql.NullTime
 		if err := rows.Scan(
 			&schedule.ID,
 			&schedule.SlotDate,
@@ -9296,10 +9867,18 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 			&schedule.RequestedByUser,
 			&schedule.ReviewNote,
 			&schedule.CustomerMessage,
+			&statusChangedAt,
+			&schedule.StatusChangedBy,
+			&schedule.StatusSource,
+			&schedule.CancellationReason,
+			&schedule.CancellationFinanceNote,
 			&schedule.CreatedAt,
 			&schedule.UpdatedAt,
 		); err != nil {
 			return nil, err
+		}
+		if statusChangedAt.Valid {
+			schedule.StatusChangedAt = statusChangedAt.Time
 		}
 		schedules = append(schedules, schedule)
 	}
@@ -9879,10 +10458,15 @@ func (a *App) createSpaceSchedule(
 			requested_by_user_id,
 			review_note,
 			customer_message,
+			status_changed_at,
+			status_changed_by_user_id,
+			status_change_source,
+			cancellation_reason,
+			cancellation_finance_note,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		schedule.SlotDate,
 		schedule.SlotHour,
@@ -9891,11 +10475,17 @@ func (a *App) createSpaceSchedule(
 		schedule.Quantity,
 		schedule.Title,
 		schedule.Notes,
-		"confirmed",
+		bookingStatusConfirmed,
 		schedule.RequesterName,
 		schedule.RequesterEmail,
 		schedule.RequesterPhone,
 		nil,
+		"",
+		"",
+		nil,
+		nil,
+		"",
+		"",
 		"",
 		time.Now().UTC(),
 		time.Now().UTC(),
@@ -9982,10 +10572,20 @@ func (a *App) createEvent(event Event) error {
 func (a *App) createPublicBookingRequest(
 	schedule SpaceSchedule,
 ) (int64, error) {
+	created, _, err := a.createPublicBookingRequestDetailed(schedule)
+	if err != nil {
+		return 0, err
+	}
+	return created.ID, nil
+}
+
+func (a *App) createPublicBookingRequestDetailed(
+	schedule SpaceSchedule,
+) (*SpaceSchedule, int64, error) {
 	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
-		return 0, fmt.Errorf(
+		return nil, 0, fmt.Errorf(
 			"load active court configuration: %w",
 			err,
 		)
@@ -9996,13 +10596,13 @@ func (a *App) createPublicBookingRequest(
 		courtActivities,
 		courtLayouts,
 	); err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	courtClosures, err :=
 		a.listActiveCourtClosures()
 	if err != nil {
-		return 0, fmt.Errorf(
+		return nil, 0, fmt.Errorf(
 			"load active court closures: %w",
 			err,
 		)
@@ -10012,12 +10612,12 @@ func (a *App) createPublicBookingRequest(
 		schedule,
 		courtClosures,
 	); err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	tx, err := a.db.Begin()
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	defer tx.Rollback()
 
@@ -10028,7 +10628,7 @@ func (a *App) createPublicBookingRequest(
 		0,
 	)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	if err := validateSpaceScheduleSlotAgainstLayouts(
@@ -10036,7 +10636,7 @@ func (a *App) createPublicBookingRequest(
 		schedule,
 		courtLayouts,
 	); err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	var requestedBy any
@@ -10046,6 +10646,16 @@ func (a *App) createPublicBookingRequest(
 	}
 
 	now := time.Now().UTC()
+	requestStatus := bookingStatusPending
+	statusSource := ""
+	changeSource := "customer"
+	actionType := bookingStatusPending
+	if activity := courtActivityFor(courtActivities, schedule.Activity); activity != nil && activity.AutoAccept {
+		requestStatus = bookingStatusConfirmed
+		statusSource = "system_auto_accept"
+		changeSource = "system_auto_accept"
+		actionType = "auto_confirmed"
+	}
 
 	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
@@ -10062,10 +10672,16 @@ func (a *App) createPublicBookingRequest(
 			requester_phone,
 			requested_by_user_id,
 			review_note,
+			customer_message,
+			status_changed_at,
+			status_changed_by_user_id,
+			status_change_source,
+			cancellation_reason,
+			cancellation_finance_note,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		schedule.SlotDate,
 		schedule.SlotHour,
@@ -10074,7 +10690,7 @@ func (a *App) createPublicBookingRequest(
 		schedule.Quantity,
 		schedule.Title,
 		schedule.Notes,
-		"pending",
+		requestStatus,
 		schedule.RequesterName,
 		schedule.RequesterEmail,
 		schedule.RequesterPhone,
@@ -10082,16 +10698,28 @@ func (a *App) createPublicBookingRequest(
 		"",
 		"",
 		now,
+		nil,
+		statusSource,
+		"",
+		"",
+		now,
 		now,
 	)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	requestID, err := result.LastInsertId()
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
+	schedule.ID = requestID
+	schedule.EntryType = "booking"
+	schedule.Status = requestStatus
+	schedule.CreatedAt = now
+	schedule.UpdatedAt = now
+	schedule.StatusChangedAt = now
+	schedule.StatusSource = statusSource
 
 	if _, err := tx.Exec(`
 		INSERT INTO booking_financials (
@@ -10109,7 +10737,7 @@ func (a *App) createPublicBookingRequest(
 		now,
 		now,
 	); err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	if schedule.ReferralCode != "" {
@@ -10124,12 +10752,12 @@ func (a *App) createPublicBookingRequest(
 			schedule.ReferralCode,
 		).Scan(&partnerID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return 0, errors.New(
+				return nil, 0, errors.New(
 					"the referral code is invalid or inactive",
 				)
 			}
 
-			return 0, err
+			return nil, 0, err
 		}
 
 		var commissionAmount float64
@@ -10143,11 +10771,11 @@ func (a *App) createPublicBookingRequest(
 			FROM pricing_settings
 			WHERE id = 1
 		`).Scan(&commissionAmount); err != nil {
-			return 0, err
+			return nil, 0, err
 		}
 
 		if commissionAmount <= 0 {
-			return 0, errors.New(
+			return nil, 0, errors.New(
 				"referral commission is not configured",
 			)
 		}
@@ -10170,15 +10798,31 @@ func (a *App) createPublicBookingRequest(
 			commissionAmount,
 			now,
 		); err != nil {
-			return 0, err
+			return nil, 0, err
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return 0, err
+	changeID, err := a.recordBookingLifecycleChangeTx(
+		tx,
+		&schedule,
+		actionType,
+		"",
+		requestStatus,
+		"",
+		"",
+		"",
+		changeSource,
+		0,
+	)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	return requestID, nil
+	if err := tx.Commit(); err != nil {
+		return nil, 0, err
+	}
+
+	return &schedule, changeID, nil
 }
 
 func (a *App) updateAdmission(admission Admission) error {
@@ -10587,13 +11231,8 @@ func (a *App) updateSpaceSchedule(
 	switch schedule.EntryType {
 	case "booking":
 		if financialErr == nil {
-			if _, err := tx.Exec(`
-				UPDATE booking_financials
-				SET quoted_amount = ?, updated_at = ?
-				WHERE id = ?
-			`, schedule.QuotedPrice, now, financial.ID); err != nil {
-				return err
-			}
+			// Preserve the original quoted-price snapshot for existing bookings.
+			schedule.QuotedPrice = financial.QuotedAmount
 		} else {
 			if _, err := tx.Exec(`
 				INSERT INTO booking_financials (
@@ -10820,6 +11459,9 @@ func (a *App) createManualFinanceTransaction(category, personName, description, 
 }
 
 func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, recordedByUserID int64) (int64, error) {
+	if paymentMethod != "cash" {
+		return 0, errors.New("booking payments must be recorded in cash")
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -10897,138 +11539,130 @@ func (a *App) updateBookingRequestStatus(
 	reviewNote string,
 	customerMessage string,
 ) (*SpaceSchedule, error) {
-	if status != "confirmed" &&
-		status != "rejected" {
-		return nil, errors.New(
-			"invalid booking request status",
-		)
-	}
+	updated, _, err := a.transitionBookingRequestStatus(scheduleID, status, reviewNote, customerMessage, "admin", 0)
+	return updated, err
+}
 
-	courtActivities, courtLayouts, err :=
-		a.activeBookingConfiguration()
-	if err != nil {
-		return nil, fmt.Errorf(
-			"load active court configuration: %w",
-			err,
-		)
-	}
-
-	courtClosures, err :=
-		a.listActiveCourtClosures()
-	if err != nil {
-		return nil, fmt.Errorf(
-			"load active court closures: %w",
-			err,
-		)
+func (a *App) transitionBookingRequestStatus(
+	scheduleID int64,
+	status string,
+	reviewNote string,
+	customerMessage string,
+	changeSource string,
+	changedByUserID int64,
+) (*SpaceSchedule, int64, error) {
+	switch status {
+	case bookingStatusConfirmed, bookingStatusRejected, bookingStatusHeld, bookingStatusCancelled, bookingStatusExpired:
+	default:
+		return nil, 0, errors.New("invalid booking request status")
 	}
 
 	tx, err := a.db.Begin()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer tx.Rollback()
 
-	schedule, err :=
-		findSpaceScheduleByIDQuery(
-			tx,
-			scheduleID,
-		)
+	schedule, err := findSpaceScheduleByIDQuery(tx, scheduleID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	if schedule.EntryType != "booking" {
+		return nil, 0, errors.New("only customer bookings can use this workflow")
+	}
+	if schedule.Status != bookingStatusPending && schedule.Status != bookingStatusHeld && schedule.Status != bookingStatusReschedulePending {
+		return nil, 0, errors.New("booking request is no longer awaiting action")
+	}
+	if status == bookingStatusRejected && strings.TrimSpace(customerMessage) == "" {
+		return nil, 0, errors.New("customer message is required")
+	}
+	if status == bookingStatusRejected && strings.TrimSpace(reviewNote) == "" {
+		return nil, 0, errors.New("review note is required")
 	}
 
-	if schedule.Status != "pending" {
-		return nil, errors.New(
-			"booking request is no longer pending",
-		)
-	}
-
-	if status == "confirmed" {
-		if err := validateBookableScheduleTime(
-			*schedule,
-			time.Now(),
-		); err != nil {
-			return nil, err
-		}
-
-		if err := validateConfiguredBookingOption(
-			*schedule,
-			courtActivities,
-			courtLayouts,
-		); err != nil {
-			return nil, err
-		}
-
-		if err := validateScheduleAgainstClosures(
-			*schedule,
-			courtClosures,
-		); err != nil {
-			return nil, err
-		}
-
-		existing, err :=
-			querySchedulesForSlot(
-				tx,
-				schedule.SlotDate,
-				schedule.SlotHour,
-				schedule.ID,
-			)
+	if status == bookingStatusConfirmed {
+		courtActivities, courtLayouts, err := activeBookingConfigurationQuery(tx)
 		if err != nil {
-			return nil, err
+			return nil, 0, fmt.Errorf("load active court configuration: %w", err)
 		}
-
-		if err :=
-			validateSpaceScheduleSlotAgainstLayouts(
-				existing,
-				*schedule,
-				courtLayouts,
-			); err != nil {
-			return nil, err
+		courtClosures, err := listActiveCourtClosuresQuery(tx)
+		if err != nil {
+			return nil, 0, fmt.Errorf("load active court closures: %w", err)
+		}
+		if err := validateBookableScheduleTime(*schedule, time.Now()); err != nil {
+			return nil, 0, err
+		}
+		if err := validateConfiguredBookingOption(*schedule, courtActivities, courtLayouts); err != nil {
+			return nil, 0, err
+		}
+		if err := validateScheduleAgainstClosures(*schedule, courtClosures); err != nil {
+			return nil, 0, err
+		}
+		existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, schedule.ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		if err := validateSpaceScheduleSlotAgainstLayouts(existing, *schedule, courtLayouts); err != nil {
+			return nil, 0, err
 		}
 	}
 
+	now := time.Now().UTC()
 	result, err := tx.Exec(`
 		UPDATE space_schedules
 		SET
 			status = ?,
 			review_note = ?,
 			customer_message = ?,
+			status_changed_at = ?,
+			status_changed_by_user_id = ?,
+			status_change_source = ?,
 			updated_at = ?
 		WHERE id = ?
-		  AND status = 'pending'
+		  AND status = ?
 	`,
 		status,
 		reviewNote,
 		customerMessage,
-		time.Now().UTC(),
+		now,
+		nullIfZero(changedByUserID),
+		changeSource,
+		now,
 		scheduleID,
+		schedule.Status,
 	)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	if affected == 0 {
+		return nil, 0, errors.New("booking request is no longer awaiting action")
 	}
 
-	if affected == 0 {
-		return nil, errors.New(
-			"booking request is no longer pending",
-		)
+	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(tx, scheduleID), scheduleID)
+	if financial != nil {
+		schedule.QuotedPrice = financial.QuotedAmount
+	}
+	changeID, err := a.recordBookingLifecycleChangeTx(tx, schedule, status, schedule.Status, status, reviewNote, customerMessage, "", changeSource, changedByUserID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, 0, err
 	}
 
 	updated := *schedule
 	updated.Status = status
 	updated.ReviewNote = reviewNote
 	updated.CustomerMessage = customerMessage
-	updated.UpdatedAt = time.Now().UTC()
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	return &updated, nil
+	updated.StatusChangedAt = now
+	updated.StatusChangedBy = changedByUserID
+	updated.StatusSource = changeSource
+	updated.UpdatedAt = now
+	return &updated, changeID, nil
 }
 
 func (a *App) rescheduleBookingRequest(
@@ -11056,16 +11690,16 @@ func (a *App) rescheduleBookingRequest(
 		return nil, err
 	}
 
-	if current.Status != "pending" {
-		return nil, errors.New("booking request is no longer pending")
+	if current.Status != bookingStatusPending && current.Status != bookingStatusHeld && current.Status != bookingStatusReschedulePending {
+		return nil, errors.New("booking request is no longer awaiting action")
 	}
 	if current.EntryType != "booking" {
-		return nil, errors.New("only pending customer booking requests can be rescheduled")
+		return nil, errors.New("only customer booking requests can be rescheduled")
 	}
 	if current.RequesterName == "" &&
 		current.RequesterEmail == "" &&
 		current.RequestedByUser == 0 {
-		return nil, errors.New("only pending customer booking requests can be rescheduled")
+		return nil, errors.New("only customer booking requests can be rescheduled")
 	}
 
 	var financial struct {
@@ -11114,9 +11748,9 @@ func (a *App) rescheduleBookingRequest(
 	updated.ReviewNote = reviewNote
 	updated.CustomerMessage = customerMessage
 	if confirm {
-		updated.Status = "confirmed"
+		updated.Status = bookingStatusConfirmed
 	} else {
-		updated.Status = "pending"
+		updated.Status = bookingStatusReschedulePending
 	}
 
 	slotChanged := current.SlotDate != updated.SlotDate ||
@@ -11174,9 +11808,12 @@ func (a *App) rescheduleBookingRequest(
 			status = ?,
 			review_note = ?,
 			customer_message = ?,
+			status_changed_at = ?,
+			status_changed_by_user_id = ?,
+			status_change_source = ?,
 			updated_at = ?
 		WHERE id = ?
-		  AND status = 'pending'
+		  AND status = ?
 	`,
 		updated.SlotDate,
 		updated.SlotHour,
@@ -11186,7 +11823,11 @@ func (a *App) rescheduleBookingRequest(
 		reviewNote,
 		customerMessage,
 		now,
+		nullIfZero(changedByUserID),
+		actionType,
+		now,
 		scheduleID,
+		current.Status,
 	)
 	if err != nil {
 		return nil, err
@@ -11196,7 +11837,7 @@ func (a *App) rescheduleBookingRequest(
 		return nil, err
 	}
 	if affected == 0 {
-		return nil, errors.New("booking request is no longer pending")
+		return nil, errors.New("booking request is no longer awaiting action")
 	}
 
 	if _, err := tx.Exec(`
@@ -11227,12 +11868,15 @@ func (a *App) rescheduleBookingRequest(
 				new_quantity,
 				new_quoted_price,
 				action_type,
+				previous_status,
+				new_status,
+				change_source,
 				review_note,
 				customer_message,
 				changed_by_user_id,
 				changed_at
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			scheduleID,
 			current.SlotDate,
@@ -11245,6 +11889,9 @@ func (a *App) rescheduleBookingRequest(
 			updated.Activity,
 			updated.Quantity,
 			updated.QuotedPrice,
+			actionType,
+			current.Status,
+			updated.Status,
 			actionType,
 			reviewNote,
 			customerMessage,
@@ -11752,6 +12399,8 @@ func findSpaceScheduleByIDQuery(queryer scheduleRowQueryer, scheduleID int64) (*
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
+		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
+		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
 		       created_at, updated_at
 		FROM space_schedules
 		WHERE id = ?
@@ -11766,6 +12415,7 @@ type rowScanner interface {
 
 func scanSpaceSchedule(row rowScanner) (*SpaceSchedule, error) {
 	var schedule SpaceSchedule
+	var statusChangedAt sql.NullTime
 	if err := row.Scan(
 		&schedule.ID,
 		&schedule.SlotDate,
@@ -11782,10 +12432,18 @@ func scanSpaceSchedule(row rowScanner) (*SpaceSchedule, error) {
 		&schedule.RequestedByUser,
 		&schedule.ReviewNote,
 		&schedule.CustomerMessage,
+		&statusChangedAt,
+		&schedule.StatusChangedBy,
+		&schedule.StatusSource,
+		&schedule.CancellationReason,
+		&schedule.CancellationFinanceNote,
 		&schedule.CreatedAt,
 		&schedule.UpdatedAt,
 	); err != nil {
 		return nil, err
+	}
+	if statusChangedAt.Valid {
+		schedule.StatusChangedAt = statusChangedAt.Time
 	}
 	return &schedule, nil
 }
@@ -12019,6 +12677,7 @@ func runMigrations(db *sql.DB) error {
 			activity TEXT NOT NULL,
 			display_name TEXT NOT NULL,
 			max_quantity INTEGER NOT NULL DEFAULT 1,
+			auto_accept INTEGER NOT NULL DEFAULT 0,
 			active INTEGER NOT NULL DEFAULT 1,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL,
@@ -12174,6 +12833,11 @@ func runMigrations(db *sql.DB) error {
 			requested_by_user_id INTEGER,
 			review_note TEXT NOT NULL DEFAULT '',
 			customer_message TEXT NOT NULL DEFAULT '',
+			status_changed_at DATETIME,
+			status_changed_by_user_id INTEGER,
+			status_change_source TEXT NOT NULL DEFAULT '',
+			cancellation_reason TEXT NOT NULL DEFAULT '',
+			cancellation_finance_note TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
@@ -12217,6 +12881,10 @@ func runMigrations(db *sql.DB) error {
 			new_quantity INTEGER NOT NULL,
 			new_quoted_price REAL NOT NULL DEFAULT 0,
 			action_type TEXT NOT NULL,
+			previous_status TEXT NOT NULL DEFAULT '',
+			new_status TEXT NOT NULL DEFAULT '',
+			change_source TEXT NOT NULL DEFAULT '',
+			finance_note TEXT NOT NULL DEFAULT '',
 			review_note TEXT NOT NULL DEFAULT '',
 			customer_message TEXT NOT NULL DEFAULT '',
 			changed_by_user_id INTEGER,
@@ -12257,6 +12925,20 @@ func runMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			revoked_at DATETIME,
 			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS booking_cancellation_requests (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			schedule_id INTEGER NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			request_reason TEXT NOT NULL DEFAULT '',
+			requested_at DATETIME NOT NULL,
+			token_id INTEGER,
+			review_note TEXT NOT NULL DEFAULT '',
+			reviewed_at DATETIME,
+			reviewed_by_user_id INTEGER,
+			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
+			FOREIGN KEY (token_id) REFERENCES booking_access_tokens(id),
+			FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`,
@@ -12307,6 +12989,8 @@ ON court_closures(activity, active, closure_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_communications_created_at ON booking_communications(created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_access_tokens_schedule ON booking_access_tokens(schedule_id, active, expires_at DESC)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_access_tokens_public_id ON booking_access_tokens(public_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_cancellation_requests_schedule ON booking_cancellation_requests(schedule_id, status, requested_at DESC)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_cancellation_requests_pending ON booking_cancellation_requests(schedule_id) WHERE status = 'pending'`,
 		`ALTER TABLE events ADD COLUMN registration_deadline TEXT`,
 		`ALTER TABLE events ADD COLUMN image_path TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE admissions ADD COLUMN student_id TEXT`,
@@ -12384,9 +13068,59 @@ ON court_closures(activity, active, closure_date)`,
 			stmt:   `ALTER TABLE space_schedules ADD COLUMN customer_message TEXT NOT NULL DEFAULT ''`,
 		},
 		{
+			table:  "space_schedules",
+			column: "status_changed_at",
+			stmt:   `ALTER TABLE space_schedules ADD COLUMN status_changed_at DATETIME`,
+		},
+		{
+			table:  "space_schedules",
+			column: "status_changed_by_user_id",
+			stmt:   `ALTER TABLE space_schedules ADD COLUMN status_changed_by_user_id INTEGER`,
+		},
+		{
+			table:  "space_schedules",
+			column: "status_change_source",
+			stmt:   `ALTER TABLE space_schedules ADD COLUMN status_change_source TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "space_schedules",
+			column: "cancellation_reason",
+			stmt:   `ALTER TABLE space_schedules ADD COLUMN cancellation_reason TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "space_schedules",
+			column: "cancellation_finance_note",
+			stmt:   `ALTER TABLE space_schedules ADD COLUMN cancellation_finance_note TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "court_activities",
+			column: "auto_accept",
+			stmt:   `ALTER TABLE court_activities ADD COLUMN auto_accept INTEGER NOT NULL DEFAULT 0`,
+		},
+		{
 			table:  "booking_request_changes",
 			column: "customer_message",
 			stmt:   `ALTER TABLE booking_request_changes ADD COLUMN customer_message TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "booking_request_changes",
+			column: "previous_status",
+			stmt:   `ALTER TABLE booking_request_changes ADD COLUMN previous_status TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "booking_request_changes",
+			column: "new_status",
+			stmt:   `ALTER TABLE booking_request_changes ADD COLUMN new_status TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "booking_request_changes",
+			column: "change_source",
+			stmt:   `ALTER TABLE booking_request_changes ADD COLUMN change_source TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "booking_request_changes",
+			column: "finance_note",
+			stmt:   `ALTER TABLE booking_request_changes ADD COLUMN finance_note TEXT NOT NULL DEFAULT ''`,
 		},
 	} {
 		exists, err := tableHasColumn(db, migration.table, migration.column)
@@ -12398,6 +13132,33 @@ ON court_closures(activity, active, closure_date)`,
 				return fmt.Errorf("add %s %s column: %w", migration.table, migration.column, err)
 			}
 		}
+	}
+	if _, err := db.Exec(`UPDATE space_schedules SET status_change_source = '' WHERE status_change_source IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE space_schedules SET cancellation_reason = '' WHERE cancellation_reason IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE space_schedules SET cancellation_finance_note = '' WHERE cancellation_finance_note IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE booking_request_changes SET previous_status = '' WHERE previous_status IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE booking_request_changes SET new_status = '' WHERE new_status IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE booking_request_changes SET change_source = '' WHERE change_source IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE booking_request_changes SET finance_note = '' WHERE finance_note IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_space_schedules_status_changed_at ON space_schedules(status, status_changed_at DESC)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_booking_request_changes_status ON booking_request_changes(schedule_id, action_type, changed_at DESC)`); err != nil {
+		return err
 	}
 	if _, err := db.Exec(`UPDATE admissions SET practice_type = 'group_practice' WHERE practice_type IS NULL OR TRIM(practice_type) = ''`); err != nil {
 		return err
@@ -12835,48 +13596,56 @@ func seedCourtManager(db *sql.DB) error {
 		Activity    string
 		DisplayName string
 		MaxQuantity int
+		AutoAccept  bool
 		SortOrder   int
 	}{
 		{
 			Activity:    "full_indoor_cricket",
 			DisplayName: "Full Indoor Cricket",
 			MaxQuantity: 1,
+			AutoAccept:  false,
 			SortOrder:   10,
 		},
 		{
 			Activity:    "futsal",
 			DisplayName: "Futsal",
 			MaxQuantity: 1,
+			AutoAccept:  false,
 			SortOrder:   20,
 		},
 		{
 			Activity:    "badminton",
 			DisplayName: "Badminton",
 			MaxQuantity: 1,
+			AutoAccept:  false,
 			SortOrder:   30,
 		},
 		{
 			Activity:    "cricket_net",
 			DisplayName: "Cricket Net",
 			MaxQuantity: 3,
+			AutoAccept:  false,
 			SortOrder:   40,
 		},
 		{
 			Activity:    "table_tennis",
 			DisplayName: "Table Tennis",
 			MaxQuantity: 2,
+			AutoAccept:  false,
 			SortOrder:   50,
 		},
 		{
 			Activity:    "tennis",
 			DisplayName: "Tennis",
 			MaxQuantity: 1,
+			AutoAccept:  false,
 			SortOrder:   60,
 		},
 		{
 			Activity:    "training",
 			DisplayName: "Training Session",
 			MaxQuantity: 1,
+			AutoAccept:  false,
 			SortOrder:   70,
 		},
 	}
@@ -12888,17 +13657,19 @@ func seedCourtManager(db *sql.DB) error {
 				activity,
 				display_name,
 				max_quantity,
+				auto_accept,
 				active,
 				sort_order,
 				created_at,
 				updated_at
 			)
-			VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
 		`,
 			courtID,
 			activity.Activity,
 			activity.DisplayName,
 			activity.MaxQuantity,
+			boolToInt(activity.AutoAccept),
 			activity.SortOrder,
 			now,
 			now,
@@ -13265,6 +14036,43 @@ func hashValue(value string) string {
 	return fmt.Sprintf("%x", sum[:])
 }
 
+func bookingStatusConsumesCapacity(status string) bool {
+	// Unresolved requests continue to reserve the slot in this application.
+	// `held` follows the same behavior as `pending` so staff do not accidentally
+	// promise a slot twice while a request is under review.
+	switch status {
+	case bookingStatusPending, bookingStatusHeld, bookingStatusConfirmed, bookingStatusReschedulePending:
+		return true
+	default:
+		return false
+	}
+}
+
+func isInactiveBookingStatus(status string) bool {
+	switch status {
+	case bookingStatusRejected, bookingStatusCancelled, bookingStatusCompleted, bookingStatusNoShow, bookingStatusExpired:
+		return true
+	default:
+		return false
+	}
+}
+
+func validBookingStatus(status string) bool {
+	switch status {
+	case bookingStatusPending, bookingStatusHeld, bookingStatusConfirmed, bookingStatusRejected, bookingStatusReschedulePending, bookingStatusCancelled, bookingStatusCompleted, bookingStatusNoShow, bookingStatusExpired:
+		return true
+	default:
+		return false
+	}
+}
+
+func slotStartTime(schedule *SpaceSchedule) (time.Time, error) {
+	if schedule == nil {
+		return time.Time{}, errors.New("schedule is required")
+	}
+	return time.ParseInLocation("2006-01-02 15:04", strings.TrimSpace(schedule.SlotDate)+" "+strings.TrimSpace(schedule.SlotHour), time.Local)
+}
+
 func normalizePublicBaseURL(raw string) string {
 	return strings.TrimRight(strings.TrimSpace(raw), "/")
 }
@@ -13503,6 +14311,303 @@ func (a *App) findActiveBookingByAccessToken(rawToken string) (*SpaceSchedule, *
 		return nil, nil, err
 	}
 	return schedule, &token, nil
+}
+
+func (a *App) listBookingCancellationRequestsForScheduleIDs(scheduleIDs []int64) ([]BookingCancellationRequest, error) {
+	if len(scheduleIDs) == 0 {
+		return nil, nil
+	}
+	query, args := scheduleIDScopedQuery(`
+		SELECT id, schedule_id, status, request_reason, requested_at, COALESCE(token_id, 0),
+		       review_note, reviewed_at, COALESCE(reviewed_by_user_id, 0)
+		FROM booking_cancellation_requests
+		WHERE schedule_id IN (%s)
+		ORDER BY requested_at DESC, id DESC
+	`, scheduleIDs)
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var requests []BookingCancellationRequest
+	for rows.Next() {
+		request, err := scanBookingCancellationRequest(rows)
+		if err != nil {
+			return nil, err
+		}
+		requests = append(requests, request)
+	}
+	return requests, rows.Err()
+}
+
+func scanBookingCancellationRequest(row rowScanner) (BookingCancellationRequest, error) {
+	var request BookingCancellationRequest
+	var reviewedAt sql.NullTime
+	if err := row.Scan(
+		&request.ID,
+		&request.ScheduleID,
+		&request.Status,
+		&request.RequestReason,
+		&request.RequestedAt,
+		&request.TokenID,
+		&request.ReviewNote,
+		&reviewedAt,
+		&request.ReviewedByUserID,
+	); err != nil {
+		return BookingCancellationRequest{}, err
+	}
+	if reviewedAt.Valid {
+		request.ReviewedAt = reviewedAt.Time
+	}
+	return request, nil
+}
+
+func pendingCancellationRequestFor(requests []BookingCancellationRequest, scheduleID int64) *BookingCancellationRequest {
+	for i := range requests {
+		if requests[i].ScheduleID == scheduleID && requests[i].Status == bookingStatusPending {
+			return &requests[i]
+		}
+	}
+	return nil
+}
+
+func bookingEligibleForCustomerCancellation(schedule *SpaceSchedule, now time.Time) bool {
+	if schedule == nil || schedule.EntryType != "booking" || schedule.Status != bookingStatusConfirmed {
+		return false
+	}
+	start, err := slotStartTime(schedule)
+	if err != nil {
+		return false
+	}
+	return start.After(now)
+}
+
+func (a *App) recordBookingLifecycleChangeTx(
+	tx *sql.Tx,
+	schedule *SpaceSchedule,
+	actionType string,
+	previousStatus string,
+	newStatus string,
+	reviewNote string,
+	customerMessage string,
+	financeNote string,
+	changeSource string,
+	changedByUserID int64,
+) (int64, error) {
+	if schedule == nil {
+		return 0, errors.New("schedule is required")
+	}
+	var changedBy any
+	if changedByUserID > 0 {
+		changedBy = changedByUserID
+	}
+	now := time.Now().UTC()
+	result, err := tx.Exec(`
+		INSERT INTO booking_request_changes (
+			schedule_id,
+			previous_slot_date,
+			previous_slot_hour,
+			previous_activity,
+			previous_quantity,
+			previous_quoted_price,
+			new_slot_date,
+			new_slot_hour,
+			new_activity,
+			new_quantity,
+			new_quoted_price,
+			action_type,
+			previous_status,
+			new_status,
+			change_source,
+			finance_note,
+			review_note,
+			customer_message,
+			changed_by_user_id,
+			changed_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		schedule.ID,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		schedule.Activity,
+		schedule.Quantity,
+		schedule.QuotedPrice,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		schedule.Activity,
+		schedule.Quantity,
+		schedule.QuotedPrice,
+		actionType,
+		previousStatus,
+		newStatus,
+		changeSource,
+		financeNote,
+		reviewNote,
+		customerMessage,
+		changedBy,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (a *App) transitionManagedBookingStatus(
+	scheduleID int64,
+	newStatus string,
+	reviewNote string,
+	customerMessage string,
+	cancellationReason string,
+	cancellationFinanceNote string,
+	changeSource string,
+	changedByUserID int64,
+) (*SpaceSchedule, int64, error) {
+	if newStatus != bookingStatusCancelled && newStatus != bookingStatusCompleted && newStatus != bookingStatusNoShow {
+		return nil, 0, errors.New("invalid booking lifecycle status")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tx.Rollback()
+
+	schedule, err := findSpaceScheduleByIDQuery(tx, scheduleID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if schedule.EntryType != "booking" {
+		return nil, 0, errors.New("only customer bookings can use this lifecycle action")
+	}
+	start, err := slotStartTime(schedule)
+	if err != nil {
+		return nil, 0, err
+	}
+	nowLocal := time.Now()
+	switch newStatus {
+	case bookingStatusCancelled:
+		if schedule.Status != bookingStatusConfirmed && schedule.Status != bookingStatusPending && schedule.Status != bookingStatusHeld && schedule.Status != bookingStatusReschedulePending {
+			return nil, 0, errors.New("this booking cannot be cancelled from its current status")
+		}
+		if schedule.Status == bookingStatusConfirmed && !start.After(nowLocal) {
+			return nil, 0, errors.New("only future confirmed bookings can be cancelled")
+		}
+		if strings.TrimSpace(cancellationReason) == "" {
+			return nil, 0, errors.New("cancellation reason is required")
+		}
+	case bookingStatusCompleted, bookingStatusNoShow:
+		if schedule.Status != bookingStatusConfirmed {
+			return nil, 0, errors.New("only confirmed bookings can use this lifecycle action")
+		}
+		if start.After(nowLocal) {
+			return nil, 0, errors.New("future bookings cannot be marked with that status")
+		}
+	}
+
+	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(tx, scheduleID), scheduleID)
+	if financial != nil {
+		schedule.QuotedPrice = financial.QuotedAmount
+	}
+	result, err := tx.Exec(`
+		UPDATE space_schedules
+		SET
+			status = ?,
+			review_note = ?,
+			customer_message = ?,
+			status_changed_at = ?,
+			status_changed_by_user_id = ?,
+			status_change_source = ?,
+			cancellation_reason = ?,
+			cancellation_finance_note = ?,
+			updated_at = ?
+		WHERE id = ?
+		  AND status = ?
+	`,
+		newStatus,
+		reviewNote,
+		customerMessage,
+		time.Now().UTC(),
+		nullIfZero(changedByUserID),
+		changeSource,
+		cancellationReason,
+		cancellationFinanceNote,
+		time.Now().UTC(),
+		scheduleID,
+		schedule.Status,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, 0, err
+	}
+	if affected != 1 {
+		return nil, 0, errors.New("booking status could not be updated")
+	}
+
+	actionType := newStatus
+	changeID, err := a.recordBookingLifecycleChangeTx(tx, schedule, actionType, schedule.Status, newStatus, reviewNote, customerMessage, cancellationFinanceNote, changeSource, changedByUserID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, 0, err
+	}
+	updated := *schedule
+	updated.Status = newStatus
+	updated.ReviewNote = reviewNote
+	updated.CustomerMessage = customerMessage
+	updated.StatusChangedAt = time.Now().UTC()
+	updated.StatusChangedBy = changedByUserID
+	updated.StatusSource = changeSource
+	updated.CancellationReason = cancellationReason
+	updated.CancellationFinanceNote = cancellationFinanceNote
+	return &updated, changeID, nil
+}
+
+func mustListBookingFinancialsTx(tx *sql.Tx, scheduleID int64) []BookingFinancial {
+	return listBookingFinancialsForSingleQueryer(tx, scheduleID)
+}
+
+func mustListBookingFinancialsTxMust(queryer sqlQueryer, scheduleID int64) []BookingFinancial {
+	return listBookingFinancialsForSingleQueryer(queryer, scheduleID)
+}
+
+func listBookingFinancialsForSingleQueryer(queryer sqlQueryer, scheduleID int64) []BookingFinancial {
+	financials, err := listBookingFinancialsForScheduleIDsQuery(queryer, []int64{scheduleID})
+	if err != nil {
+		return nil
+	}
+	return financials
+}
+
+func (a *App) recordBookingLifecycleChange(
+	schedule *SpaceSchedule,
+	actionType string,
+	previousStatus string,
+	newStatus string,
+	reviewNote string,
+	customerMessage string,
+	financeNote string,
+	changeSource string,
+	changedByUserID int64,
+) (int64, error) {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	changeID, err := a.recordBookingLifecycleChangeTx(tx, schedule, actionType, previousStatus, newStatus, reviewNote, customerMessage, financeNote, changeSource, changedByUserID)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return changeID, nil
 }
 
 func normalizeSMSPhone(phone string) (string, error) {
@@ -13848,6 +14953,26 @@ func (a *App) buildBookingCommunicationContent(
 			"We will contact you once the request has been reviewed.",
 			"Mekmaa contact: " + a.bookingMessages.ContactPhone + " • " + a.bookingMessages.ContactEmail,
 		}
+		content.SMSBody = fmt.Sprintf("Your Mekmaa booking request has been received. Reference: %s. Activity: %s. Date: %s. Time: %s. Awaiting confirmation. Track: %s", reference, bookingProductLabel(schedule.Activity, schedule.Quantity), schedule.SlotDate, schedule.SlotHour, trackingURL)
+	case bookingCommEventHeld:
+		content.Subject = "Mekmaa booking request on hold - " + reference
+		content.Heading = "Your booking request is on hold"
+		content.Intro = "Mekmaa placed the request on hold while the team reviews the slot."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "Held"},
+			{Label: "Date", Value: formatCalendarDate(schedule.SlotDate)},
+			{Label: "Time", Value: formatClockTime(schedule.SlotHour)},
+			{Label: "Activity", Value: bookingProductLabel(schedule.Activity, schedule.Quantity)},
+		}
+		if strings.TrimSpace(schedule.CustomerMessage) != "" {
+			content.Facts = append(content.Facts, bookingEmailFact{Label: "Mekmaa message", Value: schedule.CustomerMessage})
+		}
+		content.Notes = []string{
+			"The slot is still under review and is not confirmed yet.",
+			"Mekmaa will update you again shortly.",
+		}
+		content.SMSBody = fmt.Sprintf("Your Mekmaa booking request is on hold while our team reviews availability. Reference: %s. Activity: %s. Date: %s. Time: %s. Track: %s", reference, bookingProductLabel(schedule.Activity, schedule.Quantity), schedule.SlotDate, schedule.SlotHour, trackingURL)
 	case bookingCommEventConfirmed:
 		content.Subject = "Mekmaa booking confirmed - " + reference
 		content.Heading = "Your booking is confirmed"
@@ -13872,13 +14997,13 @@ func (a *App) buildBookingCommunicationContent(
 			"Need help before arrival? Contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
 		}
 		content.SMSBody = fmt.Sprintf(
-			"Mekmaa confirmed %s. Ref %s. %s, %s. %s. %s.",
-			title,
+			"Your Mekmaa booking is confirmed. Reference: %s. Activity: %s. Date: %s. Time: %s. Amount: %s. Payment will be collected in cash. Track: %s",
 			reference,
+			bookingProductLabel(schedule.Activity, schedule.Quantity),
 			schedule.SlotDate,
 			schedule.SlotHour,
-			bookingProductLabel(schedule.Activity, schedule.Quantity),
 			amountLabel,
+			trackingURL,
 		)
 	case bookingCommEventRejected:
 		content.Subject = "Mekmaa booking request update - " + reference
@@ -13896,6 +15021,7 @@ func (a *App) buildBookingCommunicationContent(
 		content.Notes = []string{
 			"If you would like help with another booking request, contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
 		}
+		content.SMSBody = fmt.Sprintf("Your Mekmaa booking request could not be accepted. Reference: %s. Reason: %s. Contact %s if you need assistance. Track: %s", reference, strings.TrimSpace(schedule.CustomerMessage), a.bookingMessages.ContactPhone, trackingURL)
 	case bookingCommEventRescheduledPending:
 		change, err := latestRelevantBookingRequestChange(changes, "rescheduled")
 		if err != nil {
@@ -13917,6 +15043,7 @@ func (a *App) buildBookingCommunicationContent(
 			"The new slot remains pending until Mekmaa confirms it.",
 			"Contact us at " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + " if you need assistance.",
 		}
+		content.SMSBody = fmt.Sprintf("Your Mekmaa booking has been rescheduled and is awaiting confirmation. Reference: %s. New activity: %s. New date: %s. New time: %s. Amount: %s. Track: %s", reference, bookingProductLabel(schedule.Activity, schedule.Quantity), schedule.SlotDate, schedule.SlotHour, amountLabel, trackingURL)
 	case bookingCommEventRescheduledConfirmed:
 		change, err := latestRelevantBookingRequestChange(changes, "rescheduled_confirmed")
 		if err != nil {
@@ -13943,13 +15070,97 @@ func (a *App) buildBookingCommunicationContent(
 			"Need help before arrival? Contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
 		}
 		content.SMSBody = fmt.Sprintf(
-			"Mekmaa confirmed your rescheduled booking. Ref %s. %s, %s. %s. %s.",
+			"Your Mekmaa booking has been rescheduled. Reference: %s. New activity: %s. New date: %s. New time: %s. Amount: %s. Payment will be collected in cash. Track: %s",
 			reference,
+			bookingProductLabel(schedule.Activity, schedule.Quantity),
 			schedule.SlotDate,
 			schedule.SlotHour,
-			bookingProductLabel(schedule.Activity, schedule.Quantity),
 			amountLabel,
+			trackingURL,
 		)
+	case bookingCommEventCancellationRequested:
+		content.Subject = "Mekmaa booking cancellation request received - " + reference
+		content.Heading = "Your cancellation request was received"
+		content.Intro = "Mekmaa received your booking cancellation request and will review it shortly."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Current status", Value: "Confirmed"},
+			{Label: "Booked slot", Value: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity)},
+		}
+		content.Notes = []string{
+			"Your booking remains confirmed until Mekmaa approves the cancellation request.",
+			"Contact Mekmaa if the request is urgent.",
+		}
+	case bookingCommEventCancellationApproved, bookingCommEventCancelledByAdmin:
+		content.Subject = "Mekmaa booking cancelled - " + reference
+		content.Heading = "Your booking has been cancelled"
+		content.Intro = "Mekmaa has cancelled the confirmed booking."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "Cancelled"},
+			{Label: "Cancelled slot", Value: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity)},
+			{Label: "Payment status", Value: paymentLabel},
+		}
+		if strings.TrimSpace(schedule.CustomerMessage) != "" {
+			content.Facts = append(content.Facts, bookingEmailFact{Label: "Mekmaa message", Value: schedule.CustomerMessage})
+		}
+		content.Notes = []string{
+			"The booking no longer holds court capacity.",
+			"Any cash handling is managed manually by Mekmaa and is not processed automatically through this system.",
+		}
+		content.SMSBody = fmt.Sprintf("Your Mekmaa booking has been cancelled. Reference: %s. Activity: %s. Date: %s. Time: %s. Track: %s", reference, bookingProductLabel(schedule.Activity, schedule.Quantity), schedule.SlotDate, schedule.SlotHour, trackingURL)
+	case bookingCommEventCancellationRejected:
+		content.Subject = "Mekmaa booking cancellation request update - " + reference
+		content.Heading = "Your cancellation request was not approved"
+		content.Intro = "Mekmaa reviewed the cancellation request and kept the booking confirmed."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Current status", Value: "Confirmed"},
+			{Label: "Booked slot", Value: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity)},
+		}
+		if strings.TrimSpace(schedule.CustomerMessage) != "" {
+			content.Facts = append(content.Facts, bookingEmailFact{Label: "Mekmaa message", Value: schedule.CustomerMessage})
+		}
+		content.Notes = []string{
+			"Contact Mekmaa if you still need assistance with this booking.",
+		}
+	case bookingCommEventCompleted:
+		content.Subject = "Mekmaa booking completed - " + reference
+		content.Heading = "Your booking is marked completed"
+		content.Intro = "Mekmaa has closed the booking as completed."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "Completed"},
+			{Label: "Booked slot", Value: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity)},
+			{Label: "Payment status", Value: paymentLabel},
+		}
+		content.Notes = []string{
+			"Thank you for booking with Mekmaa.",
+		}
+		content.SMSBody = fmt.Sprintf("Your Mekmaa booking is marked completed. Reference: %s. Thank you for playing with Mekmaa. Track: %s", reference, trackingURL)
+	case bookingCommEventNoShow:
+		content.Subject = "Mekmaa booking no-show - " + reference
+		content.Heading = "Your booking was marked no-show"
+		content.Intro = "Mekmaa marked the booking as a no-show."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "No-show"},
+			{Label: "Booked slot", Value: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity)},
+		}
+		content.SMSBody = fmt.Sprintf("Your Mekmaa booking was marked no-show. Reference: %s. Track: %s", reference, trackingURL)
+	case bookingCommEventExpired:
+		content.Subject = "Mekmaa booking request expired - " + reference
+		content.Heading = "Your booking request expired"
+		content.Intro = "The requested playing time passed before the booking could be confirmed."
+		content.Facts = []bookingEmailFact{
+			{Label: "Booking reference", Value: reference},
+			{Label: "Status", Value: "Expired"},
+			{Label: "Requested slot", Value: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity)},
+		}
+		content.Notes = []string{
+			"Submit a new request if you still need a court.",
+		}
+		content.SMSBody = fmt.Sprintf("Your Mekmaa booking request expired because the requested playing time passed before confirmation. Reference: %s. Track: %s", reference, trackingURL)
 	default:
 		return bookingCommunicationContent{}, fmt.Errorf("unsupported booking communication event: %s", eventType)
 	}
@@ -14101,17 +15312,25 @@ func latestResendableEventType(schedule *SpaceSchedule, communications []Booking
 		return ""
 	}
 	switch schedule.Status {
-	case "confirmed":
+	case bookingStatusConfirmed:
 		for _, communication := range communications {
+			if communication.EventType == bookingCommEventCancellationRejected ||
+				(communication.EventType == bookingCommEventResent && communication.RelatedEventType == bookingCommEventCancellationRejected) {
+				return bookingCommEventCancellationRejected
+			}
 			if communication.EventType == bookingCommEventRescheduledConfirmed ||
 				(communication.EventType == bookingCommEventResent && communication.RelatedEventType == bookingCommEventRescheduledConfirmed) {
 				return bookingCommEventRescheduledConfirmed
 			}
 		}
 		return bookingCommEventConfirmed
-	case "rejected":
+	case bookingStatusCancelled:
+		return bookingCommEventCancellationApproved
+	case bookingStatusCompleted:
+		return bookingCommEventCompleted
+	case bookingStatusRejected:
 		return bookingCommEventRejected
-	case "pending":
+	case bookingStatusPending:
 		for _, communication := range communications {
 			if communication.EventType == bookingCommEventRescheduledPending ||
 				(communication.EventType == bookingCommEventResent && communication.RelatedEventType == bookingCommEventRescheduledPending) {
@@ -14175,12 +15394,24 @@ func buildSlotLabel(slotDate string, slotHour string, activity string, quantity 
 
 func bookingStatusDetails(status string) (string, string, string, string) {
 	switch status {
-	case "confirmed":
+	case bookingStatusConfirmed:
 		return "Confirmed", "emerald", "Your reservation is confirmed.", "Arrive 10 to 15 minutes early. Keep your booking reference ready and contact Mekmaa if anything changes."
-	case "rejected":
+	case bookingStatusRejected:
 		return "Rejected", "rose", "This request could not be confirmed.", "Use the public booking page to request another slot or contact Mekmaa for help."
-	case "pending":
+	case bookingStatusPending:
 		return "Pending", "amber", "Your request is still under review.", "Do not treat the slot or payment as confirmed yet. Mekmaa will contact you once the review is complete."
+	case bookingStatusHeld:
+		return "On Hold", "violet", "Your request is on hold while Mekmaa reviews the slot.", "Do not treat the slot or payment as confirmed yet. Mekmaa will update you shortly."
+	case bookingStatusReschedulePending:
+		return "Reschedule Pending", "sky", "Mekmaa proposed an updated slot that is still awaiting final confirmation.", "Review the latest slot details and contact Mekmaa if you need help."
+	case bookingStatusCancelled:
+		return "Cancelled", "slate", "This booking has been cancelled.", "If you still need court time, submit a new request or contact Mekmaa directly."
+	case bookingStatusCompleted:
+		return "Completed", "sky", "This booking was completed.", "Keep the booking reference for your records."
+	case bookingStatusNoShow:
+		return "No-show", "orange", "Mekmaa marked this booking as a no-show.", "Contact Mekmaa if you believe this status is incorrect."
+	case bookingStatusExpired:
+		return "Expired", "slate", "This booking request expired before it was confirmed.", "Submit a new request if you still need the slot."
 	default:
 		if strings.TrimSpace(status) == "" {
 			status = "Booking"
@@ -14191,29 +15422,32 @@ func bookingStatusDetails(status string) (string, string, string, string) {
 	}
 }
 
-func (a *App) buildBookingStatusView(schedule *SpaceSchedule, financial *BookingFinancial, changes []BookingRequestChange) *BookingStatusView {
+func (a *App) buildBookingStatusView(schedule *SpaceSchedule, financial *BookingFinancial, changes []BookingRequestChange, requests []BookingCancellationRequest) *BookingStatusView {
 	if schedule == nil {
 		return nil
 	}
 	statusLabel, tone, summary, nextSteps := bookingStatusDetails(schedule.Status)
+	pendingCancellation := pendingCancellationRequestFor(requests, schedule.ID) != nil
 	view := &BookingStatusView{
-		Reference:        bookingReference(schedule.ID),
-		StatusLabel:      statusLabel,
-		StatusTone:       tone,
-		StatusSummary:    summary,
-		NextSteps:        nextSteps,
-		MaskedIdentity:   maskBookingIdentity(schedule),
-		CustomerMessage:  strings.TrimSpace(schedule.CustomerMessage),
-		CurrentSlotLabel: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity),
-		ActivityLabel:    bookingProductLabel(schedule.Activity, schedule.Quantity),
-		QuotedAmount:     quotedAmountLabel(financial),
-		PaymentStatus:    bookingPaymentStatusLabel(financial, schedule.Status),
-		Title:            strings.TrimSpace(schedule.Title),
-		ContactPhone:     a.bookingMessages.ContactPhone,
-		ContactEmail:     a.bookingMessages.ContactEmail,
-		VenueName:        a.bookingMessages.VenueName,
-		VenueAddress:     a.bookingMessages.VenueAddress,
-		CanPrint:         schedule.Status == "confirmed",
+		Reference:                  bookingReference(schedule.ID),
+		StatusLabel:                statusLabel,
+		StatusTone:                 tone,
+		StatusSummary:              summary,
+		NextSteps:                  nextSteps,
+		MaskedIdentity:             maskBookingIdentity(schedule),
+		CustomerMessage:            strings.TrimSpace(schedule.CustomerMessage),
+		CurrentSlotLabel:           buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity),
+		ActivityLabel:              bookingProductLabel(schedule.Activity, schedule.Quantity),
+		QuotedAmount:               quotedAmountLabel(financial),
+		PaymentStatus:              bookingPaymentStatusLabel(financial, schedule.Status),
+		Title:                      strings.TrimSpace(schedule.Title),
+		ContactPhone:               a.bookingMessages.ContactPhone,
+		ContactEmail:               a.bookingMessages.ContactEmail,
+		VenueName:                  a.bookingMessages.VenueName,
+		VenueAddress:               a.bookingMessages.VenueAddress,
+		CanPrint:                   schedule.Status == bookingStatusConfirmed,
+		CanRequestCancellation:     bookingEligibleForCustomerCancellation(schedule, time.Now()) && !pendingCancellation,
+		PendingCancellationRequest: pendingCancellation,
 	}
 	if financial != nil && financial.PaidAt.After(time.Time{}) {
 		view.PaidAtLabel = formatDateTime(financial.PaidAt)
@@ -14235,9 +15469,23 @@ func buildCustomerBookingTimeline(schedule SpaceSchedule, changes []BookingReque
 		When:   schedule.CreatedAt,
 	}}
 	for _, change := range bookingRequestHistoryFor(changes, schedule.ID) {
+		label := bookingRequestActionLabel(change.ActionType)
+		detail := buildSlotLabel(change.NewSlotDate, change.NewSlotHour, change.NewActivity, change.NewQuantity)
+		if change.ActionType == "cancellation_requested" || change.ActionType == "cancellation_request_rejected" {
+			detail = strings.TrimSpace(change.CustomerMessage)
+			if detail == "" {
+				detail = strings.TrimSpace(change.ReviewNote)
+			}
+		}
+		if change.ActionType == bookingStatusCancelled || change.ActionType == bookingStatusCompleted || change.ActionType == bookingStatusNoShow {
+			detail = bookingCommunicationEventTypeLabel(change.ActionType)
+			if strings.TrimSpace(change.CustomerMessage) != "" {
+				detail = change.CustomerMessage
+			}
+		}
 		items = append(items, CustomerBookingTimelineItem{
-			Label:  bookingRequestActionLabel(change.ActionType),
-			Detail: buildSlotLabel(change.NewSlotDate, change.NewSlotHour, change.NewActivity, change.NewQuantity),
+			Label:  label,
+			Detail: detail,
 			When:   change.ChangedAt,
 		})
 	}
@@ -15983,6 +17231,7 @@ func buildAdminCalendarHours(
 	hoursView := make([]AdminCalendarHour, 0, len(hours))
 	for _, hour := range hours {
 		slotSchedules := schedulesForCalendarSlot(daySchedules, slotDate, hour)
+		activeSlotSchedules := activeSchedulesOnly(slotSchedules)
 		slotClosures := closuresForSlot(closures, slotDate, hour)
 
 		bookingDraft := &SpaceSchedule{
@@ -15991,7 +17240,7 @@ func buildAdminCalendarHours(
 			SlotHour:  hour,
 		}
 		bookingOptions, blockedReason, _ := buildAdminBookingOptions(
-			daySchedules,
+			activeSlotSchedules,
 			bookingDraft,
 			0,
 			activities,
@@ -16007,7 +17256,7 @@ func buildAdminCalendarHours(
 			SlotHour:  hour,
 		}
 		trainingOptions, _, _ := buildAdminBookingOptions(
-			daySchedules,
+			activeSlotSchedules,
 			trainingDraft,
 			0,
 			activities,
@@ -16350,7 +17599,7 @@ func buildPricedBookingWeekDays(
 func activeSchedulesOnly(schedules []SpaceSchedule) []SpaceSchedule {
 	active := make([]SpaceSchedule, 0, len(schedules))
 	for _, schedule := range schedules {
-		if schedule.Status == "pending" || schedule.Status == "confirmed" {
+		if bookingStatusConsumesCapacity(schedule.Status) {
 			active = append(active, schedule)
 		}
 	}
@@ -16365,10 +17614,17 @@ func customerBookingRequests(schedules []SpaceSchedule) []SpaceSchedule {
 		}
 	}
 	sort.SliceStable(requests, func(i, j int) bool {
-		iPending := requests[i].Status == "pending"
-		jPending := requests[j].Status == "pending"
-		if iPending != jPending {
-			return iPending
+		iNeedsAction := requests[i].Status == bookingStatusPending || requests[i].Status == bookingStatusHeld || requests[i].Status == bookingStatusReschedulePending
+		jNeedsAction := requests[j].Status == bookingStatusPending || requests[j].Status == bookingStatusHeld || requests[j].Status == bookingStatusReschedulePending
+		if iNeedsAction != jNeedsAction {
+			return iNeedsAction
+		}
+		if iNeedsAction && jNeedsAction {
+			iStart, _ := slotStartTime(&requests[i])
+			jStart, _ := slotStartTime(&requests[j])
+			if !iStart.Equal(jStart) {
+				return iStart.Before(jStart)
+			}
 		}
 		return requests[i].CreatedAt.After(requests[j].CreatedAt)
 	})
@@ -16377,17 +17633,23 @@ func customerBookingRequests(schedules []SpaceSchedule) []SpaceSchedule {
 
 func buildBookingRequestStats(requests []SpaceSchedule) []Stat {
 	pending := 0
+	held := 0
+	reschedulePending := 0
 	confirmed := 0
 	rejected := 0
 	receivedToday := 0
 	today := time.Now().Format("2006-01-02")
 	for _, request := range requests {
 		switch request.Status {
-		case "pending":
+		case bookingStatusPending:
 			pending++
-		case "confirmed":
+		case bookingStatusHeld:
+			held++
+		case bookingStatusReschedulePending:
+			reschedulePending++
+		case bookingStatusConfirmed:
 			confirmed++
-		case "rejected":
+		case bookingStatusRejected:
 			rejected++
 		}
 		if request.CreatedAt.In(time.Local).Format("2006-01-02") == today {
@@ -16395,10 +17657,124 @@ func buildBookingRequestStats(requests []SpaceSchedule) []Stat {
 		}
 	}
 	return []Stat{
-		{Label: "Awaiting review", Value: strconv.Itoa(pending)},
+		{Label: "Pending", Value: strconv.Itoa(pending)},
+		{Label: "Held", Value: strconv.Itoa(held)},
+		{Label: "Reschedule pending", Value: strconv.Itoa(reschedulePending)},
 		{Label: "Confirmed", Value: strconv.Itoa(confirmed)},
 		{Label: "Rejected", Value: strconv.Itoa(rejected)},
 		{Label: "Received today", Value: strconv.Itoa(receivedToday)},
+	}
+}
+
+func unresolvedBookingRequestStatus(status string) bool {
+	return status == bookingStatusPending || status == bookingStatusHeld || status == bookingStatusReschedulePending
+}
+
+func buildBookingReminders(requests []SpaceSchedule, now time.Time) []BookingReminder {
+	reminders := make([]BookingReminder, 0)
+	for _, request := range requests {
+		if !unresolvedBookingRequestStatus(request.Status) {
+			continue
+		}
+		start, err := slotStartTime(&request)
+		if err != nil {
+			continue
+		}
+		minutesUntil := int(start.Sub(now).Minutes())
+		if minutesUntil > 120 {
+			continue
+		}
+		reminder := BookingReminder{
+			Schedule:          request,
+			MinutesUntilStart: minutesUntil,
+		}
+		switch {
+		case minutesUntil <= 0:
+			reminder.UrgencyLabel = "Overdue"
+			reminder.UrgencyTone = "border-red-300 bg-red-50 text-red-900"
+			reminder.RemainingLabel = "Playing time reached"
+			reminder.IsOverdue = true
+		case minutesUntil <= 60:
+			reminder.UrgencyLabel = "Urgent"
+			reminder.UrgencyTone = "border-rose-300 bg-rose-50 text-rose-900"
+			reminder.RemainingLabel = fmt.Sprintf("%d minutes remaining", minutesUntil)
+		case minutesUntil <= 90:
+			reminder.UrgencyLabel = "Important"
+			reminder.UrgencyTone = "border-amber-300 bg-amber-50 text-amber-900"
+			reminder.RemainingLabel = fmt.Sprintf("%d minutes remaining", minutesUntil)
+		default:
+			reminder.UrgencyLabel = "Attention"
+			reminder.UrgencyTone = "border-sky-300 bg-sky-50 text-sky-900"
+			reminder.RemainingLabel = fmt.Sprintf("%d minutes remaining", minutesUntil)
+			reminder.IsApproachingWindow = true
+		}
+		reminders = append(reminders, reminder)
+	}
+	sort.Slice(reminders, func(i, j int) bool {
+		if reminders[i].IsOverdue != reminders[j].IsOverdue {
+			return reminders[i].IsOverdue
+		}
+		return reminders[i].MinutesUntilStart < reminders[j].MinutesUntilStart
+	})
+	return reminders
+}
+
+func buildBookingAttentionStats(reminders []BookingReminder, pendingCount int, heldCount int) []Stat {
+	approaching := 0
+	insideWindow := 0
+	overdue := 0
+	for _, reminder := range reminders {
+		switch {
+		case reminder.IsOverdue:
+			overdue++
+		case reminder.MinutesUntilStart <= 120:
+			insideWindow++
+			if reminder.IsApproachingWindow {
+				approaching++
+			}
+		}
+	}
+	return []Stat{
+		{Label: "Pending", Value: strconv.Itoa(pendingCount)},
+		{Label: "Held", Value: strconv.Itoa(heldCount)},
+		{Label: "Approaching time", Value: strconv.Itoa(approaching)},
+		{Label: "Inside 120 minutes", Value: strconv.Itoa(insideWindow)},
+		{Label: "Overdue", Value: strconv.Itoa(overdue)},
+	}
+}
+
+func (a *App) expireOverdueBookingRequests(now time.Time) {
+	rows, err := a.db.Query(`
+		SELECT id
+		FROM space_schedules
+		WHERE entry_type = 'booking'
+		  AND status IN ('pending', 'held', 'reschedule_pending')
+		  AND (slot_date < ? OR (slot_date = ? AND slot_hour <= ?))
+	`, now.Format("2006-01-02"), now.Format("2006-01-02"), now.Format("15:04"))
+	if err != nil {
+		log.Printf("list overdue booking requests: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var scheduleIDs []int64
+	for rows.Next() {
+		var scheduleID int64
+		if err := rows.Scan(&scheduleID); err != nil {
+			log.Printf("scan overdue booking request: %v", err)
+			return
+		}
+		scheduleIDs = append(scheduleIDs, scheduleID)
+	}
+	for _, scheduleID := range scheduleIDs {
+		updated, changeID, err := a.transitionBookingRequestStatus(scheduleID, bookingStatusExpired, "Request expired after the requested playing time passed without confirmation.", "Your requested time passed before the booking could be confirmed. Please submit a new request if you still need the slot.", "system_expiry", 0)
+		if err != nil {
+			continue
+		}
+		if _, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventExpired, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventExpired, changeID), 0); commErr != nil {
+			log.Printf("send booking expiry communication: %v", commErr)
+		}
+		_ = updated
 	}
 }
 
@@ -16468,12 +17844,24 @@ func relativeTime(value time.Time) string {
 
 func bookingStatusTone(status string) string {
 	switch status {
-	case "pending":
+	case bookingStatusPending:
 		return "border-amber-200 bg-amber-50 text-amber-900"
-	case "confirmed":
+	case bookingStatusHeld:
+		return "border-violet-200 bg-violet-50 text-violet-900"
+	case bookingStatusConfirmed:
 		return "border-emerald-200 bg-emerald-50 text-emerald-900"
-	case "rejected":
+	case bookingStatusRejected:
 		return "border-red-200 bg-red-50 text-red-800"
+	case bookingStatusReschedulePending:
+		return "border-sky-200 bg-sky-50 text-sky-900"
+	case bookingStatusCancelled:
+		return "border-slate-300 bg-slate-100 text-slate-800"
+	case bookingStatusCompleted:
+		return "border-sky-200 bg-sky-50 text-sky-900"
+	case bookingStatusNoShow:
+		return "border-orange-200 bg-orange-50 text-orange-900"
+	case bookingStatusExpired:
+		return "border-zinc-300 bg-zinc-100 text-zinc-800"
 	default:
 		return "border-slate/10 bg-cloud text-slate"
 	}
@@ -16539,6 +17927,8 @@ func bookingCommunicationEventTypeLabel(eventType string) string {
 	switch eventType {
 	case bookingCommEventRequestReceived:
 		return "Request received"
+	case bookingCommEventHeld:
+		return "Booking held"
 	case bookingCommEventConfirmed:
 		return "Booking confirmed"
 	case bookingCommEventRejected:
@@ -16547,6 +17937,20 @@ func bookingCommunicationEventTypeLabel(eventType string) string {
 		return "Pending reschedule"
 	case bookingCommEventRescheduledConfirmed:
 		return "Rescheduled and confirmed"
+	case bookingCommEventCancellationRequested:
+		return "Cancellation requested"
+	case bookingCommEventCancellationApproved:
+		return "Cancellation approved"
+	case bookingCommEventCancellationRejected:
+		return "Cancellation request rejected"
+	case bookingCommEventCancelledByAdmin:
+		return "Booking cancelled"
+	case bookingCommEventCompleted:
+		return "Booking completed"
+	case bookingCommEventNoShow:
+		return "Booking marked no-show"
+	case bookingCommEventExpired:
+		return "Booking expired"
 	case bookingCommEventResent:
 		return "Manual resend"
 	default:
@@ -16691,6 +18095,10 @@ func listBookingRequestChangesForScheduleIDsQuery(queryer sqlQueryer, scheduleID
 			brch.new_quantity,
 			brch.new_quoted_price,
 			brch.action_type,
+			COALESCE(brch.previous_status, ''),
+			COALESCE(brch.new_status, ''),
+			COALESCE(brch.change_source, ''),
+			COALESCE(brch.finance_note, ''),
 			brch.review_note,
 			COALESCE(brch.customer_message, ''),
 			COALESCE(brch.changed_by_user_id, 0),
@@ -16725,6 +18133,10 @@ func listBookingRequestChangesForScheduleIDsQuery(queryer sqlQueryer, scheduleID
 			&change.NewQuantity,
 			&change.NewQuote,
 			&change.ActionType,
+			&change.PreviousStatus,
+			&change.NewStatus,
+			&change.ChangeSource,
+			&change.FinanceNote,
 			&change.ReviewNote,
 			&change.CustomerMessage,
 			&change.ChangedByUserID,
@@ -17013,10 +18425,26 @@ func bookingRequestOriginalSnapshot(
 
 func bookingRequestActionLabel(actionType string) string {
 	switch actionType {
+	case "auto_confirmed":
+		return "Automatically confirmed"
 	case "rescheduled_confirmed":
 		return "Rescheduled and confirmed"
 	case "rescheduled":
 		return "Rescheduled"
+	case "cancellation_requested":
+		return "Cancellation requested"
+	case "cancellation_request_rejected":
+		return "Cancellation request rejected"
+	case bookingStatusHeld:
+		return "Placed on hold"
+	case bookingStatusExpired:
+		return "Expired"
+	case bookingStatusCancelled:
+		return "Cancelled"
+	case bookingStatusCompleted:
+		return "Completed"
+	case bookingStatusNoShow:
+		return "No-show"
 	default:
 		return strings.ReplaceAll(strings.TrimSpace(actionType), "_", " ")
 	}
@@ -17287,6 +18715,15 @@ func pricingRuleForOption(pricings []PricingRule, activity string, quantity int)
 	for i := range pricings {
 		if pricings[i].Activity == activity && pricings[i].Quantity == quantity {
 			return &pricings[i]
+		}
+	}
+	return nil
+}
+
+func courtActivityFor(activities []CourtActivity, activityName string) *CourtActivity {
+	for i := range activities {
+		if activities[i].Activity == activityName {
+			return &activities[i]
 		}
 	}
 	return nil
@@ -18200,7 +19637,16 @@ func isIgnorableMigrationError(err error, stmt string) bool {
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requested_by_user_id") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN review_note") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN customer_message") ||
-		strings.Contains(stmt, "ALTER TABLE booking_request_changes ADD COLUMN customer_message")) &&
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status_changed_at") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status_changed_by_user_id") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status_change_source") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN cancellation_reason") ||
+		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN cancellation_finance_note") ||
+		strings.Contains(stmt, "ALTER TABLE booking_request_changes ADD COLUMN customer_message") ||
+		strings.Contains(stmt, "ALTER TABLE booking_request_changes ADD COLUMN previous_status") ||
+		strings.Contains(stmt, "ALTER TABLE booking_request_changes ADD COLUMN new_status") ||
+		strings.Contains(stmt, "ALTER TABLE booking_request_changes ADD COLUMN change_source") ||
+		strings.Contains(stmt, "ALTER TABLE booking_request_changes ADD COLUMN finance_note")) &&
 		strings.Contains(lowerErr, "duplicate column name")
 }
 
@@ -18299,6 +19745,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"bookingCommunicationStatusTone": bookingCommunicationStatusTone,
 		"bookingCommunicationsFor":       bookingCommunicationsFor,
 		"bookingAccessTokenFor":          bookingAccessTokenFor,
+		"pendingCancellationRequestFor":  pendingCancellationRequestFor,
 		"bookingStatusTone":              bookingStatusTone,
 		"quotedPriceForSchedule":         quotedPriceForSchedule,
 		"courtLayoutHasActivity":         courtLayoutHasActivity,

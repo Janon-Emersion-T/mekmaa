@@ -35,6 +35,55 @@ func testUploadFile(t *testing.T, content []byte, originalName string) (multipar
 	return file, &multipart.FileHeader{Filename: originalName, Size: int64(len(content))}
 }
 
+func seedBookingEngine(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if err := seedCourtManager(db); err != nil {
+		t.Fatalf("seed court manager: %v", err)
+	}
+	if err := seedPricingRules(db); err != nil {
+		t.Fatalf("seed pricing rules: %v", err)
+	}
+	if err := seedPricingSettings(db); err != nil {
+		t.Fatalf("seed pricing settings: %v", err)
+	}
+}
+
+func createConfirmedFutureBooking(t *testing.T, app *App, daysFromNow int, hour string) int64 {
+	t.Helper()
+	request := SpaceSchedule{
+		SlotDate:       time.Now().AddDate(0, 0, daysFromNow).Format("2006-01-02"),
+		SlotHour:       hour,
+		EntryType:      "booking",
+		Activity:       "full_indoor_cricket",
+		Quantity:       1,
+		Title:          "Lifecycle Booking",
+		RequesterName:  "Lifecycle Customer",
+		RequesterEmail: "lifecycle@example.com",
+		RequesterPhone: "0700000000",
+		QuotedPrice:    5000,
+	}
+	scheduleID, err := app.createPublicBookingRequest(request)
+	if err != nil {
+		t.Fatalf("create booking request: %v", err)
+	}
+	if _, err := app.updateBookingRequestStatus(scheduleID, bookingStatusConfirmed, "", ""); err != nil {
+		t.Fatalf("confirm booking request: %v", err)
+	}
+	return scheduleID
+}
+
+func createConfirmedBookingForTests(t *testing.T, app *App, schedule SpaceSchedule) int64 {
+	t.Helper()
+	if err := app.createSpaceSchedule(schedule); err != nil {
+		t.Fatalf("create confirmed booking: %v", err)
+	}
+	var scheduleID int64
+	if err := app.db.QueryRow(`SELECT id FROM space_schedules WHERE title = ? ORDER BY id DESC LIMIT 1`, schedule.Title).Scan(&scheduleID); err != nil {
+		t.Fatalf("lookup created booking id: %v", err)
+	}
+	return scheduleID
+}
+
 func TestUploadStorageConfigurationAndCreation(t *testing.T) {
 	defaultRoot, err := resolveUploadRoot("")
 	if err != nil {
@@ -683,6 +732,7 @@ func TestBookingRequestsPreventPastAndConflictingSlots(t *testing.T) {
 	if err := runMigrations(db); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
+	seedBookingEngine(t, db)
 
 	now := time.Now()
 
@@ -856,6 +906,7 @@ func TestReferralCommissionLifecycle(t *testing.T) {
 	if err := runMigrations(db); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
+	seedBookingEngine(t, db)
 
 	app := &App{db: db}
 	if err := app.updateReferralCommissionAmount(500); err != nil {
@@ -966,6 +1017,7 @@ func TestReferralPartnerManagementUsesSharedRate(t *testing.T) {
 	if err := runMigrations(db); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
+	seedBookingEngine(t, db)
 	app := &App{db: db}
 	if err := app.updateReferralCommissionAmount(750); err != nil {
 		t.Fatalf("set shared commission: %v", err)
@@ -1035,6 +1087,7 @@ func TestFinanceBookingAndManualTransactionLifecycle(t *testing.T) {
 	if err := runMigrations(db); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
+	seedBookingEngine(t, db)
 	app := &App{db: db}
 
 	request := SpaceSchedule{
@@ -1066,7 +1119,7 @@ func TestFinanceBookingAndManualTransactionLifecycle(t *testing.T) {
 	if _, err := app.updateBookingRequestStatus(scheduleID, "confirmed", "", ""); err != nil {
 		t.Fatalf("confirm booking: %v", err)
 	}
-	transactionID, err := app.collectBookingPayment(scheduleID, "card", 0)
+	transactionID, err := app.collectBookingPayment(scheduleID, "cash", 0)
 	if err != nil {
 		t.Fatalf("collect booking payment: %v", err)
 	}
@@ -1116,6 +1169,272 @@ func TestFinanceBookingAndManualTransactionLifecycle(t *testing.T) {
 	}
 	if err := templates["finance-management"].ExecuteTemplate(io.Discard, "base", data); err != nil {
 		t.Fatalf("render finance template: %v", err)
+	}
+}
+
+func TestBookingCancellationReleasesCapacityAndPreservesPayment(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:booking-cancellation-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	seedBookingEngine(t, db)
+	app := &App{db: db}
+
+	scheduleID := createConfirmedFutureBooking(t, app, 5, "18:00")
+	if _, err := app.collectBookingPayment(scheduleID, "cash", 42); err != nil {
+		t.Fatalf("collect booking payment: %v", err)
+	}
+	updated, _, err := app.transitionManagedBookingStatus(scheduleID, bookingStatusCancelled, "Customer cannot attend", "", "Customer cannot attend", "cash retained", "admin", 0)
+	if err != nil {
+		t.Fatalf("cancel booking: %v", err)
+	}
+	if updated.Status != bookingStatusCancelled {
+		t.Fatalf("unexpected status after cancellation: %s", updated.Status)
+	}
+
+	candidate := SpaceSchedule{
+		SlotDate:  updated.SlotDate,
+		SlotHour:  updated.SlotHour,
+		EntryType: "booking",
+		Activity:  updated.Activity,
+		Quantity:  updated.Quantity,
+		Status:    bookingStatusPending,
+	}
+	layouts, err := app.listActiveCourtLayouts()
+	if err != nil {
+		t.Fatalf("list court layouts: %v", err)
+	}
+	existing, err := app.schedulesForSlot(updated.SlotDate, updated.SlotHour, 0)
+	if err != nil {
+		t.Fatalf("load schedules for slot: %v", err)
+	}
+	if err := validateSpaceScheduleSlotAgainstLayouts(existing, candidate, layouts); err != nil {
+		t.Fatalf("cancelled booking should release capacity: %v", err)
+	}
+
+	var paid int
+	var paymentMethod string
+	var transactionID int64
+	if err := db.QueryRow(`SELECT paid, payment_method, COALESCE(finance_transaction_id, 0) FROM booking_financials WHERE schedule_id = ?`, scheduleID).Scan(&paid, &paymentMethod, &transactionID); err != nil {
+		t.Fatalf("load booking financial after cancellation: %v", err)
+	}
+	if paid != 1 || paymentMethod != "cash" || transactionID == 0 {
+		t.Fatalf("payment was not preserved after cancellation: paid=%d method=%q transaction=%d", paid, paymentMethod, transactionID)
+	}
+	var categoryCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE reference_id = ? AND category = 'booking_payment'`, scheduleID).Scan(&categoryCount); err != nil {
+		t.Fatal(err)
+	}
+	if categoryCount != 1 {
+		t.Fatalf("unexpected booking payment transaction count after cancellation: %d", categoryCount)
+	}
+	if _, _, err := app.transitionManagedBookingStatus(scheduleID, bookingStatusCancelled, "Duplicate", "", "Duplicate", "", "admin", 0); err == nil {
+		t.Fatal("expected duplicate cancellation to be rejected")
+	}
+}
+
+func TestBookingEditPreservesQuotedPriceSnapshot(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:booking-edit-quote-snapshot-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	seedBookingEngine(t, db)
+	app := &App{db: db}
+
+	scheduleID := createConfirmedFutureBooking(t, app, 6, "18:00")
+	schedule, err := app.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		t.Fatalf("find booking: %v", err)
+	}
+
+	var originalQuoted float64
+	if err := db.QueryRow(`SELECT quoted_amount FROM booking_financials WHERE schedule_id = ?`, scheduleID).Scan(&originalQuoted); err != nil {
+		t.Fatalf("load original quote snapshot: %v", err)
+	}
+
+	schedule.Title = "Retitled Booking"
+	schedule.Notes = "Updated notes"
+	schedule.QuotedPrice = originalQuoted + 1234
+	if err := app.updateSpaceSchedule(*schedule); err != nil {
+		t.Fatalf("update booking: %v", err)
+	}
+
+	var preservedQuoted float64
+	if err := db.QueryRow(`SELECT quoted_amount FROM booking_financials WHERE schedule_id = ?`, scheduleID).Scan(&preservedQuoted); err != nil {
+		t.Fatalf("load preserved quote snapshot: %v", err)
+	}
+	if preservedQuoted != originalQuoted {
+		t.Fatalf("quoted snapshot mutated after edit: got %.2f want %.2f", preservedQuoted, originalQuoted)
+	}
+}
+
+func TestCompletedAndNoShowStatusValidation(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:booking-complete-no-show-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	seedBookingEngine(t, db)
+	app := &App{db: db}
+
+	futureID := createConfirmedFutureBooking(t, app, 5, "19:00")
+	if _, _, err := app.transitionManagedBookingStatus(futureID, bookingStatusCompleted, "", "", "", "", "admin", 0); err == nil {
+		t.Fatal("expected future booking completion to be rejected")
+	}
+	if _, _, err := app.transitionManagedBookingStatus(futureID, bookingStatusNoShow, "", "", "", "", "admin", 0); err == nil {
+		t.Fatal("expected future booking no-show to be rejected")
+	}
+
+	pastRequest := SpaceSchedule{
+		SlotDate:       time.Now().AddDate(0, 0, -2).Format("2006-01-02"),
+		SlotHour:       "18:00",
+		EntryType:      "booking",
+		Activity:       "badminton",
+		Quantity:       1,
+		Title:          "Past Confirmed Booking",
+		RequesterName:  "Past Customer",
+		RequesterEmail: "past@example.com",
+		RequesterPhone: "0711111111",
+		QuotedPrice:    2500,
+	}
+	pastID := createConfirmedBookingForTests(t, app, pastRequest)
+	if _, _, err := app.transitionManagedBookingStatus(pastID, bookingStatusCompleted, "", "", "", "", "admin", 0); err != nil {
+		t.Fatalf("mark past booking completed: %v", err)
+	}
+
+	pastNoShow := pastRequest
+	pastNoShow.SlotHour = "19:00"
+	pastNoShow.Title = "Past No Show Booking"
+	pastNoShowID := createConfirmedBookingForTests(t, app, pastNoShow)
+	if _, _, err := app.transitionManagedBookingStatus(pastNoShowID, bookingStatusNoShow, "", "", "", "", "admin", 0); err != nil {
+		t.Fatalf("mark past booking no-show: %v", err)
+	}
+}
+
+func TestCustomerCancellationRequestRequiresValidActiveToken(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:booking-cancel-request-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	seedBookingEngine(t, db)
+	app := &App{
+		db: db,
+		bookingAccess: BookingAccessSettings{
+			BaseURL:     "http://localhost:8080",
+			TokenSecret: "test-secret",
+			TokenTTL:    180 * 24 * time.Hour,
+		},
+	}
+	scheduleID := createConfirmedFutureBooking(t, app, 4, "20:00")
+	_, rawToken, err := app.ensureActiveBookingAccessToken(scheduleID, "status")
+	if err != nil {
+		t.Fatalf("issue access token: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("token", rawToken)
+	form.Set("request_reason", "Need to cancel")
+	req := httptest.NewRequest(http.MethodPost, "/booking/status/cancellation-request", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+	app.publicBookingCancellationRequestHandler(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected csrf rejection without matching form token handling, got %d", rec.Code)
+	}
+
+	if err := app.revokeBookingAccessToken(scheduleID, "status"); err != nil {
+		t.Fatalf("revoke access token: %v", err)
+	}
+	if _, _, err := app.findActiveBookingByAccessToken(rawToken); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected revoked token lookup to fail, got %v", err)
+	}
+}
+
+func TestCustomerCancellationRequestCreatesPendingRequestAndBlocksDuplicate(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:booking-cancel-request-success-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	seedBookingEngine(t, db)
+	app := &App{
+		db: db,
+		bookingAccess: BookingAccessSettings{
+			BaseURL:     "http://localhost:8080",
+			TokenSecret: "test-secret",
+			TokenTTL:    180 * 24 * time.Hour,
+		},
+	}
+
+	scheduleID := createConfirmedFutureBooking(t, app, 4, "21:00")
+	_, rawToken, err := app.ensureActiveBookingAccessToken(scheduleID, "status")
+	if err != nil {
+		t.Fatalf("issue access token: %v", err)
+	}
+
+	sendRequest := func(reason string) *httptest.ResponseRecorder {
+		form := url.Values{}
+		form.Set("token", rawToken)
+		form.Set("csrf_token", "token")
+		form.Set("request_reason", reason)
+		req := httptest.NewRequest(http.MethodPost, "/booking/status/cancellation-request", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+		req.PostForm = form
+		rec := httptest.NewRecorder()
+		app.publicBookingCancellationRequestHandler(rec, req)
+		return rec
+	}
+
+	first := sendRequest("Travel issue")
+	if first.Code != http.StatusSeeOther {
+		t.Fatalf("expected first cancellation request redirect, got %d", first.Code)
+	}
+
+	var requestCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM booking_cancellation_requests WHERE schedule_id = ? AND status = 'pending'`, scheduleID).Scan(&requestCount); err != nil {
+		t.Fatalf("count pending cancellation requests: %v", err)
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected one pending cancellation request, got %d", requestCount)
+	}
+
+	var actionCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM booking_request_changes WHERE schedule_id = ? AND action_type = 'cancellation_requested'`, scheduleID).Scan(&actionCount); err != nil {
+		t.Fatalf("count cancellation request history: %v", err)
+	}
+	if actionCount != 1 {
+		t.Fatalf("expected one cancellation request history entry, got %d", actionCount)
+	}
+
+	second := sendRequest("Second attempt")
+	if second.Code != http.StatusConflict {
+		t.Fatalf("expected duplicate cancellation request conflict, got %d", second.Code)
 	}
 }
 
