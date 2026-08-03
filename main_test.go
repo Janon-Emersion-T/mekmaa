@@ -84,6 +84,39 @@ func createConfirmedBookingForTests(t *testing.T, app *App, schedule SpaceSchedu
 	return scheduleID
 }
 
+func newBookingWorkflowTestApp(t *testing.T) *App {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+strings.ReplaceAll(fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), "/", "-")+"?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	seedBookingEngine(t, db)
+	if _, err := db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 2500, weekday_peak_price = 3000,
+		    weekend_offpeak_price = 2800, weekend_peak_price = 3200
+		WHERE activity IN ('full_indoor_cricket', 'badminton', 'table_tennis', 'cricket_net')
+	`); err != nil {
+		t.Fatalf("configure pricing: %v", err)
+	}
+	if err := seedRoles(db); err != nil {
+		t.Fatalf("seed roles: %v", err)
+	}
+	return &App{
+		db: db,
+		bookingAccess: BookingAccessSettings{
+			BaseURL:     "http://localhost:8080",
+			TokenSecret: "test-secret",
+			TokenTTL:    180 * 24 * time.Hour,
+		},
+	}
+}
+
 func TestUploadStorageConfigurationAndCreation(t *testing.T) {
 	defaultRoot, err := resolveUploadRoot("")
 	if err != nil {
@@ -1235,6 +1268,381 @@ func TestBookingCancellationReleasesCapacityAndPreservesPayment(t *testing.T) {
 	}
 	if _, _, err := app.transitionManagedBookingStatus(scheduleID, bookingStatusCancelled, "Duplicate", "", "Duplicate", "", "admin", 0); err == nil {
 		t.Fatal("expected duplicate cancellation to be rejected")
+	}
+}
+
+func TestHeldBookingReservesCapacityAndReleasesOnFinalStates(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	layouts, err := app.listActiveCourtLayouts()
+	if err != nil {
+		t.Fatalf("list active court layouts: %v", err)
+	}
+
+	request := SpaceSchedule{
+		SlotDate:       time.Now().AddDate(0, 0, 3).Format("2006-01-02"),
+		SlotHour:       "18:00",
+		EntryType:      "booking",
+		Activity:       "badminton",
+		Quantity:       1,
+		Title:          "Held Request",
+		RequesterName:  "Held Customer",
+		RequesterEmail: "held@example.com",
+		RequesterPhone: "0700000000",
+		QuotedPrice:    2500,
+	}
+	scheduleID, err := app.createPublicBookingRequest(request)
+	if err != nil {
+		t.Fatalf("create booking request: %v", err)
+	}
+	if _, _, err := app.transitionBookingRequestStatus(scheduleID, bookingStatusHeld, "Reviewing slot", "We are reviewing your request.", "admin", 0); err != nil {
+		t.Fatalf("hold booking request: %v", err)
+	}
+
+	conflict := request
+	conflict.Status = bookingStatusPending
+	existing, err := app.schedulesForSlot(request.SlotDate, request.SlotHour, 0)
+	if err != nil {
+		t.Fatalf("load schedules for held slot: %v", err)
+	}
+	if err := validateSpaceScheduleSlotAgainstLayouts(existing, conflict, layouts); err == nil {
+		t.Fatal("expected held booking to reserve capacity")
+	}
+
+	for _, finalStatus := range []string{bookingStatusRejected, bookingStatusCancelled, bookingStatusExpired} {
+		currentApp := newBookingWorkflowTestApp(t)
+		currentLayouts, err := currentApp.listActiveCourtLayouts()
+		if err != nil {
+			t.Fatalf("list active court layouts for %s: %v", finalStatus, err)
+		}
+		currentID, err := currentApp.createPublicBookingRequest(request)
+		if err != nil {
+			t.Fatalf("create booking request for %s: %v", finalStatus, err)
+		}
+		if _, _, err := currentApp.transitionBookingRequestStatus(currentID, bookingStatusHeld, "Reviewing slot", "We are reviewing your request.", "admin", 0); err != nil {
+			t.Fatalf("hold booking request for %s: %v", finalStatus, err)
+		}
+		if finalStatus == bookingStatusCancelled {
+			if _, _, err := currentApp.transitionManagedBookingStatus(currentID, bookingStatusCancelled, "Cancelled by staff", "Cancelled", "Cancelled by staff", "", "admin", 0); err != nil {
+				t.Fatalf("cancel held booking: %v", err)
+			}
+		} else {
+			if _, _, err := currentApp.transitionBookingRequestStatus(currentID, finalStatus, "Closed", "Closed", "admin", 0); err != nil {
+				t.Fatalf("transition held booking to %s: %v", finalStatus, err)
+			}
+		}
+
+		replacement := request
+		replacement.Status = bookingStatusPending
+		releasedSchedules, err := currentApp.schedulesForSlot(request.SlotDate, request.SlotHour, 0)
+		if err != nil {
+			t.Fatalf("load schedules after %s: %v", finalStatus, err)
+		}
+		if err := validateSpaceScheduleSlotAgainstLayouts(releasedSchedules, replacement, currentLayouts); err != nil {
+			t.Fatalf("%s should release capacity: %v", finalStatus, err)
+		}
+	}
+}
+
+func TestAutoAcceptedRequestDoesNotCreateDuplicateStatusCommunication(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.db.Exec(`UPDATE court_activities SET auto_accept = 1 WHERE activity = 'badminton'`); err != nil {
+		t.Fatalf("enable auto accept: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":      {"token"},
+		"entry_type":      {"booking"},
+		"slot_date":       {time.Now().AddDate(0, 0, 4).Format("2006-01-02")},
+		"slot_hour":       {"18:00"},
+		"activity":        {"badminton"},
+		"quantity":        {"1"},
+		"title":           {"Auto Accepted"},
+		"requester_name":  {"Auto Customer"},
+		"requester_email": {"auto@example.com"},
+		"requester_phone": {"+94770000000"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/book/request", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+	app.publicBookingRequestHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect, got %d", rec.Code)
+	}
+
+	var scheduleID int64
+	var status string
+	if err := app.db.QueryRow(`SELECT id, status FROM space_schedules WHERE title = 'Auto Accepted'`).Scan(&scheduleID, &status); err != nil {
+		t.Fatalf("load auto accepted booking: %v", err)
+	}
+	if status != bookingStatusConfirmed {
+		t.Fatalf("expected confirmed status, got %s", status)
+	}
+
+	rows, err := app.db.Query(`SELECT DISTINCT event_type FROM booking_communications WHERE schedule_id = ?`, scheduleID)
+	if err != nil {
+		t.Fatalf("list communication events: %v", err)
+	}
+	defer rows.Close()
+	var events []string
+	for rows.Next() {
+		var eventType string
+		if err := rows.Scan(&eventType); err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, eventType)
+	}
+	if len(events) != 1 || events[0] != bookingCommEventConfirmed {
+		t.Fatalf("unexpected auto-accept communication events: %v", events)
+	}
+}
+
+func TestBookingReminderBoundariesAndMidnight(t *testing.T) {
+	now := time.Date(2026, time.August, 3, 22, 30, 0, 0, time.Local)
+	requests := []SpaceSchedule{
+		{ID: 1, SlotDate: "2026-08-04", SlotHour: "00:30", EntryType: "booking", Activity: "badminton", Quantity: 1, Status: bookingStatusPending},
+		{ID: 2, SlotDate: "2026-08-03", SlotHour: "23:30", EntryType: "booking", Activity: "badminton", Quantity: 1, Status: bookingStatusHeld},
+		{ID: 3, SlotDate: "2026-08-03", SlotHour: "23:00", EntryType: "booking", Activity: "badminton", Quantity: 1, Status: bookingStatusReschedulePending},
+	}
+	reminders := buildBookingReminders(requests, now)
+	if len(reminders) != 3 {
+		t.Fatalf("expected 3 reminders, got %d", len(reminders))
+	}
+
+	labelsByID := map[int64]string{}
+	for _, reminder := range reminders {
+		labelsByID[reminder.Schedule.ID] = reminder.UrgencyLabel
+	}
+	if labelsByID[1] != "Attention" {
+		t.Fatalf("expected exactly 120 minutes to be Attention, got %q", labelsByID[1])
+	}
+	if labelsByID[2] != "Urgent" {
+		t.Fatalf("expected exactly 60 minutes to be Urgent, got %q", labelsByID[2])
+	}
+	if labelsByID[3] != "Urgent" {
+		t.Fatalf("expected 30 minutes remaining to be Urgent, got %q", labelsByID[3])
+	}
+
+	ninety := buildBookingReminders([]SpaceSchedule{{ID: 4, SlotDate: "2026-08-04", SlotHour: "00:00", EntryType: "booking", Activity: "badminton", Quantity: 1, Status: bookingStatusPending}}, now)
+	if len(ninety) != 1 || ninety[0].UrgencyLabel != "Important" {
+		t.Fatalf("expected exactly 90 minutes to be Important, got %#v", ninety)
+	}
+	sixty := buildBookingReminders([]SpaceSchedule{{ID: 5, SlotDate: "2026-08-03", SlotHour: "23:30", EntryType: "booking", Activity: "badminton", Quantity: 1, Status: bookingStatusPending}}, time.Date(2026, time.August, 3, 22, 30, 0, 0, time.Local))
+	if len(sixty) != 1 || sixty[0].UrgencyLabel != "Urgent" {
+		t.Fatalf("expected exactly 60 minutes to be Urgent, got %#v", sixty)
+	}
+}
+
+func TestPublicBookingStatusHandlerExpiresOverdueUnresolvedBooking(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+	schedule := SpaceSchedule{
+		SlotDate:       time.Now().AddDate(0, 0, -1).Format("2006-01-02"),
+		SlotHour:       "18:00",
+		EntryType:      "booking",
+		Activity:       "badminton",
+		Quantity:       1,
+		Title:          "Overdue Request",
+		RequesterName:  "Overdue Customer",
+		RequesterEmail: "overdue@example.com",
+		RequesterPhone: "+94771111111",
+		QuotedPrice:    2500,
+	}
+	detailed, _, err := app.createPublicBookingRequestDetailed(schedule)
+	if err != nil {
+		t.Fatalf("create overdue request: %v", err)
+	}
+	_, rawToken, err := app.ensureActiveBookingAccessToken(detailed.ID, "status")
+	if err != nil {
+		t.Fatalf("issue booking status token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/booking/status?token="+url.QueryEscape(rawToken), nil)
+	rec := httptest.NewRecorder()
+	app.publicBookingStatusHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected booking status page, got %d", rec.Code)
+	}
+
+	updated, err := app.findSpaceScheduleByID(detailed.ID)
+	if err != nil {
+		t.Fatalf("reload expired booking: %v", err)
+	}
+	if updated.Status != bookingStatusExpired {
+		t.Fatalf("expected expired status, got %s", updated.Status)
+	}
+	var expiryCount int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM booking_request_changes WHERE schedule_id = ? AND new_status = ?`, detailed.ID, bookingStatusExpired).Scan(&expiryCount); err != nil {
+		t.Fatal(err)
+	}
+	if expiryCount != 1 {
+		t.Fatalf("expected one expiry history record, got %d", expiryCount)
+	}
+}
+
+func TestRequirePermissionBlocksUnauthorizedBookingAutoAcceptAndHold(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+	if err := seedCourtManager(app.db); err != nil {
+		t.Fatalf("seed court manager: %v", err)
+	}
+	user, err := app.createManagedUser("Customer", "customer@example.com", "password-123", []string{"customer"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	autoForm := url.Values{
+		"csrf_token":  {"token"},
+		"activity_id": {"1"},
+		"court_id":    {"1"},
+		"auto_accept": {"1"},
+	}
+	autoReq := httptest.NewRequest(http.MethodPost, "/admin/courts/activities/auto-accept", strings.NewReader(autoForm.Encode()))
+	autoReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	autoReq.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	autoReq.PostForm = autoForm
+	autoReq = autoReq.WithContext(context.WithValue(autoReq.Context(), userContextKey, user))
+	autoRec := httptest.NewRecorder()
+	app.requirePermission(http.HandlerFunc(app.updateCourtActivityAutoAcceptHandler), "courts.manage").ServeHTTP(autoRec, autoReq)
+	if autoRec.Code != http.StatusForbidden {
+		t.Fatalf("expected forbidden auto-accept update, got %d", autoRec.Code)
+	}
+
+	if _, err := app.db.Exec(`
+		INSERT INTO space_schedules (
+			slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+			requester_name, requester_email, requester_phone, created_at, updated_at
+		) VALUES (?, '18:00', 'booking', 'badminton', 1, 'Pending', '', 'pending', 'Requester', 'requester@example.com', '0700000000', ?, ?)
+	`, time.Now().AddDate(0, 0, 2).Format("2006-01-02"), time.Now().UTC(), time.Now().UTC()); err != nil {
+		t.Fatalf("insert pending request: %v", err)
+	}
+	var scheduleID int64
+	if err := app.db.QueryRow(`SELECT id FROM space_schedules WHERE title = 'Pending'`).Scan(&scheduleID); err != nil {
+		t.Fatal(err)
+	}
+	holdForm := url.Values{
+		"csrf_token":  {"token"},
+		"schedule_id": {fmt.Sprintf("%d", scheduleID)},
+	}
+	holdReq := httptest.NewRequest(http.MethodPost, "/admin/booking-requests/hold", strings.NewReader(holdForm.Encode()))
+	holdReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	holdReq.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	holdReq.PostForm = holdForm
+	holdReq = holdReq.WithContext(context.WithValue(holdReq.Context(), userContextKey, user))
+	holdRec := httptest.NewRecorder()
+	app.requirePermission(http.HandlerFunc(app.holdBookingRequestHandler), "booking_requests.manage").ServeHTTP(holdRec, holdReq)
+	if holdRec.Code != http.StatusForbidden {
+		t.Fatalf("expected forbidden hold action, got %d", holdRec.Code)
+	}
+}
+
+func TestRunMigrationsPreservesExistingConfirmedBookingAndAutoAcceptDefaults(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:migration-compat-booking-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	statements := []string{
+		`CREATE TABLE courts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, code TEXT NOT NULL UNIQUE, description TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
+		`CREATE TABLE court_activities (id INTEGER PRIMARY KEY AUTOINCREMENT, court_id INTEGER NOT NULL, activity TEXT NOT NULL, display_name TEXT NOT NULL, max_quantity INTEGER NOT NULL DEFAULT 1, active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
+		`CREATE TABLE space_schedules (id INTEGER PRIMARY KEY AUTOINCREMENT, slot_date TEXT NOT NULL, slot_hour TEXT NOT NULL, entry_type TEXT NOT NULL, activity TEXT NOT NULL, quantity INTEGER NOT NULL, title TEXT NOT NULL, notes TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'confirmed', requester_name TEXT NOT NULL DEFAULT '', requester_email TEXT NOT NULL DEFAULT '', requester_phone TEXT NOT NULL DEFAULT '', requested_by_user_id INTEGER, review_note TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
+		`CREATE TABLE booking_financials (id INTEGER PRIMARY KEY AUTOINCREMENT, schedule_id INTEGER NOT NULL UNIQUE, quoted_amount REAL NOT NULL DEFAULT 0, paid INTEGER NOT NULL DEFAULT 0, paid_at DATETIME, payment_method TEXT NOT NULL DEFAULT '', finance_transaction_id INTEGER, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
+		`CREATE TABLE booking_communications (id INTEGER PRIMARY KEY AUTOINCREMENT, schedule_id INTEGER NOT NULL, event_type TEXT NOT NULL, related_event_type TEXT NOT NULL DEFAULT '', event_key TEXT NOT NULL, channel TEXT NOT NULL, recipient TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', body_preview TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', provider TEXT NOT NULL DEFAULT '', provider_message TEXT NOT NULL DEFAULT '', attempt_count INTEGER NOT NULL DEFAULT 0, last_attempt_at DATETIME, sent_at DATETIME, created_at DATETIME NOT NULL, created_by_user_id INTEGER)`,
+		`CREATE TABLE booking_access_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, schedule_id INTEGER NOT NULL, public_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, purpose TEXT NOT NULL DEFAULT 'status', active INTEGER NOT NULL DEFAULT 1, expires_at DATETIME NOT NULL, last_accessed_at DATETIME, created_at DATETIME NOT NULL, revoked_at DATETIME)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("seed legacy schema: %v", err)
+		}
+	}
+	now := time.Now().UTC()
+	if _, err := db.Exec(`INSERT INTO courts (id, name, code, description, active, sort_order, created_at, updated_at) VALUES (1, 'Court', 'COURT', '', 1, 1, ?, ?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO court_activities (id, court_id, activity, display_name, max_quantity, active, sort_order, created_at, updated_at) VALUES (1, 1, 'badminton', 'Badminton', 1, 1, 1, ?, ?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO space_schedules (id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status, requester_name, requester_email, requester_phone, requested_by_user_id, review_note, created_at, updated_at) VALUES (1, '2026-08-10', '18:00', 'booking', 'badminton', 1, 'Confirmed', '', 'confirmed', 'Customer', 'customer@example.com', '0700000000', NULL, '', ?, ?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO booking_financials (schedule_id, quoted_amount, paid, payment_method, created_at, updated_at) VALUES (1, 2500, 1, 'cash', ?, ?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations on legacy schema: %v", err)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM space_schedules WHERE id = 1`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != bookingStatusConfirmed {
+		t.Fatalf("confirmed booking changed during migration: %s", status)
+	}
+	var autoAccept int
+	if err := db.QueryRow(`SELECT auto_accept FROM court_activities WHERE id = 1`).Scan(&autoAccept); err != nil {
+		t.Fatal(err)
+	}
+	if autoAccept != 0 {
+		t.Fatalf("expected auto_accept default 0 for legacy activity, got %d", autoAccept)
+	}
+}
+
+func TestCustomerBookingStatusPageDoesNotExposeInternalReviewNotes(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	request := SpaceSchedule{
+		SlotDate:       time.Now().AddDate(0, 0, 3).Format("2006-01-02"),
+		SlotHour:       "18:00",
+		EntryType:      "booking",
+		Activity:       "badminton",
+		Quantity:       1,
+		Title:          "Customer Status Review",
+		RequesterName:  "Customer",
+		RequesterEmail: "customer@example.com",
+		RequesterPhone: "+94771112233",
+		QuotedPrice:    2500,
+	}
+	scheduleID, err := app.createPublicBookingRequest(request)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	if _, _, err := app.transitionBookingRequestStatus(scheduleID, bookingStatusHeld, "Internal-only review note", "Customer-safe hold message", "admin", 0); err != nil {
+		t.Fatalf("hold request: %v", err)
+	}
+	_, rawToken, err := app.ensureActiveBookingAccessToken(scheduleID, "status")
+	if err != nil {
+		t.Fatalf("issue booking status token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/booking/status?token="+url.QueryEscape(rawToken), nil)
+	rec := httptest.NewRecorder()
+	app.publicBookingStatusHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected booking status page, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "Internal-only review note") {
+		t.Fatal("customer status page exposed internal review note")
+	}
+	if !strings.Contains(body, "Customer-safe hold message") {
+		t.Fatal("customer status page did not include customer-facing message")
 	}
 }
 

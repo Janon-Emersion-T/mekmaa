@@ -361,6 +361,14 @@
                   <button class="h-10 w-full rounded-xl border border-violet-200 bg-violet-50 text-xs font-bold text-violet-800 transition hover:bg-violet-100">Place on hold</button>
                 </form>
                 <a href="/admin/booking-requests?action=reschedule&id={{.ID}}#request-reschedule" class="mt-2 inline-flex h-10 w-full items-center justify-center rounded-xl border border-aqua/25 bg-aqua/10 text-xs font-bold text-emerald-900 transition hover:bg-aqua/20">Reschedule</a>
+                <form action="/admin/bookings/cancel" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Cancel {{bookingReference .ID}}?')">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                  <input type="text" name="cancellation_reason" placeholder="Cancellation reason" required class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+                  <input type="text" name="customer_message" placeholder="Customer-facing cancellation message" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+                  <input type="hidden" name="cancellation_finance_note" value="" />
+                  <button class="h-10 w-full rounded-xl border border-slate/200 bg-white text-xs font-bold text-slate-800 transition hover:bg-slate-50">Cancel booking</button>
+                </form>
                 <form action="/admin/booking-requests/reject" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Reject {{bookingReference .ID}}?')">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="schedule_id" value="{{.ID}}" />

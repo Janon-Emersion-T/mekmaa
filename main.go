@@ -1268,7 +1268,7 @@ func main() {
 	mux.Handle("/admin/bookings/communications/resend", app.sessionMiddleware(http.HandlerFunc(app.resendBookingCommunicationHandler)))
 	mux.Handle("/admin/bookings/access/rotate", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.rotateBookingAccessHandler), "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/bookings/access/revoke", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.revokeBookingAccessHandler), "space_bookings.manage", "booking_requests.manage")))
-	mux.Handle("/admin/bookings/cancel", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.cancelBookingHandler), "space_bookings.manage")))
+	mux.Handle("/admin/bookings/cancel", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.cancelBookingHandler), "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/bookings/complete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.completeBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/no-show", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.noShowBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/cancellation-requests/approve", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.approveBookingCancellationRequestHandler), "space_bookings.manage", "booking_requests.manage")))
@@ -1624,6 +1624,7 @@ func (a *App) publicBookingStatusHandler(w http.ResponseWriter, r *http.Request)
 		http.NotFound(w, r)
 		return
 	}
+	a.expireOverdueBookingRequests(time.Now())
 	w.Header().Set("Cache-Control", "no-store, private, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -9839,7 +9840,7 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
 		       created_at, updated_at
 		FROM space_schedules
-		WHERE slot_date = ? AND slot_hour = ? AND id != ? AND status IN ('pending', 'confirmed')
+		WHERE slot_date = ? AND slot_hour = ? AND id != ? AND status IN ('pending', 'held', 'confirmed', 'reschedule_pending')
 		ORDER BY id ASC
 	`, slotDate, slotHour, excludeID)
 	if err != nil {
