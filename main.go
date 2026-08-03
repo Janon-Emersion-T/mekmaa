@@ -462,6 +462,10 @@ type Admission struct {
 	PaymentCollectedAt       time.Time
 	AdmissionPaymentAmount   float64
 	FinanceTransactionID     int64
+	PaymentVoidReason        string
+	PaymentVoidedByUserID    int64
+	PaymentVoidedByUserName  string
+	PaymentVoidedAt          time.Time
 	CreatedAt                time.Time
 	TrainingProgramID        int64
 	TrainingProgramName      string
@@ -548,6 +552,12 @@ type CashReconciliation struct {
 	Status             string
 	ReconciledByUserID int64
 	ReconciledByName   string
+	Voided             bool
+	VoidReason         string
+	VoidedByUserID     int64
+	VoidedByName       string
+	VoidedAt           time.Time
+	SupersededByID     int64
 	CreatedAt          time.Time
 }
 
@@ -1682,6 +1692,7 @@ func main() {
 	mux.Handle("/admin/bookings/payments/collect", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/bookings/payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidBookingPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/bookings/payments/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage", "space_bookings.manage", "booking_requests.manage")))
+	mux.Handle("/admin/admissions/payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidAdmissionPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage")))
 	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.manage")))
@@ -1704,10 +1715,12 @@ func main() {
 	mux.Handle("/admin/finance/transactions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransactionHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transactions/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransactionHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transfers/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransferHandler), "finance.manage")))
+	mux.Handle("/admin/finance/transfers/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransferHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/opening-balance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceOpeningBalanceHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/adjustment", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAdjustmentHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/statement", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountStatementHandler), "finance.manage")))
 	mux.Handle("/admin/finance/reconciliations/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createCashReconciliationHandler), "finance.manage")))
+	mux.Handle("/admin/finance/reconciliations/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidCashReconciliationHandler), "finance.manage")))
 	mux.Handle("/admin/finance/bookings/collect", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/finance/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeExportHandler), "finance.manage")))
 	mux.Handle("/admin/reports", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsHandler), "reports.view")))
@@ -1718,8 +1731,10 @@ func main() {
 	mux.Handle("/admin/referrals/partners/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateReferralPartnerHandler), "finance.manage")))
 	mux.Handle("/admin/referrals/partners/toggle", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.toggleReferralPartnerHandler), "finance.manage")))
 	mux.Handle("/admin/referrals/pay", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payReferralCommissionHandler), "finance.manage")))
+	mux.Handle("/admin/referrals/payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidReferralCommissionPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentPaymentsHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStudentPaymentHandler), "finance.manage")))
+	mux.Handle("/admin/student-payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidStudentPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 
 	log.Printf("server listening on %s", addr)
@@ -7043,6 +7058,102 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) voidAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	admissionID := parseInt64Query(r.FormValue("admission_id"))
+	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	if err := a.voidAdmissionPayment(admissionID, reason, currentUser.ID); err != nil {
+		a.setFlash(w, "Admission payment could not be voided: "+err.Error())
+		http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Admission payment was voided.")
+	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+}
+
+func (a *App) voidStudentPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	paymentID := parseInt64Query(r.FormValue("payment_id"))
+	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	redirectMonth := strings.TrimSpace(r.FormValue("payment_month"))
+	if err := a.voidStudentMonthlyPayment(paymentID, reason, currentUser.ID); err != nil {
+		a.setFlash(w, "Student payment could not be voided: "+err.Error())
+		target := "/admin/student-payments"
+		if redirectMonth != "" {
+			target += "?month=" + url.QueryEscape(redirectMonth)
+		}
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Student payment was voided.")
+	target := "/admin/student-payments"
+	if redirectMonth != "" {
+		target += "?month=" + url.QueryEscape(redirectMonth)
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func (a *App) voidReferralCommissionPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	referralID := parseInt64Query(r.FormValue("referral_id"))
+	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	if err := a.voidReferralCommissionPayment(referralID, reason, currentUser.ID); err != nil {
+		a.setFlash(w, "Referral payment could not be voided: "+err.Error())
+		http.Redirect(w, r, "/admin/referrals", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Referral payment was voided.")
+	http.Redirect(w, r, "/admin/referrals", http.StatusSeeOther)
 }
 
 func (a *App) deleteAdmissionHandler(w http.ResponseWriter, r *http.Request) {
@@ -12915,8 +13026,13 @@ func (a *App) findAdmissionByID(
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
 			COALESCE(a.finance_transaction_id, 0),
+			COALESCE(a.payment_void_reason, ''),
+			COALESCE(a.payment_voided_by_user_id, 0),
+			COALESCE(vu.name, ''),
+			a.payment_voided_at,
 			a.created_at
 		FROM admissions a
+		LEFT JOIN users vu ON vu.id = a.payment_voided_by_user_id
 		LEFT JOIN training_programs tp
 			ON tp.id = a.training_program_id
 		WHERE a.id = ?
@@ -12925,6 +13041,7 @@ func (a *App) findAdmissionByID(
 	var admission Admission
 	var paymentCollected int
 	var paymentCollectedAt sql.NullTime
+	var paymentVoidedAt sql.NullTime
 
 	if err := row.Scan(
 		&admission.ID,
@@ -12948,6 +13065,10 @@ func (a *App) findAdmissionByID(
 		&paymentCollectedAt,
 		&admission.AdmissionPaymentAmount,
 		&admission.FinanceTransactionID,
+		&admission.PaymentVoidReason,
+		&admission.PaymentVoidedByUserID,
+		&admission.PaymentVoidedByUserName,
+		&paymentVoidedAt,
 		&admission.CreatedAt,
 	); err != nil {
 		return nil, err
@@ -12957,6 +13078,9 @@ func (a *App) findAdmissionByID(
 
 	if paymentCollectedAt.Valid {
 		admission.PaymentCollectedAt = paymentCollectedAt.Time
+	}
+	if paymentVoidedAt.Valid {
+		admission.PaymentVoidedAt = paymentVoidedAt.Time
 	}
 
 	return &admission, nil
@@ -12995,8 +13119,13 @@ func (a *App) findAdmissionByIDTx(
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
 			COALESCE(a.finance_transaction_id, 0),
+			COALESCE(a.payment_void_reason, ''),
+			COALESCE(a.payment_voided_by_user_id, 0),
+			COALESCE(vu.name, ''),
+			a.payment_voided_at,
 			a.created_at
 		FROM admissions a
+		LEFT JOIN users vu ON vu.id = a.payment_voided_by_user_id
 		LEFT JOIN training_programs tp
 			ON tp.id = a.training_program_id
 		WHERE a.id = ?
@@ -13005,6 +13134,7 @@ func (a *App) findAdmissionByIDTx(
 	var admission Admission
 	var paymentCollected int
 	var paymentCollectedAt sql.NullTime
+	var paymentVoidedAt sql.NullTime
 
 	if err := row.Scan(
 		&admission.ID,
@@ -13028,6 +13158,10 @@ func (a *App) findAdmissionByIDTx(
 		&paymentCollectedAt,
 		&admission.AdmissionPaymentAmount,
 		&admission.FinanceTransactionID,
+		&admission.PaymentVoidReason,
+		&admission.PaymentVoidedByUserID,
+		&admission.PaymentVoidedByUserName,
+		&paymentVoidedAt,
 		&admission.CreatedAt,
 	); err != nil {
 		return nil, err
@@ -13037,6 +13171,9 @@ func (a *App) findAdmissionByIDTx(
 
 	if paymentCollectedAt.Valid {
 		admission.PaymentCollectedAt = paymentCollectedAt.Time
+	}
+	if paymentVoidedAt.Valid {
+		admission.PaymentVoidedAt = paymentVoidedAt.Time
 	}
 
 	return &admission, nil

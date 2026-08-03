@@ -329,9 +329,9 @@
             {{if .Voided}}<p class="mt-2 text-xs text-rose-800">Voided {{formatDateTime .VoidedAt}}. Reason: {{.VoidReason}}</p>{{end}}
           </div>
           {{if and (hasRole .User "superadmin") (not .Voided)}}
-          <form method="post" action="/admin/finance/transactions/void" class="grid gap-2 sm:min-w-[15rem]" onsubmit="return confirm('Void this transfer pair?');">
+          <form method="post" action="/admin/finance/transfers/void" class="grid gap-2 sm:min-w-[15rem]" onsubmit="return confirm('Void this transfer pair?');">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-            <input type="hidden" name="transaction_id" value="{{.TransferOutID}}">
+            <input type="hidden" name="group_id" value="{{.GroupID}}">
             <input type="text" name="void_reason" required placeholder="Void reason" class="h-10 rounded-xl border border-rose-200 bg-white px-3 text-sm outline-none focus:border-rose-400">
             <button class="h-10 rounded-xl border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700">Void transfer</button>
           </form>

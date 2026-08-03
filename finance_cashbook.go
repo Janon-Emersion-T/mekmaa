@@ -217,12 +217,27 @@ func migrateFinanceCashbook(db *sql.DB) error {
 			notes TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL DEFAULT 'balanced',
 			reconciled_by_user_id INTEGER,
+			void_reason TEXT NOT NULL DEFAULT '',
+			voided_by_user_id INTEGER,
+			voided_at DATETIME,
+			superseded_by_reconciliation_id INTEGER,
 			created_at DATETIME NOT NULL,
 			FOREIGN KEY (finance_account_id) REFERENCES finance_accounts(id),
-			FOREIGN KEY (reconciled_by_user_id) REFERENCES users(id)
+			FOREIGN KEY (reconciled_by_user_id) REFERENCES users(id),
+			FOREIGN KEY (voided_by_user_id) REFERENCES users(id),
+			FOREIGN KEY (superseded_by_reconciliation_id) REFERENCES cash_reconciliations(id)
 		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_reconciliations_account_date ON cash_reconciliations(finance_account_id, reconciliation_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_cash_reconciliations_date ON cash_reconciliations(reconciliation_date DESC)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_reconciliations_account_date_active ON cash_reconciliations(finance_account_id, reconciliation_date) WHERE voided_at IS NULL`,
+		`CREATE TABLE IF NOT EXISTS finance_operation_keys (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			operation_scope TEXT NOT NULL,
+			user_id INTEGER NOT NULL DEFAULT 0,
+			fingerprint TEXT NOT NULL,
+			result_ref TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL,
+			UNIQUE(operation_scope, user_id, fingerprint)
+		)`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.Exec(stmt); err != nil {
@@ -250,6 +265,16 @@ func migrateFinanceCashbook(db *sql.DB) error {
 		{"student_monthly_payments", "void_reason", `ALTER TABLE student_monthly_payments ADD COLUMN void_reason TEXT NOT NULL DEFAULT ''`},
 		{"student_monthly_payments", "voided_by_user_id", `ALTER TABLE student_monthly_payments ADD COLUMN voided_by_user_id INTEGER`},
 		{"student_monthly_payments", "voided_at", `ALTER TABLE student_monthly_payments ADD COLUMN voided_at DATETIME`},
+		{"admissions", "payment_void_reason", `ALTER TABLE admissions ADD COLUMN payment_void_reason TEXT NOT NULL DEFAULT ''`},
+		{"admissions", "payment_voided_by_user_id", `ALTER TABLE admissions ADD COLUMN payment_voided_by_user_id INTEGER`},
+		{"admissions", "payment_voided_at", `ALTER TABLE admissions ADD COLUMN payment_voided_at DATETIME`},
+		{"booking_referrals", "void_reason", `ALTER TABLE booking_referrals ADD COLUMN void_reason TEXT NOT NULL DEFAULT ''`},
+		{"booking_referrals", "voided_by_user_id", `ALTER TABLE booking_referrals ADD COLUMN voided_by_user_id INTEGER`},
+		{"booking_referrals", "voided_at", `ALTER TABLE booking_referrals ADD COLUMN voided_at DATETIME`},
+		{"cash_reconciliations", "void_reason", `ALTER TABLE cash_reconciliations ADD COLUMN void_reason TEXT NOT NULL DEFAULT ''`},
+		{"cash_reconciliations", "voided_by_user_id", `ALTER TABLE cash_reconciliations ADD COLUMN voided_by_user_id INTEGER`},
+		{"cash_reconciliations", "voided_at", `ALTER TABLE cash_reconciliations ADD COLUMN voided_at DATETIME`},
+		{"cash_reconciliations", "superseded_by_reconciliation_id", `ALTER TABLE cash_reconciliations ADD COLUMN superseded_by_reconciliation_id INTEGER`},
 	} {
 		exists, err := tableHasColumn(db, migration.table, migration.column)
 		if err != nil {
@@ -260,6 +285,9 @@ func migrateFinanceCashbook(db *sql.DB) error {
 				return fmt.Errorf("add %s %s column: %w", migration.table, migration.column, err)
 			}
 		}
+	}
+	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_cash_reconciliations_account_date`); err != nil {
+		return err
 	}
 	for _, stmt := range []string{
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_account ON finance_transactions(finance_account_id, recorded_at DESC, id DESC)`,
@@ -565,6 +593,103 @@ func (a *App) financeAccountBalance(accountID int64) (float64, error) {
 	return normalizeMoney(balance), nil
 }
 
+func financeBalanceCutoffForDate(date string) (time.Time, error) {
+	day, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(date), time.Local)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return day.AddDate(0, 0, 1).Add(-time.Nanosecond).UTC(), nil
+}
+
+func financeAccountBalanceAsOfTx(tx *sql.Tx, accountID int64, cutoff time.Time) (float64, error) {
+	var balance float64
+	if err := tx.QueryRow(`
+		SELECT COALESCE(SUM(amount), 0)
+		FROM finance_transactions
+		WHERE finance_account_id = ?
+		  AND voided_at IS NULL
+		  AND recorded_at <= ?
+	`, accountID, cutoff.UTC()).Scan(&balance); err != nil {
+		return 0, err
+	}
+	return normalizeMoney(balance), nil
+}
+
+func financeDateNotInFuture(date time.Time) bool {
+	localDate := time.Date(date.In(time.Local).Year(), date.In(time.Local).Month(), date.In(time.Local).Day(), 0, 0, 0, 0, time.Local)
+	today := time.Now().In(time.Local)
+	todayDate := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.Local)
+	return !localDate.After(todayDate)
+}
+
+func validateFinanceRecordedAt(recordedAt time.Time, label string) error {
+	if recordedAt.IsZero() {
+		return errors.New(label + " is required")
+	}
+	if !financeDateNotInFuture(recordedAt) {
+		return errors.New(label + " cannot be in the future")
+	}
+	return nil
+}
+
+func syncFinanceAccountOpeningBalanceMetadataTx(tx *sql.Tx, accountID int64) error {
+	var openingBalance float64
+	if err := tx.QueryRow(`
+		SELECT COALESCE(amount, 0)
+		FROM finance_transactions
+		WHERE finance_account_id = ?
+		  AND transaction_type = 'opening_balance'
+		  AND voided_at IS NULL
+		ORDER BY recorded_at DESC, id DESC
+		LIMIT 1
+	`, accountID).Scan(&openingBalance); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			openingBalance = 0
+		} else {
+			return err
+		}
+	}
+	_, err := tx.Exec(`UPDATE finance_accounts SET opening_balance = ?, updated_at = ? WHERE id = ?`, normalizeMoney(openingBalance), time.Now().UTC(), accountID)
+	return err
+}
+
+func reserveFinanceOperationTx(tx *sql.Tx, scope string, userID int64, fingerprint string) (string, bool, error) {
+	fingerprint = strings.TrimSpace(fingerprint)
+	if fingerprint == "" {
+		return "", false, errors.New("operation fingerprint is required")
+	}
+	now := time.Now().UTC()
+	_, err := tx.Exec(`
+		INSERT INTO finance_operation_keys (operation_scope, user_id, fingerprint, created_at)
+		VALUES (?, ?, ?, ?)
+	`, scope, userID, fingerprint, now)
+	if err == nil {
+		return "", false, nil
+	}
+	if !isUniqueConstraintError(err) {
+		return "", false, err
+	}
+	var existing string
+	if scanErr := tx.QueryRow(`
+		SELECT result_ref
+		FROM finance_operation_keys
+		WHERE operation_scope = ? AND user_id = ? AND fingerprint = ?
+		LIMIT 1
+	`, scope, userID, fingerprint).Scan(&existing); scanErr != nil {
+		return "", false, scanErr
+	}
+	return existing, true, nil
+}
+
+func completeFinanceOperationTx(tx *sql.Tx, scope string, userID int64, fingerprint string, resultRef string) error {
+	_, err := tx.Exec(`
+		UPDATE finance_operation_keys
+		SET result_ref = ?
+		WHERE operation_scope = ? AND user_id = ? AND fingerprint = ?
+	`, strings.TrimSpace(resultRef), scope, userID, strings.TrimSpace(fingerprint))
+	return err
+}
+
 func financeTransferReference(now time.Time) string {
 	return fmt.Sprintf("MKM-TRF-%s", now.UTC().Format("20060102150405"))
 }
@@ -662,7 +787,212 @@ func voidFinanceTransactionTx(tx *sql.Tx, transactionID int64, reason string, vo
 	return err
 }
 
+func financeVoidWorkflowMessage(transaction *FinanceTransaction) string {
+	switch transaction.SourceType {
+	case "booking_payment_collection":
+		return "Void booking income from the booking payment workflow so the booking balance stays synchronized."
+	case "admission":
+		return "Void admission income from the admission payment workflow so the admission record stays synchronized."
+	case "student_monthly_payment":
+		return "Void monthly income from the student payment workflow so the monthly payment record stays synchronized."
+	case "booking_referral_payment":
+		return "Void referral payouts from the referral payment workflow so the payout record stays synchronized."
+	case "finance_transfer":
+		return "Void transfers from the transfer workflow so both sides of the transfer are reversed together."
+	default:
+		return "This finance entry must be voided from its source workflow."
+	}
+}
+
+func financeTransactionAllowsGeneralVoid(transaction *FinanceTransaction) bool {
+	switch transaction.SourceType {
+	case "", "manual", "finance_adjustment", "finance_account_opening_balance":
+		return transaction.TransferGroupID == ""
+	default:
+		return false
+	}
+}
+
+func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUserID int64) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("void reason is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var financeTransactionID int64
+	var paymentCollected int
+	var paymentVoidedAt sql.NullTime
+	if err := tx.QueryRow(`
+		SELECT COALESCE(finance_transaction_id, 0), COALESCE(payment_collected, 0), payment_voided_at
+		FROM admissions
+		WHERE id = ?
+	`, admissionID).Scan(&financeTransactionID, &paymentCollected, &paymentVoidedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("admission payment was not found")
+		}
+		return err
+	}
+	if paymentCollected == 0 {
+		if paymentVoidedAt.Valid {
+			return errors.New("admission payment has already been voided")
+		}
+		return errors.New("admission payment has not been collected")
+	}
+	now := time.Now().UTC()
+	if _, err := tx.Exec(`
+		UPDATE admissions
+		SET payment_collected = 0,
+		    payment_collected_at = NULL,
+		    admission_payment_amount = 0,
+		    finance_transaction_id = NULL,
+		    payment_void_reason = ?,
+		    payment_voided_by_user_id = ?,
+		    payment_voided_at = ?,
+		    updated_at = ?
+		WHERE id = ? AND payment_collected = 1
+	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, now, admissionID); err != nil {
+		return err
+	}
+	if financeTransactionID > 0 {
+		if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, voidedByUserID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (a *App) voidStudentMonthlyPayment(paymentID int64, reason string, voidedByUserID int64) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("void reason is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var financeTransactionID int64
+	var alreadyVoided int
+	if err := tx.QueryRow(`
+		SELECT finance_transaction_id, voided
+		FROM student_monthly_payments
+		WHERE id = ?
+	`, paymentID).Scan(&financeTransactionID, &alreadyVoided); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("student payment was not found")
+		}
+		return err
+	}
+	if alreadyVoided == 1 {
+		return errors.New("student payment has already been voided")
+	}
+	now := time.Now().UTC()
+	if _, err := tx.Exec(`
+		UPDATE student_monthly_payments
+		SET voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ?
+		WHERE id = ? AND voided = 0
+	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, paymentID); err != nil {
+		return err
+	}
+	if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, voidedByUserID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (a *App) voidReferralCommissionPayment(referralID int64, reason string, voidedByUserID int64) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("void reason is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var financeTransactionID int64
+	var paid int
+	var voidedAt sql.NullTime
+	if err := tx.QueryRow(`
+		SELECT COALESCE(finance_transaction_id, 0), paid, voided_at
+		FROM booking_referrals
+		WHERE id = ?
+	`, referralID).Scan(&financeTransactionID, &paid, &voidedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("referral payment was not found")
+		}
+		return err
+	}
+	if paid == 0 {
+		if voidedAt.Valid {
+			return errors.New("referral payment has already been voided")
+		}
+		return errors.New("referral commission has not been paid")
+	}
+	now := time.Now().UTC()
+	if _, err := tx.Exec(`
+		UPDATE booking_referrals
+		SET paid = 0,
+		    paid_at = NULL,
+		    payment_method = '',
+		    finance_transaction_id = NULL,
+		    void_reason = ?,
+		    voided_by_user_id = ?,
+		    voided_at = ?
+		WHERE id = ? AND paid = 1
+	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, referralID); err != nil {
+		return err
+	}
+	if financeTransactionID > 0 {
+		if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, voidedByUserID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (a *App) voidCashReconciliation(reconciliationID int64, reason string, voidedByUserID int64, supersededByID int64) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("void reason is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var alreadyVoided int
+	if err := tx.QueryRow(`SELECT CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END FROM cash_reconciliations WHERE id = ?`, reconciliationID).Scan(&alreadyVoided); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("cash reconciliation was not found")
+		}
+		return err
+	}
+	if alreadyVoided == 1 {
+		return errors.New("cash reconciliation has already been voided")
+	}
+	_, err = tx.Exec(`
+		UPDATE cash_reconciliations
+		SET void_reason = ?, voided_by_user_id = ?, voided_at = ?, superseded_by_reconciliation_id = ?
+		WHERE id = ? AND voided_at IS NULL
+	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), time.Now().UTC(), nullIfZero(supersededByID), reconciliationID)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (a *App) createManualFinanceTransactionForAccount(category, personName, description, notes string, accountID int64, amount float64, recordedAt time.Time, recordedByUserID int64) (int64, error) {
+	if err := validateFinanceRecordedAt(recordedAt, "transaction date"); err != nil {
+		return 0, err
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -679,6 +1009,16 @@ func (a *App) createManualFinanceTransactionForAccount(category, personName, des
 	prefix := "MKM-INC"
 	if amount < 0 {
 		prefix = "MKM-EXP"
+	}
+	fingerprint := fmt.Sprintf("%d|%s|%d|%.2f|%s|%s|%s|%s", recordedByUserID, category, account.ID, normalizeMoney(amount), recordedAt.In(time.Local).Format("2006-01-02"), strings.TrimSpace(personName), strings.TrimSpace(description), strings.TrimSpace(notes))
+	if resultRef, duplicate, err := reserveFinanceOperationTx(tx, "manual_finance_transaction", recordedByUserID, fingerprint); err != nil {
+		return 0, err
+	} else if duplicate {
+		transactionID := parseInt64Query(resultRef)
+		if transactionID > 0 {
+			return transactionID, tx.Commit()
+		}
+		return 0, errors.New("this finance entry was already recorded")
 	}
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    financeVoucherReference(prefix, recordedAt),
@@ -697,6 +1037,9 @@ func (a *App) createManualFinanceTransactionForAccount(category, personName, des
 		RecordedAt:       recordedAt,
 	})
 	if err != nil {
+		return 0, err
+	}
+	if err := completeFinanceOperationTx(tx, "manual_finance_transaction", recordedByUserID, fingerprint, strconv.FormatInt(transactionID, 10)); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -758,6 +1101,9 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 	if amount <= 0 {
 		return "", errors.New("transfer amount must be greater than zero")
 	}
+	if err := validateFinanceRecordedAt(transferDate, "transfer date"); err != nil {
+		return "", err
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return "", err
@@ -773,6 +1119,15 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 	}
 	if !fromAccount.IsActive || !toAccount.IsActive {
 		return "", errors.New("transfer accounts must be active")
+	}
+	fingerprint := fmt.Sprintf("%d|%d|%d|%.2f|%s|%s|%s|%s", recordedByUserID, fromAccount.ID, toAccount.ID, amount, transferDate.In(time.Local).Format("2006-01-02"), strings.TrimSpace(referenceNumber), strings.TrimSpace(description), strings.TrimSpace(notes))
+	if resultRef, duplicate, err := reserveFinanceOperationTx(tx, "finance_transfer", recordedByUserID, fingerprint); err != nil {
+		return "", err
+	} else if duplicate {
+		if strings.TrimSpace(resultRef) != "" {
+			return strings.TrimSpace(resultRef), tx.Commit()
+		}
+		return "", errors.New("this transfer was already recorded")
 	}
 	fromBalance, err := financeAccountBalanceTx(tx, fromAccount.ID)
 	if err != nil {
@@ -830,6 +1185,9 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 	}); err != nil {
 		return "", err
 	}
+	if err := completeFinanceOperationTx(tx, "finance_transfer", recordedByUserID, fingerprint, groupID); err != nil {
+		return "", err
+	}
 	if err := tx.Commit(); err != nil {
 		return "", err
 	}
@@ -846,24 +1204,41 @@ func (a *App) voidFinanceTransferGroup(groupID string, reason string, voidedByUs
 		return err
 	}
 	defer tx.Rollback()
-	rows, err := tx.Query(`SELECT id FROM finance_transactions WHERE transfer_group_id = ? ORDER BY id ASC`, groupID)
+	rows, err := tx.Query(`
+		SELECT id, transaction_type, amount
+		FROM finance_transactions
+		WHERE transfer_group_id = ?
+		ORDER BY id ASC
+	`, groupID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	var ids []int64
+	var types []string
+	var amounts []float64
 	for rows.Next() {
 		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var transactionType string
+		var amount float64
+		if err := rows.Scan(&id, &transactionType, &amount); err != nil {
 			return err
 		}
 		ids = append(ids, id)
+		types = append(types, transactionType)
+		amounts = append(amounts, amount)
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 	if len(ids) != 2 {
 		return errors.New("transfer pair could not be resolved")
+	}
+	if !(types[0] == financeTxnTypeTransferOut && types[1] == financeTxnTypeTransferIn || types[0] == financeTxnTypeTransferIn && types[1] == financeTxnTypeTransferOut) {
+		return errors.New("transfer pair is invalid")
+	}
+	if !moneyEquals(amounts[0], -amounts[1]) {
+		return errors.New("transfer pair amounts do not match")
 	}
 	for _, id := range ids {
 		if err := voidFinanceTransactionTx(tx, id, reason, voidedByUserID); err != nil {
@@ -948,6 +1323,9 @@ func (a *App) createFinanceOpeningBalance(accountID int64, amount float64, recor
 	if amount == 0 {
 		return 0, errors.New("opening balance amount must not be zero")
 	}
+	if err := validateFinanceRecordedAt(recordedAt, "opening balance date"); err != nil {
+		return 0, err
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -970,6 +1348,16 @@ func (a *App) createFinanceOpeningBalance(accountID int64, amount float64, recor
 	if existingCount > 0 {
 		return 0, errors.New("an opening balance already exists for this account")
 	}
+	fingerprint := fmt.Sprintf("%d|%d|%.2f|%s|%s", recordedByUserID, account.ID, amount, recordedAt.In(time.Local).Format("2006-01-02"), strings.TrimSpace(notes))
+	if resultRef, duplicate, err := reserveFinanceOperationTx(tx, "finance_opening_balance", recordedByUserID, fingerprint); err != nil {
+		return 0, err
+	} else if duplicate {
+		transactionID := parseInt64Query(resultRef)
+		if transactionID > 0 {
+			return transactionID, tx.Commit()
+		}
+		return 0, errors.New("this opening balance was already recorded")
+	}
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    financeVoucherReference("MKM-OPEN", recordedAt),
 		ReferenceNumber:  financeVoucherReference("MKM-OPEN", recordedAt),
@@ -991,7 +1379,10 @@ func (a *App) createFinanceOpeningBalance(accountID int64, amount float64, recor
 	if err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(`UPDATE finance_accounts SET opening_balance = ?, updated_at = ?, updated_by_user_id = ? WHERE id = ?`, amount, time.Now().UTC(), nullableExistingUserIDTx(tx, recordedByUserID), account.ID); err != nil {
+	if err := syncFinanceAccountOpeningBalanceMetadataTx(tx, account.ID); err != nil {
+		return 0, err
+	}
+	if err := completeFinanceOperationTx(tx, "finance_opening_balance", recordedByUserID, fingerprint, strconv.FormatInt(transactionID, 10)); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -1009,6 +1400,9 @@ func (a *App) createFinanceAdjustment(accountID int64, amount float64, recordedA
 	if reason == "" {
 		return 0, errors.New("adjustment reason is required")
 	}
+	if err := validateFinanceRecordedAt(recordedAt, "adjustment date"); err != nil {
+		return 0, err
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -1017,6 +1411,16 @@ func (a *App) createFinanceAdjustment(accountID int64, amount float64, recordedA
 	account, err := findFinanceAccountByIDQuery(tx, accountID)
 	if err != nil {
 		return 0, err
+	}
+	fingerprint := fmt.Sprintf("%d|%d|%.2f|%s|%s", recordedByUserID, account.ID, amount, recordedAt.In(time.Local).Format("2006-01-02"), reason)
+	if resultRef, duplicate, err := reserveFinanceOperationTx(tx, "finance_adjustment", recordedByUserID, fingerprint); err != nil {
+		return 0, err
+	} else if duplicate {
+		transactionID := parseInt64Query(resultRef)
+		if transactionID > 0 {
+			return transactionID, tx.Commit()
+		}
+		return 0, errors.New("this adjustment was already recorded")
 	}
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    financeVoucherReference("MKM-ADJ", recordedAt),
@@ -1039,13 +1443,20 @@ func (a *App) createFinanceAdjustment(accountID int64, amount float64, recordedA
 	if err != nil {
 		return 0, err
 	}
+	if err := completeFinanceOperationTx(tx, "finance_adjustment", recordedByUserID, fingerprint, strconv.FormatInt(transactionID, 10)); err != nil {
+		return 0, err
+	}
 	return transactionID, tx.Commit()
 }
 
 func (a *App) createCashReconciliation(accountID int64, reconciliationDate string, countedBalance float64, notes string, reconciledByUserID int64) (int64, error) {
 	reconciliationDate = strings.TrimSpace(reconciliationDate)
-	if _, err := time.Parse("2006-01-02", reconciliationDate); err != nil {
+	day, err := time.ParseInLocation("2006-01-02", reconciliationDate, time.Local)
+	if err != nil {
 		return 0, errors.New("a valid reconciliation date is required")
+	}
+	if err := validateFinanceRecordedAt(day, "reconciliation date"); err != nil {
+		return 0, err
 	}
 	countedBalance = normalizeMoney(countedBalance)
 	tx, err := a.db.Begin()
@@ -1060,9 +1471,23 @@ func (a *App) createCashReconciliation(accountID int64, reconciliationDate strin
 	if account.AccountType != financeAccountTypeCash {
 		return 0, errors.New("cash reconciliation is available only for cash accounts")
 	}
-	expected, err := financeAccountBalanceTx(tx, account.ID)
+	cutoff, err := financeBalanceCutoffForDate(reconciliationDate)
+	if err != nil {
+		return 0, errors.New("a valid reconciliation date is required")
+	}
+	expected, err := financeAccountBalanceAsOfTx(tx, account.ID, cutoff)
 	if err != nil {
 		return 0, err
+	}
+	fingerprint := fmt.Sprintf("%d|%d|%s|%.2f|%s", reconciledByUserID, account.ID, reconciliationDate, countedBalance, strings.TrimSpace(notes))
+	if resultRef, duplicate, err := reserveFinanceOperationTx(tx, "cash_reconciliation", reconciledByUserID, fingerprint); err != nil {
+		return 0, err
+	} else if duplicate {
+		reconciliationID := parseInt64Query(resultRef)
+		if reconciliationID > 0 {
+			return reconciliationID, tx.Commit()
+		}
+		return 0, errors.New("this reconciliation was already recorded")
 	}
 	diff := normalizeMoney(countedBalance - expected)
 	if math.Abs(diff) > 0.004 && strings.TrimSpace(notes) == "" {
@@ -1092,6 +1517,9 @@ func (a *App) createCashReconciliation(accountID int64, reconciliationDate strin
 	if err != nil {
 		return 0, err
 	}
+	if err := completeFinanceOperationTx(tx, "cash_reconciliation", reconciledByUserID, fingerprint, strconv.FormatInt(id, 10)); err != nil {
+		return 0, err
+	}
 	return id, tx.Commit()
 }
 
@@ -1099,10 +1527,13 @@ func (a *App) listCashReconciliations(limit int) ([]CashReconciliation, error) {
 	query := `
 		SELECT cr.id, cr.finance_account_id, fa.name, cr.reconciliation_date, cr.expected_balance,
 		       cr.counted_balance, cr.difference, cr.notes, cr.status,
-		       COALESCE(cr.reconciled_by_user_id, 0), COALESCE(u.name, ''), cr.created_at
+		       COALESCE(cr.reconciled_by_user_id, 0), COALESCE(u.name, ''),
+		       COALESCE(cr.void_reason, ''), COALESCE(cr.voided_by_user_id, 0), COALESCE(vu.name, ''),
+		       cr.voided_at, COALESCE(cr.superseded_by_reconciliation_id, 0), cr.created_at
 		FROM cash_reconciliations cr
 		JOIN finance_accounts fa ON fa.id = cr.finance_account_id
 		LEFT JOIN users u ON u.id = cr.reconciled_by_user_id
+		LEFT JOIN users vu ON vu.id = cr.voided_by_user_id
 		ORDER BY cr.reconciliation_date DESC, cr.id DESC
 	`
 	var rows *sql.Rows
@@ -1119,11 +1550,17 @@ func (a *App) listCashReconciliations(limit int) ([]CashReconciliation, error) {
 	var reconciliations []CashReconciliation
 	for rows.Next() {
 		var item CashReconciliation
+		var voidedAt sql.NullTime
 		if err := rows.Scan(
 			&item.ID, &item.FinanceAccountID, &item.FinanceAccountName, &item.ReconciliationDate, &item.ExpectedBalance,
-			&item.CountedBalance, &item.Difference, &item.Notes, &item.Status, &item.ReconciledByUserID, &item.ReconciledByName, &item.CreatedAt,
+			&item.CountedBalance, &item.Difference, &item.Notes, &item.Status, &item.ReconciledByUserID, &item.ReconciledByName,
+			&item.VoidReason, &item.VoidedByUserID, &item.VoidedByName, &voidedAt, &item.SupersededByID, &item.CreatedAt,
 		); err != nil {
 			return nil, err
+		}
+		item.Voided = voidedAt.Valid
+		if voidedAt.Valid {
+			item.VoidedAt = voidedAt.Time
 		}
 		reconciliations = append(reconciliations, item)
 	}
@@ -1134,23 +1571,33 @@ func (a *App) lastCashReconciliationForAccount(accountID int64) (*CashReconcilia
 	row := a.db.QueryRow(`
 		SELECT cr.id, cr.finance_account_id, fa.name, cr.reconciliation_date, cr.expected_balance,
 		       cr.counted_balance, cr.difference, cr.notes, cr.status,
-		       COALESCE(cr.reconciled_by_user_id, 0), COALESCE(u.name, ''), cr.created_at
+		       COALESCE(cr.reconciled_by_user_id, 0), COALESCE(u.name, ''),
+		       COALESCE(cr.void_reason, ''), COALESCE(cr.voided_by_user_id, 0), COALESCE(vu.name, ''),
+		       cr.voided_at, COALESCE(cr.superseded_by_reconciliation_id, 0), cr.created_at
 		FROM cash_reconciliations cr
 		JOIN finance_accounts fa ON fa.id = cr.finance_account_id
 		LEFT JOIN users u ON u.id = cr.reconciled_by_user_id
+		LEFT JOIN users vu ON vu.id = cr.voided_by_user_id
 		WHERE cr.finance_account_id = ?
+		  AND cr.voided_at IS NULL
 		ORDER BY cr.reconciliation_date DESC, cr.id DESC
 		LIMIT 1
 	`, accountID)
 	var item CashReconciliation
+	var voidedAt sql.NullTime
 	if err := row.Scan(
 		&item.ID, &item.FinanceAccountID, &item.FinanceAccountName, &item.ReconciliationDate, &item.ExpectedBalance,
-		&item.CountedBalance, &item.Difference, &item.Notes, &item.Status, &item.ReconciledByUserID, &item.ReconciledByName, &item.CreatedAt,
+		&item.CountedBalance, &item.Difference, &item.Notes, &item.Status, &item.ReconciledByUserID, &item.ReconciledByName,
+		&item.VoidReason, &item.VoidedByUserID, &item.VoidedByName, &voidedAt, &item.SupersededByID, &item.CreatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
+	}
+	item.Voided = voidedAt.Valid
+	if voidedAt.Valid {
+		item.VoidedAt = voidedAt.Time
 	}
 	return &item, nil
 }
@@ -1221,7 +1668,7 @@ func latestUnreconciledCashDelta(accounts []FinanceAccount, reconciliations []Ca
 	}
 	var latest *CashReconciliation
 	for i := range reconciliations {
-		if reconciliations[i].FinanceAccountID != cashAccountID {
+		if reconciliations[i].FinanceAccountID != cashAccountID || reconciliations[i].Voided {
 			continue
 		}
 		if latest == nil || reconciliations[i].ReconciliationDate > latest.ReconciliationDate {
@@ -1459,14 +1906,9 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "finance transaction not found", http.StatusNotFound)
 		return
 	}
-	if transaction.TransferGroupID != "" {
-		if err := a.voidFinanceTransferGroup(transaction.TransferGroupID, reason, currentUser.ID); err != nil {
-			a.setFlash(w, "Transfer could not be voided: "+err.Error())
-			http.Redirect(w, r, "/admin/finance#transfers", http.StatusSeeOther)
-			return
-		}
-		a.setFlash(w, "Transfer was voided.")
-		http.Redirect(w, r, "/admin/finance#transfers", http.StatusSeeOther)
+	if !financeTransactionAllowsGeneralVoid(transaction) {
+		a.setFlash(w, financeVoidWorkflowMessage(transaction))
+		http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
 		return
 	}
 	tx, err := a.db.Begin()
@@ -1475,43 +1917,16 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer tx.Rollback()
-	switch transaction.SourceType {
-	case "admission":
-		if _, err := tx.Exec(`
-			UPDATE admissions
-			SET payment_collected = 0,
-			    payment_collected_at = NULL,
-			    admission_payment_amount = 0,
-			    finance_transaction_id = NULL,
-			    updated_at = ?
-			WHERE id = ?
-		`, time.Now().UTC(), transaction.SourceID); err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-	case "student_monthly_payment":
-		if _, err := tx.Exec(`
-			UPDATE student_monthly_payments
-			SET voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ?
-			WHERE id = ? AND voided = 0
-		`, reason, nullableExistingUserIDTx(tx, currentUser.ID), time.Now().UTC(), transaction.SourceID); err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-	case "booking_referral_payment":
-		if _, err := tx.Exec(`
-			UPDATE booking_referrals
-			SET paid = 0, paid_at = NULL, payment_method = '', finance_transaction_id = NULL
-			WHERE id = ?
-		`, transaction.SourceID); err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-	}
 	if err := voidFinanceTransactionTx(tx, transaction.ID, reason, currentUser.ID); err != nil {
 		a.setFlash(w, "Finance transaction could not be voided: "+err.Error())
 		http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
 		return
+	}
+	if transaction.TransactionType == financeTxnTypeOpeningBalance {
+		if err := syncFinanceAccountOpeningBalanceMetadataTx(tx, transaction.FinanceAccountID); err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -1519,6 +1934,65 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 	}
 	a.setFlash(w, "Finance transaction was voided.")
 	http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
+}
+
+func (a *App) voidFinanceTransferHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	groupID := strings.TrimSpace(r.FormValue("group_id"))
+	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	if err := a.voidFinanceTransferGroup(groupID, reason, currentUser.ID); err != nil {
+		a.setFlash(w, "Transfer could not be voided: "+err.Error())
+		http.Redirect(w, r, "/admin/finance#transfers-list", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Transfer was voided.")
+	http.Redirect(w, r, "/admin/finance#transfers-list", http.StatusSeeOther)
+}
+
+func (a *App) voidCashReconciliationHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	reconciliationID := parseInt64Query(r.FormValue("reconciliation_id"))
+	replacementID := parseInt64Query(r.FormValue("replacement_reconciliation_id"))
+	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	if err := a.voidCashReconciliation(reconciliationID, reason, currentUser.ID, replacementID); err != nil {
+		a.setFlash(w, "Cash reconciliation could not be voided: "+err.Error())
+		http.Redirect(w, r, "/admin/finance#reconciliation", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Cash reconciliation was voided.")
+	http.Redirect(w, r, "/admin/finance#reconciliation", http.StatusSeeOther)
 }
 
 func (a *App) financeAccountStatementHandler(w http.ResponseWriter, r *http.Request) {

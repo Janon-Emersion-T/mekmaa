@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1835,11 +1836,11 @@ func TestCashTransferValidationRules(t *testing.T) {
 func TestVoidedTransactionsOpeningBalancesAndAdjustmentsAffectBalancesSafely(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
-	openingID, err := app.createFinanceOpeningBalance(cashID, 1000, time.Now(), "initial float", 0)
+	openingID, err := app.createFinanceOpeningBalance(cashID, 1000, time.Date(2026, 8, 3, 9, 0, 0, 0, time.Local), "initial float", 0)
 	if err != nil {
 		t.Fatalf("create opening balance: %v", err)
 	}
-	adjustmentID, err := app.createFinanceAdjustment(cashID, -250, time.Now(), "count correction", 0)
+	adjustmentID, err := app.createFinanceAdjustment(cashID, -250, time.Date(2026, 8, 3, 10, 0, 0, 0, time.Local), "count correction", 0)
 	if err != nil {
 		t.Fatalf("create adjustment: %v", err)
 	}
@@ -1871,20 +1872,20 @@ func TestVoidedTransactionsOpeningBalancesAndAdjustmentsAffectBalancesSafely(t *
 
 func TestCashReconciliationCalculatesStatusesAndRequiresNotes(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
-	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 1000, time.Now(), 0); err != nil {
+	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 1000, time.Date(2026, 8, 1, 10, 0, 0, 0, time.Local), 0); err != nil {
 		t.Fatalf("seed cash income: %v", err)
 	}
 	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
-	if _, err := app.createCashReconciliation(cashID, "2026-08-03", 1000, "", 0); err != nil {
+	if _, err := app.createCashReconciliation(cashID, "2026-08-01", 1000, "", 0); err != nil {
 		t.Fatalf("balanced reconciliation: %v", err)
 	}
-	if _, err := app.createCashReconciliation(cashID, "2026-08-04", 900, "", 0); err == nil {
+	if _, err := app.createCashReconciliation(cashID, "2026-08-02", 900, "", 0); err == nil {
 		t.Fatal("expected non-zero reconciliation without notes to be rejected")
 	}
-	if _, err := app.createCashReconciliation(cashID, "2026-08-04", 900, "short count", 0); err != nil {
+	if _, err := app.createCashReconciliation(cashID, "2026-08-02", 900, "short count", 0); err != nil {
 		t.Fatalf("short reconciliation: %v", err)
 	}
-	if _, err := app.createCashReconciliation(cashID, "2026-08-05", 1100, "over count", 0); err != nil {
+	if _, err := app.createCashReconciliation(cashID, "2026-08-03", 1100, "over count", 0); err != nil {
 		t.Fatalf("over reconciliation: %v", err)
 	}
 	rows, err := app.listCashReconciliations(10)
@@ -1893,6 +1894,80 @@ func TestCashReconciliationCalculatesStatusesAndRequiresNotes(t *testing.T) {
 	}
 	if len(rows) != 3 || rows[0].Status != "over" || rows[1].Status != "short" || rows[2].Status != "balanced" {
 		t.Fatalf("unexpected reconciliation statuses: %#v", rows)
+	}
+}
+
+func TestCashReconciliationUsesHistoricalBalanceAsOfSelectedDate(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Day one", "cash", 1000, time.Date(2026, 8, 1, 9, 0, 0, 0, time.Local), 0); err != nil {
+		t.Fatalf("seed first cash entry: %v", err)
+	}
+	reconciliationID, err := app.createCashReconciliation(cashID, "2026-08-01", 1000, "", 0)
+	if err != nil {
+		t.Fatalf("create historical reconciliation: %v", err)
+	}
+	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Day three", "cash", 500, time.Date(2026, 8, 3, 11, 0, 0, 0, time.Local), 0); err != nil {
+		t.Fatalf("seed later cash entry: %v", err)
+	}
+	var expected float64
+	if err := app.db.QueryRow(`SELECT expected_balance FROM cash_reconciliations WHERE id = ?`, reconciliationID).Scan(&expected); err != nil {
+		t.Fatalf("load stored expected balance: %v", err)
+	}
+	if !moneyEquals(expected, 1000) {
+		t.Fatalf("stored expected balance = %.2f, want 1000.00", expected)
+	}
+	backdatedID, err := app.createCashReconciliation(cashID, "2026-07-31", 0, "", 0)
+	if err != nil {
+		t.Fatalf("create backdated reconciliation: %v", err)
+	}
+	if err := app.db.QueryRow(`SELECT expected_balance FROM cash_reconciliations WHERE id = ?`, backdatedID).Scan(&expected); err != nil {
+		t.Fatalf("load backdated expected balance: %v", err)
+	}
+	if !moneyEquals(expected, 0) {
+		t.Fatalf("backdated expected balance = %.2f, want 0.00", expected)
+	}
+}
+
+func TestOpeningBalanceMetadataSyncsOnVoidAndReplacement(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	openingID, err := app.createFinanceOpeningBalance(cashID, 1000, time.Date(2026, 8, 1, 9, 0, 0, 0, time.Local), "initial", 0)
+	if err != nil {
+		t.Fatalf("create opening balance: %v", err)
+	}
+	if _, err := app.createFinanceOpeningBalance(cashID, 500, time.Date(2026, 8, 2, 9, 0, 0, 0, time.Local), "duplicate", 0); err == nil {
+		t.Fatal("expected duplicate active opening balance to be rejected")
+	}
+	tx, err := app.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := voidFinanceTransactionTx(tx, openingID, "replace opening", 0); err != nil {
+		t.Fatalf("void opening balance: %v", err)
+	}
+	if err := syncFinanceAccountOpeningBalanceMetadataTx(tx, cashID); err != nil {
+		t.Fatalf("sync opening balance metadata: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	account, err := app.findFinanceAccountByID(cashID)
+	if err != nil {
+		t.Fatalf("find finance account: %v", err)
+	}
+	if !moneyEquals(account.OpeningBalance, 0) {
+		t.Fatalf("opening balance metadata = %.2f, want 0.00 after void", account.OpeningBalance)
+	}
+	if _, err := app.createFinanceOpeningBalance(cashID, 750, time.Date(2026, 8, 2, 9, 0, 0, 0, time.Local), "replacement", 0); err != nil {
+		t.Fatalf("create replacement opening balance: %v", err)
+	}
+	account, err = app.findFinanceAccountByID(cashID)
+	if err != nil {
+		t.Fatalf("find replacement finance account: %v", err)
+	}
+	if !moneyEquals(account.OpeningBalance, 750) {
+		t.Fatalf("opening balance metadata = %.2f, want 750.00 after replacement", account.OpeningBalance)
 	}
 }
 
@@ -1949,6 +2024,141 @@ func TestFinanceRoutesRequirePermissionAndCSRFAuth(t *testing.T) {
 	app.createFinanceTransferHandler(csrfRec, csrfReq)
 	if csrfRec.Code != http.StatusForbidden {
 		t.Fatalf("expected CSRF failure, got %d", csrfRec.Code)
+	}
+}
+
+func TestGeneralFinanceVoidRejectsSourceLinkedTransactions(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	user := &User{ID: 7, Name: "Finance", Roles: []string{"superadmin"}, Permissions: []string{"finance.manage"}}
+	scheduleID := createConfirmedFutureBooking(t, app, 1, "10:00")
+	transactionID, err := app.collectBookingPayment(scheduleID, "cash", 2500, "", user.ID, false)
+	if err != nil {
+		t.Fatalf("collect booking payment: %v", err)
+	}
+	form := url.Values{
+		"transaction_id": {strconv.FormatInt(transactionID, 10)},
+		"void_reason":    {"attempted direct void"},
+		"csrf_token":     {"token"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/finance/transactions/void", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.voidFinanceTransactionHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("general void redirect status = %d", rec.Code)
+	}
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("reload finance transaction: %v", err)
+	}
+	if transaction.Voided {
+		t.Fatal("source-linked booking payment should not be voided through general finance void")
+	}
+}
+
+func TestSourceLevelVoidWorkflowsSynchronizeLedger(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	userID := int64(9)
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500, monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-VOID-001",
+		FullName:              "Voidable Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000002",
+	}
+	admissionID, admissionTxnID, err := app.createAdmissionWithOptionalPayment(admission, true, userID)
+	if err != nil {
+		t.Fatalf("create admission with payment: %v", err)
+	}
+	if err := app.voidAdmissionPayment(admissionID, "entered twice", userID); err != nil {
+		t.Fatalf("void admission payment: %v", err)
+	}
+	admissionRow, err := app.findAdmissionByID(admissionID)
+	if err != nil {
+		t.Fatalf("reload admission: %v", err)
+	}
+	if admissionRow.PaymentCollected || admissionRow.PaymentVoidedAt.IsZero() || admissionRow.PaymentVoidReason == "" {
+		t.Fatalf("admission void state not recorded: %#v", admissionRow)
+	}
+	admissionTxn, err := app.findFinanceTransactionByID(admissionTxnID)
+	if err != nil {
+		t.Fatalf("reload admission ledger transaction: %v", err)
+	}
+	if !admissionTxn.Voided {
+		t.Fatal("admission ledger transaction should be voided")
+	}
+
+	monthDate, _ := parsePaymentMonth("2026-08")
+	studentTxnID, err := app.collectStudentMonthlyPayment(admissionID, "2026-08", monthDate, "cash", userID)
+	if err != nil {
+		t.Fatalf("collect student payment: %v", err)
+	}
+	var paymentID int64
+	if err := app.db.QueryRow(`SELECT id FROM student_monthly_payments WHERE finance_transaction_id = ?`, studentTxnID).Scan(&paymentID); err != nil {
+		t.Fatalf("lookup student payment row: %v", err)
+	}
+	if err := app.voidStudentMonthlyPayment(paymentID, "duplicate month", userID); err != nil {
+		t.Fatalf("void student payment: %v", err)
+	}
+	studentTxn, err := app.findFinanceTransactionByID(studentTxnID)
+	if err != nil {
+		t.Fatalf("reload student ledger transaction: %v", err)
+	}
+	if !studentTxn.Voided {
+		t.Fatal("student monthly ledger transaction should be voided")
+	}
+	var studentVoided int
+	if err := app.db.QueryRow(`SELECT voided FROM student_monthly_payments WHERE id = ?`, paymentID).Scan(&studentVoided); err != nil {
+		t.Fatalf("reload student payment row: %v", err)
+	}
+	if studentVoided != 1 {
+		t.Fatal("student monthly payment row should be marked voided")
+	}
+}
+
+func TestFinanceOperationIdempotencyPreventsDuplicatePosts(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	recordedAt := time.Date(2026, 8, 3, 9, 0, 0, 0, time.Local)
+	firstID, err := app.createManualFinanceTransactionForAccount("manual_income", "Walk-in", "Same request", "same token path", cashID, 1200, recordedAt, 5)
+	if err != nil {
+		t.Fatalf("create manual finance entry: %v", err)
+	}
+	secondID, err := app.createManualFinanceTransactionForAccount("manual_income", "Walk-in", "Same request", "same token path", cashID, 1200, recordedAt, 5)
+	if err != nil {
+		t.Fatalf("repeat manual finance entry: %v", err)
+	}
+	if firstID != secondID {
+		t.Fatalf("manual transaction ids differ: first=%d second=%d", firstID, secondID)
+	}
+	var count int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE description = ?`, "Same request").Scan(&count); err != nil {
+		t.Fatalf("count manual transactions: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one manual transaction row, got %d", count)
+	}
+}
+
+func TestFinanceDateValidationRejectsFutureDates(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	tomorrow := time.Date(2026, 8, 4, 9, 0, 0, 0, time.Local)
+	if _, err := app.createManualFinanceTransactionForAccount("manual_income", "Future", "Future entry", "", cashID, 100, tomorrow, 0); err == nil {
+		t.Fatal("expected future manual entry date to be rejected")
+	}
+	if _, err := app.createFinanceAdjustment(cashID, 50, tomorrow, "future correction", 0); err == nil {
+		t.Fatal("expected future adjustment date to be rejected")
 	}
 }
 
