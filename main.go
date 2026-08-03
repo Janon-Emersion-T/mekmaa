@@ -36,14 +36,15 @@ import (
 )
 
 const (
-	sessionCookieName = "mekmaa3_session"
-	csrfCookieName    = "mekmaa3_csrf"
-	flashCookieName   = "mekmaa3_flash"
-	sessionTTL        = 24 * time.Hour
-	otpTTL            = 10 * time.Minute
-	maxEventImageSize = 8 << 20
-	maxEventFormSize  = maxEventImageSize + (1 << 20)
-	defaultUploadDir  = "./data/uploads"
+	sessionCookieName               = "mekmaa3_session"
+	csrfCookieName                  = "mekmaa3_csrf"
+	flashCookieName                 = "mekmaa3_flash"
+	sessionTTL                      = 24 * time.Hour
+	otpTTL                          = 10 * time.Minute
+	maxEventImageSize               = 8 << 20
+	maxEventFormSize                = maxEventImageSize + (1 << 20)
+	defaultUploadDir                = "./data/uploads"
+	defaultBookingAccessTokenSecret = "MEKMAA_DEV_BOOKING_ACCESS_TOKEN_SECRET_CHANGE_ME"
 )
 
 var (
@@ -136,6 +137,188 @@ var permissionGroups = []PermissionGroup{
 	}},
 }
 
+func parseAppEnvironment(raw string) (AppEnvironment, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", string(appEnvDevelopment):
+		return appEnvDevelopment, nil
+	case string(appEnvTest):
+		return appEnvTest, nil
+	case string(appEnvProduction):
+		return appEnvProduction, nil
+	default:
+		return "", fmt.Errorf("APP_ENV must be one of development, test, or production")
+	}
+}
+
+func envValue(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func validateBookingAccessSecret(env AppEnvironment, secret string) []string {
+	if env != appEnvProduction {
+		return nil
+	}
+	secret = strings.TrimSpace(secret)
+	switch {
+	case secret == "":
+		return []string{"BOOKING_ACCESS_TOKEN_SECRET is required in production"}
+	case secret == defaultBookingAccessTokenSecret:
+		return []string{"BOOKING_ACCESS_TOKEN_SECRET must not use the development default in production"}
+	case len(secret) < 32:
+		return []string{"BOOKING_ACCESS_TOKEN_SECRET must be at least 32 characters in production"}
+	default:
+		return nil
+	}
+}
+
+func validatePublicBaseURL(env AppEnvironment, raw string) []string {
+	if env != appEnvProduction {
+		return nil
+	}
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return []string{"MEKMAA_PUBLIC_BASE_URL is required in production"}
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return []string{"MEKMAA_PUBLIC_BASE_URL must be a valid HTTPS URL in production"}
+	}
+	host := strings.ToLower(parsed.Hostname())
+	switch {
+	case parsed.Scheme != "https":
+		return []string{"MEKMAA_PUBLIC_BASE_URL must use HTTPS in production"}
+	case host == "localhost" || host == "127.0.0.1" || strings.HasSuffix(host, ".localhost"):
+		return []string{"MEKMAA_PUBLIC_BASE_URL must not point to localhost in production"}
+	case strings.Contains(host, "dev") || strings.Contains(host, "local"):
+		return []string{"MEKMAA_PUBLIC_BASE_URL must not use an obvious development host in production"}
+	default:
+		return nil
+	}
+}
+
+func validateCookieSecurity(env AppEnvironment, cookieSecure bool) []string {
+	if env == appEnvProduction && !cookieSecure {
+		return []string{"COOKIE_SECURE=true is required in production"}
+	}
+	return nil
+}
+
+func validateSMTPConfiguration(messages BookingCommunicationSettings, smtp SMTPConfig) []string {
+	if !messages.EmailEnabled {
+		return nil
+	}
+	var errs []string
+	if strings.TrimSpace(smtp.Host) == "" {
+		errs = append(errs, "SMTP_HOST is required when booking email delivery is enabled")
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(smtp.Port))
+	if err != nil || port <= 0 || port > 65535 {
+		errs = append(errs, "SMTP_PORT must be a valid TCP port when booking email delivery is enabled")
+	}
+	if strings.TrimSpace(smtp.Username) == "" {
+		errs = append(errs, "SMTP_USER is required when booking email delivery is enabled")
+	}
+	if strings.TrimSpace(smtp.Password) == "" {
+		errs = append(errs, "SMTP_PASS is required when booking email delivery is enabled")
+	}
+	if !emailPattern.MatchString(strings.TrimSpace(smtp.From)) {
+		errs = append(errs, "SMTP_FROM must be a valid sender address when booking email delivery is enabled")
+	}
+	return errs
+}
+
+func validateSMSConfiguration(messages BookingCommunicationSettings, sms SMSConfig) []string {
+	if !messages.SMSEnabled {
+		return nil
+	}
+	var errs []string
+	if strings.TrimSpace(sms.UserID) == "" {
+		errs = append(errs, "SMS_USER_ID is required when booking SMS delivery is enabled")
+	}
+	if strings.TrimSpace(sms.APIKey) == "" {
+		errs = append(errs, "SMS_API_KEY is required when booking SMS delivery is enabled")
+	}
+	if strings.TrimSpace(sms.SenderID) == "" {
+		errs = append(errs, "SMS_SENDER_ID is required when booking SMS delivery is enabled")
+	}
+	return errs
+}
+
+func validateRuntimeConfiguration(config AppRuntimeConfig, bookingMessages BookingCommunicationSettings, bookingAccess BookingAccessSettings, smtp SMTPConfig, sms SMSConfig) []string {
+	var errs []string
+	errs = append(errs, validateBookingAccessSecret(config.Env, bookingAccess.TokenSecret)...)
+	errs = append(errs, validatePublicBaseURL(config.Env, bookingAccess.BaseURL)...)
+	errs = append(errs, validateCookieSecurity(config.Env, config.CookieSecure)...)
+	errs = append(errs, validateSMTPConfiguration(bookingMessages, smtp)...)
+	errs = append(errs, validateSMSConfiguration(bookingMessages, sms)...)
+	return errs
+}
+
+func isTemporaryPath(path string) bool {
+	cleaned := filepath.Clean(path)
+	tempRoot := filepath.Clean(os.TempDir())
+	return cleaned == tempRoot || strings.HasPrefix(cleaned, tempRoot+string(os.PathSeparator))
+}
+
+func validateDatabasePath(env AppEnvironment, configured string) (string, []string) {
+	var errs []string
+	raw := strings.TrimSpace(configured)
+	if env == appEnvProduction && raw == "" {
+		errs = append(errs, "DB_PATH is required in production")
+	}
+	if raw == "" {
+		raw = "app.db"
+	}
+	if strings.Contains(raw, "mode=memory") || raw == ":memory:" {
+		if env == appEnvProduction {
+			errs = append(errs, "production DB_PATH must not use an in-memory SQLite database")
+		}
+		return raw, errs
+	}
+	resolved, err := filepath.Abs(filepath.Clean(raw))
+	if err != nil {
+		return raw, append(errs, "DB_PATH could not be resolved")
+	}
+	if env == appEnvProduction && isTemporaryPath(resolved) {
+		errs = append(errs, "production DB_PATH must not point to a temporary directory")
+	}
+	return resolved, errs
+}
+
+func prepareDatabasePath(dbPath string) error {
+	if dbPath == "" || dbPath == ":memory:" || strings.Contains(dbPath, "mode=memory") {
+		return nil
+	}
+	parent := filepath.Dir(dbPath)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return fmt.Errorf("create database directory %s: %w", parent, err)
+	}
+	probe, err := os.OpenFile(dbPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("database path is not writable %s: %w", dbPath, err)
+	}
+	return probe.Close()
+}
+
+func validateUploadPath(env AppEnvironment, root string) []string {
+	if env == appEnvProduction && isTemporaryPath(root) {
+		return []string{"production UPLOAD_DIR must not point to a temporary directory"}
+	}
+	return nil
+}
+
+func enableSQLiteForeignKeys(db *sql.DB) error {
+	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		return err
+	}
+	return nil
+}
+
 type contextKey string
 
 const userContextKey contextKey = "currentUser"
@@ -149,11 +332,29 @@ type App struct {
 	uploads         UploadStorage
 	bookingMessages BookingCommunicationSettings
 	bookingAccess   BookingAccessSettings
+	runtimeConfig   AppRuntimeConfig
 }
 
 type UploadStorage struct {
 	Root     string
 	EventDir string
+}
+
+type AppEnvironment string
+
+const (
+	appEnvDevelopment AppEnvironment = "development"
+	appEnvTest        AppEnvironment = "test"
+	appEnvProduction  AppEnvironment = "production"
+)
+
+type AppRuntimeConfig struct {
+	Env           AppEnvironment
+	Addr          string
+	DBPath        string
+	UploadRoot    string
+	PublicBaseURL string
+	CookieSecure  bool
 }
 
 type SMTPConfig struct {
@@ -185,6 +386,19 @@ type BookingAccessSettings struct {
 	BaseURL     string
 	TokenSecret string
 	TokenTTL    time.Duration
+}
+
+type SetupWarning struct {
+	Title     string
+	Body      string
+	Href      string
+	LinkLabel string
+}
+
+type BookingPricingIssue struct {
+	Activity string
+	Quantity int
+	Label    string
 }
 
 type User struct {
@@ -941,6 +1155,7 @@ type TemplateData struct {
 	AdminCalendarHours              []AdminCalendarHour
 	AdminBookingOptions             []AdminBookingOption
 	AdminBookingBlockedReason       string
+	SetupWarnings                   []SetupWarning
 	WeekDays                        []CalendarDay
 	BookingOptions                  []BookingOption
 	Activities                      []string
@@ -1027,17 +1242,26 @@ func main() {
 		log.Printf("load .env: %v", err)
 	}
 
+	appEnv, err := parseAppEnvironment(os.Getenv("APP_ENV"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	addr := envOrDefault("ADDR", ":8080")
-	dbPath := envOrDefault("DB_PATH", "app.db")
+	dbPath, dbPathErrs := validateDatabasePath(appEnv, os.Getenv("DB_PATH"))
+	for _, errMsg := range dbPathErrs {
+		log.Printf("startup configuration error: %s", errMsg)
+	}
+	if err := prepareDatabasePath(dbPath); err != nil {
+		log.Fatalf("prepare database path: %v", err)
+	}
 	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
 	uploadStorage, err := prepareUploadStorage(os.Getenv("UPLOAD_DIR"))
 	if err != nil {
 		log.Fatalf("prepare upload storage: %v", err)
 	}
-	log.Printf("event upload storage=%s", uploadStorage.EventDir)
 
 	smtpConfig := SMTPConfig{
-		Host:     envOrDefault("SMTP_HOST", "smtp.gmail.com"),
+		Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
 		Port:     envOrDefault("SMTP_PORT", "587"),
 		Username: strings.TrimSpace(os.Getenv("SMTP_USER")),
 		Password: os.Getenv("SMTP_PASS"),
@@ -1047,15 +1271,13 @@ func main() {
 		smtpConfig.From = smtpConfig.Username
 	}
 	smtpConfig.Enabled = smtpConfig.Username != "" && smtpConfig.Password != "" && smtpConfig.From != ""
-	log.Printf("smtp enabled=%t host=%s port=%s from=%s", smtpConfig.Enabled, smtpConfig.Host, smtpConfig.Port, smtpConfig.From)
 
 	smsConfig := SMSConfig{
-		UserID:   strings.TrimSpace(os.Getenv("SMSLENZ_USER_ID")),
-		APIKey:   strings.TrimSpace(os.Getenv("SMSLENZ_API_KEY")),
-		SenderID: strings.TrimSpace(os.Getenv("SMSLENZ_SENDER_ID")),
+		UserID:   envValue("SMS_USER_ID", "SMSLENZ_USER_ID"),
+		APIKey:   envValue("SMS_API_KEY", "SMSLENZ_API_KEY"),
+		SenderID: envValue("SMS_SENDER_ID", "SMSLENZ_SENDER_ID"),
 	}
 	smsConfig.Enabled = smsConfig.UserID != "" && smsConfig.APIKey != "" && smsConfig.SenderID != ""
-	log.Printf("sms enabled=%t provider=smslenz sender_id=%s", smsConfig.Enabled, smsConfig.SenderID)
 
 	bookingMessageSettings := BookingCommunicationSettings{
 		EmailEnabled: envOrDefault("BOOKING_EMAIL_ENABLED", "true") != "false",
@@ -1071,8 +1293,26 @@ func main() {
 	}
 	bookingAccessSettings := BookingAccessSettings{
 		BaseURL:     envOrDefault("MEKMAA_PUBLIC_BASE_URL", "http://localhost:8080"),
-		TokenSecret: envOrDefault("BOOKING_ACCESS_TOKEN_SECRET", "MEKMAA_DEV_BOOKING_ACCESS_TOKEN_SECRET_CHANGE_ME"),
+		TokenSecret: envOrDefault("BOOKING_ACCESS_TOKEN_SECRET", defaultBookingAccessTokenSecret),
 		TokenTTL:    time.Duration(tokenTTLDays) * 24 * time.Hour,
+	}
+	runtimeConfig := AppRuntimeConfig{
+		Env:           appEnv,
+		Addr:          addr,
+		DBPath:        dbPath,
+		UploadRoot:    uploadStorage.Root,
+		PublicBaseURL: bookingAccessSettings.BaseURL,
+		CookieSecure:  cookieSecure,
+	}
+
+	configErrs := validateRuntimeConfiguration(runtimeConfig, bookingMessageSettings, bookingAccessSettings, smtpConfig, smsConfig)
+	configErrs = append(configErrs, validateUploadPath(appEnv, uploadStorage.Root)...)
+	configErrs = append(configErrs, dbPathErrs...)
+	for _, errMsg := range configErrs {
+		log.Printf("startup configuration error: %s", errMsg)
+	}
+	if appEnv == appEnvProduction && len(configErrs) > 0 {
+		log.Fatal("production startup validation failed")
 	}
 
 	db, err := sql.Open("sqlite", dbPath)
@@ -1081,6 +1321,12 @@ func main() {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
+	if err := enableSQLiteForeignKeys(db); err != nil {
+		log.Fatalf("enable sqlite foreign keys: %v", err)
+	}
+	if err := db.Ping(); err != nil {
+		log.Fatalf("ping database: %v", err)
+	}
 
 	if err := runMigrations(db); err != nil {
 		log.Fatalf("run migrations: %v", err)
@@ -1115,11 +1361,36 @@ func main() {
 		uploads:         uploadStorage,
 		bookingMessages: bookingMessageSettings,
 		bookingAccess:   bookingAccessSettings,
+		runtimeConfig:   runtimeConfig,
 	}
+	unpricedOptions, err := app.listActiveUnpricedBookingOptions()
+	if err != nil {
+		log.Printf("startup pricing validation warning: could not inspect booking pricing readiness")
+	} else if len(unpricedOptions) > 0 {
+		labels := make([]string, 0, len(unpricedOptions))
+		for _, issue := range unpricedOptions {
+			labels = append(labels, issue.Label)
+		}
+		log.Printf("startup booking pricing warning: %d active booking options are unpriced (%s)", len(unpricedOptions), strings.Join(labels, ", "))
+	}
+	log.Printf(
+		"startup summary: env=%s addr=%s db_path=%s upload_path=%s public_base_url=%s cookie_secure=%t booking_email_enabled=%t booking_sms_enabled=%t active_unpriced_booking_options=%d",
+		runtimeConfig.Env,
+		runtimeConfig.Addr,
+		runtimeConfig.DBPath,
+		runtimeConfig.UploadRoot,
+		runtimeConfig.PublicBaseURL,
+		runtimeConfig.CookieSecure,
+		bookingMessageSettings.EmailEnabled,
+		bookingMessageSettings.SMSEnabled,
+		len(unpricedOptions),
+	)
 
 	mux := http.NewServeMux()
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
 	registerUploadRoutes(mux, uploadStorage)
+	mux.HandleFunc("/health", app.healthHandler)
+	mux.HandleFunc("/ready", app.readyHandler)
 	mux.HandleFunc("/", app.homeHandler)
 	mux.HandleFunc("/about", app.aboutHandler)
 	mux.HandleFunc("/book", app.publicBookingHandler)
@@ -1352,6 +1623,177 @@ func main() {
 	if err := http.ListenAndServe(addr, app.securityHeaders(mux)); err != nil {
 		log.Fatal(err)
 	}
+}
+
+type readinessCheckResponse struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+type readinessResponse struct {
+	Status   string                   `json:"status"`
+	Checks   []readinessCheckResponse `json:"checks"`
+	Warnings []string                 `json:"warnings,omitempty"`
+}
+
+func (a *App) healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *App) readyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	response, ready := a.readinessResponse()
+	status := http.StatusOK
+	if !ready {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, response)
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.Printf("write json: %v", err)
+	}
+}
+
+func (a *App) readinessResponse() (readinessResponse, bool) {
+	checks := make([]readinessCheckResponse, 0, 5)
+	warnings := make([]string, 0)
+	ready := true
+
+	configErrs := validateRuntimeConfiguration(a.runtimeConfig, a.bookingMessages, a.bookingAccess, a.smtp, a.sms)
+	configErrs = append(configErrs, validateUploadPath(a.runtimeConfig.Env, a.uploads.Root)...)
+	_, dbPathErrs := validateDatabasePath(a.runtimeConfig.Env, a.runtimeConfig.DBPath)
+	configErrs = append(configErrs, dbPathErrs...)
+	if len(configErrs) == 0 {
+		checks = append(checks, readinessCheckResponse{Name: "config", Status: "ok"})
+	} else {
+		checks = append(checks, readinessCheckResponse{Name: "config", Status: "error"})
+		ready = false
+	}
+
+	if err := a.checkDatabaseReadiness(); err != nil {
+		checks = append(checks, readinessCheckResponse{Name: "database", Status: "error"})
+		ready = false
+	} else {
+		checks = append(checks, readinessCheckResponse{Name: "database", Status: "ok"})
+	}
+
+	if err := a.checkUploadReadiness(); err != nil {
+		checks = append(checks, readinessCheckResponse{Name: "uploads", Status: "error"})
+		ready = false
+	} else {
+		checks = append(checks, readinessCheckResponse{Name: "uploads", Status: "ok"})
+	}
+
+	if err := a.checkMigrationReadiness(); err != nil {
+		checks = append(checks, readinessCheckResponse{Name: "migrations", Status: "error"})
+		ready = false
+	} else {
+		checks = append(checks, readinessCheckResponse{Name: "migrations", Status: "ok"})
+	}
+
+	unpricedOptions, err := a.listActiveUnpricedBookingOptions()
+	if err != nil {
+		checks = append(checks, readinessCheckResponse{Name: "booking_pricing", Status: "error"})
+		ready = false
+	} else {
+		checks = append(checks, readinessCheckResponse{Name: "booking_pricing", Status: "ok"})
+		if len(unpricedOptions) > 0 {
+			warnings = append(warnings, fmt.Sprintf("%d active booking options are missing complete public pricing", len(unpricedOptions)))
+		}
+	}
+
+	status := "ready"
+	if !ready {
+		status = "not_ready"
+	}
+	return readinessResponse{
+		Status:   status,
+		Checks:   checks,
+		Warnings: warnings,
+	}, ready
+}
+
+func (a *App) checkDatabaseReadiness() error {
+	if a.db == nil {
+		return errors.New("database unavailable")
+	}
+	if err := a.db.Ping(); err != nil {
+		return err
+	}
+	var foreignKeys int
+	if err := a.db.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+		return err
+	}
+	if foreignKeys != 1 {
+		return errors.New("sqlite foreign keys are disabled")
+	}
+	var one int
+	if err := a.db.QueryRow(`SELECT 1`).Scan(&one); err != nil || one != 1 {
+		return errors.New("database query failed")
+	}
+	return nil
+}
+
+func (a *App) checkMigrationReadiness() error {
+	requiredTables := []string{"users", "roles", "space_schedules", "pricing_rules", "booking_financials"}
+	for _, tableName := range requiredTables {
+		var count int
+		if err := a.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, tableName).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return errors.New("required tables are missing")
+		}
+	}
+	return nil
+}
+
+func (a *App) checkUploadReadiness() error {
+	probe, err := os.CreateTemp(a.uploads.EventDir, ".mekmaa-ready-*")
+	if err != nil {
+		return err
+	}
+	probeName := probe.Name()
+	if err := probe.Close(); err != nil {
+		_ = os.Remove(probeName)
+		return err
+	}
+	return os.Remove(probeName)
+}
+
+func (a *App) setupWarningsForUser(user *User) []SetupWarning {
+	if user == nil || !containsPermission(user.Permissions, "pricing.manage") {
+		return nil
+	}
+	unpricedOptions, err := a.listActiveUnpricedBookingOptions()
+	if err != nil || len(unpricedOptions) == 0 {
+		return nil
+	}
+	labels := make([]string, 0, len(unpricedOptions))
+	for _, issue := range unpricedOptions {
+		labels = append(labels, issue.Label)
+	}
+	body := fmt.Sprintf(
+		"Public booking pricing is incomplete for %s. Customers will see a pricing-unavailable message until these rates are configured.",
+		strings.Join(labels, ", "),
+	)
+	return []SetupWarning{{
+		Title:     "Booking pricing setup incomplete",
+		Body:      body,
+		Href:      "/admin/pricing",
+		LinkLabel: "Open pricing",
+	}}
 }
 
 func (a *App) homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -1622,7 +2064,7 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 	}
 	rule := pricingRuleForOption(pricings, schedule.Activity, schedule.Quantity)
 	if rule == nil || priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour) <= 0 {
-		a.writePublicBookingError(w, r, &schedule, "This session does not currently have a configured online price. Please choose another available option.", http.StatusBadRequest)
+		a.writePublicBookingError(w, r, &schedule, bookingPricingUnavailableMessage(schedule.Activity, schedule.Quantity), http.StatusBadRequest)
 		return
 	}
 	schedule.QuotedPrice = priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour)
@@ -2084,6 +2526,7 @@ func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		{Value: strings.Join(user.Roles, ", "), Label: "Assigned roles"},
 		{Value: verifiedLabel(user.Verified), Label: "Email status"},
 	}
+	data.SetupWarnings = a.setupWarningsForUser(user)
 	if containsPermission(user.Permissions, "booking_requests.manage") || containsPermission(user.Permissions, "space_bookings.manage") {
 		requests, err := a.listPendingSpaceSchedules()
 		if err == nil {
@@ -4821,6 +5264,7 @@ func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Description = "Manage booking pricing."
 	data.Pricings = pricings
 	data.PricingSettings = settings
+	data.SetupWarnings = a.setupWarningsForUser(user)
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -17475,7 +17919,7 @@ func filterPricedBookingSlots(slots []BookingSlotAvailability, slotDate string, 
 			}
 		}
 		if len(slot.Options) > 0 && len(filtered[i].Options) == 0 {
-			filtered[i].BlockedReason = "Online pricing is not configured"
+			filtered[i].BlockedReason = "Pricing is currently unavailable for the remaining bookable options"
 		}
 	}
 	return filtered
@@ -19389,6 +19833,55 @@ func courtActivityFor(activities []CourtActivity, activityName string) *CourtAct
 		}
 	}
 	return nil
+}
+
+func bookingRuleHasCompletePublicPricing(rule *PricingRule) bool {
+	if rule == nil {
+		return false
+	}
+	return rule.WeekdayOffPeak > 0 &&
+		rule.WeekdayPeak > 0 &&
+		rule.WeekendOffPeak > 0 &&
+		rule.WeekendPeak > 0
+}
+
+func (a *App) listActiveUnpricedBookingOptions() ([]BookingPricingIssue, error) {
+	activities, layouts, err := a.activeBookingConfiguration()
+	if err != nil {
+		return nil, err
+	}
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		return nil, err
+	}
+	options := bookingOptionCatalog(activities, layouts)
+	issues := make([]BookingPricingIssue, 0)
+	for _, option := range options {
+		if option.Activity == "training" {
+			continue
+		}
+		rule := pricingRuleForOption(pricings, option.Activity, option.Quantity)
+		if bookingRuleHasCompletePublicPricing(rule) {
+			continue
+		}
+		issues = append(issues, BookingPricingIssue{
+			Activity: option.Activity,
+			Quantity: option.Quantity,
+			Label:    option.Label,
+		})
+	}
+	sort.Slice(issues, func(i, j int) bool {
+		if issues[i].Activity == issues[j].Activity {
+			return issues[i].Quantity < issues[j].Quantity
+		}
+		return issues[i].Activity < issues[j].Activity
+	})
+	return issues, nil
+}
+
+func bookingPricingUnavailableMessage(activity string, quantity int) string {
+	label := bookingProductLabel(activity, quantity)
+	return fmt.Sprintf("Pricing is currently unavailable for %s. Please choose another activity or contact Mekmaa directly.", label)
 }
 
 func pricingForOption(pricings []PricingRule, settings *PricingSettings, slotDate, slotHour, activity string, quantity int) string {

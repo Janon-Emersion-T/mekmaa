@@ -1,6 +1,6 @@
-# mekmaa3 auth system
+# Mekmaa
 
-Server-rendered Go authentication starter with SQLite persistence, secure session cookies, and RBAC.
+Server-rendered Go application for Mekmaa, with SQLite persistence, secure session cookies, RBAC, booking operations, and finance tooling.
 
 Target Go version: `1.26.5`
 
@@ -36,15 +36,30 @@ Target Go version: `1.26.5`
 
 ## Environment variables
 
-- `ADDR` server bind address, default `:8080`
-- `DB_PATH` SQLite database path, default `app.db`
-- `UPLOAD_DIR` writable upload root, default `./data/uploads`
-- `COOKIE_SECURE` set to `true` behind HTTPS
-- `SMTP_HOST` SMTP host, default `smtp.gmail.com`
-- `SMTP_PORT` SMTP port, default `587`
-- `SMTP_USER` SMTP username
-- `SMTP_PASS` SMTP password or Gmail app password
-- `SMTP_FROM` optional sender address, defaults to `SMTP_USER`
+Use `.env.example` as the starting point.
+
+Core:
+
+- `APP_ENV`
+- `ADDR`
+- `DB_PATH`
+- `UPLOAD_DIR`
+- `COOKIE_SECURE`
+- `MEKMAA_PUBLIC_BASE_URL`
+- `BOOKING_ACCESS_TOKEN_SECRET`
+
+Communications:
+
+- `BOOKING_EMAIL_ENABLED`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USER`
+- `SMTP_PASS`
+- `SMTP_FROM`
+- `BOOKING_SMS_ENABLED`
+- `SMS_USER_ID`
+- `SMS_API_KEY`
+- `SMS_SENDER_ID`
 
 ## Run
 
@@ -52,13 +67,16 @@ Target Go version: `1.26.5`
 go run .
 ```
 
-## Gmail SMTP example
+## Production Deployment
 
 ```bash
-export SMTP_HOST=smtp.gmail.com
-export SMTP_PORT=587
-export SMTP_USER='janonemersion2016@gmail.com'
-export SMTP_PASS='your-gmail-app-password'
-export SMTP_FROM='janonemersion2016@gmail.com'
-go run .
+go build .
 ```
+
+See `docs/production-deployment.md` for:
+
+- production startup validation
+- HTTPS and cookie requirements
+- booking pricing readiness
+- health and readiness endpoints
+- backup and restore procedures

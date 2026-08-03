@@ -124,6 +124,27 @@ func newBookingWorkflowTestApp(t *testing.T) *App {
 	}
 }
 
+func newReadinessTestApp(t *testing.T) *App {
+	t.Helper()
+	app := newBookingWorkflowTestApp(t)
+	storage, err := prepareUploadStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("prepare upload storage: %v", err)
+	}
+	app.uploads = storage
+	app.runtimeConfig = AppRuntimeConfig{
+		Env:           appEnvDevelopment,
+		Addr:          ":8080",
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		UploadRoot:    storage.Root,
+		PublicBaseURL: "http://localhost:8080",
+		CookieSecure:  false,
+	}
+	app.bookingMessages.EmailEnabled = false
+	app.bookingMessages.SMSEnabled = false
+	return app
+}
+
 func renderTemplateToString(t *testing.T, templates map[string]*template.Template, name string, data TemplateData) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -1789,6 +1810,283 @@ func TestBookingAttentionCountersIgnoreNonBookingSchedules(t *testing.T) {
 	}
 	if reschedulePendingCount != 1 {
 		t.Fatalf("reschedule pending booking count = %d, want 1", reschedulePendingCount)
+	}
+}
+
+func TestValidateRuntimeConfigurationProductionRejectsDevelopmentSecret(t *testing.T) {
+	errs := validateRuntimeConfiguration(
+		AppRuntimeConfig{Env: appEnvProduction, CookieSecure: true},
+		BookingCommunicationSettings{},
+		BookingAccessSettings{BaseURL: "https://mekmaa.com", TokenSecret: defaultBookingAccessTokenSecret},
+		SMTPConfig{},
+		SMSConfig{},
+	)
+	if len(errs) == 0 || !strings.Contains(strings.Join(errs, " "), "development default") {
+		t.Fatalf("expected development secret validation error, got %v", errs)
+	}
+}
+
+func TestValidateRuntimeConfigurationProductionRejectsMissingSecret(t *testing.T) {
+	errs := validateRuntimeConfiguration(
+		AppRuntimeConfig{Env: appEnvProduction, CookieSecure: true},
+		BookingCommunicationSettings{},
+		BookingAccessSettings{BaseURL: "https://mekmaa.com", TokenSecret: ""},
+		SMTPConfig{},
+		SMSConfig{},
+	)
+	if len(errs) == 0 || !strings.Contains(strings.Join(errs, " "), "BOOKING_ACCESS_TOKEN_SECRET") {
+		t.Fatalf("expected missing secret validation error, got %v", errs)
+	}
+}
+
+func TestValidateRuntimeConfigurationProductionRejectsLocalhostPublicURL(t *testing.T) {
+	errs := validateRuntimeConfiguration(
+		AppRuntimeConfig{Env: appEnvProduction, CookieSecure: true},
+		BookingCommunicationSettings{},
+		BookingAccessSettings{BaseURL: "https://localhost:8080", TokenSecret: strings.Repeat("x", 32)},
+		SMTPConfig{},
+		SMSConfig{},
+	)
+	if len(errs) == 0 || !strings.Contains(strings.Join(errs, " "), "localhost") {
+		t.Fatalf("expected localhost URL validation error, got %v", errs)
+	}
+}
+
+func TestValidateRuntimeConfigurationProductionRejectsHTTPPublicURL(t *testing.T) {
+	errs := validateRuntimeConfiguration(
+		AppRuntimeConfig{Env: appEnvProduction, CookieSecure: true},
+		BookingCommunicationSettings{},
+		BookingAccessSettings{BaseURL: "http://mekmaa.com", TokenSecret: strings.Repeat("x", 32)},
+		SMTPConfig{},
+		SMSConfig{},
+	)
+	if len(errs) == 0 || !strings.Contains(strings.Join(errs, " "), "HTTPS") {
+		t.Fatalf("expected HTTPS URL validation error, got %v", errs)
+	}
+}
+
+func TestValidateRuntimeConfigurationProductionRejectsInsecureCookies(t *testing.T) {
+	errs := validateRuntimeConfiguration(
+		AppRuntimeConfig{Env: appEnvProduction, CookieSecure: false},
+		BookingCommunicationSettings{},
+		BookingAccessSettings{BaseURL: "https://mekmaa.com", TokenSecret: strings.Repeat("x", 32)},
+		SMTPConfig{},
+		SMSConfig{},
+	)
+	if len(errs) == 0 || !strings.Contains(strings.Join(errs, " "), "COOKIE_SECURE") {
+		t.Fatalf("expected cookie security validation error, got %v", errs)
+	}
+}
+
+func TestValidateRuntimeConfigurationDevelopmentPermitsLocalhostAndInsecureCookies(t *testing.T) {
+	errs := validateRuntimeConfiguration(
+		AppRuntimeConfig{Env: appEnvDevelopment, CookieSecure: false},
+		BookingCommunicationSettings{},
+		BookingAccessSettings{BaseURL: "http://localhost:8080", TokenSecret: defaultBookingAccessTokenSecret},
+		SMTPConfig{},
+		SMSConfig{},
+	)
+	if len(errs) != 0 {
+		t.Fatalf("expected development configuration to pass, got %v", errs)
+	}
+}
+
+func TestValidateSMTPConfigurationDisabledEmailDoesNotRequireCredentials(t *testing.T) {
+	errs := validateSMTPConfiguration(BookingCommunicationSettings{EmailEnabled: false}, SMTPConfig{})
+	if len(errs) != 0 {
+		t.Fatalf("expected disabled email to skip credential validation, got %v", errs)
+	}
+}
+
+func TestValidateSMTPConfigurationEnabledEmailRequiresCredentials(t *testing.T) {
+	errs := validateSMTPConfiguration(BookingCommunicationSettings{EmailEnabled: true}, SMTPConfig{})
+	if len(errs) == 0 {
+		t.Fatal("expected enabled email validation errors")
+	}
+}
+
+func TestValidateSMSConfigurationDisabledSMSDoesNotRequireCredentials(t *testing.T) {
+	errs := validateSMSConfiguration(BookingCommunicationSettings{SMSEnabled: false}, SMSConfig{})
+	if len(errs) != 0 {
+		t.Fatalf("expected disabled SMS to skip credential validation, got %v", errs)
+	}
+}
+
+func TestValidateSMSConfigurationEnabledSMSRequiresCredentials(t *testing.T) {
+	errs := validateSMSConfiguration(BookingCommunicationSettings{SMSEnabled: true}, SMSConfig{})
+	if len(errs) == 0 {
+		t.Fatal("expected enabled SMS validation errors")
+	}
+}
+
+func TestReadyHandlerSucceedsWithValidDatabaseAndUploadDirectory(t *testing.T) {
+	app := newReadinessTestApp(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	app.readyHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ready status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"ready"`) {
+		t.Fatalf("ready body missing ready status: %s", rec.Body.String())
+	}
+}
+
+func TestReadyHandlerFailsWhenDatabaseIsUnavailable(t *testing.T) {
+	app := newReadinessTestApp(t)
+	if err := app.db.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	app.readyHandler(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("ready status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if strings.Contains(rec.Body.String(), "sql:") {
+		t.Fatalf("ready body exposed raw database error: %s", rec.Body.String())
+	}
+}
+
+func TestReadyHandlerFailsWhenUploadDirectoryIsUnwritable(t *testing.T) {
+	app := newReadinessTestApp(t)
+	if err := os.Chmod(app.uploads.EventDir, 0o500); err != nil {
+		t.Fatalf("chmod upload dir: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	app.readyHandler(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("ready status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestSetupWarningsIncludeUnpricedActiveActivity(t *testing.T) {
+	app := newReadinessTestApp(t)
+	if _, err := app.db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 0, weekday_peak_price = 0, weekend_offpeak_price = 0, weekend_peak_price = 0
+		WHERE activity = 'badminton' AND quantity = 1
+	`); err != nil {
+		t.Fatalf("zero badminton pricing: %v", err)
+	}
+	warnings := app.setupWarningsForUser(&User{Permissions: []string{"pricing.manage"}})
+	if len(warnings) == 0 || !strings.Contains(warnings[0].Body, "Badminton") {
+		t.Fatalf("expected badminton warning, got %#v", warnings)
+	}
+}
+
+func TestSetupWarningsExcludeFullyPricedActivity(t *testing.T) {
+	app := newReadinessTestApp(t)
+	if _, err := app.db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 2500, weekday_peak_price = 3000, weekend_offpeak_price = 2800, weekend_peak_price = 3200
+	`); err != nil {
+		t.Fatalf("price all activities: %v", err)
+	}
+	warnings := app.setupWarningsForUser(&User{Permissions: []string{"pricing.manage"}})
+	if len(warnings) != 0 {
+		t.Fatalf("expected no setup warnings once all pricing is configured, got %#v", warnings)
+	}
+}
+
+func TestPublicBookingRejectsUnpricedActivityWithClearMessage(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+	if _, err := app.db.Exec(`
+		UPDATE pricing_rules
+		SET weekday_offpeak_price = 0, weekday_peak_price = 0, weekend_offpeak_price = 0, weekend_peak_price = 0
+		WHERE activity = 'badminton' AND quantity = 1
+	`); err != nil {
+		t.Fatalf("zero badminton pricing: %v", err)
+	}
+	form := url.Values{
+		"csrf_token":      {"token"},
+		"entry_type":      {"booking"},
+		"slot_date":       {"2026-08-10"},
+		"slot_hour":       {"18:00"},
+		"activity":        {"badminton"},
+		"quantity":        {"1"},
+		"title":           {"Unpriced Booking"},
+		"requester_name":  {"Customer"},
+		"requester_email": {"customer@example.com"},
+		"requester_phone": {"0770000000"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/book/request", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+	app.publicBookingRequestHandler(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Pricing is currently unavailable for Badminton") {
+		t.Fatalf("expected clear pricing message, got %s", body)
+	}
+}
+
+func TestPublicBookingAcceptsPricedActivity(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	form := url.Values{
+		"csrf_token":      {"token"},
+		"entry_type":      {"booking"},
+		"slot_date":       {"2026-08-10"},
+		"slot_hour":       {"18:00"},
+		"activity":        {"badminton"},
+		"quantity":        {"1"},
+		"title":           {"Priced Booking"},
+		"requester_name":  {"Customer"},
+		"requester_email": {"customer@example.com"},
+		"requester_phone": {"0770000000"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/book/request", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+	app.publicBookingRequestHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect, got %d", rec.Code)
+	}
+	var count int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM space_schedules WHERE title = 'Priced Booking'`).Scan(&count); err != nil {
+		t.Fatalf("count priced booking: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected priced booking to be created, got %d", count)
+	}
+}
+
+func TestHealthHandlerExposesNoSecrets(t *testing.T) {
+	app := newReadinessTestApp(t)
+	app.bookingAccess.TokenSecret = "super-secret-production-token"
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	app.healthHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("health status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, app.bookingAccess.TokenSecret) {
+		t.Fatalf("health body exposed booking secret: %s", body)
+	}
+}
+
+func TestReadyHandlerExposesNoSecrets(t *testing.T) {
+	app := newReadinessTestApp(t)
+	app.bookingAccess.TokenSecret = "super-secret-production-token"
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	app.readyHandler(rec, req)
+	body := rec.Body.String()
+	if strings.Contains(body, app.bookingAccess.TokenSecret) || strings.Contains(body, "SMTP_PASS") || strings.Contains(body, "SMS_API_KEY") {
+		t.Fatalf("ready body exposed secret data: %s", body)
 	}
 }
 
