@@ -192,6 +192,40 @@ func renderTemplateToString(t *testing.T, templates map[string]*template.Templat
 	return buf.String()
 }
 
+func financeAccountIDByName(t *testing.T, app *App, name string) int64 {
+	t.Helper()
+	accounts, err := app.listFinanceAccounts(false)
+	if err != nil {
+		t.Fatalf("list finance accounts: %v", err)
+	}
+	for _, account := range accounts {
+		if strings.EqualFold(account.Name, name) {
+			return account.ID
+		}
+	}
+	t.Fatalf("finance account %q not found", name)
+	return 0
+}
+
+func financeAccountBalanceByName(t *testing.T, app *App, name string) float64 {
+	t.Helper()
+	accountID := financeAccountIDByName(t, app, name)
+	balance, err := app.financeAccountBalance(accountID)
+	if err != nil {
+		t.Fatalf("finance account balance for %q: %v", name, err)
+	}
+	return balance
+}
+
+func mustFinanceAccounts(t *testing.T, app *App) []FinanceAccount {
+	t.Helper()
+	accounts, err := app.listFinanceAccounts(false)
+	if err != nil {
+		t.Fatalf("list finance accounts: %v", err)
+	}
+	return accounts
+}
+
 func bookingTestDataForRequestPage(user *User, schedules []SpaceSchedule, financials []BookingFinancial, collections []BookingPaymentCollection) TemplateData {
 	return TemplateData{
 		User:                      user,
@@ -1567,6 +1601,354 @@ func TestFinanceBookingAndManualTransactionLifecycle(t *testing.T) {
 	}
 	if err := templates["finance-management"].ExecuteTemplate(io.Discard, "base", data); err != nil {
 		t.Fatalf("render finance template: %v", err)
+	}
+}
+
+func TestFinanceSystemAccountsAreCreatedOnce(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:finance-accounts-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations first pass: %v", err)
+	}
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations second pass: %v", err)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM finance_accounts WHERE LOWER(name) IN ('cash in hand', 'main bank account')`).Scan(&count); err != nil {
+		t.Fatalf("count finance accounts: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected exactly 2 required finance accounts, got %d", count)
+	}
+}
+
+func TestFinanceTransactionBackfillIsIdempotent(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:finance-backfill-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	now := time.Now().UTC()
+	result, err := db.Exec(`
+		INSERT INTO finance_transactions (
+			receipt_number, category, reference_type, reference_id, person_name, description,
+			payment_method, amount, recorded_by_user_id, recorded_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "LEGACY-001", "manual_income", "manual", nil, "Sponsor", "Legacy income", "bank_transfer", 1000, nil, now, now)
+	if err != nil {
+		t.Fatalf("insert legacy transaction: %v", err)
+	}
+	transactionID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE finance_transactions SET finance_account_id = NULL, transaction_type = '', source_type = '', source_id = NULL, reference_number = '', updated_at = NULL WHERE id = ?`, transactionID); err != nil {
+		t.Fatalf("reset finance extensions: %v", err)
+	}
+	if err := migrateFinanceCashbook(db); err != nil {
+		t.Fatalf("migrate finance cashbook first pass: %v", err)
+	}
+	if err := migrateFinanceCashbook(db); err != nil {
+		t.Fatalf("migrate finance cashbook second pass: %v", err)
+	}
+	var (
+		accountID       int64
+		transactionType string
+		sourceType      string
+		referenceNumber string
+	)
+	if err := db.QueryRow(`SELECT COALESCE(finance_account_id, 0), transaction_type, source_type, reference_number FROM finance_transactions WHERE id = ?`, transactionID).Scan(&accountID, &transactionType, &sourceType, &referenceNumber); err != nil {
+		t.Fatalf("load backfilled transaction: %v", err)
+	}
+	if accountID == 0 || transactionType != financeTxnTypeIncome || sourceType != "manual" || referenceNumber == "" {
+		t.Fatalf("unexpected backfill result: account=%d type=%q source=%q ref=%q", accountID, transactionType, sourceType, referenceNumber)
+	}
+}
+
+func TestBookingPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 3, "18:00")
+	if _, err := app.collectBookingPayment(scheduleID, "cash", 5000, "", 0, false); err != nil {
+		t.Fatalf("collect booking payment: %v", err)
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountCashInHand); balance != 5000 {
+		t.Fatalf("cash in hand balance = %.2f, want 5000.00", balance)
+	}
+	var count int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE source_type = 'booking_payment_collection'`).Scan(&count); err != nil {
+		t.Fatalf("count booking payment ledger rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one booking-payment ledger row, got %d", count)
+	}
+}
+
+func TestAdmissionPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-TEST-001",
+		FullName:              "Admission Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2012-05-10",
+		Gender:                "female",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000000",
+	}
+	if _, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, 0); err != nil {
+		t.Fatalf("create admission with payment: %v", err)
+	} else if transactionID <= 0 {
+		t.Fatal("expected admission payment ledger transaction")
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountCashInHand); balance != 1500 {
+		t.Fatalf("cash in hand balance = %.2f, want 1500.00", balance)
+	}
+	var count int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE source_type = 'admission' AND category = 'admission_payment'`).Scan(&count); err != nil {
+		t.Fatalf("count admission ledger rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one admission ledger row, got %d", count)
+	}
+}
+
+func TestStudentMonthlyPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure monthly fee: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-TEST-002",
+		FullName:              "Monthly Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000001",
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	monthDate, _ := parsePaymentMonth("2026-08")
+	if _, err := app.collectStudentMonthlyPayment(admissionID, "2026-08", monthDate, "cash", 0); err != nil {
+		t.Fatalf("collect monthly payment: %v", err)
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountCashInHand); balance != 3200 {
+		t.Fatalf("cash in hand balance = %.2f, want 3200.00", balance)
+	}
+	var count int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE source_type = 'student_monthly_payment' AND category = 'student_monthly_payment'`).Scan(&count); err != nil {
+		t.Fatalf("count monthly-payment ledger rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one monthly-payment ledger row, got %d", count)
+	}
+}
+
+func TestCashAndBankExpensesAffectCorrectAccounts(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 2000, time.Now(), 0); err != nil {
+		t.Fatalf("seed cash income: %v", err)
+	}
+	if _, err := app.createManualFinanceTransaction("manual_income", "Wire", "Seed bank", "bank_transfer", 3000, time.Now(), 0); err != nil {
+		t.Fatalf("seed bank income: %v", err)
+	}
+	if _, err := app.createManualFinanceTransaction("utilities_expense", "Vendor", "Cash expense", "cash", -500, time.Now(), 0); err != nil {
+		t.Fatalf("cash expense: %v", err)
+	}
+	if _, err := app.createManualFinanceTransaction("bank_charges_expense", "Bank", "Bank expense", "bank_transfer", -750, time.Now(), 0); err != nil {
+		t.Fatalf("bank expense: %v", err)
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountCashInHand); balance != 1500 {
+		t.Fatalf("cash in hand balance = %.2f, want 1500.00", balance)
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountMainBank); balance != 2250 {
+		t.Fatalf("main bank balance = %.2f, want 2250.00", balance)
+	}
+}
+
+func TestCashToBankTransferLifecycleAndSummaryExclusion(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 5000, time.Now(), 0); err != nil {
+		t.Fatalf("seed cash income: %v", err)
+	}
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	bankID := financeAccountIDByName(t, app, financeAccountMainBank)
+	groupID, err := app.createFinanceTransfer(cashID, bankID, 2000, time.Now(), "DEP-2026-08-03", "Cash deposit", "", 0)
+	if err != nil {
+		t.Fatalf("create transfer: %v", err)
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountCashInHand); balance != 3000 {
+		t.Fatalf("cash in hand after transfer = %.2f, want 3000.00", balance)
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountMainBank); balance != 2000 {
+		t.Fatalf("main bank after transfer = %.2f, want 2000.00", balance)
+	}
+	allTransactions, err := app.listFinanceTransactions()
+	if err != nil {
+		t.Fatalf("list finance transactions: %v", err)
+	}
+	summary := buildFinanceSummary(mustFinanceAccounts(t, app), allTransactions, nil, nil, nil, nil)
+	if summary.GrossIncome != 5000 || summary.TotalExpenses != 0 || summary.NetOperatingCashFlow != 5000 {
+		t.Fatalf("transfer should not change operating totals: %#v", summary)
+	}
+	if err := app.voidFinanceTransferGroup(groupID, "banked twice", 0); err != nil {
+		t.Fatalf("void transfer: %v", err)
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountCashInHand); balance != 5000 {
+		t.Fatalf("cash in hand after void = %.2f, want 5000.00", balance)
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountMainBank); balance != 0 {
+		t.Fatalf("main bank after void = %.2f, want 0.00", balance)
+	}
+}
+
+func TestCashTransferValidationRules(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	bankID := financeAccountIDByName(t, app, financeAccountMainBank)
+	if _, err := app.createFinanceTransfer(cashID, cashID, 100, time.Now(), "", "", "", 0); err == nil {
+		t.Fatal("expected same-account transfer to be rejected")
+	}
+	if _, err := app.createFinanceTransfer(cashID, bankID, 100, time.Now(), "", "", "", 0); err == nil {
+		t.Fatal("expected overdraft transfer to be rejected")
+	}
+}
+
+func TestVoidedTransactionsOpeningBalancesAndAdjustmentsAffectBalancesSafely(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	openingID, err := app.createFinanceOpeningBalance(cashID, 1000, time.Now(), "initial float", 0)
+	if err != nil {
+		t.Fatalf("create opening balance: %v", err)
+	}
+	adjustmentID, err := app.createFinanceAdjustment(cashID, -250, time.Now(), "count correction", 0)
+	if err != nil {
+		t.Fatalf("create adjustment: %v", err)
+	}
+	tx, err := app.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := voidFinanceTransactionTx(tx, adjustmentID, "wrong correction", 0); err != nil {
+		t.Fatalf("void adjustment: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if balance := financeAccountBalanceByName(t, app, financeAccountCashInHand); balance != 1000 {
+		t.Fatalf("cash balance = %.2f, want 1000.00", balance)
+	}
+	allTransactions, err := app.listFinanceTransactions()
+	if err != nil {
+		t.Fatalf("list finance transactions: %v", err)
+	}
+	summary := buildFinanceSummary(mustFinanceAccounts(t, app), allTransactions, nil, nil, nil, nil)
+	if summary.GrossIncome != 0 || summary.TotalExpenses != 0 || summary.NetOperatingCashFlow != 0 {
+		t.Fatalf("opening balances and adjustments must not affect operating KPIs: %#v", summary)
+	}
+	if openingID <= 0 {
+		t.Fatal("expected opening balance transaction id")
+	}
+}
+
+func TestCashReconciliationCalculatesStatusesAndRequiresNotes(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 1000, time.Now(), 0); err != nil {
+		t.Fatalf("seed cash income: %v", err)
+	}
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	if _, err := app.createCashReconciliation(cashID, "2026-08-03", 1000, "", 0); err != nil {
+		t.Fatalf("balanced reconciliation: %v", err)
+	}
+	if _, err := app.createCashReconciliation(cashID, "2026-08-04", 900, "", 0); err == nil {
+		t.Fatal("expected non-zero reconciliation without notes to be rejected")
+	}
+	if _, err := app.createCashReconciliation(cashID, "2026-08-04", 900, "short count", 0); err != nil {
+		t.Fatalf("short reconciliation: %v", err)
+	}
+	if _, err := app.createCashReconciliation(cashID, "2026-08-05", 1100, "over count", 0); err != nil {
+		t.Fatalf("over reconciliation: %v", err)
+	}
+	rows, err := app.listCashReconciliations(10)
+	if err != nil {
+		t.Fatalf("list reconciliations: %v", err)
+	}
+	if len(rows) != 3 || rows[0].Status != "over" || rows[1].Status != "short" || rows[2].Status != "balanced" {
+		t.Fatalf("unexpected reconciliation statuses: %#v", rows)
+	}
+}
+
+func TestFinanceStatementRunningBalance(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	if _, err := app.createFinanceOpeningBalance(cashID, 1000, time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC), "opening", 0); err != nil {
+		t.Fatalf("opening balance: %v", err)
+	}
+	if _, err := app.createManualFinanceTransaction("utilities_expense", "Vendor", "Expense", "cash", -200, time.Date(2026, 8, 2, 9, 0, 0, 0, time.UTC), 0); err != nil {
+		t.Fatalf("expense: %v", err)
+	}
+	if _, err := app.createFinanceAdjustment(cashID, -300, time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC), "count correction", 0); err != nil {
+		t.Fatalf("adjustment: %v", err)
+	}
+	statement, err := app.buildFinanceStatement(cashID, "2026-08-01", "2026-08-31")
+	if err != nil {
+		t.Fatalf("build statement: %v", err)
+	}
+	if statement.OpeningBalance != 0 || statement.ClosingBalance != 500 {
+		t.Fatalf("unexpected statement balances: opening=%.2f closing=%.2f", statement.OpeningBalance, statement.ClosingBalance)
+	}
+	if len(statement.Rows) != 3 || statement.Rows[0].RunningBalance != 1000 || statement.Rows[1].RunningBalance != 800 || statement.Rows[2].RunningBalance != 500 {
+		t.Fatalf("unexpected running balances: %#v", statement.Rows)
+	}
+}
+
+func TestFinanceRoutesRequirePermissionAndCSRFAuth(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	forbiddenReq := httptest.NewRequest(http.MethodGet, "/admin/finance", nil)
+	forbiddenReq = forbiddenReq.WithContext(context.WithValue(forbiddenReq.Context(), userContextKey, &User{ID: 1, Name: "No Finance", Permissions: []string{"dashboard.view"}}))
+	forbiddenRec := httptest.NewRecorder()
+	app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.manage").ServeHTTP(forbiddenRec, forbiddenReq)
+	if forbiddenRec.Code != http.StatusForbidden {
+		t.Fatalf("expected forbidden finance page, got %d", forbiddenRec.Code)
+	}
+
+	csrfForm := url.Values{
+		"from_account_id": {"1"},
+		"to_account_id":   {"2"},
+		"amount":          {"100"},
+		"transfer_date":   {"2026-08-03"},
+	}
+	csrfReq := httptest.NewRequest(http.MethodPost, "/admin/finance/transfers/create", strings.NewReader(csrfForm.Encode()))
+	csrfReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	csrfReq = csrfReq.WithContext(context.WithValue(csrfReq.Context(), userContextKey, &User{ID: 1, Name: "Finance", Roles: []string{"superadmin"}, Permissions: []string{"finance.manage"}}))
+	csrfRec := httptest.NewRecorder()
+	app.createFinanceTransferHandler(csrfRec, csrfReq)
+	if csrfRec.Code != http.StatusForbidden {
+		t.Fatalf("expected CSRF failure, got %d", csrfRec.Code)
 	}
 }
 

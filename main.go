@@ -45,6 +45,16 @@ const (
 	maxEventFormSize                = maxEventImageSize + (1 << 20)
 	defaultUploadDir                = "./data/uploads"
 	defaultBookingAccessTokenSecret = "MEKMAA_DEV_BOOKING_ACCESS_TOKEN_SECRET_CHANGE_ME"
+	financeAccountTypeCash          = "cash"
+	financeAccountTypeBank          = "bank"
+	financeAccountCashInHand        = "Cash in Hand"
+	financeAccountMainBank          = "Main Bank Account"
+	financeTxnTypeIncome            = "income"
+	financeTxnTypeExpense           = "expense"
+	financeTxnTypeTransferIn        = "transfer_in"
+	financeTxnTypeTransferOut       = "transfer_out"
+	financeTxnTypeOpeningBalance    = "opening_balance"
+	financeTxnTypeAdjustment        = "adjustment"
 )
 
 var (
@@ -458,18 +468,87 @@ type Admission struct {
 }
 
 type FinanceTransaction struct {
-	ID             int64
-	ReceiptNumber  string
-	Category       string
-	ReferenceType  string
-	ReferenceID    int64
-	PersonName     string
-	Description    string
-	PaymentMethod  string
-	Amount         float64
-	RecordedByUser int64
-	RecordedAt     time.Time
-	CreatedAt      time.Time
+	ID                 int64
+	ReceiptNumber      string
+	ReferenceNumber    string
+	Category           string
+	TransactionType    string
+	ReferenceType      string
+	ReferenceID        int64
+	SourceType         string
+	SourceID           int64
+	FinanceAccountID   int64
+	FinanceAccountName string
+	FinanceAccountType string
+	TransferGroupID    string
+	PersonName         string
+	Description        string
+	Notes              string
+	PaymentMethod      string
+	Amount             float64
+	MoneyIn            float64
+	MoneyOut           float64
+	RunningBalance     float64
+	RecordedByUser     int64
+	RecordedByUserName string
+	Voided             bool
+	VoidedAt           time.Time
+	VoidedByUserID     int64
+	VoidReason         string
+	RecordedAt         time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+type FinanceAccount struct {
+	ID              int64
+	Name            string
+	AccountType     string
+	Description     string
+	OpeningBalance  float64
+	IsSystem        bool
+	IsActive        bool
+	CreatedByUserID int64
+	UpdatedByUserID int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type FinanceTransfer struct {
+	GroupID            string
+	ReferenceNumber    string
+	FromAccountID      int64
+	FromAccountName    string
+	ToAccountID        int64
+	ToAccountName      string
+	Amount             float64
+	TransferDate       time.Time
+	Description        string
+	Notes              string
+	RecordedByUserID   int64
+	RecordedByUserName string
+	Voided             bool
+	VoidedAt           time.Time
+	VoidReason         string
+	VoidedByUserID     int64
+	CreatedAt          time.Time
+	TransferOutID      int64
+	TransferInID       int64
+}
+
+type CashReconciliation struct {
+	ID                 int64
+	FinanceAccountID   int64
+	FinanceAccountName string
+	ReconciliationDate string
+	ExpectedBalance    float64
+	CountedBalance     float64
+	Difference         float64
+	Notes              string
+	Status             string
+	ReconciledByUserID int64
+	ReconciledByName   string
+	CreatedAt          time.Time
 }
 
 type BookingPaymentCollection struct {
@@ -494,20 +573,34 @@ type BookingPaymentCollection struct {
 }
 
 type FinanceFilter struct {
-	From      string
-	To        string
-	Direction string
-	Category  string
-	Search    string
+	From            string
+	To              string
+	Direction       string
+	Category        string
+	AccountID       int64
+	TransactionType string
+	SourceType      string
+	PaymentMethod   string
+	RecordedUserID  int64
+	Status          string
+	Reference       string
+	Search          string
+	ExportKind      string
 }
 
 type FinanceSummary struct {
-	GrossIncome        float64
-	TotalExpenses      float64
-	NetCash            float64
-	OutstandingBooking float64
-	OutstandingMonthly float64
-	PayableReferrals   float64
+	CashBalance              float64
+	BankBalance              float64
+	TotalAvailableFunds      float64
+	GrossIncome              float64
+	TotalExpenses            float64
+	NetCash                  float64
+	NetOperatingCashFlow     float64
+	OutstandingBooking       float64
+	OutstandingMonthly       float64
+	PayableReferrals         float64
+	UnreconciledCashDelta    float64
+	LastCashReconciliationOn string
 }
 
 type BookingFinancial struct {
@@ -1124,6 +1217,10 @@ type TemplateData struct {
 	SelectedEvent                   *Event
 	EventMode                       string
 	FinanceTransactions             []FinanceTransaction
+	FinanceAccounts                 []FinanceAccount
+	FinanceTransfers                []FinanceTransfer
+	CashReconciliations             []CashReconciliation
+	SelectedFinanceAccount          *FinanceAccount
 	SelectedFinance                 *FinanceTransaction
 	FinanceFilter                   FinanceFilter
 	FinanceSummary                  FinanceSummary
@@ -1605,6 +1702,12 @@ func main() {
 	mux.Handle("/admin/events/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEventHandler), "events.manage")))
 	mux.Handle("/admin/finance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transactions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransactionHandler), "finance.manage")))
+	mux.Handle("/admin/finance/transactions/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransactionHandler), "finance.manage")))
+	mux.Handle("/admin/finance/transfers/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransferHandler), "finance.manage")))
+	mux.Handle("/admin/finance/accounts/opening-balance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceOpeningBalanceHandler), "finance.manage")))
+	mux.Handle("/admin/finance/accounts/adjustment", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAdjustmentHandler), "finance.manage")))
+	mux.Handle("/admin/finance/accounts/statement", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountStatementHandler), "finance.manage")))
+	mux.Handle("/admin/finance/reconciliations/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createCashReconciliationHandler), "finance.manage")))
 	mux.Handle("/admin/finance/bookings/collect", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 	mux.Handle("/admin/finance/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeExportHandler), "finance.manage")))
 	mux.Handle("/admin/reports", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsHandler), "reports.view")))
@@ -3211,15 +3314,36 @@ func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	accounts, err := a.listFinanceAccounts(true)
+	if err != nil {
+		log.Printf("list finance accounts: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	transfers, err := a.listFinanceTransfers()
+	if err != nil {
+		log.Printf("list finance transfers: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	reconciliations, err := a.listCashReconciliations(10)
+	if err != nil {
+		log.Printf("list cash reconciliations: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Finance"
-	data.Description = "Monitor cash flow, receivables, expenses, and payment history."
+	data.Description = "Monitor cash, bank, receivables, expenses, transfers, reconciliations, and payment history."
 	data.FinanceTransactions = financeTransactions
+	data.FinanceAccounts = accounts
+	data.FinanceTransfers = transfers
+	data.CashReconciliations = reconciliations
 	data.FinanceFilter = filter
 	data.BookingFinancials = bookingFinancials
 	data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
-	data.FinanceSummary = buildFinanceSummary(allTransactions, bookingFinancials, monthlyRows, referrals)
+	data.FinanceSummary = buildFinanceSummary(accounts, allTransactions, bookingFinancials, monthlyRows, referrals, reconciliations)
 	data.Stats = buildFinanceStats(allTransactions)
 	data.TodayDate = time.Now().Format("2006-01-02")
 	a.render(w, "finance-management", data, http.StatusOK)
@@ -3251,9 +3375,9 @@ func (a *App) createFinanceTransactionHandler(w http.ResponseWriter, r *http.Req
 	}
 	personName := strings.TrimSpace(r.FormValue("person_name"))
 	description := strings.TrimSpace(r.FormValue("description"))
-	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
-	if personName == "" || description == "" || !validPaymentMethod(paymentMethod) {
-		http.Error(w, "person, description, and valid payment method are required", http.StatusBadRequest)
+	accountID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("account_id")), 10, 64)
+	if personName == "" || description == "" || accountID <= 0 {
+		http.Error(w, "person, description, and finance account are required", http.StatusBadRequest)
 		return
 	}
 	recordedAt := time.Now()
@@ -3272,10 +3396,10 @@ func (a *App) createFinanceTransactionHandler(w http.ResponseWriter, r *http.Req
 	if currentUser != nil {
 		recordedBy = currentUser.ID
 	}
-	transactionID, err := a.createManualFinanceTransaction(category, personName, description, paymentMethod, amount, recordedAt, recordedBy)
+	transactionID, err := a.createManualFinanceTransactionForAccount(category, personName, description, strings.TrimSpace(r.FormValue("notes")), accountID, amount, recordedAt, recordedBy)
 	if err != nil {
 		log.Printf("create manual finance transaction: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
@@ -9842,35 +9966,99 @@ func (a *App) listFinanceTransactions() ([]FinanceTransaction, error) {
 
 func (a *App) listFinanceTransactionsFiltered(filter FinanceFilter) ([]FinanceTransaction, error) {
 	query := `
-		SELECT id, receipt_number, category, reference_type, COALESCE(reference_id, 0), person_name, description,
-		       payment_method, amount, COALESCE(recorded_by_user_id, 0), recorded_at, created_at
-		FROM finance_transactions
+		SELECT ft.id,
+		       ft.receipt_number,
+		       COALESCE(ft.reference_number, ft.receipt_number),
+		       ft.category,
+		       COALESCE(ft.transaction_type, CASE WHEN ft.amount < 0 THEN 'expense' ELSE 'income' END),
+		       ft.reference_type,
+		       COALESCE(ft.reference_id, 0),
+		       COALESCE(ft.source_type, ''),
+		       COALESCE(ft.source_id, 0),
+		       COALESCE(ft.finance_account_id, 0),
+		       COALESCE(fa.name, ''),
+		       COALESCE(fa.account_type, ''),
+		       COALESCE(ft.transfer_group_id, ''),
+		       ft.person_name,
+		       ft.description,
+		       COALESCE(ft.notes, ''),
+		       ft.payment_method,
+		       ft.amount,
+		       COALESCE(ft.recorded_by_user_id, 0),
+		       COALESCE(u.name, ''),
+		       ft.recorded_at,
+		       ft.created_at,
+		       COALESCE(CAST(ft.updated_at AS TEXT), CAST(ft.created_at AS TEXT), ''),
+		       ft.voided_at,
+		       COALESCE(ft.voided_by_user_id, 0),
+		       COALESCE(ft.void_reason, '')
+		FROM finance_transactions ft
+		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
+		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
 		WHERE 1 = 1`
-	args := make([]any, 0, 6)
+	args := make([]any, 0, 12)
 	if filter.From != "" {
-		query += ` AND SUBSTR(TRIM(CAST(recorded_at AS TEXT)), 1, 10) >= ?`
+		query += ` AND SUBSTR(TRIM(CAST(ft.recorded_at AS TEXT)), 1, 10) >= ?`
 		args = append(args, filter.From)
 	}
 	if filter.To != "" {
-		query += ` AND SUBSTR(TRIM(CAST(recorded_at AS TEXT)), 1, 10) <= ?`
+		query += ` AND SUBSTR(TRIM(CAST(ft.recorded_at AS TEXT)), 1, 10) <= ?`
 		args = append(args, filter.To)
 	}
 	switch filter.Direction {
 	case "income":
-		query += ` AND amount > 0`
+		query += ` AND ft.amount > 0`
 	case "expense":
-		query += ` AND amount < 0`
+		query += ` AND ft.amount < 0`
 	}
 	if filter.Category != "" {
-		query += ` AND category = ?`
+		query += ` AND ft.category = ?`
 		args = append(args, filter.Category)
 	}
-	if filter.Search != "" {
-		query += ` AND (LOWER(receipt_number) LIKE ? OR LOWER(person_name) LIKE ? OR LOWER(description) LIKE ?)`
-		term := "%" + strings.ToLower(filter.Search) + "%"
-		args = append(args, term, term, term)
+	if filter.AccountID > 0 {
+		query += ` AND ft.finance_account_id = ?`
+		args = append(args, filter.AccountID)
 	}
-	query += ` ORDER BY recorded_at DESC, id DESC`
+	if filter.TransactionType != "" {
+		query += ` AND ft.transaction_type = ?`
+		args = append(args, filter.TransactionType)
+	}
+	if filter.SourceType != "" {
+		query += ` AND ft.source_type = ?`
+		args = append(args, filter.SourceType)
+	}
+	if filter.PaymentMethod != "" {
+		query += ` AND ft.payment_method = ?`
+		args = append(args, filter.PaymentMethod)
+	}
+	if filter.RecordedUserID > 0 {
+		query += ` AND ft.recorded_by_user_id = ?`
+		args = append(args, filter.RecordedUserID)
+	}
+	switch filter.Status {
+	case "active":
+		query += ` AND ft.voided_at IS NULL`
+	case "voided":
+		query += ` AND ft.voided_at IS NOT NULL`
+	}
+	if filter.Reference != "" {
+		query += ` AND (LOWER(COALESCE(ft.reference_number, '')) LIKE ? OR LOWER(COALESCE(ft.receipt_number, '')) LIKE ?)`
+		term := "%" + strings.ToLower(filter.Reference) + "%"
+		args = append(args, term, term)
+	}
+	if filter.Search != "" {
+		query += ` AND (
+			LOWER(COALESCE(ft.receipt_number, '')) LIKE ?
+			OR LOWER(COALESCE(ft.reference_number, '')) LIKE ?
+			OR LOWER(COALESCE(ft.person_name, '')) LIKE ?
+			OR LOWER(COALESCE(ft.description, '')) LIKE ?
+			OR LOWER(COALESCE(ft.notes, '')) LIKE ?
+			OR LOWER(COALESCE(fa.name, '')) LIKE ?
+		)`
+		term := "%" + strings.ToLower(filter.Search) + "%"
+		args = append(args, term, term, term, term, term, term)
+	}
+	query += ` ORDER BY ft.recorded_at DESC, ft.id DESC`
 
 	rows, err := a.db.Query(query, args...)
 	if err != nil {
@@ -9881,22 +10069,52 @@ func (a *App) listFinanceTransactionsFiltered(filter FinanceFilter) ([]FinanceTr
 	var transactions []FinanceTransaction
 	for rows.Next() {
 		var transaction FinanceTransaction
+		var voidedAt sql.NullTime
+		var updatedAtRaw string
 		if err := rows.Scan(
 			&transaction.ID,
 			&transaction.ReceiptNumber,
+			&transaction.ReferenceNumber,
 			&transaction.Category,
+			&transaction.TransactionType,
 			&transaction.ReferenceType,
 			&transaction.ReferenceID,
+			&transaction.SourceType,
+			&transaction.SourceID,
+			&transaction.FinanceAccountID,
+			&transaction.FinanceAccountName,
+			&transaction.FinanceAccountType,
+			&transaction.TransferGroupID,
 			&transaction.PersonName,
 			&transaction.Description,
+			&transaction.Notes,
 			&transaction.PaymentMethod,
 			&transaction.Amount,
 			&transaction.RecordedByUser,
+			&transaction.RecordedByUserName,
 			&transaction.RecordedAt,
 			&transaction.CreatedAt,
+			&updatedAtRaw,
+			&voidedAt,
+			&transaction.VoidedByUserID,
+			&transaction.VoidReason,
 		); err != nil {
 			return nil, err
 		}
+		if voidedAt.Valid {
+			transaction.Voided = true
+			transaction.VoidedAt = voidedAt.Time
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(updatedAtRaw)); err == nil {
+			transaction.UpdatedAt = parsed
+		} else if parsed, err := time.Parse("2006-01-02 15:04:05.999999999Z07:00", strings.TrimSpace(updatedAtRaw)); err == nil {
+			transaction.UpdatedAt = parsed
+		} else if parsed, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(updatedAtRaw)); err == nil {
+			transaction.UpdatedAt = parsed
+		} else {
+			transaction.UpdatedAt = transaction.CreatedAt
+		}
+		transaction.MoneyIn, transaction.MoneyOut = financeAmountParts(transaction.Amount)
 		transactions = append(transactions, transaction)
 	}
 	return transactions, rows.Err()
@@ -11917,6 +12135,10 @@ func (a *App) toggleReferralPartner(partnerID int64) error {
 }
 
 func (a *App) payReferralCommission(referralID int64, paymentMethod string, recordedByUserID int64) (int64, error) {
+	paymentMethod = normalizePaymentMethod(paymentMethod)
+	if !validFinancePaymentMethod(paymentMethod) {
+		return 0, errors.New("invalid referral payment method")
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -11949,18 +12171,31 @@ func (a *App) payReferralCommission(referralID int64, paymentMethod string, reco
 
 	now := time.Now().UTC()
 	receiptNumber := fmt.Sprintf("REF-%s-%06d", now.Format("20060102150405"), referral.ID)
-	description := fmt.Sprintf("Referral commission for %s", bookingReference(referral.ScheduleID))
-	result, err := tx.Exec(`
-		INSERT INTO finance_transactions (
-			receipt_number, category, reference_type, reference_id, person_name, description,
-			payment_method, amount, recorded_by_user_id, recorded_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, receiptNumber, "referral_commission_payment", "booking_referral", referral.ID, referral.PartnerName,
-		description, paymentMethod, -referral.CommissionAmount, recordedByUserID, now, now)
+	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
-	transactionID, err := result.LastInsertId()
+	if account.Name != financeAccountCashInHand && account.Name != financeAccountMainBank {
+		return 0, errors.New("referral commissions may be paid only from the cash or main bank account")
+	}
+	description := fmt.Sprintf("Referral commission for %s", bookingReference(referral.ScheduleID))
+	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
+		ReceiptNumber:    receiptNumber,
+		ReferenceNumber:  receiptNumber,
+		Category:         "referral_commission_payment",
+		TransactionType:  financeTxnTypeExpense,
+		ReferenceType:    "booking_referral",
+		ReferenceID:      referral.ID,
+		SourceType:       "booking_referral_payment",
+		SourceID:         referral.ID,
+		FinanceAccountID: account.ID,
+		PersonName:       referral.PartnerName,
+		Description:      description,
+		PaymentMethod:    paymentMethod,
+		Amount:           -referral.CommissionAmount,
+		RecordedByUserID: recordedByUserID,
+		RecordedAt:       now,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -11980,25 +12215,6 @@ func (a *App) payReferralCommission(referralID int64, paymentMethod string, reco
 		return 0, err
 	}
 	return transactionID, nil
-}
-
-func (a *App) createManualFinanceTransaction(category, personName, description, paymentMethod string, amount float64, recordedAt time.Time, recordedByUserID int64) (int64, error) {
-	now := time.Now().UTC()
-	prefix := "INC"
-	if amount < 0 {
-		prefix = "EXP"
-	}
-	receiptNumber := fmt.Sprintf("%s-%s-%09d", prefix, now.Format("20060102150405"), now.Nanosecond())
-	result, err := a.db.Exec(`
-		INSERT INTO finance_transactions (
-			receipt_number, category, reference_type, reference_id, person_name, description,
-			payment_method, amount, recorded_by_user_id, recorded_at, created_at
-		) VALUES (?, ?, 'manual', NULL, ?, ?, ?, ?, ?, ?, ?)
-	`, receiptNumber, category, personName, description, paymentMethod, amount, nullIfZero(recordedByUserID), recordedAt.UTC(), now)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
 }
 
 func (a *App) nextReceiptNumberTx(tx *sql.Tx, scope string, now time.Time) (string, error) {
@@ -12155,17 +12371,27 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 	if err != nil {
 		return 0, err
 	}
-	description := fmt.Sprintf("%s cash collection for %s", bookingProductLabel(financial.Activity, financial.Quantity), bookingReference(scheduleID))
-	result, err := tx.Exec(`
-		INSERT INTO finance_transactions (
-			receipt_number, category, reference_type, reference_id, person_name, description,
-			payment_method, amount, recorded_by_user_id, recorded_at, created_at
-		) VALUES (?, 'booking_payment', 'space_schedule', ?, ?, ?, ?, ?, ?, ?, ?)
-	`, receiptNumber, scheduleID, personName, description, paymentMethod, amount, recordedByRef, now, now)
+	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
-	transactionID, err := result.LastInsertId()
+	description := fmt.Sprintf("%s cash collection for %s", bookingProductLabel(financial.Activity, financial.Quantity), bookingReference(scheduleID))
+	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
+		ReceiptNumber:    receiptNumber,
+		ReferenceNumber:  receiptNumber,
+		Category:         "booking_payment",
+		TransactionType:  financeTxnTypeIncome,
+		ReferenceType:    "space_schedule",
+		ReferenceID:      scheduleID,
+		FinanceAccountID: account.ID,
+		PersonName:       personName,
+		Description:      description,
+		Notes:            strings.TrimSpace(paymentNote),
+		PaymentMethod:    paymentMethod,
+		Amount:           amount,
+		RecordedByUserID: recordedByUserID,
+		RecordedAt:       now,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -12181,6 +12407,19 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 			created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`, scheduleID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), recordedByRef, now, now); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`
+		UPDATE finance_transactions
+		SET source_type = 'booking_payment_collection',
+		    source_id = (
+				SELECT id FROM booking_payment_collections
+				WHERE finance_transaction_id = ?
+				LIMIT 1
+			),
+		    updated_at = ?
+		WHERE id = ?
+	`, transactionID, now, transactionID); err != nil {
 		return 0, err
 	}
 	if err := a.syncBookingFinancialSnapshotTx(tx, scheduleID); err != nil {
@@ -12204,12 +12443,13 @@ func (a *App) voidBookingPayment(collectionID int64, reason string, voidedByUser
 	defer tx.Rollback()
 
 	var scheduleID int64
+	var financeTransactionID int64
 	var voided int
 	if err := tx.QueryRow(`
-		SELECT schedule_id, voided
+		SELECT schedule_id, finance_transaction_id, voided
 		FROM booking_payment_collections
 		WHERE id = ?
-	`, collectionID).Scan(&scheduleID, &voided); err != nil {
+	`, collectionID).Scan(&scheduleID, &financeTransactionID, &voided); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("booking payment was not found")
 		}
@@ -12224,6 +12464,9 @@ func (a *App) voidBookingPayment(collectionID int64, reason string, voidedByUser
 		SET voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ?
 		WHERE id = ? AND voided = 0
 	`, reason, voidedByRef, time.Now().UTC(), collectionID); err != nil {
+		return err
+	}
+	if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, voidedByUserID); err != nil {
 		return err
 	}
 	if err := a.syncBookingFinancialSnapshotTx(tx, scheduleID); err != nil {
@@ -12801,29 +13044,85 @@ func (a *App) findAdmissionByIDTx(
 
 func (a *App) findFinanceTransactionByID(transactionID int64) (*FinanceTransaction, error) {
 	row := a.db.QueryRow(`
-		SELECT id, receipt_number, category, reference_type, COALESCE(reference_id, 0), person_name, description,
-		       payment_method, amount, COALESCE(recorded_by_user_id, 0), recorded_at, created_at
-		FROM finance_transactions
-		WHERE id = ?
+		SELECT ft.id,
+		       ft.receipt_number,
+		       COALESCE(ft.reference_number, ft.receipt_number),
+		       ft.category,
+		       COALESCE(ft.transaction_type, CASE WHEN ft.amount < 0 THEN 'expense' ELSE 'income' END),
+		       ft.reference_type,
+		       COALESCE(ft.reference_id, 0),
+		       COALESCE(ft.source_type, ''),
+		       COALESCE(ft.source_id, 0),
+		       COALESCE(ft.finance_account_id, 0),
+		       COALESCE(fa.name, ''),
+		       COALESCE(fa.account_type, ''),
+		       COALESCE(ft.transfer_group_id, ''),
+		       ft.person_name,
+		       ft.description,
+		       COALESCE(ft.notes, ''),
+		       ft.payment_method,
+		       ft.amount,
+		       COALESCE(ft.recorded_by_user_id, 0),
+		       COALESCE(u.name, ''),
+		       ft.recorded_at,
+		       ft.created_at,
+		       COALESCE(CAST(ft.updated_at AS TEXT), CAST(ft.created_at AS TEXT), ''),
+		       ft.voided_at,
+		       COALESCE(ft.voided_by_user_id, 0),
+		       COALESCE(ft.void_reason, '')
+		FROM finance_transactions ft
+		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
+		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
+		WHERE ft.id = ?
 	`, transactionID)
 
 	var transaction FinanceTransaction
+	var voidedAt sql.NullTime
+	var updatedAtRaw string
 	if err := row.Scan(
 		&transaction.ID,
 		&transaction.ReceiptNumber,
+		&transaction.ReferenceNumber,
 		&transaction.Category,
+		&transaction.TransactionType,
 		&transaction.ReferenceType,
 		&transaction.ReferenceID,
+		&transaction.SourceType,
+		&transaction.SourceID,
+		&transaction.FinanceAccountID,
+		&transaction.FinanceAccountName,
+		&transaction.FinanceAccountType,
+		&transaction.TransferGroupID,
 		&transaction.PersonName,
 		&transaction.Description,
+		&transaction.Notes,
 		&transaction.PaymentMethod,
 		&transaction.Amount,
 		&transaction.RecordedByUser,
+		&transaction.RecordedByUserName,
 		&transaction.RecordedAt,
 		&transaction.CreatedAt,
+		&updatedAtRaw,
+		&voidedAt,
+		&transaction.VoidedByUserID,
+		&transaction.VoidReason,
 	); err != nil {
 		return nil, err
 	}
+	if voidedAt.Valid {
+		transaction.Voided = true
+		transaction.VoidedAt = voidedAt.Time
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(updatedAtRaw)); err == nil {
+		transaction.UpdatedAt = parsed
+	} else if parsed, err := time.Parse("2006-01-02 15:04:05.999999999Z07:00", strings.TrimSpace(updatedAtRaw)); err == nil {
+		transaction.UpdatedAt = parsed
+	} else if parsed, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(updatedAtRaw)); err == nil {
+		transaction.UpdatedAt = parsed
+	} else {
+		transaction.UpdatedAt = transaction.CreatedAt
+	}
+	transaction.MoneyIn, transaction.MoneyOut = financeAmountParts(transaction.Amount)
 	return &transaction, nil
 }
 
@@ -12842,30 +13141,28 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recorde
 
 	now := time.Now().UTC()
 	receiptNumber := fmt.Sprintf("ADM-%s-%06d", now.Format("20060102150405"), admission.ID)
-	description := fmt.Sprintf("Admission payment for %s", admission.FullName)
-	result, err := tx.Exec(`
-		INSERT INTO finance_transactions (
-			receipt_number, category, reference_type, reference_id, person_name, description,
-			payment_method, amount, recorded_by_user_id, recorded_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		receiptNumber,
-		"admission_payment",
-		"admission",
-		admission.ID,
-		admission.FullName,
-		description,
-		"cash",
-		admissionFee,
-		recordedByUserID,
-		now,
-		now,
-	)
+	account, err := findFinanceAccountForPaymentMethodTx(tx, "cash")
 	if err != nil {
 		return 0, err
 	}
-
-	transactionID, err := result.LastInsertId()
+	description := fmt.Sprintf("Admission payment for %s", admission.FullName)
+	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
+		ReceiptNumber:    receiptNumber,
+		ReferenceNumber:  receiptNumber,
+		Category:         "admission_payment",
+		TransactionType:  financeTxnTypeIncome,
+		ReferenceType:    "admission",
+		ReferenceID:      admission.ID,
+		SourceType:       "admission",
+		SourceID:         admission.ID,
+		FinanceAccountID: account.ID,
+		PersonName:       admission.FullName,
+		Description:      description,
+		PaymentMethod:    "cash",
+		Amount:           admissionFee,
+		RecordedByUserID: recordedByUserID,
+		RecordedAt:       now,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -12979,6 +13276,9 @@ func admissionPricingByPracticeTypeTx(
 }
 
 func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth string, monthDate time.Time, paymentMethod string, recordedByUserID int64) (int64, error) {
+	if normalizePaymentMethod(paymentMethod) != "cash" {
+		return 0, errors.New("monthly student payments must be recorded in cash")
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -13018,43 +13318,54 @@ func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth strin
 		return 0, ErrMonthlyFeeNotConfigured
 	}
 	now := time.Now().UTC()
-	receiptNumber := fmt.Sprintf("STU-%s-%06d-%s", strings.ReplaceAll(paymentMonth, "-", ""), admission.ID, now.Format("150405"))
-	description := fmt.Sprintf("%s monthly payment for %s", paymentMonthLabel(paymentMonth), admission.FullName)
-	result, err := tx.Exec(`
-		INSERT INTO finance_transactions (
-			receipt_number, category, reference_type, reference_id, person_name, description,
-			payment_method, amount, recorded_by_user_id, recorded_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		receiptNumber,
-		"student_monthly_payment",
-		"admission",
-		admission.ID,
-		admission.FullName,
-		description,
-		paymentMethod,
-		monthlyFee,
-		recordedByUserID,
-		now,
-		now,
-	)
+	account, err := findFinanceAccountForPaymentMethodTx(tx, "cash")
 	if err != nil {
 		return 0, err
 	}
-	transactionID, err := result.LastInsertId()
+	receiptNumber := fmt.Sprintf("STU-%s-%06d-%s", strings.ReplaceAll(paymentMonth, "-", ""), admission.ID, now.Format("150405"))
+	description := fmt.Sprintf("%s monthly payment for %s", paymentMonthLabel(paymentMonth), admission.FullName)
+	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
+		ReceiptNumber:    receiptNumber,
+		ReferenceNumber:  receiptNumber,
+		Category:         "student_monthly_payment",
+		TransactionType:  financeTxnTypeIncome,
+		ReferenceType:    "admission",
+		ReferenceID:      admission.ID,
+		FinanceAccountID: account.ID,
+		PersonName:       admission.FullName,
+		Description:      description,
+		PaymentMethod:    "cash",
+		Amount:           monthlyFee,
+		RecordedByUserID: recordedByUserID,
+		RecordedAt:       now,
+	})
 	if err != nil {
 		return 0, err
 	}
 
-	if _, err := tx.Exec(`
+	result, err := tx.Exec(`
 		INSERT INTO student_monthly_payments (
 			admission_id, payment_month, amount, payment_method, finance_transaction_id,
 			collected_by_user_id, collected_at, created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, admission.ID, paymentMonth, monthlyFee, paymentMethod, transactionID, recordedByUserID, now, now); err != nil {
+	`, admission.ID, paymentMonth, monthlyFee, paymentMethod, transactionID, recordedByUserID, now, now)
+	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return 0, ErrStudentPaymentAlreadyCollected
 		}
+		return 0, err
+	}
+	paymentRowID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`
+		UPDATE finance_transactions
+		SET source_type = 'student_monthly_payment',
+		    source_id = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`, paymentRowID, now, transactionID); err != nil {
 		return 0, err
 	}
 
@@ -14078,6 +14389,9 @@ ON court_closures(activity, active, closure_date)`,
 		return err
 	}
 	if err := backfillBookingFinancials(db); err != nil {
+		return err
+	}
+	if err := migrateFinanceCashbook(db); err != nil {
 		return err
 	}
 
@@ -20158,23 +20472,41 @@ func financeCategoryLabel(value string) string {
 	case "referral_commission_payment":
 		return "Referral commission"
 	case "manual_income":
-		return "General income"
+		return "Other income"
 	case "sponsorship_income":
 		return "Sponsorship income"
 	case "other_income":
 		return "Other income"
 	case "facility_expense":
-		return "Facility expense"
+		return "Facility or court rental"
 	case "utilities_expense":
-		return "Utilities expense"
+		return "Utilities"
 	case "maintenance_expense":
-		return "Maintenance expense"
+		return "Maintenance and repairs"
 	case "staff_expense":
-		return "Staff expense"
+		return "Staff and wages"
 	case "equipment_expense":
-		return "Equipment expense"
+		return "Equipment"
+	case "sports_supplies_expense":
+		return "Sports supplies"
+	case "refreshments_expense":
+		return "Refreshments and drinks"
+	case "prizes_expense":
+		return "Prizes and awards"
 	case "marketing_expense":
-		return "Marketing expense"
+		return "Marketing"
+	case "transport_expense":
+		return "Transport"
+	case "event_expense":
+		return "Event expense"
+	case "bank_charges_expense":
+		return "Bank charges"
+	case "internal_transfer":
+		return "Internal transfer"
+	case "opening_balance":
+		return "Opening balance"
+	case "cash_adjustment":
+		return "Adjustment"
 	case "other_expense":
 		return "Other expense"
 	default:
@@ -20203,7 +20535,7 @@ func paymentMonthLabel(value string) string {
 
 func validPaymentMethod(value string) bool {
 	switch value {
-	case "cash", "card", "bank_transfer":
+	case "cash", "bank_transfer":
 		return true
 	default:
 		return false
@@ -20406,6 +20738,9 @@ func buildFinanceStats(transactions []FinanceTransaction) []Stat {
 	referralPayouts := 0.0
 
 	for _, transaction := range transactions {
+		if transaction.Voided {
+			continue
+		}
 		totalIncome += transaction.Amount
 		if transaction.Category == "admission_payment" {
 			admissionPayments++
@@ -20426,16 +20761,41 @@ func buildFinanceStats(transactions []FinanceTransaction) []Stat {
 	}
 }
 
-func buildFinanceSummary(transactions []FinanceTransaction, bookings []BookingFinancial, monthly []StudentPaymentRow, referrals []BookingReferral) FinanceSummary {
+func buildFinanceSummary(accounts []FinanceAccount, transactions []FinanceTransaction, bookings []BookingFinancial, monthly []StudentPaymentRow, referrals []BookingReferral, reconciliations []CashReconciliation) FinanceSummary {
 	var summary FinanceSummary
+	summary.CashBalance = financeAccountDisplayBalance(accounts, transactions, financeAccountCashInHand)
+	summary.BankBalance = financeAccountDisplayBalance(accounts, transactions, financeAccountMainBank)
+	summary.TotalAvailableFunds = normalizeMoney(summary.CashBalance + summary.BankBalance)
 	for _, transaction := range transactions {
+		if transaction.Voided {
+			continue
+		}
+		switch transaction.TransactionType {
+		case financeTxnTypeOpeningBalance, financeTxnTypeAdjustment:
+			// Excluded from operating revenue and expense KPIs.
+		case financeTxnTypeTransferIn, financeTxnTypeTransferOut:
+			// Internal transfers move cash between accounts only.
+		default:
+			if transaction.Amount >= 0 {
+				summary.NetOperatingCashFlow += transaction.Amount
+			} else {
+				summary.NetOperatingCashFlow += transaction.Amount
+			}
+		}
+		if transaction.TransactionType == financeTxnTypeTransferIn || transaction.TransactionType == financeTxnTypeTransferOut {
+			continue
+		}
+		if transaction.TransactionType == financeTxnTypeOpeningBalance || transaction.TransactionType == financeTxnTypeAdjustment {
+			continue
+		}
 		if transaction.Amount >= 0 {
 			summary.GrossIncome += transaction.Amount
 		} else {
 			summary.TotalExpenses += -transaction.Amount
 		}
 	}
-	summary.NetCash = summary.GrossIncome - summary.TotalExpenses
+	summary.NetCash = normalizeMoney(summary.GrossIncome - summary.TotalExpenses)
+	summary.NetOperatingCashFlow = normalizeMoney(summary.NetOperatingCashFlow)
 	for _, booking := range bookings {
 		if booking.OutstandingAmount > 0 {
 			summary.OutstandingBooking += booking.OutstandingAmount
@@ -20451,6 +20811,7 @@ func buildFinanceSummary(transactions []FinanceTransaction, bookings []BookingFi
 			summary.PayableReferrals += referral.CommissionAmount
 		}
 	}
+	summary.UnreconciledCashDelta, summary.LastCashReconciliationOn = latestUnreconciledCashDelta(accounts, reconciliations, transactions)
 	return summary
 }
 
@@ -20713,11 +21074,19 @@ func reportBarWidth(value, maxValue float64) string {
 
 func financeFilterFromRequest(r *http.Request) FinanceFilter {
 	filter := FinanceFilter{
-		From:      strings.TrimSpace(r.URL.Query().Get("from")),
-		To:        strings.TrimSpace(r.URL.Query().Get("to")),
-		Direction: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction"))),
-		Category:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("category"))),
-		Search:    strings.TrimSpace(r.URL.Query().Get("search")),
+		From:            strings.TrimSpace(r.URL.Query().Get("from")),
+		To:              strings.TrimSpace(r.URL.Query().Get("to")),
+		Direction:       strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction"))),
+		Category:        strings.ToLower(strings.TrimSpace(r.URL.Query().Get("category"))),
+		AccountID:       parseInt64Query(r.URL.Query().Get("account_id")),
+		TransactionType: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("transaction_type"))),
+		SourceType:      strings.ToLower(strings.TrimSpace(r.URL.Query().Get("source_type"))),
+		PaymentMethod:   normalizePaymentMethod(r.URL.Query().Get("payment_method")),
+		RecordedUserID:  parseInt64Query(r.URL.Query().Get("recorded_user_id")),
+		Status:          strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status"))),
+		Reference:       strings.TrimSpace(r.URL.Query().Get("reference")),
+		Search:          strings.TrimSpace(r.URL.Query().Get("search")),
+		ExportKind:      strings.ToLower(strings.TrimSpace(r.URL.Query().Get("kind"))),
 	}
 	if _, err := time.Parse("2006-01-02", filter.From); err != nil {
 		filter.From = ""
@@ -20728,6 +21097,12 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 	if filter.Direction != "income" && filter.Direction != "expense" {
 		filter.Direction = ""
 	}
+	if filter.Status != "active" && filter.Status != "voided" {
+		filter.Status = ""
+	}
+	if !validFinancePaymentMethod(filter.PaymentMethod) {
+		filter.PaymentMethod = ""
+	}
 	return filter
 }
 
@@ -20735,7 +21110,10 @@ func validManualFinanceCategory(direction, category string) bool {
 	income := map[string]bool{"manual_income": true, "sponsorship_income": true, "other_income": true}
 	expense := map[string]bool{
 		"facility_expense": true, "utilities_expense": true, "maintenance_expense": true,
-		"staff_expense": true, "equipment_expense": true, "marketing_expense": true, "other_expense": true,
+		"staff_expense": true, "equipment_expense": true, "sports_supplies_expense": true,
+		"refreshments_expense": true, "prizes_expense": true, "marketing_expense": true,
+		"transport_expense": true, "event_expense": true, "bank_charges_expense": true,
+		"other_expense": true,
 	}
 	if direction == "income" {
 		return income[category]
@@ -20919,6 +21297,11 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"pricingForOption":                          pricingForOption,
 		"pricingForSchedule":                        pricingForSchedule,
 		"pricingTierLabel":                          pricingTierLabel,
+		"financeAccountTypeLabel":                   financeAccountTypeLabel,
+		"financeTransactionTypeLabel":               financeTransactionTypeLabel,
+		"financeTransactionStatusLabel":             financeTransactionStatusLabel,
+		"financeDirectionForTransaction":            financeDirectionForTransaction,
+		"financeAccountTone":                        financeAccountTone,
 		"financeCategoryLabel":                      financeCategoryLabel,
 		"paymentMonthLabel":                         paymentMonthLabel,
 		"formatDateTime":                            formatDateTime,
