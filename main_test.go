@@ -2358,6 +2358,53 @@ func TestFinanceCashbookMigrationUpgradesLegacyCashReconciliationsBeforePartialI
 	}
 }
 
+func TestListFinanceTransfersQualifiesAmbiguousColumns(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	bankID := financeAccountIDByName(t, app, financeAccountMainBank)
+	if _, err := app.createManualFinanceTransactionForAccount("manual_income", "Seed Cash", "Initial float", "", cashID, 2000, time.Date(2026, 8, 3, 9, 0, 0, 0, time.Local), 0); err != nil {
+		t.Fatalf("seed cash balance: %v", err)
+	}
+	if _, err := app.db.Exec(`
+		INSERT INTO cash_reconciliations (
+			finance_account_id, reconciliation_date, expected_balance, counted_balance, difference,
+			notes, status, reconciled_by_user_id, created_at
+		) VALUES (?, '2026-08-01', 0, 0, 0, 'legacy note', 'balanced', NULL, ?)
+	`, cashID, time.Now().UTC()); err != nil {
+		t.Fatalf("seed cash reconciliation: %v", err)
+	}
+	groupID, err := app.createFinanceTransfer(
+		cashID,
+		bankID,
+		1500,
+		time.Date(2026, 8, 3, 10, 0, 0, 0, time.Local),
+		"TRF-REG-001",
+		"Cash deposit for ambiguity test",
+		"banking run",
+		0,
+	)
+	if err != nil {
+		t.Fatalf("create finance transfer: %v", err)
+	}
+	transfers, err := app.listFinanceTransfers()
+	if err != nil {
+		t.Fatalf("list finance transfers: %v", err)
+	}
+	if len(transfers) != 1 {
+		t.Fatalf("transfer count = %d, want 1", len(transfers))
+	}
+	transfer := transfers[0]
+	if transfer.GroupID != groupID {
+		t.Fatalf("transfer group id = %q, want %q", transfer.GroupID, groupID)
+	}
+	if transfer.Description != "Cash deposit for ambiguity test" {
+		t.Fatalf("transfer description = %q", transfer.Description)
+	}
+	if transfer.FromAccountName != financeAccountCashInHand || transfer.ToAccountName != financeAccountMainBank {
+		t.Fatalf("unexpected transfer accounts: %#v", transfer)
+	}
+}
+
 func TestBookingCancellationReleasesCapacityAndPreservesPayment(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:booking-cancellation-test?mode=memory&cache=shared")
 	if err != nil {

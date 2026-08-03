@@ -1301,31 +1301,31 @@ func (a *App) voidFinanceTransferGroup(groupID string, reason string, voidedByUs
 func (a *App) listFinanceTransfers() ([]FinanceTransfer, error) {
 	rows, err := a.db.Query(`
 		SELECT
-			transfer_group_id,
-			reference_number,
-			MAX(CASE WHEN transaction_type = 'transfer_out' THEN finance_account_id ELSE 0 END),
-			MAX(CASE WHEN transaction_type = 'transfer_out' THEN COALESCE(fa.name, '') ELSE '' END),
-			MAX(CASE WHEN transaction_type = 'transfer_in' THEN finance_account_id ELSE 0 END),
-			MAX(CASE WHEN transaction_type = 'transfer_in' THEN COALESCE(fa.name, '') ELSE '' END),
-			MAX(ABS(amount)),
-			MIN(recorded_at),
-			MAX(description),
-			MAX(notes),
-			MAX(COALESCE(recorded_by_user_id, 0)),
-			MAX(COALESCE(u.name, '')),
-			MAX(CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END),
-			MAX(voided_at),
-			MAX(COALESCE(void_reason, '')),
-			MAX(COALESCE(voided_by_user_id, 0)),
-			MIN(created_at),
-			MAX(CASE WHEN transaction_type = 'transfer_out' THEN id ELSE 0 END),
-			MAX(CASE WHEN transaction_type = 'transfer_in' THEN id ELSE 0 END)
+			ft.transfer_group_id AS transfer_group_id,
+			ft.reference_number AS reference_number,
+			MAX(CASE WHEN ft.transaction_type = 'transfer_out' THEN ft.finance_account_id ELSE 0 END) AS from_account_id,
+			MAX(CASE WHEN ft.transaction_type = 'transfer_out' THEN COALESCE(fa.name, '') ELSE '' END) AS from_account_name,
+			MAX(CASE WHEN ft.transaction_type = 'transfer_in' THEN ft.finance_account_id ELSE 0 END) AS to_account_id,
+			MAX(CASE WHEN ft.transaction_type = 'transfer_in' THEN COALESCE(fa.name, '') ELSE '' END) AS to_account_name,
+			MAX(ABS(ft.amount)) AS transfer_amount,
+			MIN(ft.recorded_at) AS transfer_date,
+			MAX(ft.description) AS transfer_description,
+			MAX(ft.notes) AS transfer_notes,
+			MAX(COALESCE(ft.recorded_by_user_id, 0)) AS recorded_by_user_id,
+			MAX(COALESCE(u.name, '')) AS recorded_by_user_name,
+			MAX(CASE WHEN ft.voided_at IS NULL THEN 0 ELSE 1 END) AS voided_flag,
+			MAX(ft.voided_at) AS voided_at,
+			MAX(COALESCE(ft.void_reason, '')) AS void_reason,
+			MAX(COALESCE(ft.voided_by_user_id, 0)) AS voided_by_user_id,
+			MIN(ft.created_at) AS created_at,
+			MAX(CASE WHEN ft.transaction_type = 'transfer_out' THEN ft.id ELSE 0 END) AS transfer_out_id,
+			MAX(CASE WHEN ft.transaction_type = 'transfer_in' THEN ft.id ELSE 0 END) AS transfer_in_id
 		FROM finance_transactions ft
 		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
 		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
-		WHERE transfer_group_id <> ''
-		GROUP BY transfer_group_id, reference_number
-		ORDER BY MIN(recorded_at) DESC, transfer_group_id DESC
+		WHERE ft.transfer_group_id <> ''
+		GROUP BY ft.transfer_group_id, ft.reference_number
+		ORDER BY MIN(ft.recorded_at) DESC, ft.transfer_group_id DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -1336,6 +1336,8 @@ func (a *App) listFinanceTransfers() ([]FinanceTransfer, error) {
 		var transfer FinanceTransfer
 		var voided int
 		var voidedAt sql.NullTime
+		var transferDateRaw string
+		var createdAtRaw string
 		if err := rows.Scan(
 			&transfer.GroupID,
 			&transfer.ReferenceNumber,
@@ -1344,7 +1346,7 @@ func (a *App) listFinanceTransfers() ([]FinanceTransfer, error) {
 			&transfer.ToAccountID,
 			&transfer.ToAccountName,
 			&transfer.Amount,
-			&transfer.TransferDate,
+			&transferDateRaw,
 			&transfer.Description,
 			&transfer.Notes,
 			&transfer.RecordedByUserID,
@@ -1353,11 +1355,25 @@ func (a *App) listFinanceTransfers() ([]FinanceTransfer, error) {
 			&voidedAt,
 			&transfer.VoidReason,
 			&transfer.VoidedByUserID,
-			&transfer.CreatedAt,
+			&createdAtRaw,
 			&transfer.TransferOutID,
 			&transfer.TransferInID,
 		); err != nil {
 			return nil, err
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(transferDateRaw)); err == nil {
+			transfer.TransferDate = parsed
+		} else if parsed, err := time.Parse("2006-01-02 15:04:05.999999999Z07:00", strings.TrimSpace(transferDateRaw)); err == nil {
+			transfer.TransferDate = parsed
+		} else if parsed, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(transferDateRaw)); err == nil {
+			transfer.TransferDate = parsed
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(createdAtRaw)); err == nil {
+			transfer.CreatedAt = parsed
+		} else if parsed, err := time.Parse("2006-01-02 15:04:05.999999999Z07:00", strings.TrimSpace(createdAtRaw)); err == nil {
+			transfer.CreatedAt = parsed
+		} else if parsed, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(createdAtRaw)); err == nil {
+			transfer.CreatedAt = parsed
 		}
 		transfer.Voided = voided == 1
 		if voidedAt.Valid {
