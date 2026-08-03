@@ -2089,10 +2089,11 @@ func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			pendingCount, _ := a.countPendingSpaceSchedules()
 			heldCount, _ := a.countHeldSpaceSchedules()
+			reschedulePendingCount, _ := a.countReschedulePendingSpaceSchedules()
 			data.PendingRequestCount = pendingCount
 			data.HeldRequestCount = heldCount
 			data.BookingReminders = buildBookingReminders(requests, now)
-			data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, pendingCount, heldCount)
+			data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, pendingCount, heldCount, reschedulePendingCount)
 		}
 	}
 	a.render(w, "dashboard", data, http.StatusOK)
@@ -2904,16 +2905,16 @@ func (a *App) voidBookingPaymentHandler(w http.ResponseWriter, r *http.Request) 
 	if currentUser != nil {
 		voidedBy = currentUser.ID
 	}
-	if err := a.voidBookingPayment(collectionID, strings.TrimSpace(r.FormValue("void_reason")), voidedBy); err != nil {
-		a.setFlash(w, "Booking payment could not be collected: "+err.Error())
-		http.Redirect(w, r, strings.TrimSpace(r.FormValue("return_to")), http.StatusSeeOther)
-		return
-	}
-	a.setFlash(w, "Booking payment was voided and the balance was recalculated.")
 	returnTo := strings.TrimSpace(r.FormValue("return_to"))
 	if returnTo == "" {
 		returnTo = "/admin/finance#booking-receivables"
 	}
+	if err := a.voidBookingPayment(collectionID, strings.TrimSpace(r.FormValue("void_reason")), voidedBy); err != nil {
+		a.setFlash(w, "Booking payment could not be voided: "+err.Error())
+		http.Redirect(w, r, returnTo, http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Booking payment was voided and the balance was recalculated.")
 	http.Redirect(w, r, returnTo, http.StatusSeeOther)
 }
 
@@ -5492,6 +5493,10 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		if err != nil {
 			return TemplateData{}, err
 		}
+		reschedulePendingCount, err := a.countReschedulePendingSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
 		filteredClosures := courtClosuresBetween(
 			courtClosures,
 			weekStart.Format("2006-01-02"),
@@ -5505,7 +5510,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		data.DaySchedules = schedulesForDate(rangeSchedules, data.CalendarDate)
 		data.BookingRequests = customerBookingRequests(data.DaySchedules)
 		data.BookingReminders = buildBookingReminders(customerBookingRequests(rangeSchedules), now)
-		data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, pendingCount, heldCount)
+		data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, pendingCount, heldCount, reschedulePendingCount)
 
 		relevantScheduleIDs := scheduleIDs(data.DaySchedules)
 		if selectedScheduleID > 0 {
@@ -5596,6 +5601,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		data.PendingSchedules = pending
 		data.PendingRequestCount = 0
 		data.HeldRequestCount = 0
+		reschedulePendingCount := 0
 		for _, schedule := range pending {
 			if schedule.Status == bookingStatusPending {
 				data.PendingRequestCount++
@@ -5603,11 +5609,14 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 			if schedule.Status == bookingStatusHeld {
 				data.HeldRequestCount++
 			}
+			if schedule.Status == bookingStatusReschedulePending {
+				reschedulePendingCount++
+			}
 		}
 		data.BookingRequests = customerBookingRequests(schedules)
 		data.BookingRequestStats = buildBookingRequestStats(data.BookingRequests)
 		data.BookingReminders = buildBookingReminders(data.BookingRequests, now)
-		data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, data.PendingRequestCount, data.HeldRequestCount)
+		data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, data.PendingRequestCount, data.HeldRequestCount, reschedulePendingCount)
 		data.BookingFinancials = bookingFinancials
 		data.BookingPaymentCollections, err = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
 		if err != nil {
@@ -9891,6 +9900,19 @@ func (a *App) countHeldSpaceSchedules() (int, error) {
 		SELECT COUNT(*)
 		FROM space_schedules
 		WHERE status = 'held'
+	`)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (a *App) countReschedulePendingSpaceSchedules() (int, error) {
+	row := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM space_schedules
+		WHERE status = 'reschedule_pending'
 	`)
 	var count int
 	if err := row.Scan(&count); err != nil {
@@ -18110,7 +18132,7 @@ func buildBookingReminders(requests []SpaceSchedule, now time.Time) []BookingRem
 	return reminders
 }
 
-func buildBookingAttentionStats(reminders []BookingReminder, pendingCount int, heldCount int) []Stat {
+func buildBookingAttentionStats(reminders []BookingReminder, pendingCount int, heldCount int, reschedulePendingCount int) []Stat {
 	approaching := 0
 	insideWindow := 0
 	overdue := 0
@@ -18128,6 +18150,7 @@ func buildBookingAttentionStats(reminders []BookingReminder, pendingCount int, h
 	return []Stat{
 		{Label: "Pending", Value: strconv.Itoa(pendingCount)},
 		{Label: "Held", Value: strconv.Itoa(heldCount)},
+		{Label: "Reschedule pending", Value: strconv.Itoa(reschedulePendingCount)},
 		{Label: "Approaching time", Value: strconv.Itoa(approaching)},
 		{Label: "Inside 120 minutes", Value: strconv.Itoa(insideWindow)},
 		{Label: "Overdue", Value: strconv.Itoa(overdue)},
