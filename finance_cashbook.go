@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"sort"
@@ -295,10 +296,6 @@ func migrateFinanceCashbook(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_status ON finance_transactions(voided_at, recorded_at DESC, id DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_source ON finance_transactions(source_type, source_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_transfer_group ON finance_transactions(transfer_group_id)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_transactions_source_admission ON finance_transactions(source_type, source_id) WHERE source_type = 'admission'`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_transactions_source_student_monthly_payment ON finance_transactions(source_type, source_id) WHERE source_type = 'student_monthly_payment'`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_transactions_source_booking_payment_collection ON finance_transactions(source_type, source_id) WHERE source_type = 'booking_payment_collection'`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_transactions_source_booking_referral_payment ON finance_transactions(source_type, source_id) WHERE source_type = 'booking_referral_payment'`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return err
@@ -478,7 +475,58 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	`); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	for _, spec := range []struct {
+		indexName  string
+		sourceType string
+	}{
+		{"idx_finance_transactions_source_admission", "admission"},
+		{"idx_finance_transactions_source_student_monthly_payment", "student_monthly_payment"},
+		{"idx_finance_transactions_source_booking_payment_collection", "booking_payment_collection"},
+		{"idx_finance_transactions_source_booking_referral_payment", "booking_referral_payment"},
+	} {
+		if err := ensureFinanceSourceUniqueIndex(db, spec.indexName, spec.sourceType); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func financeSourceDuplicateCount(db *sql.DB, sourceType string) (int, error) {
+	var count int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM (
+			SELECT source_id
+			FROM finance_transactions
+			WHERE source_type = ?
+			  AND COALESCE(source_id, 0) <> 0
+			GROUP BY source_id
+			HAVING COUNT(*) > 1
+		)
+	`, sourceType).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func ensureFinanceSourceUniqueIndex(db *sql.DB, indexName string, sourceType string) error {
+	duplicates, err := financeSourceDuplicateCount(db, sourceType)
+	if err != nil {
+		return err
+	}
+	if duplicates > 0 {
+		log.Printf("startup finance migration warning: skipped %s because %d legacy duplicate %s source link(s) exist", indexName, duplicates, sourceType)
+		return nil
+	}
+	_, err = db.Exec(fmt.Sprintf(
+		`CREATE UNIQUE INDEX IF NOT EXISTS %s ON finance_transactions(source_type, source_id) WHERE source_type = %q`,
+		indexName,
+		sourceType,
+	))
+	return err
 }
 
 func (a *App) listFinanceAccounts(activeOnly bool) ([]FinanceAccount, error) {

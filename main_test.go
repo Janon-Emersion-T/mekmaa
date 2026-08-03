@@ -2162,6 +2162,68 @@ func TestFinanceDateValidationRejectsFutureDates(t *testing.T) {
 	}
 }
 
+func TestFinanceCashbookMigrationSkipsLegacyDuplicateSourceUniqueIndex(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:finance-legacy-duplicates?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	statements := []string{
+		`PRAGMA foreign_keys = ON`,
+		`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`,
+		`CREATE TABLE admissions (id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL, payment_collected INTEGER NOT NULL DEFAULT 0, payment_collected_at DATETIME, admission_payment_amount REAL NOT NULL DEFAULT 0, finance_transaction_id INTEGER, updated_at DATETIME NOT NULL, created_at DATETIME NOT NULL)`,
+		`CREATE TABLE student_monthly_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, admission_id INTEGER NOT NULL, payment_month TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, payment_method TEXT NOT NULL DEFAULT 'cash', finance_transaction_id INTEGER NOT NULL, collected_by_user_id INTEGER, collected_at DATETIME NOT NULL, created_at DATETIME NOT NULL)`,
+		`CREATE TABLE booking_referrals (id INTEGER PRIMARY KEY AUTOINCREMENT, finance_transaction_id INTEGER, paid INTEGER NOT NULL DEFAULT 0, paid_at DATETIME, payment_method TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL)`,
+		`CREATE TABLE booking_payment_collections (id INTEGER PRIMARY KEY AUTOINCREMENT, finance_transaction_id INTEGER NOT NULL UNIQUE, voided INTEGER NOT NULL DEFAULT 0, void_reason TEXT NOT NULL DEFAULT '', voided_by_user_id INTEGER, voided_at DATETIME)`,
+		`CREATE TABLE finance_transactions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			receipt_number TEXT NOT NULL UNIQUE,
+			category TEXT NOT NULL,
+			reference_type TEXT NOT NULL,
+			reference_id INTEGER,
+			person_name TEXT NOT NULL,
+			description TEXT NOT NULL,
+			payment_method TEXT NOT NULL DEFAULT 'cash',
+			amount REAL NOT NULL DEFAULT 0,
+			recorded_by_user_id INTEGER,
+			recorded_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL
+		)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("seed legacy schema: %v", err)
+		}
+	}
+	now := time.Now().UTC()
+	if _, err := db.Exec(`
+		INSERT INTO finance_transactions (receipt_number, category, reference_type, reference_id, person_name, description, payment_method, amount, recorded_by_user_id, recorded_at, created_at)
+		VALUES
+			('ADM-LEGACY-1', 'admission_payment', 'admission', 1, 'Student One', 'Legacy admission payment A', 'cash', 1500, NULL, ?, ?),
+			('ADM-LEGACY-2', 'admission_payment', 'admission', 1, 'Student One', 'Legacy admission payment B', 'cash', 1500, NULL, ?, ?)
+	`, now, now, now, now); err != nil {
+		t.Fatalf("seed duplicate legacy finance rows: %v", err)
+	}
+	if err := migrateFinanceCashbook(db); err != nil {
+		t.Fatalf("migrate finance cashbook with duplicate legacy rows: %v", err)
+	}
+	duplicateCount, err := financeSourceDuplicateCount(db, "admission")
+	if err != nil {
+		t.Fatalf("count duplicate admission source links: %v", err)
+	}
+	if duplicateCount != 1 {
+		t.Fatalf("duplicate admission source link groups = %d, want 1", duplicateCount)
+	}
+	var indexCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_finance_transactions_source_admission'`).Scan(&indexCount); err != nil {
+		t.Fatalf("lookup skipped unique index: %v", err)
+	}
+	if indexCount != 0 {
+		t.Fatal("admission unique index should be skipped when legacy duplicates exist")
+	}
+}
+
 func TestBookingCancellationReleasesCapacityAndPreservesPayment(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:booking-cancellation-test?mode=memory&cache=shared")
 	if err != nil {
