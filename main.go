@@ -21441,6 +21441,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"financeTransactionTypeLabel":               financeTransactionTypeLabel,
 		"financeTransactionStatusLabel":             financeTransactionStatusLabel,
 		"financeDirectionForTransaction":            financeDirectionForTransaction,
+		"financeTransactionAllowsGeneralVoid":       financeTransactionAllowsGeneralVoid,
+		"financeVoidWorkflowMessage":                financeVoidWorkflowMessage,
 		"financeAccountTone":                        financeAccountTone,
 		"financeCategoryLabel":                      financeCategoryLabel,
 		"paymentMonthLabel":                         paymentMonthLabel,

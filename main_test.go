@@ -2058,6 +2058,45 @@ func TestGeneralFinanceVoidRejectsSourceLinkedTransactions(t *testing.T) {
 	}
 }
 
+func TestGeneralFinanceVoidAllowsStandaloneManualTransactions(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	user := &User{ID: 7, Name: "Finance", Roles: []string{"superadmin"}, Permissions: []string{"finance.manage"}}
+	transactionID, err := app.createManualFinanceTransactionForAccount(
+		"manual_income",
+		"Walk-in",
+		"Manual ledger entry",
+		"",
+		financeAccountIDByName(t, app, financeAccountCashInHand),
+		1000,
+		time.Date(2026, time.August, 4, 9, 0, 0, 0, time.Local),
+		user.ID,
+	)
+	if err != nil {
+		t.Fatalf("create manual finance entry: %v", err)
+	}
+	form := url.Values{
+		"transaction_id": {strconv.FormatInt(transactionID, 10)},
+		"void_reason":    {"entry mistake"},
+		"csrf_token":     {"token"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/finance/transactions/void", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.voidFinanceTransactionHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("general void redirect status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("reload manual finance transaction: %v", err)
+	}
+	if !transaction.Voided {
+		t.Fatalf("manual finance transaction should be voided: %#v", transaction)
+	}
+}
+
 func TestSourceLevelVoidWorkflowsSynchronizeLedger(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	userID := int64(9)
@@ -2153,7 +2192,7 @@ func TestFinanceOperationIdempotencyPreventsDuplicatePosts(t *testing.T) {
 func TestFinanceDateValidationRejectsFutureDates(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
-	tomorrow := time.Date(2026, 8, 4, 9, 0, 0, 0, time.Local)
+	tomorrow := time.Date(2026, 8, 5, 9, 0, 0, 0, time.Local)
 	if _, err := app.createManualFinanceTransactionForAccount("manual_income", "Future", "Future entry", "", cashID, 100, tomorrow, 0); err == nil {
 		t.Fatal("expected future manual entry date to be rejected")
 	}
