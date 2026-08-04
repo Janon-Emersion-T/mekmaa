@@ -863,6 +863,49 @@ func financeTransactionAllowsGeneralVoid(transaction *FinanceTransaction) bool {
 	}
 }
 
+func financeTransactionSourceExistsQuery(queryer sqlQueryer, transaction *FinanceTransaction) (bool, error) {
+	if transaction == nil {
+		return false, errors.New("finance transaction is required")
+	}
+	switch transaction.SourceType {
+	case "admission":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM admissions WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	case "student_monthly_payment":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM student_monthly_payments WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	case "booking_payment_collection":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM booking_payment_collections WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	case "booking_referral_payment":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM booking_referrals WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	default:
+		return true, nil
+	}
+}
+
+func financeTransactionRepairableOrphan(transaction *FinanceTransaction) bool {
+	switch transaction.SourceType {
+	case "admission", "student_monthly_payment":
+		return true
+	default:
+		return false
+	}
+}
+
 func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
@@ -1973,6 +2016,31 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !financeTransactionAllowsGeneralVoid(transaction) {
+		sourceExists, err := financeTransactionSourceExistsQuery(a.db, transaction)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if !sourceExists && financeTransactionRepairableOrphan(transaction) {
+			tx, err := a.db.Begin()
+			if err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			defer tx.Rollback()
+			if err := voidFinanceTransactionTx(tx, transaction.ID, reason, currentUser.ID); err != nil {
+				a.setFlash(w, "Finance transaction could not be voided: "+err.Error())
+				http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
+				return
+			}
+			if err := tx.Commit(); err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			a.setFlash(w, "Orphaned finance transaction was voided from the ledger because its source record no longer exists.")
+			http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
+			return
+		}
 		a.setFlash(w, financeVoidWorkflowMessage(transaction))
 		http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
 		return

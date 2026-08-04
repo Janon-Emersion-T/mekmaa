@@ -12973,6 +12973,25 @@ func (a *App) rescheduleBookingRequest(
 }
 
 func (a *App) deleteAdmission(admissionID int64) error {
+	var protectedCount int
+	if err := a.db.QueryRow(`
+		SELECT
+			COALESCE((
+				SELECT COUNT(*)
+				FROM finance_transactions
+				WHERE reference_type = 'admission' AND reference_id = ?
+			), 0)
+			+ COALESCE((
+				SELECT COUNT(*)
+				FROM student_monthly_payments
+				WHERE admission_id = ?
+			), 0)
+	`, admissionID, admissionID).Scan(&protectedCount); err != nil {
+		return err
+	}
+	if protectedCount > 0 {
+		return errors.New("this member has finance history and cannot be deleted")
+	}
 	_, err := a.db.Exec(`DELETE FROM admissions WHERE id = ?`, admissionID)
 	return err
 }

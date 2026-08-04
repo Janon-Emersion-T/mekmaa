@@ -2097,6 +2097,54 @@ func TestGeneralFinanceVoidAllowsStandaloneManualTransactions(t *testing.T) {
 	}
 }
 
+func TestGeneralFinanceVoidAllowsOrphanedAdmissionTransactionRepair(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	user := &User{ID: 7, Name: "Finance", Roles: []string{"superadmin"}, Permissions: []string{"finance.manage"}}
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-ORPHAN-001",
+		FullName:              "Orphan Invoice Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000002",
+	}
+	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, user.ID)
+	if err != nil {
+		t.Fatalf("create admission with payment: %v", err)
+	}
+	if _, err := app.db.Exec(`DELETE FROM admissions WHERE id = ?`, admissionID); err != nil {
+		t.Fatalf("delete admission directly to simulate orphaned source: %v", err)
+	}
+	form := url.Values{
+		"transaction_id": {strconv.FormatInt(transactionID, 10)},
+		"void_reason":    {"member deleted before invoice void"},
+		"csrf_token":     {"token"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/finance/transactions/void", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.voidFinanceTransactionHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("orphan repair void redirect status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("reload orphaned finance transaction: %v", err)
+	}
+	if !transaction.Voided {
+		t.Fatalf("orphaned admission finance transaction should be voided: %#v", transaction)
+	}
+}
+
 func TestSourceLevelVoidWorkflowsSynchronizeLedger(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	userID := int64(9)
@@ -2162,6 +2210,32 @@ func TestSourceLevelVoidWorkflowsSynchronizeLedger(t *testing.T) {
 	}
 	if studentVoided != 1 {
 		t.Fatal("student monthly payment row should be marked voided")
+	}
+}
+
+func TestDeleteAdmissionRejectsFinanceHistory(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-KEEP-001",
+		FullName:              "Protected Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000002",
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, true, 0)
+	if err != nil {
+		t.Fatalf("create admission with payment: %v", err)
+	}
+	if err := app.deleteAdmission(admissionID); err == nil {
+		t.Fatal("expected delete admission with finance history to be rejected")
 	}
 }
 
