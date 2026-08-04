@@ -906,6 +906,25 @@ func financeTransactionRepairableOrphan(transaction *FinanceTransaction) bool {
 	}
 }
 
+func populateFinanceTransactionVoidState(queryer sqlQueryer, transaction *FinanceTransaction) error {
+	if transaction == nil {
+		return nil
+	}
+	transaction.GeneralVoidAllowed = financeTransactionAllowsGeneralVoid(transaction)
+	if transaction.GeneralVoidAllowed || transaction.Voided {
+		return nil
+	}
+	sourceExists, err := financeTransactionSourceExistsQuery(queryer, transaction)
+	if err != nil {
+		return err
+	}
+	transaction.OrphanedSource = !sourceExists && financeTransactionRepairableOrphan(transaction)
+	if transaction.OrphanedSource {
+		transaction.GeneralVoidAllowed = true
+	}
+	return nil
+}
+
 func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {

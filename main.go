@@ -496,6 +496,8 @@ type FinanceTransaction struct {
 	RecordedByUser     int64
 	RecordedByUserName string
 	Voided             bool
+	GeneralVoidAllowed bool
+	OrphanedSource     bool
 	VoidedAt           time.Time
 	VoidedByUserID     int64
 	VoidReason         string
@@ -10229,6 +10231,9 @@ func (a *App) listFinanceTransactionsFiltered(filter FinanceFilter) ([]FinanceTr
 			transaction.UpdatedAt = transaction.CreatedAt
 		}
 		transaction.MoneyIn, transaction.MoneyOut = financeAmountParts(transaction.Amount)
+		if err := populateFinanceTransactionVoidState(a.db, &transaction); err != nil {
+			return nil, err
+		}
 		transactions = append(transactions, transaction)
 	}
 	return transactions, rows.Err()
@@ -13282,6 +13287,9 @@ func (a *App) findFinanceTransactionByID(transactionID int64) (*FinanceTransacti
 		transaction.UpdatedAt = transaction.CreatedAt
 	}
 	transaction.MoneyIn, transaction.MoneyOut = financeAmountParts(transaction.Amount)
+	if err := populateFinanceTransactionVoidState(a.db, &transaction); err != nil {
+		return nil, err
+	}
 	return &transaction, nil
 }
 
