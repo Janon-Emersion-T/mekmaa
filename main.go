@@ -598,7 +598,14 @@ type FinanceFilter struct {
 	Reference       string
 	Search          string
 	ExportKind      string
+	Page            int
+	Limit           int
 }
+
+const (
+	defaultFinanceLedgerPageSize = 50
+	maxFinanceLedgerPageSize     = 200
+)
 
 type FinanceSummary struct {
 	CashBalance              float64
@@ -1229,12 +1236,17 @@ type TemplateData struct {
 	SelectedEvent                   *Event
 	EventMode                       string
 	FinanceTransactions             []FinanceTransaction
+	FinanceTransactionsTotal        int
 	FinanceAccounts                 []FinanceAccount
 	FinanceTransfers                []FinanceTransfer
 	CashReconciliations             []CashReconciliation
 	SelectedFinanceAccount          *FinanceAccount
 	SelectedFinance                 *FinanceTransaction
 	FinanceFilter                   FinanceFilter
+	FinanceLedgerHasPreviousPage    bool
+	FinanceLedgerHasNextPage        bool
+	FinanceLedgerPreviousPageURL    string
+	FinanceLedgerNextPageURL        string
 	FinanceSummary                  FinanceSummary
 	BookingFinancials               []BookingFinancial
 	BookingPaymentCollections       []BookingPaymentCollection
@@ -3304,51 +3316,55 @@ func isUniqueConstraintError(err error) bool {
 func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
 	filter := financeFilterFromRequest(r)
-	financeTransactions, err := a.listFinanceTransactionsFiltered(filter)
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	financeTransactions, totalTransactions, err := a.listFinanceTransactionsPage(ctx, filter)
 	if err != nil {
-		log.Printf("list finance transactions: %v", err)
+		log.Printf("finance management load failed: op=list finance transactions duration=%s page=%d limit=%d err=%v", time.Since(started), filter.Page, filter.Limit, err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	allTransactions, err := a.listFinanceTransactions()
 	if err != nil {
-		log.Printf("list finance summary transactions: %v", err)
+		log.Printf("finance management load failed: op=list finance summary transactions duration=%s err=%v", time.Since(started), err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	bookingFinancials, err := a.listBookingFinancials()
 	if err != nil {
-		log.Printf("list booking financials: %v", err)
+		log.Printf("finance management load failed: op=list booking financials duration=%s err=%v", time.Since(started), err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	monthlyRows, err := a.listStudentPaymentRows(time.Now().Format("2006-01"))
 	if err != nil {
-		log.Printf("list monthly receivables: %v", err)
+		log.Printf("finance management load failed: op=list monthly receivables duration=%s err=%v", time.Since(started), err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	referrals, err := a.listBookingReferrals()
 	if err != nil {
-		log.Printf("list referral payables: %v", err)
+		log.Printf("finance management load failed: op=list referral payables duration=%s err=%v", time.Since(started), err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	accounts, err := a.listFinanceAccounts(true)
 	if err != nil {
-		log.Printf("list finance accounts: %v", err)
+		log.Printf("finance management load failed: op=list finance accounts duration=%s err=%v", time.Since(started), err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	transfers, err := a.listFinanceTransfers()
 	if err != nil {
-		log.Printf("list finance transfers: %v", err)
+		log.Printf("finance management load failed: op=list finance transfers duration=%s err=%v", time.Since(started), err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	reconciliations, err := a.listCashReconciliations(10)
 	if err != nil {
-		log.Printf("list cash reconciliations: %v", err)
+		log.Printf("finance management load failed: op=list cash reconciliations duration=%s err=%v", time.Since(started), err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -3357,10 +3373,15 @@ func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Title = "Finance"
 	data.Description = "Monitor cash, bank, receivables, expenses, transfers, reconciliations, and payment history."
 	data.FinanceTransactions = financeTransactions
+	data.FinanceTransactionsTotal = totalTransactions
 	data.FinanceAccounts = accounts
 	data.FinanceTransfers = transfers
 	data.CashReconciliations = reconciliations
 	data.FinanceFilter = filter
+	data.FinanceLedgerHasPreviousPage = filter.Page > 1
+	data.FinanceLedgerHasNextPage = filter.Page*filter.Limit < totalTransactions
+	data.FinanceLedgerPreviousPageURL = financeFilterPageURL(r, filter, filter.Page-1)
+	data.FinanceLedgerNextPageURL = financeFilterPageURL(r, filter, filter.Page+1)
 	data.BookingFinancials = bookingFinancials
 	data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
 	data.FinanceSummary = buildFinanceSummary(accounts, allTransactions, bookingFinancials, monthlyRows, referrals, reconciliations)
@@ -3506,7 +3527,10 @@ func (a *App) voidBookingPaymentHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *App) financeExportHandler(w http.ResponseWriter, r *http.Request) {
-	transactions, err := a.listFinanceTransactionsFiltered(financeFilterFromRequest(r))
+	filter := financeFilterFromRequest(r)
+	filter.Page = 0
+	filter.Limit = 0
+	transactions, err := a.listFinanceTransactionsFiltered(filter)
 	if err != nil {
 		http.Error(w, "could not export finance transactions", http.StatusInternalServerError)
 		return
@@ -10077,10 +10101,103 @@ func (a *App) deleteTrainingProgram(programID int64) error {
 }
 
 func (a *App) listFinanceTransactions() ([]FinanceTransaction, error) {
-	return a.listFinanceTransactionsFiltered(FinanceFilter{})
+	return a.listFinanceTransactionsWithOptions(context.Background(), FinanceFilter{}, false, false)
 }
 
 func (a *App) listFinanceTransactionsFiltered(filter FinanceFilter) ([]FinanceTransaction, error) {
+	return a.listFinanceTransactionsWithOptions(context.Background(), filter, false, false)
+}
+
+func (a *App) listFinanceTransactionsPage(ctx context.Context, filter FinanceFilter) ([]FinanceTransaction, int, error) {
+	transactions, err := a.listFinanceTransactionsWithOptions(ctx, filter, true, true)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := a.countFinanceTransactions(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	return transactions, total, nil
+}
+
+func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter FinanceFilter, paginate bool, includeVoidState bool) ([]FinanceTransaction, error) {
+	query, args := financeTransactionsBaseQuery(filter)
+	query += ` ORDER BY ft.recorded_at DESC, ft.id DESC`
+	if paginate {
+		page, limit := normalizedFinancePage(filter.Page, filter.Limit)
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, limit, (page-1)*limit)
+	}
+
+	rows, err := a.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var transactions []FinanceTransaction
+	for rows.Next() {
+		var transaction FinanceTransaction
+		var voidedAt sql.NullTime
+		var updatedAtRaw string
+		if err := rows.Scan(
+			&transaction.ID,
+			&transaction.ReceiptNumber,
+			&transaction.ReferenceNumber,
+			&transaction.Category,
+			&transaction.TransactionType,
+			&transaction.ReferenceType,
+			&transaction.ReferenceID,
+			&transaction.SourceType,
+			&transaction.SourceID,
+			&transaction.FinanceAccountID,
+			&transaction.FinanceAccountName,
+			&transaction.FinanceAccountType,
+			&transaction.TransferGroupID,
+			&transaction.PersonName,
+			&transaction.Description,
+			&transaction.Notes,
+			&transaction.PaymentMethod,
+			&transaction.Amount,
+			&transaction.RecordedByUser,
+			&transaction.RecordedByUserName,
+			&transaction.RecordedAt,
+			&transaction.CreatedAt,
+			&updatedAtRaw,
+			&voidedAt,
+			&transaction.VoidedByUserID,
+			&transaction.VoidReason,
+		); err != nil {
+			return nil, err
+		}
+		if voidedAt.Valid {
+			transaction.Voided = true
+			transaction.VoidedAt = voidedAt.Time
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(updatedAtRaw)); err == nil {
+			transaction.UpdatedAt = parsed
+		} else if parsed, err := time.Parse("2006-01-02 15:04:05.999999999Z07:00", strings.TrimSpace(updatedAtRaw)); err == nil {
+			transaction.UpdatedAt = parsed
+		} else if parsed, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(updatedAtRaw)); err == nil {
+			transaction.UpdatedAt = parsed
+		} else {
+			transaction.UpdatedAt = transaction.CreatedAt
+		}
+		transaction.MoneyIn, transaction.MoneyOut = financeAmountParts(transaction.Amount)
+		transactions = append(transactions, transaction)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if includeVoidState {
+		if err := populateFinanceTransactionVoidStates(ctx, a.db, transactions); err != nil {
+			return nil, err
+		}
+	}
+	return transactions, nil
+}
+
+func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 	query := `
 		SELECT ft.id,
 		       ft.receipt_number,
@@ -10174,69 +10291,16 @@ func (a *App) listFinanceTransactionsFiltered(filter FinanceFilter) ([]FinanceTr
 		term := "%" + strings.ToLower(filter.Search) + "%"
 		args = append(args, term, term, term, term, term, term)
 	}
-	query += ` ORDER BY ft.recorded_at DESC, ft.id DESC`
+	return query, args
+}
 
-	rows, err := a.db.Query(query, args...)
-	if err != nil {
-		return nil, err
+func (a *App) countFinanceTransactions(ctx context.Context, filter FinanceFilter) (int, error) {
+	query, args := financeTransactionsBaseQuery(filter)
+	var count int
+	if err := a.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (`+query+`) AS finance_transaction_count`, args...).Scan(&count); err != nil {
+		return 0, err
 	}
-	defer rows.Close()
-
-	var transactions []FinanceTransaction
-	for rows.Next() {
-		var transaction FinanceTransaction
-		var voidedAt sql.NullTime
-		var updatedAtRaw string
-		if err := rows.Scan(
-			&transaction.ID,
-			&transaction.ReceiptNumber,
-			&transaction.ReferenceNumber,
-			&transaction.Category,
-			&transaction.TransactionType,
-			&transaction.ReferenceType,
-			&transaction.ReferenceID,
-			&transaction.SourceType,
-			&transaction.SourceID,
-			&transaction.FinanceAccountID,
-			&transaction.FinanceAccountName,
-			&transaction.FinanceAccountType,
-			&transaction.TransferGroupID,
-			&transaction.PersonName,
-			&transaction.Description,
-			&transaction.Notes,
-			&transaction.PaymentMethod,
-			&transaction.Amount,
-			&transaction.RecordedByUser,
-			&transaction.RecordedByUserName,
-			&transaction.RecordedAt,
-			&transaction.CreatedAt,
-			&updatedAtRaw,
-			&voidedAt,
-			&transaction.VoidedByUserID,
-			&transaction.VoidReason,
-		); err != nil {
-			return nil, err
-		}
-		if voidedAt.Valid {
-			transaction.Voided = true
-			transaction.VoidedAt = voidedAt.Time
-		}
-		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(updatedAtRaw)); err == nil {
-			transaction.UpdatedAt = parsed
-		} else if parsed, err := time.Parse("2006-01-02 15:04:05.999999999Z07:00", strings.TrimSpace(updatedAtRaw)); err == nil {
-			transaction.UpdatedAt = parsed
-		} else if parsed, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(updatedAtRaw)); err == nil {
-			transaction.UpdatedAt = parsed
-		} else {
-			transaction.UpdatedAt = transaction.CreatedAt
-		}
-		transaction.MoneyIn, transaction.MoneyOut = financeAmountParts(transaction.Amount)
-		if err := populateFinanceTransactionVoidState(a.db, &transaction); err != nil {
-			return nil, err
-		}
-		transactions = append(transactions, transaction)
-	}
-	return transactions, rows.Err()
+	return count, nil
 }
 
 func (a *App) listOutstandingBookingFinancials() ([]BookingFinancial, error) {
@@ -13207,7 +13271,11 @@ func (a *App) findAdmissionByIDTx(
 }
 
 func (a *App) findFinanceTransactionByID(transactionID int64) (*FinanceTransaction, error) {
-	row := a.db.QueryRow(`
+	return a.findFinanceTransactionByIDContext(context.Background(), transactionID)
+}
+
+func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transactionID int64) (*FinanceTransaction, error) {
+	row := a.db.QueryRowContext(ctx, `
 		SELECT ft.id,
 		       ft.receipt_number,
 		       COALESCE(ft.reference_number, ft.receipt_number),
@@ -13287,10 +13355,11 @@ func (a *App) findFinanceTransactionByID(transactionID int64) (*FinanceTransacti
 		transaction.UpdatedAt = transaction.CreatedAt
 	}
 	transaction.MoneyIn, transaction.MoneyOut = financeAmountParts(transaction.Amount)
-	if err := populateFinanceTransactionVoidState(a.db, &transaction); err != nil {
+	transactions := []FinanceTransaction{transaction}
+	if err := populateFinanceTransactionVoidStates(ctx, a.db, transactions); err != nil {
 		return nil, err
 	}
-	return &transaction, nil
+	return &transactions[0], nil
 }
 
 func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recordedByUserID int64) (int64, error) {
@@ -14175,7 +14244,9 @@ ON court_closures(activity, active, closure_date)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_admission_pricing_type ON admission_pricing(practice_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_recorded_at ON finance_transactions(recorded_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_reference ON finance_transactions(reference_type, reference_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_admissions_finance_transaction_id ON admissions(finance_transaction_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_student_month ON student_monthly_payments(admission_id, payment_month)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_finance_transaction_id ON student_monthly_payments(finance_transaction_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_month ON student_monthly_payments(payment_month, collected_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date, start_time)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_published ON events(published, event_date)`,
@@ -21240,6 +21311,10 @@ func reportBarWidth(value, maxValue float64) string {
 }
 
 func financeFilterFromRequest(r *http.Request) FinanceFilter {
+	page, limit := normalizedFinancePage(
+		parseIntQuery(r.URL.Query().Get("page")),
+		parseIntQuery(r.URL.Query().Get("limit")),
+	)
 	filter := FinanceFilter{
 		From:            strings.TrimSpace(r.URL.Query().Get("from")),
 		To:              strings.TrimSpace(r.URL.Query().Get("to")),
@@ -21254,6 +21329,8 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 		Reference:       strings.TrimSpace(r.URL.Query().Get("reference")),
 		Search:          strings.TrimSpace(r.URL.Query().Get("search")),
 		ExportKind:      strings.ToLower(strings.TrimSpace(r.URL.Query().Get("kind"))),
+		Page:            page,
+		Limit:           limit,
 	}
 	if _, err := time.Parse("2006-01-02", filter.From); err != nil {
 		filter.From = ""
@@ -21271,6 +21348,37 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 		filter.PaymentMethod = ""
 	}
 	return filter
+}
+
+func normalizedFinancePage(page, limit int) (int, int) {
+	if limit <= 0 {
+		limit = defaultFinanceLedgerPageSize
+	}
+	if limit > maxFinanceLedgerPageSize {
+		limit = maxFinanceLedgerPageSize
+	}
+	if page <= 0 {
+		page = 1
+	}
+	return page, limit
+}
+
+func financeFilterPageURL(r *http.Request, filter FinanceFilter, page int) string {
+	if page < 1 {
+		page = 1
+	}
+	query := r.URL.Query()
+	query.Set("page", strconv.Itoa(page))
+	query.Set("limit", strconv.Itoa(filter.Limit))
+	return "/admin/finance?" + query.Encode() + "#ledger"
+}
+
+func parseIntQuery(value string) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 func validManualFinanceCategory(direction, category string) bool {

@@ -2208,6 +2208,163 @@ func TestGeneralFinanceVoidAllowsBrokenAdmissionLinkageRepair(t *testing.T) {
 	}
 }
 
+func TestFinanceTransactionVoidStateKeepsValidMonthlyPaymentLinked(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500, monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-MONTHLY-VALID-001",
+		FullName:              "Valid Monthly Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000010",
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	monthDate, _ := parsePaymentMonth("2026-08")
+	transactionID, err := app.collectStudentMonthlyPayment(admissionID, "2026-08", monthDate, "cash", 0)
+	if err != nil {
+		t.Fatalf("collect student monthly payment: %v", err)
+	}
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("find monthly payment transaction: %v", err)
+	}
+	if transaction.GeneralVoidAllowed || transaction.OrphanedSource {
+		t.Fatalf("valid monthly payment linkage should not be generally voidable: %#v", transaction)
+	}
+}
+
+func TestGeneralFinanceVoidAllowsBrokenMonthlyPaymentLinkageRepair(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	user := &User{ID: 7, Name: "Finance", Roles: []string{"superadmin"}, Permissions: []string{"finance.manage"}}
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500, monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-MONTHLY-BROKEN-001",
+		FullName:              "Broken Monthly Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000011",
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, user.ID)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	monthDate, _ := parsePaymentMonth("2026-08")
+	transactionID, err := app.collectStudentMonthlyPayment(admissionID, "2026-08", monthDate, "cash", user.ID)
+	if err != nil {
+		t.Fatalf("collect student monthly payment: %v", err)
+	}
+	var paymentID int64
+	if err := app.db.QueryRow(`SELECT id FROM student_monthly_payments WHERE finance_transaction_id = ?`, transactionID).Scan(&paymentID); err != nil {
+		t.Fatalf("lookup student payment row: %v", err)
+	}
+	if _, err := app.db.Exec(`
+		UPDATE student_monthly_payments
+		SET voided = 1
+		WHERE id = ?
+	`, paymentID); err != nil {
+		t.Fatalf("break student monthly payment linkage: %v", err)
+	}
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("find broken monthly payment transaction: %v", err)
+	}
+	if !transaction.GeneralVoidAllowed || !transaction.OrphanedSource {
+		t.Fatalf("broken monthly payment linkage should be repairable: %#v", transaction)
+	}
+	form := url.Values{
+		"transaction_id": {strconv.FormatInt(transactionID, 10)},
+		"void_reason":    {"broken monthly payment linkage repair"},
+		"csrf_token":     {"token"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/finance/transactions/void", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.voidFinanceTransactionHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("broken monthly repair redirect status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	transaction, err = app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("reload repaired monthly payment transaction: %v", err)
+	}
+	if !transaction.Voided {
+		t.Fatalf("broken monthly payment transaction should be voided: %#v", transaction)
+	}
+}
+
+func TestFinanceManagementHandlerPaginatesLargeLedgerWithoutHanging(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+	user := &User{ID: 7, Name: "Finance", Roles: []string{"superadmin"}, Permissions: []string{"finance.manage"}}
+	accountID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	for i := 0; i < 120; i++ {
+		recordedAt := time.Date(2026, time.August, 4, 12, 0, 0, 0, time.Local).Add(-time.Duration(i) * time.Minute)
+		if _, err := app.createManualFinanceTransactionForAccount(
+			"manual_income",
+			fmt.Sprintf("Person %03d", i),
+			fmt.Sprintf("Manual ledger entry %03d", i),
+			"",
+			accountID,
+			float64(i+1),
+			recordedAt,
+			user.ID,
+		); err != nil {
+			t.Fatalf("create manual ledger transaction %d: %v", i, err)
+		}
+	}
+
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		req := httptest.NewRequest(http.MethodGet, "/admin/finance?page=2&limit=50", nil)
+		req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+		rec := httptest.NewRecorder()
+		app.financeManagementHandler(rec, req)
+		done <- rec
+	}()
+
+	select {
+	case rec := <-done:
+		if rec.Code != http.StatusOK {
+			t.Fatalf("finance management status = %d body=%s", rec.Code, rec.Body.String())
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "50 shown of 120 matching transactions") {
+			t.Fatalf("expected paginated ledger summary, body=%s", body)
+		}
+		if !strings.Contains(body, "Manual ledger entry 050") || !strings.Contains(body, "Manual ledger entry 099") {
+			t.Fatalf("expected second page entries in body=%s", body)
+		}
+		if strings.Contains(body, "Manual ledger entry 000") || strings.Contains(body, "Manual ledger entry 119") {
+			t.Fatalf("unexpected out-of-page ledger entries in body=%s", body)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("finance management handler hung while rendering paginated ledger")
+	}
+}
+
 func TestSourceLevelVoidWorkflowsSynchronizeLedger(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	userID := int64(9)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -940,23 +941,156 @@ func financeTransactionNeedsLedgerRepairQuery(queryer sqlQueryer, transaction *F
 	}
 }
 
-func populateFinanceTransactionVoidState(queryer sqlQueryer, transaction *FinanceTransaction) error {
-	if transaction == nil {
+func populateFinanceTransactionVoidStates(ctx context.Context, db *sql.DB, transactions []FinanceTransaction) error {
+	if len(transactions) == 0 {
 		return nil
 	}
-	transaction.GeneralVoidAllowed = financeTransactionAllowsGeneralVoid(transaction)
-	if transaction.GeneralVoidAllowed || transaction.Voided {
-		return nil
+
+	admissionIDs := make([]int64, 0)
+	monthlyPaymentIDs := make([]int64, 0)
+	admissionSeen := make(map[int64]bool)
+	monthlySeen := make(map[int64]bool)
+
+	for i := range transactions {
+		transactions[i].GeneralVoidAllowed = financeTransactionAllowsGeneralVoid(&transactions[i])
+		transactions[i].OrphanedSource = false
+		if transactions[i].GeneralVoidAllowed || transactions[i].Voided {
+			continue
+		}
+		switch transactions[i].SourceType {
+		case "admission":
+			if !admissionSeen[transactions[i].SourceID] {
+				admissionSeen[transactions[i].SourceID] = true
+				admissionIDs = append(admissionIDs, transactions[i].SourceID)
+			}
+		case "student_monthly_payment":
+			if !monthlySeen[transactions[i].SourceID] {
+				monthlySeen[transactions[i].SourceID] = true
+				monthlyPaymentIDs = append(monthlyPaymentIDs, transactions[i].SourceID)
+			}
+		}
 	}
-	needsRepair, err := financeTransactionNeedsLedgerRepairQuery(queryer, transaction)
+
+	admissionState, err := loadAdmissionLedgerRepairState(ctx, db, admissionIDs)
 	if err != nil {
 		return err
 	}
-	transaction.OrphanedSource = needsRepair && financeTransactionRepairableOrphan(transaction)
-	if transaction.OrphanedSource {
-		transaction.GeneralVoidAllowed = true
+	monthlyState, err := loadStudentPaymentLedgerRepairState(ctx, db, monthlyPaymentIDs)
+	if err != nil {
+		return err
+	}
+
+	for i := range transactions {
+		if transactions[i].GeneralVoidAllowed || transactions[i].Voided || !financeTransactionRepairableOrphan(&transactions[i]) {
+			continue
+		}
+		needsRepair := false
+		switch transactions[i].SourceType {
+		case "admission":
+			state, ok := admissionState[transactions[i].SourceID]
+			needsRepair = !ok || !state.PaymentCollected || state.FinanceTransactionID != transactions[i].ID
+		case "student_monthly_payment":
+			state, ok := monthlyState[transactions[i].SourceID]
+			needsRepair = !ok || state.Voided || state.FinanceTransactionID != transactions[i].ID
+		}
+		transactions[i].OrphanedSource = needsRepair
+		if needsRepair {
+			transactions[i].GeneralVoidAllowed = true
+		}
 	}
 	return nil
+}
+
+type admissionLedgerRepairState struct {
+	FinanceTransactionID int64
+	PaymentCollected     bool
+}
+
+func loadAdmissionLedgerRepairState(ctx context.Context, db *sql.DB, admissionIDs []int64) (map[int64]admissionLedgerRepairState, error) {
+	state := make(map[int64]admissionLedgerRepairState, len(admissionIDs))
+	if len(admissionIDs) == 0 {
+		return state, nil
+	}
+	query, args := int64INClause(`
+		SELECT id, COALESCE(finance_transaction_id, 0), COALESCE(payment_collected, 0)
+		FROM admissions
+		WHERE id IN (%s)
+	`, admissionIDs)
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			id                   int64
+			financeTransactionID int64
+			paymentCollected     int
+		)
+		if err := rows.Scan(&id, &financeTransactionID, &paymentCollected); err != nil {
+			return nil, err
+		}
+		state[id] = admissionLedgerRepairState{
+			FinanceTransactionID: financeTransactionID,
+			PaymentCollected:     paymentCollected == 1,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+type studentPaymentLedgerRepairState struct {
+	FinanceTransactionID int64
+	Voided               bool
+}
+
+func loadStudentPaymentLedgerRepairState(ctx context.Context, db *sql.DB, paymentIDs []int64) (map[int64]studentPaymentLedgerRepairState, error) {
+	state := make(map[int64]studentPaymentLedgerRepairState, len(paymentIDs))
+	if len(paymentIDs) == 0 {
+		return state, nil
+	}
+	query, args := int64INClause(`
+		SELECT id, COALESCE(finance_transaction_id, 0), COALESCE(voided, 0)
+		FROM student_monthly_payments
+		WHERE id IN (%s)
+	`, paymentIDs)
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			id                   int64
+			financeTransactionID int64
+			voided               int
+		)
+		if err := rows.Scan(&id, &financeTransactionID, &voided); err != nil {
+			return nil, err
+		}
+		state[id] = studentPaymentLedgerRepairState{
+			FinanceTransactionID: financeTransactionID,
+			Voided:               voided == 1,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+func int64INClause(template string, values []int64) (string, []any) {
+	placeholders := make([]string, 0, len(values))
+	args := make([]any, 0, len(values))
+	for _, value := range values {
+		placeholders = append(placeholders, "?")
+		args = append(args, value)
+	}
+	return fmt.Sprintf(template, strings.Join(placeholders, ",")), args
 }
 
 func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUserID int64) error {
@@ -2063,18 +2197,15 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 	}
 	transactionID := parseInt64Query(r.FormValue("transaction_id"))
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
-	transaction, err := a.findFinanceTransactionByID(transactionID)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	transaction, err := a.findFinanceTransactionByIDContext(ctx, transactionID)
 	if err != nil {
 		http.Error(w, "finance transaction not found", http.StatusNotFound)
 		return
 	}
 	if !financeTransactionAllowsGeneralVoid(transaction) {
-		needsRepair, err := financeTransactionNeedsLedgerRepairQuery(a.db, transaction)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-		if needsRepair && financeTransactionRepairableOrphan(transaction) {
+		if transaction.OrphanedSource && financeTransactionRepairableOrphan(transaction) {
 			tx, err := a.db.Begin()
 			if err != nil {
 				http.Error(w, "internal server error", http.StatusInternalServerError)
