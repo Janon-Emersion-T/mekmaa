@@ -2145,6 +2145,69 @@ func TestGeneralFinanceVoidAllowsOrphanedAdmissionTransactionRepair(t *testing.T
 	}
 }
 
+func TestGeneralFinanceVoidAllowsBrokenAdmissionLinkageRepair(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	user := &User{ID: 7, Name: "Finance", Roles: []string{"superadmin"}, Permissions: []string{"finance.manage"}}
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-BROKEN-001",
+		FullName:              "Broken Link Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000002",
+	}
+	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, user.ID)
+	if err != nil {
+		t.Fatalf("create admission with payment: %v", err)
+	}
+	if _, err := app.db.Exec(`
+		UPDATE admissions
+		SET payment_collected = 0,
+		    payment_collected_at = NULL,
+		    admission_payment_amount = 0,
+		    finance_transaction_id = NULL,
+		    updated_at = ?
+		WHERE id = ?
+	`, time.Now().UTC(), admissionID); err != nil {
+		t.Fatalf("break admission linkage: %v", err)
+	}
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("load broken-link finance transaction: %v", err)
+	}
+	if !transaction.GeneralVoidAllowed || !transaction.OrphanedSource {
+		t.Fatalf("broken admission linkage should be ledger-repairable: %#v", transaction)
+	}
+	form := url.Values{
+		"transaction_id": {strconv.FormatInt(transactionID, 10)},
+		"void_reason":    {"broken linkage repair"},
+		"csrf_token":     {"token"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/finance/transactions/void", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.voidFinanceTransactionHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("broken-link repair redirect status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	transaction, err = app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("reload repaired finance transaction: %v", err)
+	}
+	if !transaction.Voided {
+		t.Fatalf("broken-link finance transaction should be voided: %#v", transaction)
+	}
+}
+
 func TestSourceLevelVoidWorkflowsSynchronizeLedger(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	userID := int64(9)

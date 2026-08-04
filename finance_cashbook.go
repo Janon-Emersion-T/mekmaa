@@ -906,6 +906,40 @@ func financeTransactionRepairableOrphan(transaction *FinanceTransaction) bool {
 	}
 }
 
+func financeTransactionNeedsLedgerRepairQuery(queryer sqlQueryer, transaction *FinanceTransaction) (bool, error) {
+	if transaction == nil {
+		return false, errors.New("finance transaction is required")
+	}
+	switch transaction.SourceType {
+	case "admission":
+		var count int
+		if err := queryer.QueryRow(`
+			SELECT COUNT(*)
+			FROM admissions
+			WHERE id = ?
+			  AND payment_collected = 1
+			  AND COALESCE(finance_transaction_id, 0) = ?
+		`, transaction.SourceID, transaction.ID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count == 0, nil
+	case "student_monthly_payment":
+		var count int
+		if err := queryer.QueryRow(`
+			SELECT COUNT(*)
+			FROM student_monthly_payments
+			WHERE id = ?
+			  AND voided = 0
+			  AND finance_transaction_id = ?
+		`, transaction.SourceID, transaction.ID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count == 0, nil
+	default:
+		return false, nil
+	}
+}
+
 func populateFinanceTransactionVoidState(queryer sqlQueryer, transaction *FinanceTransaction) error {
 	if transaction == nil {
 		return nil
@@ -914,11 +948,11 @@ func populateFinanceTransactionVoidState(queryer sqlQueryer, transaction *Financ
 	if transaction.GeneralVoidAllowed || transaction.Voided {
 		return nil
 	}
-	sourceExists, err := financeTransactionSourceExistsQuery(queryer, transaction)
+	needsRepair, err := financeTransactionNeedsLedgerRepairQuery(queryer, transaction)
 	if err != nil {
 		return err
 	}
-	transaction.OrphanedSource = !sourceExists && financeTransactionRepairableOrphan(transaction)
+	transaction.OrphanedSource = needsRepair && financeTransactionRepairableOrphan(transaction)
 	if transaction.OrphanedSource {
 		transaction.GeneralVoidAllowed = true
 	}
@@ -2035,12 +2069,12 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !financeTransactionAllowsGeneralVoid(transaction) {
-		sourceExists, err := financeTransactionSourceExistsQuery(a.db, transaction)
+		needsRepair, err := financeTransactionNeedsLedgerRepairQuery(a.db, transaction)
 		if err != nil {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
-		if !sourceExists && financeTransactionRepairableOrphan(transaction) {
+		if needsRepair && financeTransactionRepairableOrphan(transaction) {
 			tx, err := a.db.Begin()
 			if err != nil {
 				http.Error(w, "internal server error", http.StatusInternalServerError)
