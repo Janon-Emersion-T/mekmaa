@@ -1,72 +1,11 @@
 {{define "finance-receipt"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
-<section class="receipt-page w-full max-w-none">
-  <style>
-    @page {
-      size: 4in auto;
-      margin: 0;
-    }
+<section class="receipt-print-page">
+  {{template "receipt-print-styles" .}}
 
-    .thermal-receipt {
-      width: 100%;
-      max-width: 4in;
-    }
-
-    .receipt-divider {
-      border-top: 1px dashed #0f172a;
-    }
-
-    @media print {
-      html,
-      body {
-        width: 4in !important;
-        min-width: 4in !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        background: #ffffff !important;
-      }
-
-      body * {
-        visibility: hidden !important;
-      }
-
-      .thermal-receipt,
-      .thermal-receipt * {
-        visibility: visible !important;
-      }
-
-      .thermal-receipt {
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 4in !important;
-        max-width: 4in !important;
-        margin: 0 !important;
-        padding: 0.16in !important;
-        border: 0 !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        background: #ffffff !important;
-        color: #000000 !important;
-      }
-
-      .thermal-receipt,
-      .thermal-receipt * {
-        color: #000000 !important;
-      }
-
-      .receipt-logo {
-        filter: grayscale(1) contrast(1.25);
-      }
-
-      .receipt-actions {
-        display: none !important;
-      }
-    }
-  </style>
-
-  <div class="thermal-receipt mx-auto overflow-hidden rounded-[1.5rem] border border-slate/10 bg-white p-5 text-obsidian shadow-sm">
+  <div class="receipt-print-shell">
+  <div class="receipt-printable mx-auto overflow-hidden rounded-[1.5rem] border border-slate/10 bg-white p-5 text-obsidian shadow-sm">
     <div class="flex items-center justify-center gap-3 pb-3">
       <img src="/images/mekmaa-private-limited.jpeg" alt="Mekmaa Private Limited" class="receipt-logo h-14 max-w-[44%] rounded-lg object-contain" />
       <div class="h-11 w-px bg-slate/20"></div>
@@ -245,7 +184,10 @@
     {{end}}
   </div>
 
-  <div class="receipt-actions mx-auto mt-5 flex max-w-[4in] flex-col gap-3 sm:flex-row">
+  </div>
+  </div>
+
+  <div class="receipt-actions no-print mx-auto mt-5 flex max-w-md flex-col gap-3 sm:flex-row">
     <button type="button" onclick="window.print()" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Print receipt</button>
 
     <a href="{{if eq .SelectedFinance.Category "student_monthly_payment"}}/admin/student-payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}/admin/referrals{{else if eq .SelectedFinance.Category "admission_payment"}}/admin/admissions{{else if and .ReceiptBookingSchedule (ne .ReceiptBookingSchedule.SlotDate "")}}/admin/bookings?action=view&id={{.ReceiptBookingSchedule.ID}}&date={{.ReceiptBookingSchedule.SlotDate}}#schedule-view{{else}}/admin/finance{{end}}" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud">

@@ -602,9 +602,18 @@ type FinanceFilter struct {
 	Limit           int
 }
 
+type AdmissionsFilter struct {
+	Search    string
+	Direction string
+	Page      int
+	Limit     int
+}
+
 const (
 	defaultFinanceLedgerPageSize = 50
 	maxFinanceLedgerPageSize     = 200
+	defaultAdmissionsPageSize   = 25
+	maxAdmissionsPageSize       = 100
 )
 
 type FinanceSummary struct {
@@ -1193,6 +1202,17 @@ type TemplateData struct {
 	Permissions                     []string
 	PermissionGroups                []PermissionGroup
 	Admissions                      []Admission
+	AdmissionsTotal                 int
+	AdmissionsStart                 int
+	AdmissionsEnd                   int
+	AdmissionsTotalPages            int
+	AdmissionsPageNumbers           []int
+	AdmissionsHasPreviousPage       bool
+	AdmissionsHasNextPage           bool
+	AdmissionsPreviousPageURL       string
+	AdmissionsNextPageURL           string
+	AdmissionsPageBaseURL           string
+	AdmissionsFilter                AdmissionsFilter
 	SelectedAdmission               *Admission
 	AdmissionMode                   string
 	StudentGroups                   []StudentGroup
@@ -2770,7 +2790,8 @@ func (a *App) roleManagementHandler(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	admissions, err := a.listAdmissions()
+	filter := admissionsFilterFromRequest(r)
+	admissions, totalAdmissions, err := a.listAdmissionsFiltered(filter)
 	if err != nil {
 		log.Printf("list admissions: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -2787,6 +2808,19 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 	data.Title = "Admissions Management"
 	data.Description = "Manage admissions."
 	data.Admissions = admissions
+	data.AdmissionsTotal = totalAdmissions
+	data.AdmissionsFilter = filter
+	data.AdmissionsTotalPages = admissionsTotalPages(totalAdmissions, filter.Limit)
+	data.AdmissionsPageNumbers = admissionsPageWindow(filter.Page, data.AdmissionsTotalPages)
+	data.AdmissionsHasPreviousPage = filter.Page > 1
+	data.AdmissionsHasNextPage = filter.Page < data.AdmissionsTotalPages
+	data.AdmissionsPreviousPageURL = admissionsFilterPageURL(r, filter, filter.Page-1)
+	data.AdmissionsNextPageURL = admissionsFilterPageURL(r, filter, filter.Page+1)
+	data.AdmissionsPageBaseURL = admissionsFilterBaseURL(r, filter)
+	if totalAdmissions > 0 {
+		data.AdmissionsStart = (filter.Page-1)*filter.Limit + 1
+		data.AdmissionsEnd = data.AdmissionsStart + len(admissions) - 1
+	}
 	data.TrainingPrograms = trainingPrograms
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
@@ -8399,6 +8433,126 @@ func (a *App) listAdmissions() ([]Admission, error) {
 	}
 
 	return admissions, rows.Err()
+}
+
+func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int, error) {
+	whereParts := make([]string, 0, 1)
+	args := make([]any, 0, 8)
+
+	if filter.Search != "" {
+		searchLike := "%" + strings.ToLower(filter.Search) + "%"
+		whereParts = append(whereParts, `(LOWER(COALESCE(a.student_id, '')) LIKE ? OR LOWER(COALESCE(a.full_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_contact_number, '')) LIKE ?)`)
+		args = append(args, searchLike, searchLike, searchLike, searchLike)
+	}
+
+	whereSQL := ""
+	if len(whereParts) > 0 {
+		whereSQL = " WHERE " + strings.Join(whereParts, " AND ")
+	}
+
+	var total int
+	countQuery := `
+		SELECT COUNT(*)
+		FROM admissions a
+	` + whereSQL
+	if err := a.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	orderDirection := "ASC"
+	if filter.Direction == "desc" {
+		orderDirection = "DESC"
+	}
+
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, filter.Limit, (filter.Page-1)*filter.Limit)
+
+	rows, err := a.db.Query(`
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.training_program_id, 0),
+			COALESCE(
+				tp.name,
+				CASE
+					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
+					ELSE ''
+				END
+			),
+			a.address,
+			a.passport_number,
+			a.school,
+			a.guardian_name,
+			a.guardian_relationship,
+			a.guardian_contact_number,
+			a.guardian_alternative_contact_number,
+			a.medical_information,
+			COALESCE(a.payment_collected, 0),
+			a.payment_collected_at,
+			COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0),
+			a.created_at
+		FROM admissions a
+		LEFT JOIN training_programs tp
+			ON tp.id = a.training_program_id
+	`+whereSQL+`
+		ORDER BY
+			LOWER(COALESCE(a.student_id, '')) `+orderDirection+`,
+			a.created_at `+orderDirection+`,
+			a.id `+orderDirection+`
+		LIMIT ? OFFSET ?
+	`, queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	admissions := make([]Admission, 0, filter.Limit)
+	for rows.Next() {
+		var admission Admission
+		var paymentCollected int
+		var paymentCollectedAt sql.NullTime
+
+		if err := rows.Scan(
+			&admission.ID,
+			&admission.StudentID,
+			&admission.FullName,
+			&admission.AdmissionDate,
+			&admission.DateOfBirth,
+			&admission.Gender,
+			&admission.PracticeType,
+			&admission.TrainingProgramID,
+			&admission.TrainingProgramName,
+			&admission.Address,
+			&admission.PassportNumber,
+			&admission.School,
+			&admission.GuardianName,
+			&admission.GuardianRelationship,
+			&admission.GuardianContactNumber,
+			&admission.GuardianAlternativePhone,
+			&admission.MedicalInformation,
+			&paymentCollected,
+			&paymentCollectedAt,
+			&admission.AdmissionPaymentAmount,
+			&admission.FinanceTransactionID,
+			&admission.CreatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+
+		admission.PaymentCollected = paymentCollected > 0
+		if paymentCollectedAt.Valid {
+			admission.PaymentCollectedAt = paymentCollectedAt.Time
+		}
+		admissions = append(admissions, admission)
+	}
+
+	return admissions, total, rows.Err()
 }
 
 func (a *App) listEvents() ([]Event, error) {
@@ -21350,12 +21504,42 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 	return filter
 }
 
+func admissionsFilterFromRequest(r *http.Request) AdmissionsFilter {
+	page, limit := normalizedAdmissionsPage(
+		parseIntQuery(r.URL.Query().Get("page")),
+		parseIntQuery(r.URL.Query().Get("limit")),
+	)
+	filter := AdmissionsFilter{
+		Search:    strings.TrimSpace(r.URL.Query().Get("search")),
+		Direction: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction"))),
+		Page:      page,
+		Limit:     limit,
+	}
+	if filter.Direction != "desc" {
+		filter.Direction = "asc"
+	}
+	return filter
+}
+
 func normalizedFinancePage(page, limit int) (int, int) {
 	if limit <= 0 {
 		limit = defaultFinanceLedgerPageSize
 	}
 	if limit > maxFinanceLedgerPageSize {
 		limit = maxFinanceLedgerPageSize
+	}
+	if page <= 0 {
+		page = 1
+	}
+	return page, limit
+}
+
+func normalizedAdmissionsPage(page, limit int) (int, int) {
+	if limit <= 0 {
+		limit = defaultAdmissionsPageSize
+	}
+	if limit > maxAdmissionsPageSize {
+		limit = maxAdmissionsPageSize
 	}
 	if page <= 0 {
 		page = 1
@@ -21371,6 +21555,94 @@ func financeFilterPageURL(r *http.Request, filter FinanceFilter, page int) strin
 	query.Set("page", strconv.Itoa(page))
 	query.Set("limit", strconv.Itoa(filter.Limit))
 	return "/admin/finance?" + query.Encode() + "#ledger"
+}
+
+func admissionsFilterPageURL(r *http.Request, filter AdmissionsFilter, page int) string {
+	if page < 1 {
+		page = 1
+	}
+	query := r.URL.Query()
+	query.Set("page", strconv.Itoa(page))
+	query.Set("limit", strconv.Itoa(filter.Limit))
+	query.Set("direction", filter.Direction)
+	if strings.TrimSpace(filter.Search) == "" {
+		query.Del("search")
+	} else {
+		query.Set("search", filter.Search)
+	}
+	return "/admin/admissions?" + query.Encode() + "#admissions-directory"
+}
+
+func admissionsFilterBaseURL(r *http.Request, filter AdmissionsFilter) string {
+	query := r.URL.Query()
+	query.Del("page")
+	query.Set("limit", strconv.Itoa(filter.Limit))
+	query.Set("direction", filter.Direction)
+	if strings.TrimSpace(filter.Search) == "" {
+		query.Del("search")
+	} else {
+		query.Set("search", filter.Search)
+	}
+	encoded := query.Encode()
+	if encoded == "" {
+		return "/admin/admissions"
+	}
+	return "/admin/admissions?" + encoded
+}
+
+func admissionsTotalPages(total, limit int) int {
+	if total <= 0 || limit <= 0 {
+		return 1
+	}
+	pages := total / limit
+	if total%limit != 0 {
+		pages++
+	}
+	if pages <= 0 {
+		return 1
+	}
+	return pages
+}
+
+func admissionsPageWindow(currentPage, totalPages int) []int {
+	if totalPages <= 0 {
+		return []int{1}
+	}
+	if currentPage <= 0 {
+		currentPage = 1
+	}
+	start := currentPage - 2
+	if start < 1 {
+		start = 1
+	}
+	end := start + 4
+	if end > totalPages {
+		end = totalPages
+	}
+	if end-start < 4 {
+		start = end - 4
+		if start < 1 {
+			start = 1
+		}
+	}
+	pages := make([]int, 0, end-start+1)
+	for page := start; page <= end; page++ {
+		pages = append(pages, page)
+	}
+	return pages
+}
+
+func admissionsPageURL(baseURL string, page int) string {
+	if page < 1 {
+		page = 1
+	}
+	separator := "&"
+	if !strings.Contains(baseURL, "?") {
+		separator = "?"
+	} else if strings.HasSuffix(baseURL, "?") || strings.HasSuffix(baseURL, "&") {
+		separator = ""
+	}
+	return baseURL + separator + "page=" + strconv.Itoa(page) + "#admissions-directory"
 }
 
 func parseIntQuery(value string) int {
@@ -21580,6 +21852,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"financeVoidWorkflowMessage":                financeVoidWorkflowMessage,
 		"financeAccountTone":                        financeAccountTone,
 		"financeCategoryLabel":                      financeCategoryLabel,
+		"admissionsPageURL":                         admissionsPageURL,
 		"paymentMonthLabel":                         paymentMonthLabel,
 		"formatDateTime":                            formatDateTime,
 		"relativeTime":                              relativeTime,
@@ -21679,6 +21952,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"templates/dashboard/src/sidebar.html",
 		"templates/dashboard/src/header.html",
 		"templates/dashboard/src/footer.html",
+		"templates/dashboard/src/receipt-print.html",
 	}
 	templates := make(map[string]*template.Template, len(pages))
 	for page, path := range pages {
