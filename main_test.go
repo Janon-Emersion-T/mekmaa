@@ -238,6 +238,36 @@ func bookingTestDataForRequestPage(user *User, schedules []SpaceSchedule, financ
 	}
 }
 
+func TestAdmissionManagementTemplateRenders(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	html := renderTemplateToString(t, templates, "admission-management", TemplateData{
+		Title:                     "Admissions Management",
+		Description:               "Manage admissions.",
+		CurrentPath:               "/admin/admissions",
+		User:                      &User{Name: "Admin", Email: "admin@example.com", Roles: []string{"admin"}, Permissions: allPermissions},
+		CSRFToken:                 "test-token",
+		Admissions:                []Admission{{ID: 1, StudentID: "STU-0001", FullName: "Test Student", AdmissionDate: "2026-08-01", DateOfBirth: "2012-01-15", Gender: "male", TrainingProgramName: "Cricket", School: "Test School", GuardianName: "Test Guardian", GuardianRelationship: "father", GuardianContactNumber: "0771234567", GuardianAlternativePhone: "0777654321"}},
+		AdmissionsTotal:           1,
+		AdmissionsStart:           1,
+		AdmissionsEnd:             1,
+		AdmissionsTotalPages:      1,
+		AdmissionsPageNumbers:     []int{1},
+		AdmissionsPageBaseURL:     "/admin/admissions?limit=25&direction=asc",
+		AdmissionsPreviousPageURL: "/admin/admissions?page=1&limit=25&direction=asc#admissions-directory",
+		AdmissionsNextPageURL:     "/admin/admissions?page=1&limit=25&direction=asc#admissions-directory",
+		AdmissionsFilter:          AdmissionsFilter{Direction: "asc", Page: 1, Limit: 25},
+		TrainingPrograms:          []TrainingProgram{{ID: 1, Name: "Cricket", Active: true, AdmissionFee: 2500}},
+	})
+
+	if !strings.Contains(html, "Current admissions") {
+		t.Fatalf("expected admissions directory to render")
+	}
+}
+
 func TestUploadStorageConfigurationAndCreation(t *testing.T) {
 	defaultRoot, err := resolveUploadRoot("")
 	if err != nil {
