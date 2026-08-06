@@ -612,8 +612,8 @@ type AdmissionsFilter struct {
 const (
 	defaultFinanceLedgerPageSize = 50
 	maxFinanceLedgerPageSize     = 200
-	defaultAdmissionsPageSize   = 25
-	maxAdmissionsPageSize       = 100
+	defaultAdmissionsPageSize    = 25
+	maxAdmissionsPageSize        = 100
 )
 
 type FinanceSummary struct {
@@ -1343,6 +1343,7 @@ var (
 	ErrBookingPaymentNeedsOverpayApproval = errors.New("booking payment exceeds the outstanding balance")
 	ErrRoleAssigned                       = errors.New("role is assigned to one or more users")
 	ErrSystemRoleProtected                = errors.New("system roles are protected")
+	ErrAdmissionHasMonthlyPaymentHistory  = errors.New("this student has monthly fee history and cannot be deleted")
 )
 
 const maxBookingCashCollection = 1000000
@@ -7240,11 +7241,16 @@ func (a *App) deleteAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.deleteAdmission(admissionID); err != nil {
 		log.Printf("delete admission: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		message := "Student could not be deleted: " + err.Error()
+		if errors.Is(err, sql.ErrNoRows) {
+			message = "Student could not be deleted: student was not found."
+		}
+		a.setFlash(w, message)
+		http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
 		return
 	}
 
-	a.setFlash(w, "Admission deleted.")
+	a.setFlash(w, "Student deleted.")
 	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
 }
 
@@ -13196,27 +13202,30 @@ func (a *App) rescheduleBookingRequest(
 }
 
 func (a *App) deleteAdmission(admissionID int64) error {
-	var protectedCount int
+	var monthlyPaymentCount int
 	if err := a.db.QueryRow(`
-		SELECT
-			COALESCE((
-				SELECT COUNT(*)
-				FROM finance_transactions
-				WHERE reference_type = 'admission' AND reference_id = ?
-			), 0)
-			+ COALESCE((
-				SELECT COUNT(*)
-				FROM student_monthly_payments
-				WHERE admission_id = ?
-			), 0)
-	`, admissionID, admissionID).Scan(&protectedCount); err != nil {
+		SELECT COUNT(*)
+		FROM student_monthly_payments
+		WHERE admission_id = ?
+		  AND COALESCE(voided, 0) = 0
+	`, admissionID).Scan(&monthlyPaymentCount); err != nil {
 		return err
 	}
-	if protectedCount > 0 {
-		return errors.New("this member has finance history and cannot be deleted")
+	if monthlyPaymentCount > 0 {
+		return ErrAdmissionHasMonthlyPaymentHistory
 	}
-	_, err := a.db.Exec(`DELETE FROM admissions WHERE id = ?`, admissionID)
-	return err
+	result, err := a.db.Exec(`DELETE FROM admissions WHERE id = ?`, admissionID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (a *App) deleteStudentGroup(groupID int64) error {

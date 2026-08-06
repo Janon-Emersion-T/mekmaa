@@ -2463,9 +2463,48 @@ func TestSourceLevelVoidWorkflowsSynchronizeLedger(t *testing.T) {
 	}
 }
 
-func TestDeleteAdmissionRejectsFinanceHistory(t *testing.T) {
+func TestDeleteAdmissionAllowsAdmissionPaymentOnlyAndLeavesLedgerVoidable(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-DEL-001",
+		FullName:              "Delete Allowed Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000002",
+	}
+	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, 0)
+	if err != nil {
+		t.Fatalf("create admission with payment: %v", err)
+	}
+	if err := app.deleteAdmission(admissionID); err != nil {
+		t.Fatalf("delete admission: %v", err)
+	}
+	if _, err := app.findAdmissionByID(admissionID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected deleted admission to be missing, got %v", err)
+	}
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("reload admission ledger transaction: %v", err)
+	}
+	if !transaction.GeneralVoidAllowed {
+		t.Fatalf("expected deleted student's advance payment to become voidable, transaction=%#v", transaction)
+	}
+	if !transaction.OrphanedSource {
+		t.Fatalf("expected deleted student's advance payment to be marked orphaned, transaction=%#v", transaction)
+	}
+}
+
+func TestDeleteAdmissionRejectsActiveMonthlyPaymentHistory(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500, monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
 		t.Fatalf("configure admission pricing: %v", err)
 	}
 	admission := Admission{
@@ -2484,8 +2523,68 @@ func TestDeleteAdmissionRejectsFinanceHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create admission with payment: %v", err)
 	}
-	if err := app.deleteAdmission(admissionID); err == nil {
-		t.Fatal("expected delete admission with finance history to be rejected")
+	monthDate, _ := parsePaymentMonth("2026-08")
+	if _, err := app.collectStudentMonthlyPayment(admissionID, "2026-08", monthDate, "cash", 0); err != nil {
+		t.Fatalf("collect student payment: %v", err)
+	}
+	if err := app.deleteAdmission(admissionID); !errors.Is(err, ErrAdmissionHasMonthlyPaymentHistory) {
+		t.Fatalf("expected monthly-payment delete rejection, got %v", err)
+	}
+}
+
+func TestDeleteAdmissionHandlerRedirectsInsteadOfReturningInternalServerError(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500, monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-HANDLER-001",
+		FullName:              "Handler Protected Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000002",
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, true, 0)
+	if err != nil {
+		t.Fatalf("create admission with payment: %v", err)
+	}
+	monthDate, _ := parsePaymentMonth("2026-08")
+	if _, err := app.collectStudentMonthlyPayment(admissionID, "2026-08", monthDate, "cash", 0); err != nil {
+		t.Fatalf("collect student payment: %v", err)
+	}
+
+	form := url.Values{
+		"admission_id": {strconv.FormatInt(admissionID, 10)},
+		"csrf_token":   {"token"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/admissions/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	rec := httptest.NewRecorder()
+
+	app.deleteAdmissionHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect instead of internal server error, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if location := rec.Header().Get("Location"); location != "/admin/admissions" {
+		t.Fatalf("expected redirect to admissions page, got %q", location)
+	}
+	flashCookie := rec.Result().Cookies()
+	flashFound := false
+	for _, cookie := range flashCookie {
+		if cookie.Name == flashCookieName && cookie.Value != "" {
+			flashFound = true
+			break
+		}
+	}
+	if !flashFound {
+		t.Fatal("expected flash message cookie on delete failure")
 	}
 }
 
@@ -2516,7 +2615,7 @@ func TestFinanceOperationIdempotencyPreventsDuplicatePosts(t *testing.T) {
 func TestFinanceDateValidationRejectsFutureDates(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
-	tomorrow := time.Date(2026, 8, 5, 9, 0, 0, 0, time.Local)
+	tomorrow := time.Now().Add(24 * time.Hour)
 	if _, err := app.createManualFinanceTransactionForAccount("manual_income", "Future", "Future entry", "", cashID, 100, tomorrow, 0); err == nil {
 		t.Fatal("expected future manual entry date to be rejected")
 	}
