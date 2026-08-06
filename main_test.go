@@ -2588,6 +2588,93 @@ func TestDeleteAdmissionHandlerRedirectsInsteadOfReturningInternalServerError(t 
 	}
 }
 
+func TestCreateAdmissionWithFreeAdmissionSkipsFinanceCollection(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-FREE-ADM-001",
+		FullName:              "Free Admission Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000002",
+		FreeAdmission:         true,
+	}
+	admissionID, financeTransactionID, err := app.createAdmissionWithOptionalPayment(admission, true, 0)
+	if err != nil {
+		t.Fatalf("create admission with free admission: %v", err)
+	}
+	if financeTransactionID != 0 {
+		t.Fatalf("expected no finance transaction for free admission, got %d", financeTransactionID)
+	}
+	stored, err := app.findAdmissionByID(admissionID)
+	if err != nil {
+		t.Fatalf("reload admission: %v", err)
+	}
+	if !stored.FreeAdmission {
+		t.Fatal("expected free admission flag to persist")
+	}
+	if stored.PaymentCollected {
+		t.Fatal("free admission should not mark payment collected")
+	}
+	if stored.FinanceTransactionID != 0 {
+		t.Fatalf("expected no admission finance transaction, got %d", stored.FinanceTransactionID)
+	}
+}
+
+func TestListStudentPaymentRowsTreatsFreeMonthlyFeeAsNonPayable(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if _, err := app.db.Exec(`UPDATE admission_pricing SET monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
+		t.Fatalf("configure admission pricing: %v", err)
+	}
+	admission := Admission{
+		StudentID:             "STD-FREE-MON-001",
+		FullName:              "Free Monthly Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000002",
+		FreeMonthlyFee:        true,
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, 0)
+	if err != nil {
+		t.Fatalf("create admission with free monthly fee: %v", err)
+	}
+	rows, err := app.listStudentPaymentRows("2026-08")
+	if err != nil {
+		t.Fatalf("list student payment rows: %v", err)
+	}
+	for _, row := range rows {
+		if row.Admission.ID != admissionID {
+			continue
+		}
+		if !row.Admission.FreeMonthlyFee {
+			t.Fatal("expected free monthly fee flag on payment row")
+		}
+		if row.OriginalMonthlyFee <= 0 {
+			t.Fatalf("expected original monthly fee to stay configured, got %v", row.OriginalMonthlyFee)
+		}
+		if row.MonthlyFee != 0 {
+			t.Fatalf("expected effective monthly fee to be zero for waived student, got %v", row.MonthlyFee)
+		}
+		if row.Payment != nil {
+			t.Fatal("expected no monthly payment record for waived student")
+		}
+		return
+	}
+	t.Fatalf("expected payment row for admission %d", admissionID)
+}
+
 func TestFinanceOperationIdempotencyPreventsDuplicatePosts(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)

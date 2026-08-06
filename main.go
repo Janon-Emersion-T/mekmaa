@@ -458,6 +458,8 @@ type Admission struct {
 	GuardianContactNumber    string
 	GuardianAlternativePhone string
 	MedicalInformation       string
+	FreeAdmission            bool
+	FreeMonthlyFee           bool
 	PaymentCollected         bool
 	PaymentCollectedAt       time.Time
 	AdmissionPaymentAmount   float64
@@ -728,9 +730,10 @@ type StudentMonthlyPayment struct {
 }
 
 type StudentPaymentRow struct {
-	Admission  Admission
-	MonthlyFee float64
-	Payment    *StudentMonthlyPayment
+	Admission          Admission
+	MonthlyFee         float64
+	OriginalMonthlyFee float64
+	Payment            *StudentMonthlyPayment
 }
 
 type StudentGroup struct {
@@ -3728,7 +3731,7 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 			data.PaymentTotalDue += row.Payment.Amount
 			data.PaymentCollected += row.Payment.Amount
 			data.PaymentPaidCount++
-		} else {
+		} else if row.MonthlyFee > 0 {
 			data.PaymentTotalDue += row.MonthlyFee
 			data.PaymentOutstanding += row.MonthlyFee
 			data.PaymentPendingCount++
@@ -6921,7 +6924,7 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		trainingProgram.TrainingFormat,
 	)
 
-	collectPayment := r.FormValue("payment_collected") == "true"
+	collectPayment := r.FormValue("payment_collected") == "true" && !admission.FreeAdmission
 
 	if err := validateAdmission(admission); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -7035,7 +7038,7 @@ func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		trainingProgram.TrainingFormat,
 	)
 
-	collectPayment := r.FormValue("payment_collected") == "true"
+	collectPayment := r.FormValue("payment_collected") == "true" && !admission.FreeAdmission
 
 	if err := validateAdmission(admission); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -8377,6 +8380,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			a.guardian_contact_number,
 			a.guardian_alternative_contact_number,
 			a.medical_information,
+			COALESCE(a.free_admission, 0),
+			COALESCE(a.free_monthly_fee, 0),
 			COALESCE(a.payment_collected, 0),
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
@@ -8399,6 +8404,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 
 	for rows.Next() {
 		var admission Admission
+		var freeAdmission int
+		var freeMonthlyFee int
 		var paymentCollected int
 		var paymentCollectedAt sql.NullTime
 
@@ -8420,6 +8427,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			&admission.GuardianContactNumber,
 			&admission.GuardianAlternativePhone,
 			&admission.MedicalInformation,
+			&freeAdmission,
+			&freeMonthlyFee,
 			&paymentCollected,
 			&paymentCollectedAt,
 			&admission.AdmissionPaymentAmount,
@@ -8429,6 +8438,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			return nil, err
 		}
 
+		admission.FreeAdmission = freeAdmission == 1
+		admission.FreeMonthlyFee = freeMonthlyFee == 1
 		admission.PaymentCollected = paymentCollected == 1
 
 		if paymentCollectedAt.Valid {
@@ -8498,6 +8509,8 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 			a.guardian_contact_number,
 			a.guardian_alternative_contact_number,
 			a.medical_information,
+			COALESCE(a.free_admission, 0),
+			COALESCE(a.free_monthly_fee, 0),
 			COALESCE(a.payment_collected, 0),
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
@@ -8521,6 +8534,8 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 	admissions := make([]Admission, 0, filter.Limit)
 	for rows.Next() {
 		var admission Admission
+		var freeAdmission int
+		var freeMonthlyFee int
 		var paymentCollected int
 		var paymentCollectedAt sql.NullTime
 
@@ -8542,6 +8557,8 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 			&admission.GuardianContactNumber,
 			&admission.GuardianAlternativePhone,
 			&admission.MedicalInformation,
+			&freeAdmission,
+			&freeMonthlyFee,
 			&paymentCollected,
 			&paymentCollectedAt,
 			&admission.AdmissionPaymentAmount,
@@ -8551,6 +8568,8 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 			return nil, 0, err
 		}
 
+		admission.FreeAdmission = freeAdmission == 1
+		admission.FreeMonthlyFee = freeMonthlyFee == 1
 		admission.PaymentCollected = paymentCollected > 0
 		if paymentCollectedAt.Valid {
 			admission.PaymentCollectedAt = paymentCollectedAt.Time
@@ -10513,6 +10532,7 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			a.guardian_name,
 			a.guardian_relationship,
 			a.guardian_contact_number, a.guardian_alternative_contact_number, a.medical_information,
+			COALESCE(a.free_admission, 0), COALESCE(a.free_monthly_fee, 0),
 			COALESCE(a.payment_collected, 0), a.payment_collected_at, COALESCE(a.admission_payment_amount, 0),
 			COALESCE(a.finance_transaction_id, 0), a.created_at,
 			COALESCE(tp.monthly_fee, ap.monthly_fee, 0),
@@ -10522,7 +10542,7 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 		LEFT JOIN training_programs tp
 			ON tp.id = a.training_program_id
 		LEFT JOIN admission_pricing ap
-			ON a.training_program_id IS NULL
+			ON COALESCE(a.training_program_id, 0) = 0
 			AND ap.practice_type = a.practice_type
 		LEFT JOIN student_monthly_payments smp
 			ON smp.admission_id = a.id AND smp.payment_month = ?
@@ -10541,6 +10561,8 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 	for rows.Next() {
 		var (
 			row               StudentPaymentRow
+			freeAdmission     int
+			freeMonthlyFee    int
 			admissionPaid     int
 			admissionPaidAt   sql.NullTime
 			paymentID         sql.NullInt64
@@ -10561,17 +10583,20 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			&row.Admission.Address,
 			&row.Admission.PassportNumber, &row.Admission.School, &row.Admission.GuardianName,
 			&row.Admission.GuardianRelationship, &row.Admission.GuardianContactNumber,
-			&row.Admission.GuardianAlternativePhone, &row.Admission.MedicalInformation, &admissionPaid,
+			&row.Admission.GuardianAlternativePhone, &row.Admission.MedicalInformation, &freeAdmission, &freeMonthlyFee, &admissionPaid,
 			&admissionPaidAt, &row.Admission.AdmissionPaymentAmount, &row.Admission.FinanceTransactionID,
-			&row.Admission.CreatedAt, &row.MonthlyFee, &paymentID, &paymentAmount, &paymentMethod,
+			&row.Admission.CreatedAt, &row.OriginalMonthlyFee, &paymentID, &paymentAmount, &paymentMethod,
 			&transactionID, &collectedByUserID, &collectedAt, &paymentCreatedAt,
 		); err != nil {
 			return nil, err
 		}
+		row.Admission.FreeAdmission = freeAdmission == 1
+		row.Admission.FreeMonthlyFee = freeMonthlyFee == 1
 		row.Admission.PaymentCollected = admissionPaid == 1
 		if admissionPaidAt.Valid {
 			row.Admission.PaymentCollectedAt = admissionPaidAt.Time
 		}
+		row.MonthlyFee = effectiveMonthlyFee(row.Admission, row.OriginalMonthlyFee)
 		if paymentID.Valid {
 			row.Payment = &StudentMonthlyPayment{
 				ID:                   paymentID.Int64,
@@ -12015,6 +12040,8 @@ func (a *App) createAdmissionWithOptionalPayment(
 			guardian_contact_number,
 			guardian_alternative_contact_number,
 			medical_information,
+			free_admission,
+			free_monthly_fee,
 			payment_collected,
 			payment_collected_at,
 			admission_payment_amount,
@@ -12023,7 +12050,7 @@ func (a *App) createAdmissionWithOptionalPayment(
 			updated_at
 		)
 		VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 			0, NULL, 0, NULL, ?, ?
 		)
 	`,
@@ -12042,6 +12069,8 @@ func (a *App) createAdmissionWithOptionalPayment(
 		admission.GuardianContactNumber,
 		admission.GuardianAlternativePhone,
 		admission.MedicalInformation,
+		boolToInt(admission.FreeAdmission),
+		boolToInt(admission.FreeMonthlyFee),
 		now,
 		now,
 	)
@@ -12058,7 +12087,7 @@ func (a *App) createAdmissionWithOptionalPayment(
 
 	var financeTransactionID int64
 
-	if collectPayment {
+	if collectPayment && !admission.FreeAdmission {
 		financeTransactionID, err = a.collectAdmissionPaymentTx(
 			tx,
 			admission,
@@ -12110,6 +12139,8 @@ func (a *App) updateAdmissionWithOptionalPayment(
 			guardian_contact_number = ?,
 			guardian_alternative_contact_number = ?,
 			medical_information = ?,
+			free_admission = ?,
+			free_monthly_fee = ?,
 			updated_at = ?
 		WHERE id = ?
 	`,
@@ -12128,6 +12159,8 @@ func (a *App) updateAdmissionWithOptionalPayment(
 		admission.GuardianContactNumber,
 		admission.GuardianAlternativePhone,
 		admission.MedicalInformation,
+		boolToInt(admission.FreeAdmission),
+		boolToInt(admission.FreeMonthlyFee),
 		time.Now().UTC(),
 		admission.ID,
 	)
@@ -12146,7 +12179,7 @@ func (a *App) updateAdmissionWithOptionalPayment(
 
 	var financeTransactionID int64
 
-	if collectPayment && !existing.PaymentCollected {
+	if collectPayment && !existing.PaymentCollected && !admission.FreeAdmission {
 		financeTransactionID, err = a.collectAdmissionPaymentTx(
 			tx,
 			admission,
@@ -13276,6 +13309,8 @@ func (a *App) findAdmissionByID(
 			a.guardian_contact_number,
 			a.guardian_alternative_contact_number,
 			a.medical_information,
+			COALESCE(a.free_admission, 0),
+			COALESCE(a.free_monthly_fee, 0),
 			COALESCE(a.payment_collected, 0),
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
@@ -13293,6 +13328,8 @@ func (a *App) findAdmissionByID(
 	`, admissionID)
 
 	var admission Admission
+	var freeAdmission int
+	var freeMonthlyFee int
 	var paymentCollected int
 	var paymentCollectedAt sql.NullTime
 	var paymentVoidedAt sql.NullTime
@@ -13315,6 +13352,8 @@ func (a *App) findAdmissionByID(
 		&admission.GuardianContactNumber,
 		&admission.GuardianAlternativePhone,
 		&admission.MedicalInformation,
+		&freeAdmission,
+		&freeMonthlyFee,
 		&paymentCollected,
 		&paymentCollectedAt,
 		&admission.AdmissionPaymentAmount,
@@ -13328,6 +13367,8 @@ func (a *App) findAdmissionByID(
 		return nil, err
 	}
 
+	admission.FreeAdmission = freeAdmission == 1
+	admission.FreeMonthlyFee = freeMonthlyFee == 1
 	admission.PaymentCollected = paymentCollected == 1
 
 	if paymentCollectedAt.Valid {
@@ -13369,6 +13410,8 @@ func (a *App) findAdmissionByIDTx(
 			a.guardian_contact_number,
 			a.guardian_alternative_contact_number,
 			a.medical_information,
+			COALESCE(a.free_admission, 0),
+			COALESCE(a.free_monthly_fee, 0),
 			COALESCE(a.payment_collected, 0),
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
@@ -13386,6 +13429,8 @@ func (a *App) findAdmissionByIDTx(
 	`, admissionID)
 
 	var admission Admission
+	var freeAdmission int
+	var freeMonthlyFee int
 	var paymentCollected int
 	var paymentCollectedAt sql.NullTime
 	var paymentVoidedAt sql.NullTime
@@ -13408,6 +13453,8 @@ func (a *App) findAdmissionByIDTx(
 		&admission.GuardianContactNumber,
 		&admission.GuardianAlternativePhone,
 		&admission.MedicalInformation,
+		&freeAdmission,
+		&freeMonthlyFee,
 		&paymentCollected,
 		&paymentCollectedAt,
 		&admission.AdmissionPaymentAmount,
@@ -13421,6 +13468,8 @@ func (a *App) findAdmissionByIDTx(
 		return nil, err
 	}
 
+	admission.FreeAdmission = freeAdmission == 1
+	admission.FreeMonthlyFee = freeMonthlyFee == 1
 	admission.PaymentCollected = paymentCollected == 1
 
 	if paymentCollectedAt.Valid {
@@ -13533,6 +13582,7 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recorde
 	if err != nil {
 		return 0, err
 	}
+	admissionFee = effectiveAdmissionFee(admission, admissionFee)
 
 	if admissionFee <= 0 {
 		return 0, ErrAdmissionFeeNotConfigured
@@ -13633,6 +13683,20 @@ func trainingProgramFeesForAdmissionTx(
 	return pricing.Price, pricing.MonthlyFee, nil
 }
 
+func effectiveAdmissionFee(admission Admission, admissionFee float64) float64 {
+	if admission.FreeAdmission {
+		return 0
+	}
+	return admissionFee
+}
+
+func effectiveMonthlyFee(admission Admission, monthlyFee float64) float64 {
+	if admission.FreeMonthlyFee {
+		return 0
+	}
+	return monthlyFee
+}
+
 func admissionPricingByPracticeTypeTx(
 	tx *sql.Tx,
 	practiceType string,
@@ -13712,6 +13776,7 @@ func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth strin
 	if err != nil {
 		return 0, err
 	}
+	monthlyFee = effectiveMonthlyFee(*admission, monthlyFee)
 
 	if monthlyFee <= 0 {
 		return 0, ErrMonthlyFeeNotConfigured
@@ -14021,6 +14086,8 @@ func runMigrations(db *sql.DB) error {
 			guardian_contact_number TEXT NOT NULL,
 			guardian_alternative_contact_number TEXT NOT NULL,
 			medical_information TEXT NOT NULL,
+			free_admission INTEGER NOT NULL DEFAULT 0,
+			free_monthly_fee INTEGER NOT NULL DEFAULT 0,
 			payment_collected INTEGER NOT NULL DEFAULT 0,
 			payment_collected_at DATETIME,
 			admission_payment_amount REAL NOT NULL DEFAULT 0,
@@ -14500,6 +14567,16 @@ ON court_closures(activity, active, closure_date)`,
 		stmt   string
 	}{
 		{
+			table:  "admissions",
+			column: "free_admission",
+			stmt:   `ALTER TABLE admissions ADD COLUMN free_admission INTEGER NOT NULL DEFAULT 0`,
+		},
+		{
+			table:  "admissions",
+			column: "free_monthly_fee",
+			stmt:   `ALTER TABLE admissions ADD COLUMN free_monthly_fee INTEGER NOT NULL DEFAULT 0`,
+		},
+		{
 			table:  "space_schedules",
 			column: "customer_message",
 			stmt:   `ALTER TABLE space_schedules ADD COLUMN customer_message TEXT NOT NULL DEFAULT ''`,
@@ -14685,6 +14762,12 @@ ON court_closures(activity, active, closure_date)`,
 		return err
 	}
 	if _, err := db.Exec(`UPDATE admissions SET payment_collected = 0 WHERE payment_collected IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE admissions SET free_admission = 0 WHERE free_admission IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE admissions SET free_monthly_fee = 0 WHERE free_monthly_fee IS NULL`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`UPDATE admissions SET admission_payment_amount = 0 WHERE admission_payment_amount IS NULL`); err != nil {
@@ -17356,6 +17439,8 @@ func admissionFromRequest(r *http.Request) Admission {
 		GuardianContactNumber:    strings.TrimSpace(r.FormValue("guardian_contact_number")),
 		GuardianAlternativePhone: strings.TrimSpace(r.FormValue("guardian_alternative_contact_number")),
 		MedicalInformation:       strings.TrimSpace(r.FormValue("medical_information")),
+		FreeAdmission:            r.FormValue("free_admission") == "true",
+		FreeMonthlyFee:           r.FormValue("free_monthly_fee") == "true",
 	}
 }
 
