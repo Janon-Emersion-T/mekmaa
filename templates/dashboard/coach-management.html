@@ -25,6 +25,16 @@
       <input type="email" name="email" placeholder="coach@example.com" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
       <input type="password" name="password" placeholder="Temporary password" required minlength="10" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
       <input type="text" name="phone" placeholder="Phone number" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      <select name="coach_type" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+        <option value="main">Main coach</option>
+        <option value="sub">Sub coach</option>
+      </select>
+      <select name="parent_coach_id" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+        <option value="">Parent main coach</option>
+        {{range .AvailableCoaches}}
+        <option value="{{.ID}}">{{.Name}}</option>
+        {{end}}
+      </select>
       <input type="text" name="specialties" placeholder="Specialties" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
       <label class="flex items-center gap-3 rounded-2xl border border-slate/10 bg-cloud/60 px-4 py-3 text-sm font-medium text-obsidian">
         <input type="checkbox" name="active" value="true" checked class="h-4 w-4 accent-obsidian" />
@@ -45,11 +55,13 @@
     </div>
     <div class="grid gap-4 p-4 sm:p-6">
       {{range .Coaches}}
+      {{$coach := .}}
       <article class="rounded-[1.5rem] border border-slate/10 bg-cloud/55 p-4 sm:p-5">
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 class="text-lg font-semibold text-obsidian">{{.Name}}</h3>
             <p class="text-sm text-slate/60">{{.Email}}</p>
+            <p class="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate/48">{{if eq .CoachType "sub"}}Sub coach{{else}}Main coach{{end}}{{if and (eq .CoachType "sub") .ParentCoachName}} · Under {{.ParentCoachName}}{{end}}</p>
           </div>
           <div class="flex items-center gap-2">
             <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] {{if .Active}}border border-emerald-200 bg-emerald-50 text-emerald-700{{else}}border border-slate/10 bg-white text-slate/60{{end}}">{{if .Active}}Active{{else}}Inactive{{end}}</span>
@@ -64,6 +76,18 @@
           <input type="text" name="name" value="{{.Name}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
           <input type="email" name="email" value="{{.Email}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
           <input type="text" name="phone" value="{{.Phone}}" placeholder="Phone number" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <select name="coach_type" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+            <option value="main" {{if eq .CoachType "main"}}selected{{end}}>Main coach</option>
+            <option value="sub" {{if eq .CoachType "sub"}}selected{{end}}>Sub coach</option>
+          </select>
+          <select name="parent_coach_id" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+            <option value="">Parent main coach</option>
+            {{range $.AvailableCoaches}}
+            {{if ne .ID $coach.ID}}
+            <option value="{{.ID}}" {{if eq $coach.ParentCoachID .ID}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+            {{end}}
+          </select>
           <input type="text" name="specialties" value="{{.Specialties}}" placeholder="Specialties" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua sm:col-span-2 xl:col-span-1" />
           <label class="flex items-center gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm font-medium text-obsidian">
             <input type="checkbox" name="active" value="true" {{if .Active}}checked{{end}} class="h-4 w-4 accent-obsidian" />

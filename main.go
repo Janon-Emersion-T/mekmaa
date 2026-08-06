@@ -418,18 +418,21 @@ type BookingPricingIssue struct {
 }
 
 type User struct {
-	ID          int64
-	Email       string
-	Name        string
-	Roles       []string
-	Permissions []string
-	Verified    bool
-	Phone       string
-	Address     string
-	Specialties string
-	Notes       string
-	Active      bool
-	CreatedAt   time.Time
+	ID              int64
+	Email           string
+	Name            string
+	Roles           []string
+	Permissions     []string
+	Verified        bool
+	Phone           string
+	Address         string
+	Specialties     string
+	Notes           string
+	Active          bool
+	CoachType       string
+	ParentCoachID   int64
+	ParentCoachName string
+	CreatedAt       time.Time
 }
 
 type Role struct {
@@ -1374,6 +1377,9 @@ var (
 	ErrSystemRoleProtected                = errors.New("system roles are protected")
 	ErrAdmissionHasMonthlyPaymentHistory  = errors.New("this student has monthly fee history and cannot be deleted")
 	ErrCoachHasOtherRoles                 = errors.New("this coach account has other roles and cannot be deleted here")
+	ErrCoachRequiresMainCoach             = errors.New("a sub coach must be assigned to a main coach")
+	ErrCoachParentMustBeMain              = errors.New("a sub coach can only be assigned under a main coach")
+	ErrCoachHasSubCoaches                 = errors.New("this main coach still has sub coaches assigned")
 )
 
 const maxBookingCashCollection = 1000000
@@ -2841,6 +2847,11 @@ func (a *App) coachManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Title = "Coach Management"
 	data.Description = "Manage coaches and coach attendance."
 	data.Coaches = coaches
+	for _, coach := range coaches {
+		if coach.CoachType == "main" {
+			data.AvailableCoaches = append(data.AvailableCoaches, coach)
+		}
+	}
 	data.CoachAttendanceRecords = records
 	data.AttendanceDate = selectedDate
 	data.TodayDate = time.Now().Format("2006-01-02")
@@ -6781,6 +6792,10 @@ func (a *App) createCoachHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "email already exists", http.StatusConflict)
 			return
 		}
+		if errors.Is(err, ErrCoachRequiresMainCoach) || errors.Is(err, ErrCoachParentMustBeMain) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		log.Printf("create coach: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -6822,6 +6837,14 @@ func (a *App) updateCoachHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "email already exists", http.StatusConflict)
 			return
 		}
+		if errors.Is(err, ErrCoachRequiresMainCoach) || errors.Is(err, ErrCoachParentMustBeMain) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, ErrCoachHasSubCoaches) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		log.Printf("update coach: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -6860,7 +6883,7 @@ func (a *App) deleteCoachHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "coach not found", http.StatusNotFound)
 			return
 		}
-		if errors.Is(err, ErrCoachHasOtherRoles) {
+		if errors.Is(err, ErrCoachHasOtherRoles) || errors.Is(err, ErrCoachHasSubCoaches) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
@@ -8237,10 +8260,18 @@ func coachFromRequest(r *http.Request, creating bool) (User, string, error) {
 	coach.Address = strings.TrimSpace(r.FormValue("address"))
 	coach.Specialties = strings.TrimSpace(r.FormValue("specialties"))
 	coach.Notes = strings.TrimSpace(r.FormValue("notes"))
-	coach.Active = r.FormValue("active") != "false"
+	coach.Active = r.FormValue("active") == "true"
+	coach.CoachType = normalizeCoachType(r.FormValue("coach_type"))
+	coach.ParentCoachID = parseInt64Query(r.FormValue("parent_coach_id"))
 
 	if coach.Name == "" || !emailPattern.MatchString(coach.Email) {
 		return coach, "", errors.New("invalid coach details")
+	}
+	if coach.CoachType == "" {
+		return coach, "", errors.New("invalid coach type")
+	}
+	if coach.CoachType == "main" {
+		coach.ParentCoachID = 0
 	}
 
 	if creating {
@@ -8251,6 +8282,17 @@ func coachFromRequest(r *http.Request, creating bool) (User, string, error) {
 	}
 
 	return coach, password, nil
+}
+
+func normalizeCoachType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "main":
+		return "main"
+	case "sub":
+		return "sub"
+	default:
+		return "main"
+	}
 }
 
 func (a *App) createManagedUser(name, email, password string, roles []string, verified bool) (*User, error) {
@@ -8302,6 +8344,9 @@ func (a *App) createManagedUser(name, email, password string, roles []string, ve
 }
 
 func (a *App) createCoach(coach User, password string) (*User, error) {
+	if err := a.validateCoachHierarchy(coach); err != nil {
+		return nil, err
+	}
 	createdCoach, err := a.createManagedUser(
 		coach.Name,
 		coach.Email,
@@ -8351,6 +8396,12 @@ func (a *App) updateCoach(coach User) error {
 	if !isCoach {
 		return sql.ErrNoRows
 	}
+	if err := a.ensureCoachCanChangeType(tx, coach); err != nil {
+		return err
+	}
+	if err := a.validateCoachHierarchy(coach); err != nil {
+		return err
+	}
 
 	if err := upsertCoachProfileTx(tx, coach.ID, coach); err != nil {
 		return err
@@ -8376,6 +8427,9 @@ func (a *App) deleteCoach(coachID int64) error {
 	if len(roles) != 1 || roles[0] != "coach" {
 		return ErrCoachHasOtherRoles
 	}
+	if err := ensureCoachHasNoSubCoachesTx(tx, coachID); err != nil {
+		return err
+	}
 
 	result, err := tx.Exec(`DELETE FROM users WHERE id = ?`, coachID)
 	if err != nil {
@@ -8390,6 +8444,52 @@ func (a *App) deleteCoach(coachID int64) error {
 	}
 
 	return tx.Commit()
+}
+
+func (a *App) validateCoachHierarchy(coach User) error {
+	coachType := normalizeCoachType(coach.CoachType)
+	if coachType == "sub" {
+		if coach.ParentCoachID <= 0 {
+			return ErrCoachRequiresMainCoach
+		}
+		if coach.ParentCoachID == coach.ID {
+			return ErrCoachParentMustBeMain
+		}
+		parent, err := a.findCoachByID(coach.ParentCoachID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrCoachParentMustBeMain
+			}
+			return err
+		}
+		if parent.CoachType != "main" {
+			return ErrCoachParentMustBeMain
+		}
+		return nil
+	}
+	return nil
+}
+
+func ensureCoachHasNoSubCoachesTx(tx *sql.Tx, coachID int64) error {
+	var count int
+	if err := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM coach_profiles
+		WHERE parent_coach_id = ?
+	`, coachID).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrCoachHasSubCoaches
+	}
+	return nil
+}
+
+func (a *App) ensureCoachCanChangeType(tx *sql.Tx, coach User) error {
+	if normalizeCoachType(coach.CoachType) == "main" {
+		return nil
+	}
+	return ensureCoachHasNoSubCoachesTx(tx, coach.ID)
 }
 
 func (a *App) findUserByEmail(email string) (*User, string, error) {
@@ -8497,7 +8597,10 @@ func (a *App) listCoachUsersDetailed(includeInactive bool) ([]User, error) {
 			COALESCE(cp.address, ''),
 			COALESCE(cp.specialties, ''),
 			COALESCE(cp.notes, ''),
-			COALESCE(cp.active, 1)
+			COALESCE(cp.active, 1),
+			COALESCE(cp.coach_type, 'main'),
+			COALESCE(cp.parent_coach_id, 0),
+			COALESCE(parent.name, '')
 		FROM users u
 		JOIN user_roles ur
 			ON ur.user_id = u.id
@@ -8505,6 +8608,8 @@ func (a *App) listCoachUsersDetailed(includeInactive bool) ([]User, error) {
 			ON r.id = ur.role_id
 		LEFT JOIN coach_profiles cp
 			ON cp.user_id = u.id
+		LEFT JOIN users parent
+			ON parent.id = cp.parent_coach_id
 		WHERE r.name = 'coach'
 	`
 	args := []any{}
@@ -8540,11 +8645,17 @@ func (a *App) listCoachUsersDetailed(includeInactive bool) ([]User, error) {
 			&coach.Specialties,
 			&coach.Notes,
 			&active,
+			&coach.CoachType,
+			&coach.ParentCoachID,
+			&coach.ParentCoachName,
 		); err != nil {
 			return nil, err
 		}
 		coach.Verified = verifiedAt.Valid
 		coach.Active = active == 1
+		if coach.CoachType == "" {
+			coach.CoachType = "main"
+		}
 		coach.Roles = []string{"coach"}
 		coaches = append(coaches, coach)
 	}
@@ -8665,6 +8776,11 @@ func (a *App) upsertCoachProfile(userID int64, coach User) error {
 
 func upsertCoachProfileTx(tx *sql.Tx, userID int64, coach User) error {
 	now := time.Now().UTC()
+	coachType := normalizeCoachType(coach.CoachType)
+	parentCoachID := coach.ParentCoachID
+	if coachType == "main" {
+		parentCoachID = 0
+	}
 	_, err := tx.Exec(`
 		INSERT INTO coach_profiles (
 			user_id,
@@ -8673,16 +8789,20 @@ func upsertCoachProfileTx(tx *sql.Tx, userID int64, coach User) error {
 			specialties,
 			notes,
 			active,
+			coach_type,
+			parent_coach_id,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			phone = excluded.phone,
 			address = excluded.address,
 			specialties = excluded.specialties,
 			notes = excluded.notes,
 			active = excluded.active,
+			coach_type = excluded.coach_type,
+			parent_coach_id = excluded.parent_coach_id,
 			updated_at = excluded.updated_at
 	`,
 		userID,
@@ -8691,6 +8811,8 @@ func upsertCoachProfileTx(tx *sql.Tx, userID int64, coach User) error {
 		coach.Specialties,
 		coach.Notes,
 		boolToInt(coach.Active),
+		coachType,
+		nullInt64(parentCoachID),
 		now,
 		now,
 	)
@@ -14769,9 +14891,12 @@ func runMigrations(db *sql.DB) error {
 			specialties TEXT NOT NULL DEFAULT '',
 			notes TEXT NOT NULL DEFAULT '',
 			active INTEGER NOT NULL DEFAULT 1,
+			coach_type TEXT NOT NULL DEFAULT 'main',
+			parent_coach_id INTEGER,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
-			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (parent_coach_id) REFERENCES users(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS coach_attendance_records (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15115,6 +15240,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_coach_profiles_active ON coach_profiles(active)`,
+		`CREATE INDEX IF NOT EXISTS idx_coach_profiles_parent ON coach_profiles(parent_coach_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_attendance_user_date ON coach_attendance_records(user_id, attendance_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_coach_attendance_date ON coach_attendance_records(attendance_date)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_group_student_date ON attendance_records(group_id, admission_id, attendance_date)`,
@@ -15442,6 +15568,43 @@ ON court_closures(activity, active, closure_date)`,
 		return err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admissions_admission_date ON admissions(admission_date)`); err != nil {
+		return err
+	}
+	for _, migration := range []struct {
+		column string
+		stmt   string
+	}{
+		{
+			column: "coach_type",
+			stmt:   `ALTER TABLE coach_profiles ADD COLUMN coach_type TEXT NOT NULL DEFAULT 'main'`,
+		},
+		{
+			column: "parent_coach_id",
+			stmt:   `ALTER TABLE coach_profiles ADD COLUMN parent_coach_id INTEGER`,
+		},
+	} {
+		exists, err := tableHasColumn(db, "coach_profiles", migration.column)
+		if err != nil {
+			return fmt.Errorf("check coach_profiles %s column: %w", migration.column, err)
+		}
+		if !exists {
+			if _, err := db.Exec(migration.stmt); err != nil {
+				return fmt.Errorf("add coach_profiles %s column: %w", migration.column, err)
+			}
+		}
+	}
+	if _, err := db.Exec(`UPDATE coach_profiles SET coach_type = 'main' WHERE coach_type IS NULL OR TRIM(coach_type) = ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE coach_profiles SET parent_coach_id = NULL WHERE coach_type = 'main'`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+		UPDATE coach_profiles
+		SET parent_coach_id = NULL
+		WHERE parent_coach_id IS NOT NULL
+			AND parent_coach_id NOT IN (SELECT id FROM users)
+	`); err != nil {
 		return err
 	}
 	attendanceRecordedByExists, err := tableHasColumn(
@@ -22433,6 +22596,13 @@ func parseIntQuery(value string) int {
 		return 0
 	}
 	return parsed
+}
+
+func nullInt64(value int64) any {
+	if value <= 0 {
+		return nil
+	}
+	return value
 }
 
 func validManualFinanceCategory(direction, category string) bool {

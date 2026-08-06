@@ -641,14 +641,26 @@ func TestCoachRolePermissions(t *testing.T) {
 func TestCoachCRUDLifecycle(t *testing.T) {
 	app := newAuthorizationTestApp(t)
 
+	mainCoach, err := app.createCoach(User{
+		Name:      "Main Coach",
+		Email:     "main-coach@example.com",
+		CoachType: "main",
+		Active:    true,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create main coach: %v", err)
+	}
+
 	created, err := app.createCoach(User{
-		Name:        "Coach One",
-		Email:       "coach-one@example.com",
-		Phone:       "0771234567",
-		Address:     "Jaffna",
-		Specialties: "Cricket",
-		Notes:       "Senior coach",
-		Active:      true,
+		Name:          "Coach One",
+		Email:         "coach-one@example.com",
+		Phone:         "0771234567",
+		Address:       "Jaffna",
+		Specialties:   "Cricket",
+		Notes:         "Senior coach",
+		CoachType:     "sub",
+		ParentCoachID: mainCoach.ID,
+		Active:        true,
 	}, "password-123")
 	if err != nil {
 		t.Fatalf("create coach: %v", err)
@@ -661,6 +673,9 @@ func TestCoachCRUDLifecycle(t *testing.T) {
 	if found.Phone != "0771234567" || found.Specialties != "Cricket" || !found.Active {
 		t.Fatalf("unexpected created coach profile: %#v", found)
 	}
+	if found.CoachType != "sub" || found.ParentCoachID != mainCoach.ID {
+		t.Fatalf("unexpected coach hierarchy: %#v", found)
+	}
 
 	if err := app.updateCoach(User{
 		ID:          created.ID,
@@ -670,6 +685,7 @@ func TestCoachCRUDLifecycle(t *testing.T) {
 		Address:     "Colombo",
 		Specialties: "Cricket, Fitness",
 		Notes:       "Updated note",
+		CoachType:   "main",
 		Active:      false,
 	}); err != nil {
 		t.Fatalf("update coach: %v", err)
@@ -685,13 +701,18 @@ func TestCoachCRUDLifecycle(t *testing.T) {
 	if updated.Phone != "0710000000" || updated.Address != "Colombo" || updated.Active {
 		t.Fatalf("coach profile was not updated: %#v", updated)
 	}
+	if updated.CoachType != "main" || updated.ParentCoachID != 0 {
+		t.Fatalf("coach hierarchy was not updated: %#v", updated)
+	}
 
 	activeCoaches, err := app.listCoachUsers()
 	if err != nil {
 		t.Fatalf("list active coaches: %v", err)
 	}
-	if len(activeCoaches) != 0 {
-		t.Fatalf("inactive coach should not appear in active coach list, got %d", len(activeCoaches))
+	for _, coach := range activeCoaches {
+		if coach.ID == created.ID {
+			t.Fatalf("inactive coach should not appear in active coach list: %#v", coach)
+		}
 	}
 
 	if err := app.deleteCoach(created.ID); err != nil {
@@ -699,6 +720,49 @@ func TestCoachCRUDLifecycle(t *testing.T) {
 	}
 	if _, err := app.findCoachByID(created.ID); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("deleted coach should not be found, got %v", err)
+	}
+}
+
+func TestSubCoachRequiresMainCoach(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	if _, err := app.createCoach(User{
+		Name:      "Sub Coach",
+		Email:     "sub-no-parent@example.com",
+		CoachType: "sub",
+		Active:    true,
+	}, "password-123"); !errors.Is(err, ErrCoachRequiresMainCoach) {
+		t.Fatalf("expected missing main coach error, got %v", err)
+	}
+
+	parent, err := app.createCoach(User{
+		Name:      "Actual Main",
+		Email:     "actual-main@example.com",
+		CoachType: "main",
+		Active:    true,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create main coach: %v", err)
+	}
+	subParent, err := app.createCoach(User{
+		Name:          "Existing Sub",
+		Email:         "existing-sub@example.com",
+		CoachType:     "sub",
+		ParentCoachID: parent.ID,
+		Active:        true,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create existing sub coach: %v", err)
+	}
+
+	if _, err := app.createCoach(User{
+		Name:          "Invalid Child",
+		Email:         "invalid-child@example.com",
+		CoachType:     "sub",
+		ParentCoachID: subParent.ID,
+		Active:        true,
+	}, "password-123"); !errors.Is(err, ErrCoachParentMustBeMain) {
+		t.Fatalf("expected parent must be main error, got %v", err)
 	}
 }
 
@@ -715,6 +779,44 @@ func TestDeleteCoachRejectsAccountsWithOtherRoles(t *testing.T) {
 
 	if err := app.deleteCoach(user.ID); !errors.Is(err, ErrCoachHasOtherRoles) {
 		t.Fatalf("expected mixed-role delete rejection, got %v", err)
+	}
+}
+
+func TestMainCoachWithSubCoachesCannotBeDeletedOrDowngraded(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	mainCoach, err := app.createCoach(User{
+		Name:      "Main Coach",
+		Email:     "main-has-sub@example.com",
+		CoachType: "main",
+		Active:    true,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create main coach: %v", err)
+	}
+	_, err = app.createCoach(User{
+		Name:          "Sub Coach",
+		Email:         "sub-under-main@example.com",
+		CoachType:     "sub",
+		ParentCoachID: mainCoach.ID,
+		Active:        true,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create sub coach: %v", err)
+	}
+
+	if err := app.deleteCoach(mainCoach.ID); !errors.Is(err, ErrCoachHasSubCoaches) {
+		t.Fatalf("expected main coach delete rejection, got %v", err)
+	}
+	if err := app.updateCoach(User{
+		ID:            mainCoach.ID,
+		Name:          "Main Coach",
+		Email:         "main-has-sub@example.com",
+		CoachType:     "sub",
+		ParentCoachID: mainCoach.ID,
+		Active:        true,
+	}); !errors.Is(err, ErrCoachHasSubCoaches) {
+		t.Fatalf("expected main coach downgrade rejection, got %v", err)
 	}
 }
 
