@@ -638,6 +638,145 @@ func TestCoachRolePermissions(t *testing.T) {
 	}
 }
 
+func TestCoachCRUDLifecycle(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	created, err := app.createCoach(User{
+		Name:        "Coach One",
+		Email:       "coach-one@example.com",
+		Phone:       "0771234567",
+		Address:     "Jaffna",
+		Specialties: "Cricket",
+		Notes:       "Senior coach",
+		Active:      true,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create coach: %v", err)
+	}
+
+	found, err := app.findCoachByID(created.ID)
+	if err != nil {
+		t.Fatalf("find coach: %v", err)
+	}
+	if found.Phone != "0771234567" || found.Specialties != "Cricket" || !found.Active {
+		t.Fatalf("unexpected created coach profile: %#v", found)
+	}
+
+	if err := app.updateCoach(User{
+		ID:          created.ID,
+		Name:        "Coach One Updated",
+		Email:       "coach-one-updated@example.com",
+		Phone:       "0710000000",
+		Address:     "Colombo",
+		Specialties: "Cricket, Fitness",
+		Notes:       "Updated note",
+		Active:      false,
+	}); err != nil {
+		t.Fatalf("update coach: %v", err)
+	}
+
+	updated, err := app.findCoachByID(created.ID)
+	if err != nil {
+		t.Fatalf("find updated coach: %v", err)
+	}
+	if updated.Name != "Coach One Updated" || updated.Email != "coach-one-updated@example.com" {
+		t.Fatalf("coach identity was not updated: %#v", updated)
+	}
+	if updated.Phone != "0710000000" || updated.Address != "Colombo" || updated.Active {
+		t.Fatalf("coach profile was not updated: %#v", updated)
+	}
+
+	activeCoaches, err := app.listCoachUsers()
+	if err != nil {
+		t.Fatalf("list active coaches: %v", err)
+	}
+	if len(activeCoaches) != 0 {
+		t.Fatalf("inactive coach should not appear in active coach list, got %d", len(activeCoaches))
+	}
+
+	if err := app.deleteCoach(created.ID); err != nil {
+		t.Fatalf("delete coach: %v", err)
+	}
+	if _, err := app.findCoachByID(created.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted coach should not be found, got %v", err)
+	}
+}
+
+func TestDeleteCoachRejectsAccountsWithOtherRoles(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	user, err := app.createManagedUser("Admin Coach", "admin-coach@example.com", "password-123", []string{"coach", "admin"}, true)
+	if err != nil {
+		t.Fatalf("create mixed-role coach: %v", err)
+	}
+	if err := app.upsertCoachProfile(user.ID, User{Phone: "0770000000", Active: true}); err != nil {
+		t.Fatalf("create mixed-role coach profile: %v", err)
+	}
+
+	if err := app.deleteCoach(user.ID); !errors.Is(err, ErrCoachHasOtherRoles) {
+		t.Fatalf("expected mixed-role delete rejection, got %v", err)
+	}
+}
+
+func TestSaveCoachAttendanceHandlerPersistsActiveCoachesOnly(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	admin, err := app.createManagedUser("Admin", "admin-coach-attendance@example.com", "password-123", []string{"admin"}, true)
+	if err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+	activeCoach, err := app.createCoach(User{
+		Name:   "Active Coach",
+		Email:  "active-coach@example.com",
+		Active: true,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create active coach: %v", err)
+	}
+	inactiveCoach, err := app.createCoach(User{
+		Name:   "Inactive Coach",
+		Email:  "inactive-coach@example.com",
+		Active: false,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create inactive coach: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":                               {"test-csrf"},
+		"attendance_date":                          {"2026-08-06"},
+		fmt.Sprintf("status_%d", activeCoach.ID):   {"present"},
+		fmt.Sprintf("note_%d", activeCoach.ID):     {"On time"},
+		fmt.Sprintf("status_%d", inactiveCoach.ID): {"late"},
+		fmt.Sprintf("note_%d", inactiveCoach.ID):   {"Should be ignored"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/coaches/attendance/save", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, admin))
+	rec := httptest.NewRecorder()
+
+	app.saveCoachAttendanceHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("coach attendance save status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+
+	records, err := app.listCoachAttendanceRecords("2026-08-06")
+	if err != nil {
+		t.Fatalf("list coach attendance records: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("coach attendance record count = %d, want 1", len(records))
+	}
+	if records[0].UserID != activeCoach.ID || records[0].Status != "present" || records[0].Note != "On time" {
+		t.Fatalf("unexpected saved coach attendance record: %#v", records[0])
+	}
+	if records[0].RecordedByUserID != admin.ID {
+		t.Fatalf("coach attendance recorder = %d, want %d", records[0].RecordedByUserID, admin.ID)
+	}
+}
+
 func TestNonSuperadminCannotGrantAdministratorRoles(t *testing.T) {
 	app := newAuthorizationTestApp(t)
 	actor, err := app.createManagedUser("Admin", "admin@example.com", "password-123", []string{"admin"}, true)
@@ -2368,10 +2507,10 @@ func TestFinanceManagementHandlerPaginatesLargeLedgerWithoutHanging(t *testing.T
 
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		req := httptest.NewRequest(http.MethodGet, "/admin/finance?page=2&limit=50", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/finance/ledger?page=2&limit=50", nil)
 		req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
 		rec := httptest.NewRecorder()
-		app.financeManagementHandler(rec, req)
+		app.financeLedgerHandler(rec, req)
 		done <- rec
 	}()
 

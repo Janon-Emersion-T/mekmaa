@@ -43,7 +43,7 @@
       {{end}}
     </div>
 
-    {{if or (hasPermission .User "admissions.manage") (hasPermission .User "training_programs.manage") (hasPermission .User "student_groups.manage") (hasPermission .User "attendance.manage") (hasPermission .User "finance.manage")}}
+    {{if or (hasPermission .User "admissions.manage") (hasPermission .User "coaches.manage") (hasPermission .User "training_programs.manage") (hasPermission .User "student_groups.manage") (hasPermission .User "attendance.manage") (hasPermission .User "finance.manage")}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Students</p>
       <div class="space-y-1">
@@ -56,6 +56,11 @@
         {{if hasPermission .User "training_programs.manage"}}
         <a href="/admin/training-programs" class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Training Manager</span><span class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Programs</span>
+        </a>
+        {{end}}
+        {{if hasPermission .User "coaches.manage"}}
+        <a href="/admin/coaches" class="{{if isCurrentPath .CurrentPath "/admin/coaches"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Coaches</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Staff</span>
         </a>
         {{end}}
 
@@ -114,8 +119,20 @@
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Finance</p>
       <div class="space-y-1">
         {{if hasPermission .User "finance.manage"}}
-        <a href="/admin/finance" class="{{if isCurrentPath .CurrentPath "/admin/finance" "/admin/finance/receipt"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Finance ledger</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Income</span>
+        <a href="/admin/finance/ledger" class="{{if isCurrentPath .CurrentPath "/admin/finance" "/admin/finance/ledger" "/admin/finance/receipt"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Finance ledger</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Ledger</span>
+        </a>
+        <a href="/admin/finance/receivables" class="{{if isCurrentPath .CurrentPath "/admin/finance/receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
+        </a>
+        <a href="/admin/finance/transfers" class="{{if isCurrentPath .CurrentPath "/admin/finance/transfers"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Transfers</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Bank</span>
+        </a>
+        <a href="/admin/finance/reconciliations" class="{{if isCurrentPath .CurrentPath "/admin/finance/reconciliations"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Reconciliations</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Cash</span>
+        </a>
+        <a href="/admin/finance/accounts" class="{{if isCurrentPath .CurrentPath "/admin/finance/accounts"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Accounts</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Balances</span>
         </a>
         <a href="/admin/referrals" class="{{if isCurrentPath .CurrentPath "/admin/referrals"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Referral programme</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Partners</span>

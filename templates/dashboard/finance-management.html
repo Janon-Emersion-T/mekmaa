@@ -7,87 +7,55 @@
     <div class="pointer-events-none absolute bottom-0 right-1/3 h-28 w-28 translate-y-1/2 rounded-full bg-aqua/10 blur-2xl"></div>
     <div class="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
       <div class="max-w-3xl">
-        <p class="text-xs font-semibold uppercase tracking-[0.28em] text-aqua">Finance command centre</p>
-        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Cashbook, bank, receivables, and audit trail.</h1>
-        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/68">Track physical cash, bank balance, transfers, receivables, reconciliations, income, expenses, and audited void history without inflating revenue through internal movements.</p>
+        <p class="text-xs font-semibold uppercase tracking-[0.28em] text-aqua">Finance workspace</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+          {{if eq .FinancePage "ledger"}}Ledger and manual entries{{else if eq .FinancePage "receivables"}}Receivables and collections{{else if eq .FinancePage "transfers"}}Cash and bank transfers{{else if eq .FinancePage "reconciliations"}}Cash reconciliations{{else if eq .FinancePage "accounts"}}Accounts and balance controls{{else}}Finance{{end}}
+        </h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/68">
+          {{if eq .FinancePage "ledger"}}Post manual finance movements, filter transaction history, and export the ledger.{{else if eq .FinancePage "receivables"}}Track outstanding booking collections and open related payment workflows from dedicated pages.{{else if eq .FinancePage "transfers"}}Record cash-to-bank movements and keep transfer history separate from the main ledger view.{{else if eq .FinancePage "reconciliations"}}Count physical cash and review reconciliation history without mixing it with transfers or receivables.{{else if eq .FinancePage "accounts"}}Review finance accounts, open statements, and manage opening balances and adjustments.{{else}}Manage finance workflows in separate pages.{{end}}
+        </p>
       </div>
-      <div class="grid gap-2 sm:grid-cols-2">
-        <a href="#manual-entry" class="inline-flex h-11 items-center justify-center rounded-2xl bg-white px-4 text-sm font-semibold text-obsidian">Record income or expense</a>
-        <a href="#transfers" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-white">Deposit cash to bank</a>
-        <a href="#reconciliation" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-white">Reconcile cash</a>
-        <a href="#receivables" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-white">View receivables</a>
+      <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <a href="/admin/finance/ledger" class="inline-flex h-11 items-center justify-center rounded-2xl {{if eq .FinancePage "ledger"}}bg-white text-obsidian{{else}}border border-white/15 bg-white/10 text-white{{end}} px-4 text-sm font-semibold">Ledger</a>
+        <a href="/admin/finance/receivables" class="inline-flex h-11 items-center justify-center rounded-2xl {{if eq .FinancePage "receivables"}}bg-white text-obsidian{{else}}border border-white/15 bg-white/10 text-white{{end}} px-4 text-sm font-semibold">Receivables</a>
+        <a href="/admin/finance/transfers" class="inline-flex h-11 items-center justify-center rounded-2xl {{if eq .FinancePage "transfers"}}bg-white text-obsidian{{else}}border border-white/15 bg-white/10 text-white{{end}} px-4 text-sm font-semibold">Transfers</a>
+        <a href="/admin/finance/reconciliations" class="inline-flex h-11 items-center justify-center rounded-2xl {{if eq .FinancePage "reconciliations"}}bg-white text-obsidian{{else}}border border-white/15 bg-white/10 text-white{{end}} px-4 text-sm font-semibold">Reconciliations</a>
+        <a href="/admin/finance/accounts" class="inline-flex h-11 items-center justify-center rounded-2xl {{if eq .FinancePage "accounts"}}bg-white text-obsidian{{else}}border border-white/15 bg-white/10 text-white{{end}} px-4 text-sm font-semibold">Accounts</a>
+        <a href="/admin/referrals" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-white">Referrals</a>
       </div>
     </div>
   </div>
 
-  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-    <article class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50 p-5">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Cash in hand</p>
-      <p class="mt-3 text-2xl font-semibold text-emerald-950">{{money .FinanceSummary.CashBalance}}</p>
-      <p class="mt-2 text-xs text-emerald-800/65">Physical cash currently held</p>
-    </article>
-    <article class="rounded-[1.5rem] border border-sky-100 bg-sky-50 p-5">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Bank balance</p>
-      <p class="mt-3 text-2xl font-semibold text-sky-950">{{money .FinanceSummary.BankBalance}}</p>
-      <p class="mt-2 text-xs text-sky-800/65">Main operating bank account</p>
-    </article>
-    <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Total available funds</p>
-      <p class="mt-3 text-2xl font-semibold text-obsidian">{{money .FinanceSummary.TotalAvailableFunds}}</p>
-      <p class="mt-2 text-xs text-slate/55">Cash plus bank</p>
-    </article>
-    <article class="rounded-[1.5rem] border border-emerald-100 bg-white p-5 shadow-sm">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Income for period</p>
-      <p class="mt-3 text-2xl font-semibold text-emerald-900">{{money .FinanceSummary.GrossIncome}}</p>
-      <p class="mt-2 text-xs text-slate/55">Voided entries excluded</p>
-    </article>
-    <article class="rounded-[1.5rem] border border-rose-100 bg-white p-5 shadow-sm">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Expenses for period</p>
-      <p class="mt-3 text-2xl font-semibold text-rose-900">{{money .FinanceSummary.TotalExpenses}}</p>
-      <p class="mt-2 text-xs text-slate/55">Transfers excluded from expenses</p>
-    </article>
-  </div>
-
-  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-    <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Net operating cash flow</p>
-      <p class="mt-3 text-2xl font-semibold text-obsidian">{{money .FinanceSummary.NetOperatingCashFlow}}</p>
-      <p class="mt-2 text-xs text-slate/55">Excludes transfers, opening balances, adjustments</p>
-    </article>
+  {{if eq .FinancePage "receivables"}}
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     <article class="rounded-[1.5rem] border border-amber-100 bg-amber-50 p-5 shadow-sm">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Booking receivables</p>
       <p class="mt-3 text-2xl font-semibold text-amber-950">{{money .FinanceSummary.OutstandingBooking}}</p>
-      <p class="mt-2 text-xs text-amber-800/65">Cash not yet collected from public bookings</p>
+      <p class="mt-2 text-xs text-amber-800/65">Outstanding public booking collections</p>
     </article>
     <article class="rounded-[1.5rem] border border-amber-100 bg-amber-50 p-5 shadow-sm">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Student receivables</p>
       <p class="mt-3 text-2xl font-semibold text-amber-950">{{money .FinanceSummary.OutstandingMonthly}}</p>
-      <p class="mt-2 text-xs text-amber-800/65">Current unpaid monthly fees</p>
+      <p class="mt-2 text-xs text-amber-800/65">Managed from Student Payments</p>
     </article>
     <article class="rounded-[1.5rem] border border-violet-100 bg-violet-50 p-5 shadow-sm">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-violet-700">Referral payables</p>
       <p class="mt-3 text-2xl font-semibold text-violet-950">{{money .FinanceSummary.PayableReferrals}}</p>
-      <p class="mt-2 text-xs text-violet-800/65">Confirmed commissions not yet paid</p>
-    </article>
-    <article class="rounded-[1.5rem] border {{if eq .FinanceSummary.UnreconciledCashDelta 0.0}}border-emerald-100 bg-emerald-50{{else}}border-rose-100 bg-rose-50{{end}} p-5 shadow-sm">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] {{if eq .FinanceSummary.UnreconciledCashDelta 0.0}}text-emerald-700{{else}}text-rose-700{{end}}">Unreconciled cash</p>
-      <p class="mt-3 text-2xl font-semibold {{if eq .FinanceSummary.UnreconciledCashDelta 0.0}}text-emerald-950{{else}}text-rose-950{{end}}">{{money .FinanceSummary.UnreconciledCashDelta}}</p>
-      <p class="mt-2 text-xs {{if eq .FinanceSummary.UnreconciledCashDelta 0.0}}text-emerald-800/65{{else}}text-rose-800/65{{end}}">{{if .FinanceSummary.LastCashReconciliationOn}}Since {{.FinanceSummary.LastCashReconciliationOn}}{{else}}No cash count has been recorded yet{{end}}</p>
+      <p class="mt-2 text-xs text-violet-800/65">Managed from Referral Programme</p>
     </article>
   </div>
 
   <div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-    <section id="receivables" class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Receivables</p>
-          <h2 class="mt-2 text-xl font-semibold text-obsidian">Outstanding customer collections</h2>
+          <h2 class="mt-2 text-xl font-semibold text-obsidian">Outstanding booking collections</h2>
         </div>
         <div class="text-xs text-slate/50">{{len .BookingFinancials}} booking rows</div>
       </div>
       <div class="mt-5 grid gap-4">
         {{range .BookingFinancials}}
-        {{if gt .OutstandingAmount 0.0}}
         <article class="rounded-[1.4rem] border border-slate/10 bg-cloud/45 p-4">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -106,252 +74,128 @@
             </div>
           </div>
         </article>
-        {{end}}
         {{else}}
         <div class="rounded-[1.4rem] border border-dashed border-emerald-200 bg-emerald-50 px-5 py-10 text-center">
           <p class="font-semibold text-emerald-900">No booking receivables are outstanding.</p>
-          <p class="mt-1 text-sm text-emerald-800/65">Collections already recorded remain in the ledger below.</p>
+          <p class="mt-1 text-sm text-emerald-800/65">Current collections are up to date.</p>
         </div>
         {{end}}
       </div>
     </section>
 
     <aside class="space-y-6">
-      <section id="manual-entry" class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Income and expense</p>
-        <h2 class="mt-2 text-xl font-semibold text-obsidian">Record other operating movements</h2>
-        <form method="post" action="/admin/finance/transactions/create" class="mt-5 grid gap-3">
-          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-          <div class="grid gap-3 sm:grid-cols-2">
-            <label class="text-xs font-medium text-slate/60">Direction
-              <select name="direction" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-                <option value="expense">Expense</option>
-                <option value="income">Income</option>
-              </select>
-            </label>
-            <label class="text-xs font-medium text-slate/60">Amount
-              <input name="amount" type="number" min="0.01" step="0.01" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-            </label>
-          </div>
-          <label class="text-xs font-medium text-slate/60">Account
-            <select name="account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-              {{range .FinanceAccounts}}
-              <option value="{{.ID}}">{{.Name}} · {{financeAccountTypeLabel .AccountType}}</option>
-              {{end}}
-            </select>
-          </label>
-          <label class="text-xs font-medium text-slate/60">Category
-            <select name="category" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-              <option value="other_expense">Other expense</option>
-              <option value="utilities_expense">Utilities</option>
-              <option value="maintenance_expense">Maintenance and repairs</option>
-              <option value="staff_expense">Staff and wages</option>
-              <option value="equipment_expense">Equipment</option>
-              <option value="sports_supplies_expense">Sports supplies</option>
-              <option value="refreshments_expense">Refreshments and drinks</option>
-              <option value="prizes_expense">Prizes and awards</option>
-              <option value="marketing_expense">Marketing</option>
-              <option value="transport_expense">Transport</option>
-              <option value="event_expense">Event expense</option>
-              <option value="bank_charges_expense">Bank charges</option>
-              <option value="manual_income">Other income</option>
-              <option value="sponsorship_income">Sponsorship income</option>
-              <option value="other_income">Other income (general)</option>
-            </select>
-          </label>
-          <label class="text-xs font-medium text-slate/60">Paid to / received from
-            <input name="person_name" required maxlength="120" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-          </label>
-          <label class="text-xs font-medium text-slate/60">Description
-            <textarea name="description" required rows="2" maxlength="300" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
-          </label>
-          <label class="text-xs font-medium text-slate/60">Internal notes
-            <textarea name="notes" rows="2" maxlength="400" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
-          </label>
-          <label class="text-xs font-medium text-slate/60">Date
-            <input name="recorded_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-          </label>
-          <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Post ledger entry</button>
-        </form>
-      </section>
-
-      <section id="transfers" class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Transfers</p>
-        <h2 class="mt-2 text-xl font-semibold text-obsidian">Move cash to bank</h2>
-        <form method="post" action="/admin/finance/transfers/create" class="mt-5 grid gap-3">
-          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-          <div class="grid gap-3 sm:grid-cols-2">
-            <label class="text-xs font-medium text-slate/60">From account
-              <select name="from_account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-                {{range .FinanceAccounts}}{{if eq .AccountType "cash"}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}
-              </select>
-            </label>
-            <label class="text-xs font-medium text-slate/60">To account
-              <select name="to_account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-                {{range .FinanceAccounts}}{{if eq .AccountType "bank"}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}
-              </select>
-            </label>
-          </div>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <label class="text-xs font-medium text-slate/60">Amount
-              <input name="amount" type="number" min="0.01" step="0.01" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-            </label>
-            <label class="text-xs font-medium text-slate/60">Transfer date
-              <input name="transfer_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-            </label>
-          </div>
-          <label class="text-xs font-medium text-slate/60">Deposit reference
-            <input name="reference_number" maxlength="80" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-          </label>
-          <label class="text-xs font-medium text-slate/60">Description
-            <input name="description" maxlength="300" value="Cash deposited into bank" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-          </label>
-          <label class="text-xs font-medium text-slate/60">Notes
-            <textarea name="notes" rows="2" maxlength="400" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
-          </label>
-          <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Record transfer</button>
-        </form>
+      <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Related payment pages</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">Open other collection workflows</h2>
+        <div class="mt-5 grid gap-3">
+          <a href="/admin/student-payments" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
+            <span>Student monthly payments</span>
+            <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Monthly</span>
+          </a>
+          <a href="/admin/referrals" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
+            <span>Referral programme</span>
+            <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Partners</span>
+          </a>
+          <a href="/admin/bookings" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
+            <span>Booking calendar</span>
+            <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Slots</span>
+          </a>
+        </div>
       </section>
     </aside>
   </div>
+  {{end}}
 
+  {{if eq .FinancePage "ledger"}}
   <div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-    <section id="reconciliation" class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Cash reconciliation</p>
-      <h2 class="mt-2 text-xl font-semibold text-obsidian">Count physical cash</h2>
-      <form method="post" action="/admin/finance/reconciliations/create" class="mt-5 grid gap-3">
+    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Income and expense</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Record other operating movements</h2>
+      <form method="post" action="/admin/finance/transactions/create" class="mt-5 grid gap-3">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <label class="text-xs font-medium text-slate/60">Cash account
-          <select name="account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-            {{range .FinanceAccounts}}{{if eq .AccountType "cash"}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}
-          </select>
-        </label>
         <div class="grid gap-3 sm:grid-cols-2">
-          <label class="text-xs font-medium text-slate/60">Reconciliation date
-            <input name="reconciliation_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+          <label class="text-xs font-medium text-slate/60">Direction
+            <select name="direction" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
           </label>
-          <label class="text-xs font-medium text-slate/60">Counted cash
-            <input name="counted_balance" type="number" min="0" step="0.01" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+          <label class="text-xs font-medium text-slate/60">Amount
+            <input name="amount" type="number" min="0.01" step="0.01" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
           </label>
         </div>
-        <label class="text-xs font-medium text-slate/60">Notes
-          <textarea name="notes" rows="3" maxlength="400" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua" placeholder="Required when the counted balance differs from the expected balance"></textarea>
+        <label class="text-xs font-medium text-slate/60">Account
+          <select name="account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+            {{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}} · {{financeAccountTypeLabel .AccountType}}</option>{{end}}
+          </select>
         </label>
-        <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Save reconciliation</button>
+        <label class="text-xs font-medium text-slate/60">Category
+          <select name="category" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+            <option value="other_expense">Other expense</option>
+            <option value="utilities_expense">Utilities</option>
+            <option value="maintenance_expense">Maintenance and repairs</option>
+            <option value="staff_expense">Staff and wages</option>
+            <option value="equipment_expense">Equipment</option>
+            <option value="sports_supplies_expense">Sports supplies</option>
+            <option value="refreshments_expense">Refreshments and drinks</option>
+            <option value="prizes_expense">Prizes and awards</option>
+            <option value="marketing_expense">Marketing</option>
+            <option value="transport_expense">Transport</option>
+            <option value="event_expense">Event expense</option>
+            <option value="bank_charges_expense">Bank charges</option>
+            <option value="manual_income">Other income</option>
+            <option value="sponsorship_income">Sponsorship income</option>
+            <option value="other_income">Other income (general)</option>
+          </select>
+        </label>
+        <label class="text-xs font-medium text-slate/60">Paid to / received from
+          <input name="person_name" required maxlength="120" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+        </label>
+        <label class="text-xs font-medium text-slate/60">Description
+          <textarea name="description" required rows="2" maxlength="300" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+        </label>
+        <label class="text-xs font-medium text-slate/60">Internal notes
+          <textarea name="notes" rows="2" maxlength="400" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+        </label>
+        <label class="text-xs font-medium text-slate/60">Date
+          <input name="recorded_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+        </label>
+        <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Post ledger entry</button>
       </form>
-
-      <div class="mt-6 grid gap-3">
-        {{range .CashReconciliations}}
-        <article class="rounded-[1.2rem] border {{if eq .Status "balanced"}}border-emerald-200 bg-emerald-50/50{{else if eq .Status "short"}}border-rose-200 bg-rose-50/50{{else}}border-amber-200 bg-amber-50/50{{end}} p-4">
-          <div class="flex items-center justify-between gap-4">
-            <div>
-              <p class="text-sm font-semibold text-obsidian">{{.FinanceAccountName}} · {{.ReconciliationDate}}</p>
-              <p class="mt-1 text-xs text-slate/60">Expected {{money .ExpectedBalance}} · Counted {{money .CountedBalance}}</p>
-              {{if .Notes}}<p class="mt-2 text-xs text-slate/65">{{.Notes}}</p>{{end}}
-            </div>
-            <div class="text-right">
-              <p class="text-sm font-semibold text-obsidian">{{money .Difference}}</p>
-              <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate/50">{{.Status}}</p>
-            </div>
-          </div>
-        </article>
-        {{else}}
-        <div class="rounded-[1.2rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No cash reconciliations have been recorded yet.</div>
-        {{end}}
-      </div>
     </section>
 
-    <section id="accounts" class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Accounts</p>
-      <h2 class="mt-2 text-xl font-semibold text-obsidian">Cash and bank balances</h2>
-      <div class="mt-5 grid gap-4 lg:grid-cols-2">
-        {{range .FinanceAccounts}}
-        <article class="rounded-[1.35rem] border {{financeAccountTone .AccountType}} p-4">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="text-sm font-semibold text-obsidian">{{.Name}}</p>
-              <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate/55">{{financeAccountTypeLabel .AccountType}}</p>
-              {{if .Description}}<p class="mt-2 text-xs text-slate/60">{{.Description}}</p>{{end}}
-            </div>
-            <a href="/admin/finance/accounts/statement?account_id={{.ID}}" class="inline-flex h-9 items-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate">Statement</a>
-          </div>
-        </article>
-        {{end}}
+    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Quick links</p>
+          <h2 class="mt-2 text-xl font-semibold text-obsidian">Related finance work</h2>
+        </div>
       </div>
-
-      {{if hasRole .User "superadmin"}}
-      <div class="mt-6 grid gap-4 lg:grid-cols-2">
-        <form method="post" action="/admin/finance/accounts/opening-balance" class="rounded-[1.2rem] border border-slate/10 bg-cloud/35 p-4">
-          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-          <p class="text-sm font-semibold text-obsidian">Opening balance</p>
-          <div class="mt-3 grid gap-3">
-            <select name="account_id" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">{{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
-            <input name="amount" type="number" step="0.01" required placeholder="Opening balance" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-            <input name="recorded_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-            <textarea name="notes" rows="2" placeholder="Why this opening balance is being recorded" class="rounded-xl border border-slate/10 bg-white px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
-            <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Post opening balance</button>
-          </div>
-        </form>
-        <form method="post" action="/admin/finance/accounts/adjustment" class="rounded-[1.2rem] border border-slate/10 bg-cloud/35 p-4">
-          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-          <p class="text-sm font-semibold text-obsidian">Adjustment</p>
-          <div class="mt-3 grid gap-3">
-            <select name="account_id" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">{{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
-            <select name="direction" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"><option value="increase">Increase balance</option><option value="decrease">Decrease balance</option></select>
-            <input name="amount" type="number" step="0.01" required placeholder="Adjustment amount" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-            <input name="recorded_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-            <textarea name="reason" rows="2" required placeholder="Detailed reason for this correction" class="rounded-xl border border-slate/10 bg-white px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
-            <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Post adjustment</button>
-          </div>
-        </form>
+      <div class="mt-5 grid gap-3">
+        <a href="/admin/finance/transfers" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
+          <span>Record transfer</span>
+          <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Bank</span>
+        </a>
+        <a href="/admin/finance/reconciliations" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
+          <span>Reconcile cash</span>
+          <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Audit</span>
+        </a>
+        <a href="/admin/finance/accounts" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
+          <span>View accounts</span>
+          <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Balances</span>
+        </a>
       </div>
-      {{end}}
     </section>
   </div>
 
-  <section id="transfers-list" class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Transfer history</p>
-        <h2 class="mt-2 text-xl font-semibold text-obsidian">Cash and bank movements</h2>
-      </div>
-      <p class="text-xs text-slate/50">{{len .FinanceTransfers}} transfer groups</p>
-    </div>
-    <div class="mt-5 grid gap-3">
-      {{range .FinanceTransfers}}
-      <article class="rounded-[1.25rem] border {{if .Voided}}border-rose-200 bg-rose-50/45{{else}}border-slate/10 bg-cloud/35{{end}} p-4">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p class="font-mono text-xs font-bold text-slate/50">{{.ReferenceNumber}}</p>
-            <p class="mt-2 text-sm font-semibold text-obsidian">{{.FromAccountName}} → {{.ToAccountName}}</p>
-            <p class="mt-1 text-xs text-slate/60">{{formatDateTime .TransferDate}} · {{money .Amount}}</p>
-            {{if .Description}}<p class="mt-2 text-xs text-slate/65">{{.Description}}</p>{{end}}
-            {{if .Voided}}<p class="mt-2 text-xs text-rose-800">Voided {{formatDateTime .VoidedAt}}. Reason: {{.VoidReason}}</p>{{end}}
-          </div>
-          {{if and (hasRole .User "superadmin") (not .Voided)}}
-          <form method="post" action="/admin/finance/transfers/void" class="grid gap-2 sm:min-w-[15rem]" onsubmit="return confirm('Void this transfer pair?');">
-            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-            <input type="hidden" name="group_id" value="{{.GroupID}}">
-            <input type="text" name="void_reason" required placeholder="Void reason" class="h-10 rounded-xl border border-rose-200 bg-white px-3 text-sm outline-none focus:border-rose-400">
-            <button class="h-10 rounded-xl border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700">Void transfer</button>
-          </form>
-          {{end}}
-        </div>
-      </article>
-      {{else}}
-      <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No transfers have been recorded yet.</div>
-      {{end}}
-    </div>
-  </section>
-
-  <section id="ledger" class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
     <div class="border-b border-slate/10 p-5 sm:p-6">
       <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Ledger</p>
           <h2 class="mt-2 text-xl font-semibold text-obsidian">Account-linked transaction history</h2>
         </div>
-        <form method="get" action="/admin/finance" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-8">
+        <form method="get" action="/admin/finance/ledger" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-8">
           <input type="hidden" name="limit" value="{{.FinanceFilter.Limit}}">
           <input name="search" value="{{.FinanceFilter.Search}}" placeholder="Reference, party, note" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua xl:col-span-2">
           <input name="from" type="date" value="{{.FinanceFilter.From}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
@@ -479,5 +323,187 @@
       {{end}}
     </div>
   </section>
+  {{end}}
+
+  {{if eq .FinancePage "transfers"}}
+  <div class="grid gap-6">
+    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Transfers</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Move cash to bank</h2>
+      <form method="post" action="/admin/finance/transfers/create" class="mt-5 grid gap-3">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="text-xs font-medium text-slate/60">From account
+            <select name="from_account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+              {{range .FinanceAccounts}}{{if eq .AccountType "cash"}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}
+            </select>
+          </label>
+          <label class="text-xs font-medium text-slate/60">To account
+            <select name="to_account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+              {{range .FinanceAccounts}}{{if eq .AccountType "bank"}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}
+            </select>
+          </label>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="text-xs font-medium text-slate/60">Amount
+            <input name="amount" type="number" min="0.01" step="0.01" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+          </label>
+          <label class="text-xs font-medium text-slate/60">Transfer date
+            <input name="transfer_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+          </label>
+        </div>
+        <label class="text-xs font-medium text-slate/60">Deposit reference
+          <input name="reference_number" maxlength="80" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+        </label>
+        <label class="text-xs font-medium text-slate/60">Description
+          <input name="description" maxlength="300" value="Cash deposited into bank" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+        </label>
+        <label class="text-xs font-medium text-slate/60">Notes
+          <textarea name="notes" rows="2" maxlength="400" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+        </label>
+        <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Record transfer</button>
+      </form>
+    </section>
+
+    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Transfer history</p>
+          <h2 class="mt-2 text-xl font-semibold text-obsidian">Cash and bank movements</h2>
+        </div>
+        <p class="text-xs text-slate/50">{{len .FinanceTransfers}} transfer groups</p>
+      </div>
+      <div class="mt-5 grid gap-3">
+        {{range .FinanceTransfers}}
+        <article class="rounded-[1.25rem] border {{if .Voided}}border-rose-200 bg-rose-50/45{{else}}border-slate/10 bg-cloud/35{{end}} p-4">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p class="font-mono text-xs font-bold text-slate/50">{{.ReferenceNumber}}</p>
+              <p class="mt-2 text-sm font-semibold text-obsidian">{{.FromAccountName}} → {{.ToAccountName}}</p>
+              <p class="mt-1 text-xs text-slate/60">{{formatDateTime .TransferDate}} · {{money .Amount}}</p>
+              {{if .Description}}<p class="mt-2 text-xs text-slate/65">{{.Description}}</p>{{end}}
+              {{if .Voided}}<p class="mt-2 text-xs text-rose-800">Voided {{formatDateTime .VoidedAt}}. Reason: {{.VoidReason}}</p>{{end}}
+            </div>
+            {{if and (hasRole .User "superadmin") (not .Voided)}}
+            <form method="post" action="/admin/finance/transfers/void" class="grid gap-2 sm:min-w-[15rem]" onsubmit="return confirm('Void this transfer pair?');">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="group_id" value="{{.GroupID}}">
+              <input type="text" name="void_reason" required placeholder="Void reason" class="h-10 rounded-xl border border-rose-200 bg-white px-3 text-sm outline-none focus:border-rose-400">
+              <button class="h-10 rounded-xl border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700">Void transfer</button>
+            </form>
+            {{end}}
+          </div>
+        </article>
+        {{else}}
+        <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No transfers have been recorded yet.</div>
+        {{end}}
+      </div>
+    </section>
+  </div>
+  {{end}}
+
+  {{if eq .FinancePage "reconciliations"}}
+  <div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Cash reconciliation</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Count physical cash</h2>
+      <form method="post" action="/admin/finance/reconciliations/create" class="mt-5 grid gap-3">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <label class="text-xs font-medium text-slate/60">Cash account
+          <select name="account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+            {{range .FinanceAccounts}}{{if eq .AccountType "cash"}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}
+          </select>
+        </label>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="text-xs font-medium text-slate/60">Reconciliation date
+            <input name="reconciliation_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+          </label>
+          <label class="text-xs font-medium text-slate/60">Counted cash
+            <input name="counted_balance" type="number" min="0" step="0.01" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+          </label>
+        </div>
+        <label class="text-xs font-medium text-slate/60">Notes
+          <textarea name="notes" rows="3" maxlength="400" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua" placeholder="Required when the counted balance differs from the expected balance"></textarea>
+        </label>
+        <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Save reconciliation</button>
+      </form>
+    </section>
+
+    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Recent reconciliation history</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Latest counted cash records</h2>
+      <div class="mt-6 grid gap-3">
+        {{range .CashReconciliations}}
+        <article class="rounded-[1.2rem] border {{if eq .Status "balanced"}}border-emerald-200 bg-emerald-50/50{{else if eq .Status "short"}}border-rose-200 bg-rose-50/50{{else}}border-amber-200 bg-amber-50/50{{end}} p-4">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-sm font-semibold text-obsidian">{{.FinanceAccountName}} · {{.ReconciliationDate}}</p>
+              <p class="mt-1 text-xs text-slate/60">Expected {{money .ExpectedBalance}} · Counted {{money .CountedBalance}}</p>
+              {{if .Notes}}<p class="mt-2 text-xs text-slate/65">{{.Notes}}</p>{{end}}
+            </div>
+            <div class="text-right">
+              <p class="text-sm font-semibold text-obsidian">{{money .Difference}}</p>
+              <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate/50">{{.Status}}</p>
+            </div>
+          </div>
+        </article>
+        {{else}}
+        <div class="rounded-[1.2rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No cash reconciliations have been recorded yet.</div>
+        {{end}}
+      </div>
+    </section>
+  </div>
+  {{end}}
+
+  {{if eq .FinancePage "accounts"}}
+  <div class="grid gap-6">
+    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Accounts</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Cash and bank balances</h2>
+      <div class="mt-5 grid gap-4 lg:grid-cols-2">
+        {{range .FinanceAccounts}}
+        <article class="rounded-[1.35rem] border {{financeAccountTone .AccountType}} p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-obsidian">{{.Name}}</p>
+              <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate/55">{{financeAccountTypeLabel .AccountType}}</p>
+              {{if .Description}}<p class="mt-2 text-xs text-slate/60">{{.Description}}</p>{{end}}
+            </div>
+            <a href="/admin/finance/accounts/statement?account_id={{.ID}}" class="inline-flex h-9 items-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate">Statement</a>
+          </div>
+        </article>
+        {{end}}
+      </div>
+
+      {{if hasRole .User "superadmin"}}
+      <div class="mt-6 grid gap-4 lg:grid-cols-2">
+        <form method="post" action="/admin/finance/accounts/opening-balance" class="rounded-[1.2rem] border border-slate/10 bg-cloud/35 p-4">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <p class="text-sm font-semibold text-obsidian">Opening balance</p>
+          <div class="mt-3 grid gap-3">
+            <select name="account_id" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">{{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+            <input name="amount" type="number" step="0.01" required placeholder="Opening balance" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+            <input name="recorded_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+            <textarea name="notes" rows="2" placeholder="Why this opening balance is being recorded" class="rounded-xl border border-slate/10 bg-white px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+            <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Post opening balance</button>
+          </div>
+        </form>
+        <form method="post" action="/admin/finance/accounts/adjustment" class="rounded-[1.2rem] border border-slate/10 bg-cloud/35 p-4">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <p class="text-sm font-semibold text-obsidian">Adjustment</p>
+          <div class="mt-3 grid gap-3">
+            <select name="account_id" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">{{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+            <select name="direction" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"><option value="increase">Increase balance</option><option value="decrease">Decrease balance</option></select>
+            <input name="amount" type="number" step="0.01" required placeholder="Adjustment amount" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+            <input name="recorded_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+            <textarea name="reason" rows="2" required placeholder="Detailed reason for this correction" class="rounded-xl border border-slate/10 bg-white px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+            <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Post adjustment</button>
+          </div>
+        </form>
+      </div>
+      {{end}}
+    </section>
+  </div>
+  {{end}}
 </section>
 {{end}}

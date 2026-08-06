@@ -72,6 +72,7 @@ var (
 		"users.manage",
 		"roles.manage",
 		"admissions.manage",
+		"coaches.manage",
 		"training_programs.manage",
 		"student_groups.manage",
 		"attendance.manage",
@@ -99,6 +100,11 @@ var permissionGroups = []PermissionGroup{
 			Key:         "admissions.manage",
 			Label:       "Manage admissions",
 			Description: "Create, update, archive, and collect admission payments.",
+		},
+		{
+			Key:         "coaches.manage",
+			Label:       "Manage coaches",
+			Description: "Create, update, remove, and track coach attendance records.",
 		},
 		{
 			Key:         "training_programs.manage",
@@ -418,6 +424,11 @@ type User struct {
 	Roles       []string
 	Permissions []string
 	Verified    bool
+	Phone       string
+	Address     string
+	Specialties string
+	Notes       string
+	Active      bool
 	CreatedAt   time.Time
 }
 
@@ -746,6 +757,17 @@ type StudentGroup struct {
 	Coaches      []User
 	CoachCount   int
 	CreatedAt    time.Time
+}
+
+type CoachAttendanceRecord struct {
+	ID               int64
+	UserID           int64
+	AttendanceDate   string
+	Status           string
+	Note             string
+	RecordedByUserID int64
+	RecordedAt       time.Time
+	UpdatedAt        time.Time
 }
 
 type AttendanceSummary struct {
@@ -1222,6 +1244,8 @@ type TemplateData struct {
 	SelectedGroup                   *StudentGroup
 	GroupMode                       string
 	AvailableCoaches                []User
+	Coaches                         []User
+	CoachAttendanceRecords          []CoachAttendanceRecord
 	AttendanceRecords               []AttendanceRecord
 	AttendanceDate                  string
 	RecentDates                     []string
@@ -1266,6 +1290,7 @@ type TemplateData struct {
 	SelectedFinanceAccount          *FinanceAccount
 	SelectedFinance                 *FinanceTransaction
 	FinanceFilter                   FinanceFilter
+	FinancePage                     string
 	FinanceLedgerHasPreviousPage    bool
 	FinanceLedgerHasNextPage        bool
 	FinanceLedgerPreviousPageURL    string
@@ -1308,6 +1333,7 @@ type TemplateData struct {
 	PreviousDate                    string
 	NextDate                        string
 	TodayDate                       string
+	SelectedCoach                   *User
 	DailyStats                      []Stat
 	BookingRequestStats             []Stat
 	PendingRequestCount             int
@@ -1347,6 +1373,7 @@ var (
 	ErrRoleAssigned                       = errors.New("role is assigned to one or more users")
 	ErrSystemRoleProtected                = errors.New("system roles are protected")
 	ErrAdmissionHasMonthlyPaymentHistory  = errors.New("this student has monthly fee history and cannot be deleted")
+	ErrCoachHasOtherRoles                 = errors.New("this coach account has other roles and cannot be deleted here")
 )
 
 const maxBookingCashCollection = 1000000
@@ -1576,6 +1603,11 @@ func main() {
 	mux.Handle("/admin/admissions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateAdmissionHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteAdmissionHandler), "admissions.manage")))
+	mux.Handle("/admin/coaches", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.coachManagementHandler), "coaches.manage")))
+	mux.Handle("/admin/coaches/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createCoachHandler), "coaches.manage")))
+	mux.Handle("/admin/coaches/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateCoachHandler), "coaches.manage")))
+	mux.Handle("/admin/coaches/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteCoachHandler), "coaches.manage")))
+	mux.Handle("/admin/coaches/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveCoachAttendanceHandler), "coaches.manage")))
 	mux.Handle(
 		"/admin/training-programs",
 		app.sessionMiddleware(
@@ -1753,6 +1785,11 @@ func main() {
 	mux.Handle("/admin/events/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEventHandler), "events.manage")))
 	mux.Handle("/admin/events/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEventHandler), "events.manage")))
 	mux.Handle("/admin/finance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.manage")))
+	mux.Handle("/admin/finance/ledger", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeLedgerHandler), "finance.manage")))
+	mux.Handle("/admin/finance/receivables", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReceivablesHandler), "finance.manage")))
+	mux.Handle("/admin/finance/transfers", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeTransfersHandler), "finance.manage")))
+	mux.Handle("/admin/finance/reconciliations", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReconciliationsHandler), "finance.manage")))
+	mux.Handle("/admin/finance/accounts", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountsHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transactions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransactionHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transactions/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransactionHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transfers/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransferHandler), "finance.manage")))
@@ -2725,13 +2762,14 @@ func (a *App) adminRedirectHandler(w http.ResponseWriter, r *http.Request) {
 		{"users.manage", "/admin/users"},
 		{"roles.manage", "/admin/roles"},
 		{"admissions.manage", "/admin/admissions"},
+		{"coaches.manage", "/admin/coaches"},
 		{"training_programs.manage", "/admin/training-programs"},
 		{"student_groups.manage", "/admin/student-groups"},
 		{"attendance.manage", "/admin/attendance"},
 		{"courts.manage", "/admin/courts"},
 		{"space_bookings.manage", "/admin/bookings"},
 		{"booking_requests.manage", "/admin/booking-requests"},
-		{"finance.manage", "/admin/finance"},
+		{"finance.manage", "/admin/finance/ledger"},
 		{"pricing.manage", "/admin/pricing"},
 		{"reports.view", "/admin/reports"},
 		{"events.manage", "/admin/events"},
@@ -2772,6 +2810,41 @@ func (a *App) userManagementHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Roles = roles
 	a.render(w, "user-management", data, http.StatusOK)
+}
+
+func (a *App) coachManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	coaches, err := a.listCoachUsersDetailed(true)
+	if err != nil {
+		log.Printf("list coaches: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	selectedDate := strings.TrimSpace(r.URL.Query().Get("date"))
+	if selectedDate == "" {
+		selectedDate = time.Now().Format("2006-01-02")
+	}
+	parsedDate, err := time.Parse("2006-01-02", selectedDate)
+	if err != nil || parsedDate.Format("2006-01-02") > time.Now().Format("2006-01-02") {
+		selectedDate = time.Now().Format("2006-01-02")
+	}
+
+	records, err := a.listCoachAttendanceRecords(selectedDate)
+	if err != nil {
+		log.Printf("list coach attendance: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Coach Management"
+	data.Description = "Manage coaches and coach attendance."
+	data.Coaches = coaches
+	data.CoachAttendanceRecords = records
+	data.AttendanceDate = selectedDate
+	data.TodayDate = time.Now().Format("2006-01-02")
+	a.render(w, "coach-management", data, http.StatusOK)
 }
 
 func (a *App) roleManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -3352,80 +3425,138 @@ func isUniqueConstraintError(err error) bool {
 }
 
 func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+}
+
+func (a *App) financeLedgerHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "ledger")
+}
+
+func (a *App) financeReceivablesHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "receivables")
+}
+
+func (a *App) financeTransfersHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "transfers")
+}
+
+func (a *App) financeReconciliationsHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "reconciliations")
+}
+
+func (a *App) financeAccountsHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "accounts")
+}
+
+func (a *App) financeSectionHandler(w http.ResponseWriter, r *http.Request, page string) {
 	user, _ := a.currentUser(r.Context())
-	filter := financeFilterFromRequest(r)
 	started := time.Now()
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+	data, err := a.buildFinanceSectionData(w, r, user, ctx, started, page)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.render(w, "finance-management", data, http.StatusOK)
+}
 
-	financeTransactions, totalTransactions, err := a.listFinanceTransactionsPage(ctx, filter)
-	if err != nil {
-		log.Printf("finance management load failed: op=list finance transactions duration=%s page=%d limit=%d err=%v", time.Since(started), filter.Page, filter.Limit, err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	allTransactions, err := a.listFinanceTransactions()
-	if err != nil {
-		log.Printf("finance management load failed: op=list finance summary transactions duration=%s err=%v", time.Since(started), err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	bookingFinancials, err := a.listBookingFinancials()
-	if err != nil {
-		log.Printf("finance management load failed: op=list booking financials duration=%s err=%v", time.Since(started), err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	monthlyRows, err := a.listStudentPaymentRows(time.Now().Format("2006-01"))
-	if err != nil {
-		log.Printf("finance management load failed: op=list monthly receivables duration=%s err=%v", time.Since(started), err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	referrals, err := a.listBookingReferrals()
-	if err != nil {
-		log.Printf("finance management load failed: op=list referral payables duration=%s err=%v", time.Since(started), err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	accounts, err := a.listFinanceAccounts(true)
-	if err != nil {
-		log.Printf("finance management load failed: op=list finance accounts duration=%s err=%v", time.Since(started), err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	transfers, err := a.listFinanceTransfers()
-	if err != nil {
-		log.Printf("finance management load failed: op=list finance transfers duration=%s err=%v", time.Since(started), err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	reconciliations, err := a.listCashReconciliations(10)
-	if err != nil {
-		log.Printf("finance management load failed: op=list cash reconciliations duration=%s err=%v", time.Since(started), err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
+func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, user *User, ctx context.Context, started time.Time, page string) (TemplateData, error) {
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Finance"
 	data.Description = "Monitor cash, bank, receivables, expenses, transfers, reconciliations, and payment history."
-	data.FinanceTransactions = financeTransactions
-	data.FinanceTransactionsTotal = totalTransactions
-	data.FinanceAccounts = accounts
-	data.FinanceTransfers = transfers
-	data.CashReconciliations = reconciliations
-	data.FinanceFilter = filter
-	data.FinanceLedgerHasPreviousPage = filter.Page > 1
-	data.FinanceLedgerHasNextPage = filter.Page*filter.Limit < totalTransactions
-	data.FinanceLedgerPreviousPageURL = financeFilterPageURL(r, filter, filter.Page-1)
-	data.FinanceLedgerNextPageURL = financeFilterPageURL(r, filter, filter.Page+1)
-	data.BookingFinancials = bookingFinancials
-	data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
-	data.FinanceSummary = buildFinanceSummary(accounts, allTransactions, bookingFinancials, monthlyRows, referrals, reconciliations)
-	data.Stats = buildFinanceStats(allTransactions)
+	data.FinancePage = page
 	data.TodayDate = time.Now().Format("2006-01-02")
-	a.render(w, "finance-management", data, http.StatusOK)
+
+	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts"
+	needAllTransactions := page == "ledger" || page == "accounts"
+	needBookingFinancials := page == "receivables"
+	needMonthlyRows := page == "receivables"
+	needTransfers := page == "transfers"
+	needReconciliations := page == "reconciliations"
+
+	if needAccounts {
+		accounts, err := a.listFinanceAccounts(true)
+		if err != nil {
+			log.Printf("finance %s load failed: op=list finance accounts duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.FinanceAccounts = accounts
+	}
+
+	if needAllTransactions {
+		allTransactions, err := a.listFinanceTransactions()
+		if err != nil {
+			log.Printf("finance %s load failed: op=list finance summary transactions duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.Stats = buildFinanceStats(allTransactions)
+	}
+
+	if page == "ledger" {
+		filter := financeFilterFromRequest(r)
+		financeTransactions, totalTransactions, err := a.listFinanceTransactionsPage(ctx, filter)
+		if err != nil {
+			log.Printf("finance ledger load failed: op=list finance transactions duration=%s page=%d limit=%d err=%v", time.Since(started), filter.Page, filter.Limit, err)
+			return data, err
+		}
+		data.FinanceTransactions = financeTransactions
+		data.FinanceTransactionsTotal = totalTransactions
+		data.FinanceFilter = filter
+		data.FinanceLedgerHasPreviousPage = filter.Page > 1
+		data.FinanceLedgerHasNextPage = filter.Page*filter.Limit < totalTransactions
+		data.FinanceLedgerPreviousPageURL = financeFilterPageURL(r, filter, filter.Page-1)
+		data.FinanceLedgerNextPageURL = financeFilterPageURL(r, filter, filter.Page+1)
+	}
+
+	if needBookingFinancials {
+		bookingFinancials, err := a.listOutstandingBookingFinancials()
+		if err != nil {
+			log.Printf("finance %s load failed: op=list booking financials duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.BookingFinancials = bookingFinancials
+		data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
+	}
+
+	if needMonthlyRows {
+		monthlyRows, err := a.listStudentPaymentRows(time.Now().Format("2006-01"))
+		if err != nil {
+			log.Printf("finance %s load failed: op=list monthly receivables duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.StudentPaymentRows = monthlyRows
+	}
+
+	if page == "receivables" {
+		referrals, err := a.listBookingReferrals()
+		if err != nil {
+			log.Printf("finance %s load failed: op=list referral payables duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.BookingReferrals = referrals
+		data.FinanceSummary = buildFinanceSummary(nil, nil, data.BookingFinancials, data.StudentPaymentRows, referrals, nil)
+	}
+
+	if needTransfers {
+		transfers, err := a.listFinanceTransfers()
+		if err != nil {
+			log.Printf("finance %s load failed: op=list finance transfers duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.FinanceTransfers = transfers
+	}
+
+	if needReconciliations {
+		reconciliations, err := a.listCashReconciliations(10)
+		if err != nil {
+			log.Printf("finance %s load failed: op=list cash reconciliations duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.CashReconciliations = reconciliations
+	}
+
+	return data, nil
 }
 
 func (a *App) createFinanceTransactionHandler(w http.ResponseWriter, r *http.Request) {
@@ -3508,7 +3639,7 @@ func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if returnTo == "" {
-		returnTo = "/admin/finance#booking-receivables"
+		returnTo = "/admin/finance/receivables"
 	}
 	currentUser, _ := a.currentUser(r.Context())
 	recordedBy := int64(0)
@@ -3553,7 +3684,7 @@ func (a *App) voidBookingPaymentHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	returnTo := strings.TrimSpace(r.FormValue("return_to"))
 	if returnTo == "" {
-		returnTo = "/admin/finance#booking-receivables"
+		returnTo = "/admin/finance/receivables"
 	}
 	if err := a.voidBookingPayment(collectionID, strings.TrimSpace(r.FormValue("void_reason")), voidedBy); err != nil {
 		a.setFlash(w, "Booking payment could not be voided: "+err.Error())
@@ -6626,6 +6757,122 @@ func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
 }
 
+func (a *App) createCoachHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	coach, password, err := coachFromRequest(r, true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, err := a.createCoach(coach, password); err != nil {
+		if errors.Is(err, ErrEmailTaken) {
+			http.Error(w, "email already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("create coach: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Coach created.")
+	http.Redirect(w, r, "/admin/coaches", http.StatusSeeOther)
+}
+
+func (a *App) updateCoachHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	coach, _, err := coachFromRequest(r, false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if coach.ID <= 0 {
+		http.Error(w, "invalid coach id", http.StatusBadRequest)
+		return
+	}
+	if err := a.updateCoach(coach); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "coach not found", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, ErrEmailTaken) {
+			http.Error(w, "email already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("update coach: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Coach updated.")
+	http.Redirect(w, r, "/admin/coaches", http.StatusSeeOther)
+}
+
+func (a *App) deleteCoachHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	coachID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("coach_id")), 10, 64)
+	if err != nil || coachID <= 0 {
+		http.Error(w, "invalid coach id", http.StatusBadRequest)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if currentUser != nil && currentUser.ID == coachID {
+		http.Error(w, "you cannot delete your own account", http.StatusForbidden)
+		return
+	}
+	if err := a.deleteCoach(coachID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "coach not found", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, ErrCoachHasOtherRoles) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		log.Printf("delete coach: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Coach deleted.")
+	http.Redirect(w, r, "/admin/coaches", http.StatusSeeOther)
+}
+
 func (a *App) createRoleHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -7440,6 +7687,61 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/attendance?group_id="+strconv.FormatInt(groupID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
 }
 
+func (a *App) saveCoachAttendanceHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	attendanceDate := strings.TrimSpace(r.FormValue("attendance_date"))
+	parsedAttendanceDate, err := time.Parse("2006-01-02", attendanceDate)
+	if err != nil {
+		http.Error(w, "invalid attendance date", http.StatusBadRequest)
+		return
+	}
+	today := time.Now().Format("2006-01-02")
+	if parsedAttendanceDate.Format("2006-01-02") > today {
+		http.Error(w, "attendance date cannot be in the future", http.StatusBadRequest)
+		return
+	}
+
+	coaches, err := a.listCoachUsersDetailed(false)
+	if err != nil {
+		log.Printf("list active coaches for attendance: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	records := make([]CoachAttendanceRecord, 0, len(coaches))
+	for _, coach := range coaches {
+		records = append(records, CoachAttendanceRecord{
+			UserID:           coach.ID,
+			AttendanceDate:   attendanceDate,
+			Status:           normalizeAttendanceStatus(r.FormValue(fmt.Sprintf("status_%d", coach.ID))),
+			Note:             strings.TrimSpace(r.FormValue(fmt.Sprintf("note_%d", coach.ID))),
+			RecordedByUserID: currentUser.ID,
+		})
+	}
+
+	if err := a.replaceCoachAttendanceRecords(attendanceDate, records); err != nil {
+		log.Printf("save coach attendance: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Coach attendance saved.")
+	http.Redirect(w, r, "/admin/coaches?date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
+}
+
 func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -7917,6 +8219,40 @@ func (a *App) createUser(name, email, password string) (*User, error) {
 	}, nil
 }
 
+func coachFromRequest(r *http.Request, creating bool) (User, string, error) {
+	var coach User
+	var password string
+
+	if !creating {
+		coachID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("coach_id")), 10, 64)
+		if err != nil || coachID <= 0 {
+			return coach, "", errors.New("invalid coach id")
+		}
+		coach.ID = coachID
+	}
+
+	coach.Name = strings.TrimSpace(r.FormValue("name"))
+	coach.Email = strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+	coach.Phone = strings.TrimSpace(r.FormValue("phone"))
+	coach.Address = strings.TrimSpace(r.FormValue("address"))
+	coach.Specialties = strings.TrimSpace(r.FormValue("specialties"))
+	coach.Notes = strings.TrimSpace(r.FormValue("notes"))
+	coach.Active = r.FormValue("active") != "false"
+
+	if coach.Name == "" || !emailPattern.MatchString(coach.Email) {
+		return coach, "", errors.New("invalid coach details")
+	}
+
+	if creating {
+		password = r.FormValue("password")
+		if !passwordPattern.MatchString(password) {
+			return coach, "", errors.New("invalid temporary password")
+		}
+	}
+
+	return coach, password, nil
+}
+
 func (a *App) createManagedUser(name, email, password string, roles []string, verified bool) (*User, error) {
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -7963,6 +8299,97 @@ func (a *App) createManagedUser(name, email, password string, roles []string, ve
 		return nil, err
 	}
 	return a.findUserByID(userID)
+}
+
+func (a *App) createCoach(coach User, password string) (*User, error) {
+	createdCoach, err := a.createManagedUser(
+		coach.Name,
+		coach.Email,
+		password,
+		[]string{"coach"},
+		true,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.upsertCoachProfile(createdCoach.ID, coach); err != nil {
+		return nil, err
+	}
+	return a.findCoachByID(createdCoach.ID)
+}
+
+func (a *App) updateCoach(coach User) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
+		UPDATE users
+		SET name = ?, email = ?
+		WHERE id = ?
+	`, coach.Name, coach.Email, coach.ID)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return ErrEmailTaken
+		}
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return sql.ErrNoRows
+	}
+
+	isCoach, err := userHasRoleTx(tx, coach.ID, "coach")
+	if err != nil {
+		return err
+	}
+	if !isCoach {
+		return sql.ErrNoRows
+	}
+
+	if err := upsertCoachProfileTx(tx, coach.ID, coach); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) deleteCoach(coachID int64) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	roles, err := rolesForUserTx(tx, coachID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return sql.ErrNoRows
+		}
+		return err
+	}
+	if len(roles) != 1 || roles[0] != "coach" {
+		return ErrCoachHasOtherRoles
+	}
+
+	result, err := tx.Exec(`DELETE FROM users WHERE id = ?`, coachID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return sql.ErrNoRows
+	}
+
+	return tx.Commit()
 }
 
 func (a *App) findUserByEmail(email string) (*User, string, error) {
@@ -8058,49 +8485,216 @@ func (a *App) listUsers() ([]User, error) {
 	return users, nil
 }
 
-func (a *App) listCoachUsers() ([]User, error) {
-	rows, err := a.db.Query(`
+func (a *App) listCoachUsersDetailed(includeInactive bool) ([]User, error) {
+	query := `
 		SELECT DISTINCT
 			u.id,
 			u.email,
 			u.name,
 			u.email_verified_at,
-			u.created_at
+			u.created_at,
+			COALESCE(cp.phone, ''),
+			COALESCE(cp.address, ''),
+			COALESCE(cp.specialties, ''),
+			COALESCE(cp.notes, ''),
+			COALESCE(cp.active, 1)
 		FROM users u
 		JOIN user_roles ur
 			ON ur.user_id = u.id
 		JOIN roles r
 			ON r.id = ur.role_id
+		LEFT JOIN coach_profiles cp
+			ON cp.user_id = u.id
 		WHERE r.name = 'coach'
-		ORDER BY u.name COLLATE NOCASE ASC, u.id ASC
-	`)
+	`
+	args := []any{}
+	if !includeInactive {
+		query += ` AND COALESCE(cp.active, 1) = 1`
+	}
+	query += `
+		ORDER BY
+			COALESCE(cp.active, 1) DESC,
+			u.name COLLATE NOCASE ASC,
+			u.id ASC
+	`
+
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	var coaches []User
-
 	for rows.Next() {
 		var coach User
 		var verifiedAt sql.NullTime
-
+		var active int
 		if err := rows.Scan(
 			&coach.ID,
 			&coach.Email,
 			&coach.Name,
 			&verifiedAt,
 			&coach.CreatedAt,
+			&coach.Phone,
+			&coach.Address,
+			&coach.Specialties,
+			&coach.Notes,
+			&active,
 		); err != nil {
 			return nil, err
 		}
-
 		coach.Verified = verifiedAt.Valid
+		coach.Active = active == 1
 		coach.Roles = []string{"coach"}
 		coaches = append(coaches, coach)
 	}
 
 	return coaches, rows.Err()
+}
+
+func (a *App) findCoachByID(userID int64) (*User, error) {
+	coaches, err := a.listCoachUsersDetailed(true)
+	if err != nil {
+		return nil, err
+	}
+	for i := range coaches {
+		if coaches[i].ID == userID {
+			return &coaches[i], nil
+		}
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (a *App) listCoachUsers() ([]User, error) {
+	return a.listCoachUsersDetailed(false)
+}
+
+func (a *App) listCoachAttendanceRecords(attendanceDate string) ([]CoachAttendanceRecord, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			id,
+			user_id,
+			attendance_date,
+			status,
+			note,
+			COALESCE(recorded_by_user_id, 0),
+			recorded_at,
+			updated_at
+		FROM coach_attendance_records
+		WHERE attendance_date = ?
+		ORDER BY user_id ASC, id ASC
+	`, attendanceDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []CoachAttendanceRecord
+	for rows.Next() {
+		var record CoachAttendanceRecord
+		if err := rows.Scan(
+			&record.ID,
+			&record.UserID,
+			&record.AttendanceDate,
+			&record.Status,
+			&record.Note,
+			&record.RecordedByUserID,
+			&record.RecordedAt,
+			&record.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (a *App) replaceCoachAttendanceRecords(attendanceDate string, records []CoachAttendanceRecord) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM coach_attendance_records WHERE attendance_date = ?`, attendanceDate); err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	for _, record := range records {
+		if _, err := tx.Exec(`
+			INSERT INTO coach_attendance_records (
+				user_id,
+				attendance_date,
+				status,
+				note,
+				recorded_by_user_id,
+				recorded_at,
+				updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`,
+			record.UserID,
+			record.AttendanceDate,
+			record.Status,
+			record.Note,
+			record.RecordedByUserID,
+			now,
+			now,
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) upsertCoachProfile(userID int64, coach User) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := upsertCoachProfileTx(tx, userID, coach); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func upsertCoachProfileTx(tx *sql.Tx, userID int64, coach User) error {
+	now := time.Now().UTC()
+	_, err := tx.Exec(`
+		INSERT INTO coach_profiles (
+			user_id,
+			phone,
+			address,
+			specialties,
+			notes,
+			active,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			phone = excluded.phone,
+			address = excluded.address,
+			specialties = excluded.specialties,
+			notes = excluded.notes,
+			active = excluded.active,
+			updated_at = excluded.updated_at
+	`,
+		userID,
+		coach.Phone,
+		coach.Address,
+		coach.Specialties,
+		coach.Notes,
+		boolToInt(coach.Active),
+		now,
+		now,
+	)
+	return err
 }
 
 func (a *App) rolesForUser(userID int64) ([]string, error) {
@@ -8125,6 +8719,54 @@ func (a *App) rolesForUser(userID int64) ([]string, error) {
 		roles = append(roles, role)
 	}
 	return roles, rows.Err()
+}
+
+func rolesForUserTx(tx *sql.Tx, userID int64) ([]string, error) {
+	rows, err := tx.Query(`
+		SELECT r.name
+		FROM users u
+		JOIN user_roles ur ON ur.user_id = u.id
+		JOIN roles r ON r.id = ur.role_id
+		WHERE u.id = ?
+		ORDER BY r.name ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roles []string
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(roles) == 0 {
+		var exists int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM users WHERE id = ?`, userID).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if exists == 0 {
+			return nil, sql.ErrNoRows
+		}
+	}
+	return roles, nil
+}
+
+func userHasRoleTx(tx *sql.Tx, userID int64, roleName string) (bool, error) {
+	var count int
+	err := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM user_roles ur
+		JOIN roles r ON r.id = ur.role_id
+		WHERE ur.user_id = ? AND r.name = ?
+	`, userID, roleName).Scan(&count)
+	return count > 0, err
 }
 
 func (a *App) listRoles() ([]Role, error) {
@@ -14120,6 +14762,29 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS coach_profiles (
+			user_id INTEGER PRIMARY KEY,
+			phone TEXT NOT NULL DEFAULT '',
+			address TEXT NOT NULL DEFAULT '',
+			specialties TEXT NOT NULL DEFAULT '',
+			notes TEXT NOT NULL DEFAULT '',
+			active INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS coach_attendance_records (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			attendance_date TEXT NOT NULL,
+			status TEXT NOT NULL,
+			note TEXT NOT NULL DEFAULT '',
+			recorded_by_user_id INTEGER,
+			recorded_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (recorded_by_user_id) REFERENCES users(id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS attendance_records (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			group_id INTEGER NOT NULL,
@@ -14449,6 +15114,9 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_coach_profiles_active ON coach_profiles(active)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_attendance_user_date ON coach_attendance_records(user_id, attendance_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_coach_attendance_date ON coach_attendance_records(attendance_date)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_group_student_date ON attendance_records(group_id, admission_id, attendance_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_attendance_group_date ON attendance_records(group_id, attendance_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_courts_active_order
@@ -15059,6 +15727,7 @@ func seedRoles(db *sql.DB) error {
 			"users.manage",
 			"roles.manage",
 			"admissions.manage",
+			"coaches.manage",
 			"training_programs.manage",
 			"student_groups.manage",
 			"attendance.manage",
@@ -20470,6 +21139,25 @@ func attendanceCount(records []AttendanceRecord, status string) int {
 	return total
 }
 
+func coachAttendanceRecordFor(records []CoachAttendanceRecord, userID int64) CoachAttendanceRecord {
+	for _, record := range records {
+		if record.UserID == userID {
+			return record
+		}
+	}
+	return CoachAttendanceRecord{UserID: userID, Status: "absent"}
+}
+
+func coachAttendanceCount(records []CoachAttendanceRecord, status string) int {
+	total := 0
+	for _, record := range records {
+		if normalizeAttendanceStatus(record.Status) == status {
+			total++
+		}
+	}
+	return total
+}
+
 func scheduleSummary(schedule SpaceSchedule) string {
 	switch schedule.Activity {
 	case "training":
@@ -21648,7 +22336,7 @@ func financeFilterPageURL(r *http.Request, filter FinanceFilter, page int) strin
 	query := r.URL.Query()
 	query.Set("page", strconv.Itoa(page))
 	query.Set("limit", strconv.Itoa(filter.Limit))
-	return "/admin/finance?" + query.Encode() + "#ledger"
+	return "/admin/finance/ledger?" + query.Encode() + "#ledger"
 }
 
 func admissionsFilterPageURL(r *http.Request, filter AdmissionsFilter, page int) string {
@@ -21907,6 +22595,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"attendanceCount":                           attendanceCount,
 		"attendanceRecordFor":                       attendanceRecordFor,
 		"attendanceStatus":                          attendanceStatus,
+		"coachAttendanceCount":                      coachAttendanceCount,
+		"coachAttendanceRecordFor":                  coachAttendanceRecordFor,
 		"activityLabel":                             activityLabel,
 		"bookingProductLabel":                       bookingProductLabel,
 		"optionSummary":                             optionSummary,
@@ -22027,6 +22717,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"user-management":             "templates/dashboard/user-management.html",
 		"role-management":             "templates/dashboard/role-management.html",
 		"admission-management":        "templates/dashboard/admission-management.html",
+		"coach-management":            "templates/dashboard/coach-management.html",
 		"training-program-management": "templates/dashboard/training-program-management.html",
 		"student-group-management":    "templates/dashboard/student-group-management.html",
 		"attendance-management":       "templates/dashboard/attendance-management.html",

@@ -2040,7 +2040,7 @@ func (a *App) createFinanceTransferHandler(w http.ResponseWriter, r *http.Reques
 	)
 	if err != nil {
 		a.setFlash(w, "Transfer could not be recorded: "+err.Error())
-		http.Redirect(w, r, "/admin/finance#transfers", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/finance/transfers", http.StatusSeeOther)
 		return
 	}
 	var transactionID int64
@@ -2053,7 +2053,7 @@ func (a *App) createFinanceTransferHandler(w http.ResponseWriter, r *http.Reques
 		LIMIT 1
 	`, groupID).Scan(&transactionID); err != nil {
 		a.setFlash(w, "Transfer was recorded.")
-		http.Redirect(w, r, "/admin/finance#transfers", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/finance/transfers", http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
@@ -2094,7 +2094,7 @@ func (a *App) createFinanceOpeningBalanceHandler(w http.ResponseWriter, r *http.
 	transactionID, err := a.createFinanceOpeningBalance(accountID, amount, recordedAt, strings.TrimSpace(r.FormValue("notes")), currentUser.ID)
 	if err != nil {
 		a.setFlash(w, "Opening balance could not be recorded: "+err.Error())
-		http.Redirect(w, r, "/admin/finance#accounts", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
@@ -2138,7 +2138,7 @@ func (a *App) createFinanceAdjustmentHandler(w http.ResponseWriter, r *http.Requ
 	transactionID, err := a.createFinanceAdjustment(accountID, amount, recordedAt, strings.TrimSpace(r.FormValue("reason")), currentUser.ID)
 	if err != nil {
 		a.setFlash(w, "Adjustment could not be recorded: "+err.Error())
-		http.Redirect(w, r, "/admin/finance#accounts", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
@@ -2170,11 +2170,11 @@ func (a *App) createCashReconciliationHandler(w http.ResponseWriter, r *http.Req
 	}
 	if _, err := a.createCashReconciliation(accountID, strings.TrimSpace(r.FormValue("reconciliation_date")), countedBalance, strings.TrimSpace(r.FormValue("notes")), reconciledBy); err != nil {
 		a.setFlash(w, "Cash reconciliation could not be recorded: "+err.Error())
-		http.Redirect(w, r, "/admin/finance#reconciliation", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/finance/reconciliations", http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, "Cash reconciliation recorded.")
-	http.Redirect(w, r, "/admin/finance#reconciliation", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/finance/reconciliations", http.StatusSeeOther)
 }
 
 func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Request) {
@@ -2214,7 +2214,7 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 			defer tx.Rollback()
 			if err := voidFinanceTransactionTx(tx, transaction.ID, reason, currentUser.ID); err != nil {
 				a.setFlash(w, "Finance transaction could not be voided: "+err.Error())
-				http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
+				http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
 				return
 			}
 			if err := tx.Commit(); err != nil {
@@ -2222,11 +2222,11 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			a.setFlash(w, "Orphaned finance transaction was voided from the ledger because its source record no longer exists.")
-			http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
+			http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
 			return
 		}
 		a.setFlash(w, financeVoidWorkflowMessage(transaction))
-		http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
 		return
 	}
 	tx, err := a.db.Begin()
@@ -2237,7 +2237,7 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 	defer tx.Rollback()
 	if err := voidFinanceTransactionTx(tx, transaction.ID, reason, currentUser.ID); err != nil {
 		a.setFlash(w, "Finance transaction could not be voided: "+err.Error())
-		http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
 		return
 	}
 	if transaction.TransactionType == financeTxnTypeOpeningBalance {
@@ -2251,7 +2251,7 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	a.setFlash(w, "Finance transaction was voided.")
-	http.Redirect(w, r, "/admin/finance#ledger", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
 }
 
 func (a *App) voidFinanceTransferHandler(w http.ResponseWriter, r *http.Request) {
@@ -2276,11 +2276,11 @@ func (a *App) voidFinanceTransferHandler(w http.ResponseWriter, r *http.Request)
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
 	if err := a.voidFinanceTransferGroup(groupID, reason, currentUser.ID); err != nil {
 		a.setFlash(w, "Transfer could not be voided: "+err.Error())
-		http.Redirect(w, r, "/admin/finance#transfers-list", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/finance/transfers", http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, "Transfer was voided.")
-	http.Redirect(w, r, "/admin/finance#transfers-list", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/finance/transfers", http.StatusSeeOther)
 }
 
 func (a *App) voidCashReconciliationHandler(w http.ResponseWriter, r *http.Request) {
@@ -2306,11 +2306,11 @@ func (a *App) voidCashReconciliationHandler(w http.ResponseWriter, r *http.Reque
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
 	if err := a.voidCashReconciliation(reconciliationID, reason, currentUser.ID, replacementID); err != nil {
 		a.setFlash(w, "Cash reconciliation could not be voided: "+err.Error())
-		http.Redirect(w, r, "/admin/finance#reconciliation", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/finance/reconciliations", http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, "Cash reconciliation was voided.")
-	http.Redirect(w, r, "/admin/finance#reconciliation", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/finance/reconciliations", http.StatusSeeOther)
 }
 
 func (a *App) financeAccountStatementHandler(w http.ResponseWriter, r *http.Request) {
