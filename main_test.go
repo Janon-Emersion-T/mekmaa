@@ -1711,6 +1711,68 @@ func TestReferralCommissionLifecycle(t *testing.T) {
 	}
 }
 
+func TestCreateSpaceScheduleCreatesReferralCommissionForDirectBooking(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if err := app.updateReferralCommissionAmount(750); err != nil {
+		t.Fatalf("configure referral commission: %v", err)
+	}
+	partner := ReferralPartner{
+		Name:   "Direct Booking Partner",
+		Code:   "DIRECT-01",
+		Email:  "direct@example.com",
+		Phone:  "0700000001",
+		Active: true,
+	}
+	if err := app.createReferralPartner(partner); err != nil {
+		t.Fatalf("create referral partner: %v", err)
+	}
+
+	schedule := SpaceSchedule{
+		SlotDate:       time.Now().AddDate(0, 0, 2).Format("2006-01-02"),
+		SlotHour:       "18:00",
+		EntryType:      "booking",
+		Activity:       "full_indoor_cricket",
+		Quantity:       1,
+		Title:          "Direct Referred Booking",
+		RequesterName:  "Walk-in Customer",
+		RequesterEmail: "walkin@example.com",
+		RequesterPhone: "0711111111",
+		QuotedPrice:    3000,
+		ReferralCode:   "DIRECT-01",
+	}
+
+	scheduleID := createConfirmedBookingForTests(t, app, schedule)
+	referrals, err := app.listBookingReferrals()
+	if err != nil {
+		t.Fatalf("list booking referrals: %v", err)
+	}
+	if len(referrals) != 1 {
+		t.Fatalf("expected one booking referral, got %d", len(referrals))
+	}
+	if referrals[0].ScheduleID != scheduleID || referrals[0].PartnerCode != "DIRECT-01" {
+		t.Fatalf("unexpected referral linkage: %#v", referrals[0])
+	}
+	if referrals[0].CommissionAmount != 750 || referrals[0].BookingStatus != bookingStatusConfirmed {
+		t.Fatalf("unexpected referral state: %#v", referrals[0])
+	}
+
+	invalid := schedule
+	invalid.Title = "Invalid Direct Referral"
+	invalid.SlotHour = "19:00"
+	invalid.ReferralCode = "UNKNOWN"
+	if err := app.createSpaceSchedule(invalid); err == nil {
+		t.Fatal("expected invalid direct booking referral code to be rejected")
+	}
+
+	var scheduleCount int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM space_schedules WHERE title IN (?, ?)`, schedule.Title, invalid.Title).Scan(&scheduleCount); err != nil {
+		t.Fatalf("count schedules: %v", err)
+	}
+	if scheduleCount != 1 {
+		t.Fatalf("invalid direct booking referral should rollback schedule insert; count=%d", scheduleCount)
+	}
+}
+
 func TestReferralPartnerManagementUsesSharedRate(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:referral-partner-management-test?mode=memory&cache=shared")
 	if err != nil {

@@ -12334,6 +12334,7 @@ func (a *App) createSpaceSchedule(
 	); err != nil {
 		return err
 	}
+	now := time.Now().UTC()
 
 	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
@@ -12380,8 +12381,8 @@ func (a *App) createSpaceSchedule(
 		"",
 		"",
 		"",
-		time.Now().UTC(),
-		time.Now().UTC(),
+		now,
+		now,
 	)
 	if err != nil {
 		return err
@@ -12406,14 +12407,71 @@ func (a *App) createSpaceSchedule(
 		`,
 			scheduleID,
 			schedule.QuotedPrice,
-			time.Now().UTC(),
-			time.Now().UTC(),
+			now,
+			now,
 		); err != nil {
+			return err
+		}
+		if err := a.createBookingReferralTx(tx, scheduleID, schedule.ReferralCode, now); err != nil {
 			return err
 		}
 	}
 
 	return tx.Commit()
+}
+
+func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode string, createdAt time.Time) error {
+	referralCode = strings.ToUpper(strings.TrimSpace(referralCode))
+	if referralCode == "" {
+		return nil
+	}
+
+	var partnerID int64
+	if err := tx.QueryRow(`
+		SELECT id
+		FROM referral_partners
+		WHERE code = ?
+		  AND active = 1
+	`,
+		referralCode,
+	).Scan(&partnerID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("the referral code is invalid or inactive")
+		}
+		return err
+	}
+
+	var commissionAmount float64
+	if err := tx.QueryRow(`
+		SELECT COALESCE(referral_commission_amount, 0)
+		FROM pricing_settings
+		WHERE id = 1
+	`).Scan(&commissionAmount); err != nil {
+		return err
+	}
+	if commissionAmount <= 0 {
+		return errors.New("referral commission is not configured")
+	}
+
+	_, err := tx.Exec(`
+		INSERT INTO booking_referrals (
+			schedule_id,
+			partner_id,
+			commission_amount,
+			paid,
+			paid_at,
+			payment_method,
+			finance_transaction_id,
+			created_at
+		)
+		VALUES (?, ?, ?, 0, NULL, '', NULL, ?)
+	`,
+		scheduleID,
+		partnerID,
+		commissionAmount,
+		createdAt,
+	)
+	return err
 }
 
 func (a *App) createPricingRule(rule PricingRule) error {
@@ -12633,66 +12691,8 @@ func (a *App) createPublicBookingRequestDetailed(
 		return nil, 0, err
 	}
 
-	if schedule.ReferralCode != "" {
-		var partnerID int64
-
-		if err := tx.QueryRow(`
-			SELECT id
-			FROM referral_partners
-			WHERE code = ?
-			  AND active = 1
-		`,
-			schedule.ReferralCode,
-		).Scan(&partnerID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, 0, errors.New(
-					"the referral code is invalid or inactive",
-				)
-			}
-
-			return nil, 0, err
-		}
-
-		var commissionAmount float64
-
-		if err := tx.QueryRow(`
-			SELECT
-				COALESCE(
-					referral_commission_amount,
-					0
-				)
-			FROM pricing_settings
-			WHERE id = 1
-		`).Scan(&commissionAmount); err != nil {
-			return nil, 0, err
-		}
-
-		if commissionAmount <= 0 {
-			return nil, 0, errors.New(
-				"referral commission is not configured",
-			)
-		}
-
-		if _, err := tx.Exec(`
-			INSERT INTO booking_referrals (
-				schedule_id,
-				partner_id,
-				commission_amount,
-				paid,
-				paid_at,
-				payment_method,
-				finance_transaction_id,
-				created_at
-			)
-			VALUES (?, ?, ?, 0, NULL, '', NULL, ?)
-		`,
-			requestID,
-			partnerID,
-			commissionAmount,
-			now,
-		); err != nil {
-			return nil, 0, err
-		}
+	if err := a.createBookingReferralTx(tx, requestID, schedule.ReferralCode, now); err != nil {
+		return nil, 0, err
 	}
 
 	changeID, err := a.recordBookingLifecycleChangeTx(
@@ -18296,13 +18296,14 @@ func scheduleFromRequest(r *http.Request) SpaceSchedule {
 		quantity = 1
 	}
 	return SpaceSchedule{
-		SlotDate:  strings.TrimSpace(r.FormValue("slot_date")),
-		SlotHour:  strings.TrimSpace(r.FormValue("slot_hour")),
-		EntryType: entryType,
-		Activity:  activity,
-		Quantity:  quantity,
-		Title:     strings.TrimSpace(r.FormValue("title")),
-		Notes:     strings.TrimSpace(r.FormValue("notes")),
+		SlotDate:     strings.TrimSpace(r.FormValue("slot_date")),
+		SlotHour:     strings.TrimSpace(r.FormValue("slot_hour")),
+		EntryType:    entryType,
+		Activity:     activity,
+		Quantity:     quantity,
+		Title:        strings.TrimSpace(r.FormValue("title")),
+		Notes:        strings.TrimSpace(r.FormValue("notes")),
+		ReferralCode: strings.ToUpper(strings.TrimSpace(r.FormValue("referral_code"))),
 	}
 }
 
@@ -18380,13 +18381,14 @@ func prefillPublicBookingDraft(r *http.Request, viewer *User, calendarDate strin
 
 func prefillAdminBookingDraft(r *http.Request, calendarDate string) *SpaceSchedule {
 	draft := &SpaceSchedule{
-		EntryType: "booking",
-		SlotDate:  calendarDate,
-		SlotHour:  strings.TrimSpace(r.URL.Query().Get("hour")),
-		Activity:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("activity"))),
-		Quantity:  1,
-		Title:     strings.TrimSpace(r.URL.Query().Get("title")),
-		Notes:     strings.TrimSpace(r.URL.Query().Get("notes")),
+		EntryType:    "booking",
+		SlotDate:     calendarDate,
+		SlotHour:     strings.TrimSpace(r.URL.Query().Get("hour")),
+		Activity:     strings.ToLower(strings.TrimSpace(r.URL.Query().Get("activity"))),
+		Quantity:     1,
+		Title:        strings.TrimSpace(r.URL.Query().Get("title")),
+		Notes:        strings.TrimSpace(r.URL.Query().Get("notes")),
+		ReferralCode: strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("ref"))),
 	}
 	applyAdminBookingQueryDraft(r, draft)
 	if entryType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entry_type"))); entryType == "booking" || entryType == "training" {
@@ -18427,6 +18429,12 @@ func applyAdminBookingQueryDraft(r *http.Request, schedule *SpaceSchedule) {
 	}
 	if title := strings.TrimSpace(query.Get("title")); title != "" {
 		schedule.Title = title
+	}
+	if referralCode := strings.TrimSpace(query.Get("referral_code")); referralCode != "" {
+		schedule.ReferralCode = strings.ToUpper(referralCode)
+	}
+	if referralCode := strings.TrimSpace(query.Get("ref")); referralCode != "" {
+		schedule.ReferralCode = strings.ToUpper(referralCode)
 	}
 	if notes := strings.TrimSpace(query.Get("notes")); notes != "" {
 		schedule.Notes = notes

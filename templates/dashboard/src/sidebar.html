@@ -74,11 +74,6 @@
           <span>Attendance</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Daily</span>
         </a>
         {{end}}
-        {{if hasPermission .User "finance.manage"}}
-        <a href="/admin/student-payments" class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Student payments</span><span class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-aqua text-obsidian{{else}}bg-amber/15 text-amber-700{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Monthly</span>
-        </a>
-        {{end}}
       </div>
     </div>
     {{end}}
@@ -120,7 +115,10 @@
       <div class="space-y-1">
         {{if hasPermission .User "finance.manage"}}
         <a href="/admin/finance/ledger" class="{{if isCurrentPath .CurrentPath "/admin/finance" "/admin/finance/ledger" "/admin/finance/receipt"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Finance ledger</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Ledger</span>
+          <span>General ledger</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Core</span>
+        </a>
+        <a href="/admin/student-payments" class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Student payments</span><span class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-aqua text-obsidian{{else}}bg-amber/15 text-amber-700{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Ledger</span>
         </a>
         <a href="/admin/finance/receivables" class="{{if isCurrentPath .CurrentPath "/admin/finance/receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
@@ -135,7 +133,7 @@
           <span>Accounts</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Balances</span>
         </a>
         <a href="/admin/referrals" class="{{if isCurrentPath .CurrentPath "/admin/referrals"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Referral programme</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Partners</span>
+          <span>Referral payouts</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Ledger</span>
         </a>
         {{end}}
       </div>
