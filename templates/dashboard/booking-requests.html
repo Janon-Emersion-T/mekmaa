@@ -422,8 +422,9 @@
                 <form action="/admin/booking-requests/hold" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Place {{bookingReference .ID}} on hold?')">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                  <input type="hidden" name="return_to" value="/admin/booking-requests" />
                   <input type="text" name="review_note" placeholder="Internal hold note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
-                  <textarea name="customer_message" rows="3" placeholder="Optional customer-facing hold message" class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
+                  <textarea name="customer_message" rows="3" placeholder="Required customer-facing hold message" required class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
                   <button class="h-10 w-full rounded-xl border border-violet-200 bg-violet-50 text-xs font-bold text-violet-800 transition hover:bg-violet-100">Place on hold</button>
                 </form>
                 <a href="/admin/booking-requests?action=reschedule&id={{.ID}}#request-reschedule" class="mt-2 inline-flex h-10 w-full items-center justify-center rounded-xl border border-aqua/25 bg-aqua/10 text-xs font-bold text-emerald-900 transition hover:bg-aqua/20">Reschedule</a>

@@ -468,6 +468,10 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	requestID := created.ID
+	_, rawToken, tokenErr := a.ensureActiveBookingAccessToken(requestID, "status")
+	if tokenErr != nil {
+		log.Printf("issue booking status token: %v", tokenErr)
+	}
 	eventType := bookingCommEventRequestReceived
 	eventKey := fmt.Sprintf("schedule:%d:%s", requestID, bookingCommEventRequestReceived)
 	flashMessage := "Booking request " + bookingReference(requestID) + " received. Keep this reference while our team reviews the request."
@@ -487,11 +491,16 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 	if commErr != nil {
 		log.Printf("send booking request communication: %v", commErr)
 	}
+	emailSent := communicationDelivered(results, bookingCommChannelEmail)
 	smsSent := communicationDelivered(results, bookingCommChannelSMS)
 	if smsSent {
 		a.setFlash(w, flashMessage)
 	} else {
 		a.setFlash(w, flashMessage+" We could not confirm SMS delivery automatically.")
+	}
+	if strings.TrimSpace(rawToken) != "" && (created.Status == bookingStatusConfirmed || (!emailSent && !smsSent)) {
+		http.Redirect(w, r, "/booking/status?token="+url.QueryEscape(rawToken), http.StatusSeeOther)
+		return
 	}
 	http.Redirect(w, r, "/book?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
 }
@@ -562,6 +571,13 @@ func (a *App) publicBookingStatusHandler(w http.ResponseWriter, r *http.Request)
 	a.render(w, "booking-status", data, http.StatusOK)
 }
 
+func (a *App) redirectPublicBookingStatus(w http.ResponseWriter, r *http.Request, rawToken string, message string) {
+	if strings.TrimSpace(message) != "" {
+		a.setFlash(w, message)
+	}
+	http.Redirect(w, r, "/booking/status?token="+url.QueryEscape(strings.TrimSpace(rawToken)), http.StatusSeeOther)
+}
+
 func (a *App) publicBookingCancellationRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -578,31 +594,33 @@ func (a *App) publicBookingCancellationRequestHandler(w http.ResponseWriter, r *
 	rawToken := strings.TrimSpace(r.FormValue("token"))
 	reason := strings.TrimSpace(r.FormValue("request_reason"))
 	if reason == "" {
-		http.Error(w, "cancellation reason is required", http.StatusBadRequest)
+		a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation reason is required.")
 		return
 	}
 	schedule, token, err := a.findActiveBookingByAccessToken(rawToken)
 	if err != nil {
-		http.Error(w, "booking status link is unavailable", http.StatusNotFound)
+		a.redirectPublicBookingStatus(w, r, rawToken, "This booking status link is unavailable. Please contact Mekmaa and request a fresh status link.")
 		return
 	}
 	if !bookingEligibleForCustomerCancellation(schedule, time.Now()) {
-		http.Error(w, "this booking cannot accept a cancellation request", http.StatusBadRequest)
+		a.redirectPublicBookingStatus(w, r, rawToken, "This booking cannot accept a cancellation request right now.")
 		return
 	}
 	existing, err := a.listBookingCancellationRequestsForScheduleIDs([]int64{schedule.ID})
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Printf("load booking cancellation requests: %v", err)
+		a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation request could not be submitted right now.")
 		return
 	}
 	if pendingCancellationRequestFor(existing, schedule.ID) != nil {
-		http.Error(w, "a cancellation request is already pending", http.StatusConflict)
+		a.redirectPublicBookingStatus(w, r, rawToken, "A cancellation request is already pending for this booking.")
 		return
 	}
 
 	tx, err := a.db.Begin()
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Printf("begin booking cancellation request: %v", err)
+		a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation request could not be submitted right now.")
 		return
 	}
 	defer tx.Rollback()
@@ -614,15 +632,17 @@ func (a *App) publicBookingCancellationRequestHandler(w http.ResponseWriter, r *
 	`, schedule.ID, reason, time.Now().UTC(), nullIfZero(token.ID))
 	if err != nil {
 		if isUniqueConstraintError(err) {
-			http.Error(w, "a cancellation request is already pending", http.StatusConflict)
+			a.redirectPublicBookingStatus(w, r, rawToken, "A cancellation request is already pending for this booking.")
 			return
 		}
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Printf("insert booking cancellation request: %v", err)
+		a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation request could not be submitted right now.")
 		return
 	}
 	requestID, err := result.LastInsertId()
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Printf("load booking cancellation request id: %v", err)
+		a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation request could not be submitted right now.")
 		return
 	}
 	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(tx, schedule.ID), schedule.ID)
@@ -630,18 +650,20 @@ func (a *App) publicBookingCancellationRequestHandler(w http.ResponseWriter, r *
 		schedule.QuotedPrice = financial.QuotedAmount
 	}
 	if _, err := a.recordBookingLifecycleChangeTx(tx, schedule, "cancellation_requested", schedule.Status, schedule.Status, "", reason, "", "customer", 0); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Printf("record booking cancellation request history: %v", err)
+		a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation request could not be submitted right now.")
 		return
 	}
 	if err := tx.Commit(); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Printf("commit booking cancellation request: %v", err)
+		a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation request could not be submitted right now.")
 		return
 	}
 	_, commErr := a.sendBookingCommunicationEvent(schedule.ID, bookingCommEventCancellationRequested, "", fmt.Sprintf("schedule:%d:%s:req:%d", schedule.ID, bookingCommEventCancellationRequested, requestID), 0)
 	if commErr != nil {
 		log.Printf("send cancellation requested communication: %v", commErr)
 	}
-	http.Redirect(w, r, "/booking/status?token="+url.QueryEscape(rawToken), http.StatusSeeOther)
+	a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation request sent. Mekmaa will review it and update this status page.")
 }
 
 func (a *App) registerHandler(w http.ResponseWriter, r *http.Request) {

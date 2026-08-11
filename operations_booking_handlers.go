@@ -1435,6 +1435,7 @@ func (a *App) noShowBookingHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) holdBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	redirectTo := safeReturnPath(r.FormValue("return_to"), "/admin/booking-requests")
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1454,17 +1455,22 @@ func (a *App) holdBookingRequestHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
 	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	if customerMessage == "" {
+		a.setFlash(w, "Add the customer-facing hold message that should appear on the booking status page.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
+		return
+	}
 	updated, changeID, err := a.transitionBookingRequestStatus(scheduleID, bookingStatusHeld, reviewNote, customerMessage, "admin", currentUserID(r))
 	if err != nil {
 		a.setFlash(w, "Booking could not be placed on hold: "+err.Error())
-		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	communications, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventHeld, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventHeld, changeID), currentUserID(r))
 	if commErr != nil {
 		log.Printf("send booking hold communication: %v", commErr)
 		a.setFlash(w, "Booking request placed on hold, but the customer communication could not be prepared automatically.")
-		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, communicationFlashMessage("Booking request placed on hold.", communications))
@@ -1472,6 +1478,7 @@ func (a *App) holdBookingRequestHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *App) approveBookingCancellationRequestHandler(w http.ResponseWriter, r *http.Request) {
+	redirectTo := safeReturnPath(r.FormValue("return_to"), "/admin/bookings")
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1486,7 +1493,8 @@ func (a *App) approveBookingCancellationRequestHandler(w http.ResponseWriter, r 
 	}
 	requestID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("request_id")), 10, 64)
 	if err != nil || requestID <= 0 {
-		http.Error(w, "invalid request id", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid cancellation request.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	row := a.db.QueryRow(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
@@ -1494,14 +1502,21 @@ func (a *App) approveBookingCancellationRequestHandler(w http.ResponseWriter, r 
 	var reason string
 	var status string
 	if err := row.Scan(&scheduleID, &reason, &status); err != nil {
-		http.Error(w, "request not found", http.StatusNotFound)
+		a.setFlash(w, "Cancellation request not found.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	if status != bookingStatusPending {
-		http.Error(w, "request is no longer pending", http.StatusBadRequest)
+		a.setFlash(w, "Cancellation request is no longer pending.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	if customerMessage == "" {
+		a.setFlash(w, "Add the customer-facing approval message before approving the cancellation.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
+		return
+	}
 	financeNote := strings.TrimSpace(r.FormValue("cancellation_finance_note"))
 	updated, changeID, err := a.transitionManagedBookingStatus(scheduleID, bookingStatusCancelled, reason, customerMessage, reason, financeNote, "customer_request_approved", currentUserID(r))
 	if err != nil {
@@ -1525,6 +1540,7 @@ func (a *App) approveBookingCancellationRequestHandler(w http.ResponseWriter, r 
 }
 
 func (a *App) rejectBookingCancellationRequestHandler(w http.ResponseWriter, r *http.Request) {
+	redirectTo := safeReturnPath(r.FormValue("return_to"), "/admin/bookings")
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1539,7 +1555,8 @@ func (a *App) rejectBookingCancellationRequestHandler(w http.ResponseWriter, r *
 	}
 	requestID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("request_id")), 10, 64)
 	if err != nil || requestID <= 0 {
-		http.Error(w, "invalid request id", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid cancellation request.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	row := a.db.QueryRow(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
@@ -1547,17 +1564,25 @@ func (a *App) rejectBookingCancellationRequestHandler(w http.ResponseWriter, r *
 	var reason string
 	var status string
 	if err := row.Scan(&scheduleID, &reason, &status); err != nil {
-		http.Error(w, "request not found", http.StatusNotFound)
+		a.setFlash(w, "Cancellation request not found.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	if status != bookingStatusPending {
-		http.Error(w, "request is no longer pending", http.StatusBadRequest)
+		a.setFlash(w, "Cancellation request is no longer pending.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
 	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
 	if reviewNote == "" {
-		http.Error(w, "review note is required", http.StatusBadRequest)
+		a.setFlash(w, "Add the internal rejection note before rejecting the cancellation request.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
+		return
+	}
+	if customerMessage == "" {
+		a.setFlash(w, "Add the customer-facing rejection message before rejecting the cancellation request.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	if _, err := a.db.Exec(`
@@ -1565,7 +1590,9 @@ func (a *App) rejectBookingCancellationRequestHandler(w http.ResponseWriter, r *
 		SET status = 'rejected', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
 		WHERE id = ? AND status = 'pending'
 	`, reviewNote, time.Now().UTC(), nullIfZero(currentUserID(r)), requestID); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Printf("reject cancellation request row: %v", err)
+		a.setFlash(w, "Cancellation request could not be rejected right now.")
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 	schedule, _ := a.findSpaceScheduleByID(scheduleID)

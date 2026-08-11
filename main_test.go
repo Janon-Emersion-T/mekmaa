@@ -1443,6 +1443,42 @@ func TestCustomerBookingStatusPaymentVisibilityAndTotals(t *testing.T) {
 	}
 }
 
+func TestPublicBookingRequestRedirectsToStatusWhenCommunicationUnavailable(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	app.bookingMessages.EmailEnabled = false
+	app.bookingMessages.SMSEnabled = false
+
+	form := url.Values{
+		"csrf_token":      {"token"},
+		"entry_type":      {"booking"},
+		"slot_date":       {"2026-08-15"},
+		"slot_hour":       {"18:00"},
+		"booking_option":  {"badminton:1"},
+		"title":           {"Status Link Fallback"},
+		"requester_name":  {"Fallback Customer"},
+		"requester_email": {"fallback@example.com"},
+		"requester_phone": {"0772207297"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/book/request", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+
+	app.publicBookingRequestHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("public booking request status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	location := rec.Header().Get("Location")
+	if !strings.HasPrefix(location, "/booking/status?token=") {
+		t.Fatalf("public booking request redirect = %q", location)
+	}
+	if !strings.Contains(rec.Header().Get("Set-Cookie"), flashCookieName+"=") {
+		t.Fatal("expected flash cookie for public booking fallback")
+	}
+}
+
 func TestCollectBookingPaymentHandlerOverpaymentFlashAndReturnURL(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	scheduleID := createConfirmedFutureBooking(t, app, 4, "20:00")
@@ -4998,8 +5034,21 @@ func TestCustomerCancellationRequestCreatesPendingRequestAndBlocksDuplicate(t *t
 	}
 
 	second := sendRequest("Second attempt")
-	if second.Code != http.StatusConflict {
-		t.Fatalf("expected duplicate cancellation request conflict, got %d", second.Code)
+	if second.Code != http.StatusSeeOther {
+		t.Fatalf("expected duplicate cancellation request redirect, got %d", second.Code)
+	}
+	if got := second.Header().Get("Location"); got != "/booking/status?token="+url.QueryEscape(rawToken) {
+		t.Fatalf("duplicate cancellation redirect = %q", got)
+	}
+	flashFound := false
+	for _, cookie := range second.Result().Cookies() {
+		if cookie.Name == flashCookieName && cookie.Value != "" {
+			flashFound = true
+			break
+		}
+	}
+	if !flashFound {
+		t.Fatal("expected flash cookie for duplicate cancellation request")
 	}
 }
 

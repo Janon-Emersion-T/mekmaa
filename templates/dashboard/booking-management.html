@@ -281,7 +281,8 @@
           <form action="/admin/bookings/cancellation-requests/approve" method="post" class="grid gap-2">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
             <input type="hidden" name="request_id" value="{{$cancelReq.ID}}" />
-            <textarea name="customer_message" rows="3" placeholder="Customer-facing approval message" class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
+            <input type="hidden" name="return_to" value="/admin/bookings?action=view&id={{.SelectedSchedule.ID}}&date={{.SelectedSchedule.SlotDate}}#schedule-view" />
+            <textarea name="customer_message" rows="3" placeholder="Customer-facing approval message" required class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
             <input type="text" name="cancellation_finance_note" placeholder="Optional internal cash handling note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
             <input type="text" name="review_note" placeholder="Optional admin note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
             <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-bold text-cloud">Approve cancellation</button>
@@ -289,8 +290,9 @@
           <form action="/admin/bookings/cancellation-requests/reject" method="post" class="grid gap-2">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
             <input type="hidden" name="request_id" value="{{$cancelReq.ID}}" />
+            <input type="hidden" name="return_to" value="/admin/bookings?action=view&id={{.SelectedSchedule.ID}}&date={{.SelectedSchedule.SlotDate}}#schedule-view" />
             <input type="text" name="review_note" placeholder="Internal rejection note" required class="h-10 w-full rounded-xl border border-red-200 bg-white px-3 text-xs outline-none focus:border-red-400" />
-            <textarea name="customer_message" rows="3" placeholder="Customer-facing rejection message" class="w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-xs outline-none focus:border-red-400"></textarea>
+            <textarea name="customer_message" rows="3" placeholder="Customer-facing rejection message" required class="w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-xs outline-none focus:border-red-400"></textarea>
             <button class="h-10 rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700">Reject request</button>
           </form>
         </div>

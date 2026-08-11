@@ -1544,3 +1544,14 @@ func adminBookingCommunicationRedirect(scheduleID int64, status string, slotDate
 	}
 	return fmt.Sprintf("/admin/bookings?action=view&id=%d&date=%s#schedule-view", scheduleID, url.QueryEscape(slotDate))
 }
+
+func safeReturnPath(raw string, fallback string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback
+	}
+	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return fallback
+	}
+	return raw
+}
