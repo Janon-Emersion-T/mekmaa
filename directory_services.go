@@ -743,7 +743,7 @@ func (a *App) listStudentGroups() ([]StudentGroup, error) {
 		SELECT sg.id, sg.name, sg.code, sg.description, COALESCE(sg.training_program_id, 0), COALESCE(tp.name, ''), sg.created_at
 		FROM student_groups sg
 		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
-		ORDER BY created_at DESC, id DESC
+		ORDER BY sg.created_at DESC, sg.id DESC
 	`)
 	if err != nil {
 		return nil, err
