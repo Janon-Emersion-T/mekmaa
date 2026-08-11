@@ -1081,12 +1081,14 @@ func (a *App) listAttendanceLimitWarnings(groupID int64, sessionID int64, attend
 		JOIN student_groups sg ON sg.id = ar.group_id
 		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
 		JOIN (
-			SELECT admission_id, COUNT(*) AS session_count
-			FROM attendance_records
-			WHERE SUBSTR(attendance_date, 1, 7) = SUBSTR(?, 1, 7)
-			  AND status IN ('present', 'late')
-			GROUP BY admission_id
+			SELECT ar2.admission_id, COALESCE(sg2.training_program_id, 0) AS training_program_id, COUNT(*) AS session_count
+			FROM attendance_records ar2
+			JOIN student_groups sg2 ON sg2.id = ar2.group_id
+			WHERE SUBSTR(ar2.attendance_date, 1, 7) = SUBSTR(?, 1, 7)
+			  AND ar2.status IN ('present', 'late')
+			GROUP BY ar2.admission_id, COALESCE(sg2.training_program_id, 0)
 		) AS monthly_sessions ON monthly_sessions.admission_id = ar.admission_id
+		                       AND monthly_sessions.training_program_id = COALESCE(sg.training_program_id, 0)
 		WHERE ar.group_id = ?
 		  AND COALESCE(ar.session_id, 0) = ?
 		  AND ar.attendance_date = ?

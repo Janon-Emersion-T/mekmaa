@@ -894,7 +894,7 @@ func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
 		SELECT sg.id, sg.name, sg.code, sg.description, COALESCE(sg.training_program_id, 0), COALESCE(tp.name, ''), sg.created_at
 		FROM student_groups sg
 		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
-		WHERE id = ?
+		WHERE sg.id = ?
 	`, groupID)
 
 	var group StudentGroup

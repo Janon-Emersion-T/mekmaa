@@ -229,7 +229,8 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		FreeMonthlyFee:      r.FormValue("free_monthly_fee") == "true",
 	}
 	if err := validateEnrollment(enrollment); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
 		return
 	}
 
@@ -242,7 +243,8 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	_, financeTransactionID, err := a.createStudentEnrollmentWithOptionalPayment(enrollment, collectPayment, recordedByUserID)
 	if err != nil {
 		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			a.setFlash(w, err.Error())
+			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
 			return
 		}
 		if isUniqueConstraintError(err) {
@@ -263,6 +265,7 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	target := "/admin/enrollments"
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -277,13 +280,15 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 	}
 	enrollmentID, err := parsePositiveInt64(r.FormValue("enrollment_id"))
 	if err != nil {
-		http.Error(w, "invalid enrollment id", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid enrollment.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	enrollment, err := a.findStudentEnrollmentByID(enrollmentID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "enrollment not found", http.StatusNotFound)
+			a.setFlash(w, "Enrollment not found.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
 		log.Printf("find enrollment for fee collection: %v", err)
@@ -304,7 +309,8 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 	transactionID, err := a.collectEnrollmentAdmissionPaymentTx(tx, *enrollment, recordedByUserID)
 	if err != nil {
 		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			a.setFlash(w, err.Error())
+			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
 		log.Printf("collect enrollment admission fee: %v", err)

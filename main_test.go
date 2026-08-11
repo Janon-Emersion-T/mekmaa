@@ -2350,6 +2350,27 @@ func TestOpeningBalanceMetadataSyncsOnVoidAndReplacement(t *testing.T) {
 	}
 }
 
+func TestUpdateFinanceAccountRejectsRenamingWhenHistoryExists(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	accountID, err := app.createFinanceAccount("Tournament Wallet", financeAccountTypeCash, "Temporary collections", 0)
+	if err != nil {
+		t.Fatalf("create finance account: %v", err)
+	}
+	if _, err := app.createManualFinanceTransactionForAccount("manual_income", "Desk", "Seed history", "", accountID, 500, time.Date(2026, 8, 3, 9, 0, 0, 0, time.Local), 0); err != nil {
+		t.Fatalf("seed finance history: %v", err)
+	}
+	if err := app.updateFinanceAccount(accountID, "Renamed Wallet", financeAccountTypeBank, "Changed", true, 0); err == nil {
+		t.Fatal("expected account rename/type change with history to be rejected")
+	}
+	account, err := app.findFinanceAccountByID(accountID)
+	if err != nil {
+		t.Fatalf("reload finance account: %v", err)
+	}
+	if account.Name != "Tournament Wallet" || account.AccountType != financeAccountTypeCash {
+		t.Fatalf("finance account mutated despite rejection: %#v", account)
+	}
+}
+
 func TestFinanceStatementRunningBalance(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
@@ -3155,6 +3176,213 @@ func TestCollectStudentMonthlyPaymentRejectsFullMonthLeave(t *testing.T) {
 	monthDate, _ := parsePaymentMonth("2026-08")
 	if _, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-08", monthDate, "cash", 0); !errors.Is(err, ErrStudentLeaveCoversMonth) {
 		t.Fatalf("expected full-month leave error, got %v", err)
+	}
+}
+
+func TestAttendanceLimitWarningsScopeToTrainingProgramme(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programA, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Programme A",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create programme A: %v", err)
+	}
+	programB, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Programme B",
+		Activity:       "badminton",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create programme B: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-ATT-001",
+		FullName:              "Attendance Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2011-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Parent",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771231234",
+	}, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if err := app.createStudentGroup(StudentGroup{
+		Name:              "Group A",
+		Code:              "G-A",
+		TrainingProgramID: programA,
+	}, []int64{admissionID}, nil, []StudentGroupSession{{Title: "A Session", DayOfWeek: "monday", StartTime: "09:00", EndTime: "10:00", Active: true}}); err != nil {
+		t.Fatalf("create group A: %v", err)
+	}
+	if err := app.createStudentGroup(StudentGroup{
+		Name:              "Group B",
+		Code:              "G-B",
+		TrainingProgramID: programB,
+	}, []int64{admissionID}, nil, []StudentGroupSession{{Title: "B Session", DayOfWeek: "tuesday", StartTime: "09:00", EndTime: "10:00", Active: true}}); err != nil {
+		t.Fatalf("create group B: %v", err)
+	}
+	groups, err := app.listStudentGroups()
+	if err != nil {
+		t.Fatalf("list student groups: %v", err)
+	}
+	var groupA, groupB StudentGroup
+	for _, group := range groups {
+		switch group.Code {
+		case "G-A":
+			groupA = group
+		case "G-B":
+			groupB = group
+		}
+	}
+	if groupA.ID == 0 || groupB.ID == 0 {
+		t.Fatalf("expected both groups to exist: %#v", groups)
+	}
+	sessionA := groupA.Sessions[0]
+	sessionB := groupB.Sessions[0]
+	for i := 0; i < 9; i++ {
+		date := time.Date(2026, 8, 3+i, 9, 0, 0, 0, time.Local).Format("2006-01-02")
+		if err := app.replaceAttendanceRecords(groupA.ID, sessionA.ID, date, []AttendanceRecord{{
+			GroupID:        groupA.ID,
+			SessionID:      sessionA.ID,
+			SessionTitle:   sessionA.Title,
+			AdmissionID:    admissionID,
+			AttendanceDate: date,
+			Status:         "present",
+		}}); err != nil {
+			t.Fatalf("seed programme A attendance %d: %v", i, err)
+		}
+	}
+	dateB := "2026-08-11"
+	if err := app.replaceAttendanceRecords(groupB.ID, sessionB.ID, dateB, []AttendanceRecord{{
+		GroupID:        groupB.ID,
+		SessionID:      sessionB.ID,
+		SessionTitle:   sessionB.Title,
+		AdmissionID:    admissionID,
+		AttendanceDate: dateB,
+		Status:         "present",
+	}}); err != nil {
+		t.Fatalf("seed programme B attendance: %v", err)
+	}
+	warnings, err := app.listAttendanceLimitWarnings(groupB.ID, sessionB.ID, dateB, 8)
+	if err != nil {
+		t.Fatalf("list attendance limit warnings: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings for separate programme, got %#v", warnings)
+	}
+}
+
+func TestSaveAttendanceHandlerRejectsMismatchedSessionDate(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-ATT-002",
+		FullName:              "Session Match Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2011-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Parent",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0775550000",
+	}, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if err := app.createStudentGroup(StudentGroup{
+		Name: "Mismatch Group",
+		Code: "MIS-DATE",
+	}, []int64{admissionID}, nil, []StudentGroupSession{{Title: "Monday Session", DayOfWeek: "monday", StartTime: "09:00", EndTime: "10:00", Active: true}}); err != nil {
+		t.Fatalf("create mismatch group: %v", err)
+	}
+	groups, err := app.listStudentGroups()
+	if err != nil {
+		t.Fatalf("list student groups: %v", err)
+	}
+	var group StudentGroup
+	for _, item := range groups {
+		if item.Code == "MIS-DATE" {
+			group = item
+			break
+		}
+	}
+	if group.ID == 0 || len(group.Sessions) == 0 {
+		t.Fatalf("expected mismatch group session, got %#v", group)
+	}
+	form := url.Values{
+		"csrf_token":                          {"token"},
+		"group_id":                            {strconv.FormatInt(group.ID, 10)},
+		"session_id":                          {strconv.FormatInt(group.Sessions[0].ID, 10)},
+		"attendance_date":                     {"2026-08-11"},
+		fmt.Sprintf("status_%d", admissionID): {"present"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/attendance/save", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+
+	app.saveAttendanceHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect for mismatched session date, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != "/admin/attendance?group_id="+strconv.FormatInt(group.ID, 10)+"&session_id="+strconv.FormatInt(group.Sessions[0].ID, 10)+"&date=2026-08-11" {
+		t.Fatalf("attendance redirect = %q", got)
+	}
+	flashFound := false
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == flashCookieName && cookie.Value != "" {
+			flashFound = true
+			break
+		}
+	}
+	if !flashFound {
+		t.Fatal("expected flash cookie for mismatched attendance date")
+	}
+}
+
+func TestCollectEnrollmentAdmissionPaymentHandlerRedirectsOnMissingEnrollment(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	form := url.Values{
+		"csrf_token":    {"token"},
+		"enrollment_id": {"999999"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/enrollments/collect-admission", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+
+	app.collectEnrollmentAdmissionPaymentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("collect enrollment admission status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	if got := rec.Header().Get("Location"); got != "/admin/enrollments" {
+		t.Fatalf("collect enrollment admission redirect = %q", got)
+	}
+	flashFound := false
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == flashCookieName && cookie.Value != "" {
+			flashFound = true
+			break
+		}
+	}
+	if !flashFound {
+		t.Fatal("expected flash cookie for missing enrollment")
 	}
 }
 

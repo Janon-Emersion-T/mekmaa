@@ -199,6 +199,25 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 	a.render(w, "attendance-management", data, http.StatusOK)
 }
 
+func weekdayNameForDate(day time.Time) string {
+	switch day.Weekday() {
+	case time.Monday:
+		return "monday"
+	case time.Tuesday:
+		return "tuesday"
+	case time.Wednesday:
+		return "wednesday"
+	case time.Thursday:
+		return "thursday"
+	case time.Friday:
+		return "friday"
+	case time.Saturday:
+		return "saturday"
+	default:
+		return "sunday"
+	}
+}
+
 func (a *App) courtManagementHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -3411,6 +3430,7 @@ func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	target := "/admin/student-payments"
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -3426,22 +3446,26 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 
 	enrollmentID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("enrollment_id")), 10, 64)
 	if err != nil || enrollmentID <= 0 {
-		http.Error(w, "invalid enrollment id", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid enrollment.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	paymentMonth := strings.TrimSpace(r.FormValue("payment_month"))
 	monthDate, err := parsePaymentMonth(paymentMonth)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	if paymentMonth > time.Now().Format("2006-01") {
-		http.Error(w, "payments cannot be collected for a future month", http.StatusBadRequest)
+		a.setFlash(w, "Payments cannot be collected for a future month.")
+		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
 		return
 	}
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
 	if !validPaymentMethod(paymentMethod) {
-		http.Error(w, "invalid payment method", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid payment method.")
+		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
 		return
 	}
 
@@ -3454,15 +3478,17 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		if errors.Is(err, ErrStudentPaymentAlreadyCollected) {
 			a.setFlash(w, "That enrollment payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")
-			http.Redirect(w, r, "/admin/student-payments?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+			http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, ErrStudentNotAdmittedForMonth) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			a.setFlash(w, err.Error())
+			http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, ErrMonthlyFeeNotConfigured) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			a.setFlash(w, err.Error())
+			http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, ErrStudentLeaveCoversMonth) {
@@ -3755,6 +3781,7 @@ func (a *App) deleteAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
+	target := "/admin/student-groups"
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -3773,16 +3800,19 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
 	sessions := studentGroupSessionsFromRequest(r)
 	if err := validateStudentGroup(group); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	if err := validateStudentGroupSessions(sessions); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	if err := a.createStudentGroup(group, admissionIDs, coachIDs, sessions); err != nil {
 		if isUniqueConstraintError(err) {
-			http.Error(w, "group code already exists", http.StatusConflict)
+			a.setFlash(w, "Group code already exists.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
 		log.Printf("create student group: %v", err)
@@ -3791,10 +3821,11 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	a.setFlash(w, "Student group created.")
-	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
+	target := "/admin/student-groups"
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -3810,7 +3841,8 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 
 	groupID, err := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
 	if err != nil || groupID <= 0 {
-		http.Error(w, "invalid group id", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid student group.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 
@@ -3820,16 +3852,19 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
 	sessions := studentGroupSessionsFromRequest(r)
 	if err := validateStudentGroup(group); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	if err := validateStudentGroupSessions(sessions); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	if err := a.updateStudentGroup(group, admissionIDs, coachIDs, sessions); err != nil {
 		if isUniqueConstraintError(err) {
-			http.Error(w, "group code already exists", http.StatusConflict)
+			a.setFlash(w, "Group code already exists.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
 		log.Printf("update student group: %v", err)
@@ -3838,10 +3873,11 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	a.setFlash(w, "Student group updated.")
-	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (a *App) deleteStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
+	target := "/admin/student-groups"
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -3857,7 +3893,8 @@ func (a *App) deleteStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 
 	groupID, err := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
 	if err != nil || groupID <= 0 {
-		http.Error(w, "invalid group id", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid student group.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	if err := a.deleteStudentGroup(groupID); err != nil {
@@ -3867,10 +3904,11 @@ func (a *App) deleteStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	a.setFlash(w, "Student group deleted.")
-	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
+	target := "/admin/attendance"
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -3886,7 +3924,8 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 
 	groupID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("group_id")), 10, 64)
 	if err != nil || groupID <= 0 {
-		http.Error(w, "invalid group id", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid student group.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
@@ -3909,28 +3948,38 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 	attendanceDate := strings.TrimSpace(r.FormValue("attendance_date"))
 	sessionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("session_id")), 10, 64)
 	if err != nil || sessionID <= 0 {
-		http.Error(w, "select a valid session", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid session.")
+		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10), http.StatusSeeOther)
 		return
 	}
 	parsedAttendanceDate, err := time.Parse("2006-01-02", attendanceDate)
 	if err != nil {
-		http.Error(w, "invalid attendance date", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid attendance date.")
+		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10), http.StatusSeeOther)
 		return
 	}
 	today := time.Now().Format("2006-01-02")
 	if parsedAttendanceDate.Format("2006-01-02") > today {
-		http.Error(w, "attendance date cannot be in the future", http.StatusBadRequest)
+		a.setFlash(w, "Attendance date cannot be in the future.")
+		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10), http.StatusSeeOther)
 		return
 	}
 
 	group, err := a.findStudentGroupByID(groupID)
 	if err != nil {
-		http.Error(w, "group not found", http.StatusBadRequest)
+		a.setFlash(w, "Student group not found.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	session, err := a.findStudentGroupSessionByID(sessionID)
 	if err != nil || session.GroupID != groupID {
-		http.Error(w, "session not found", http.StatusBadRequest)
+		a.setFlash(w, "Session not found.")
+		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10), http.StatusSeeOther)
+		return
+	}
+	if strings.ToLower(strings.TrimSpace(session.DayOfWeek)) != weekdayNameForDate(parsedAttendanceDate) {
+		a.setFlash(w, "Attendance date does not match the selected session day.")
+		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
 		return
 	}
 
@@ -3967,7 +4016,7 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		message = fmt.Sprintf("Attendance saved. %d student(s) exceeded the 8-session monthly limit.", len(warnings))
 	}
 	a.setFlash(w, message)
-	http.Redirect(w, r, "/admin/attendance?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
+	http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
 }
 
 func (a *App) saveCoachAttendanceHandler(w http.ResponseWriter, r *http.Request) {

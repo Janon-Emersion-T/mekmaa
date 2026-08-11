@@ -647,11 +647,14 @@ func (a *App) updateFinanceAccount(accountID int64, name, accountType, descripti
 		accountType = account.AccountType
 		isActive = true
 	}
+	var transactionCount int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE finance_account_id = ?`, accountID).Scan(&transactionCount); err != nil {
+		return err
+	}
+	if transactionCount > 0 && (!strings.EqualFold(name, account.Name) || accountType != account.AccountType) {
+		return errors.New("accounts with finance history cannot change name or type")
+	}
 	if !isActive {
-		var transactionCount int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE finance_account_id = ? AND voided_at IS NULL`, accountID).Scan(&transactionCount); err != nil {
-			return err
-		}
 		if transactionCount > 0 {
 			return errors.New("accounts with finance history cannot be deactivated")
 		}
@@ -2211,6 +2214,7 @@ func (a *App) updateFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 }
 
 func (a *App) createFinanceOpeningBalanceHandler(w http.ResponseWriter, r *http.Request) {
+	target := "/admin/finance/accounts"
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -2231,14 +2235,16 @@ func (a *App) createFinanceOpeningBalanceHandler(w http.ResponseWriter, r *http.
 	accountID := parseInt64Query(r.FormValue("account_id"))
 	amount, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
 	if err != nil {
-		http.Error(w, "a valid opening balance amount is required", http.StatusBadRequest)
+		a.setFlash(w, "A valid opening balance amount is required.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	recordedAt := time.Now().UTC()
 	if value := strings.TrimSpace(r.FormValue("recorded_date")); value != "" {
 		recordedAt, err = time.ParseInLocation("2006-01-02", value, time.Local)
 		if err != nil {
-			http.Error(w, "a valid opening balance date is required", http.StatusBadRequest)
+			a.setFlash(w, "A valid opening balance date is required.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
 	}
@@ -2252,6 +2258,7 @@ func (a *App) createFinanceOpeningBalanceHandler(w http.ResponseWriter, r *http.
 }
 
 func (a *App) createFinanceAdjustmentHandler(w http.ResponseWriter, r *http.Request) {
+	target := "/admin/finance/accounts"
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -2272,7 +2279,8 @@ func (a *App) createFinanceAdjustmentHandler(w http.ResponseWriter, r *http.Requ
 	accountID := parseInt64Query(r.FormValue("account_id"))
 	amount, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
 	if err != nil {
-		http.Error(w, "a valid adjustment amount is required", http.StatusBadRequest)
+		a.setFlash(w, "A valid adjustment amount is required.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	if strings.TrimSpace(r.FormValue("direction")) == "decrease" {
@@ -2282,7 +2290,8 @@ func (a *App) createFinanceAdjustmentHandler(w http.ResponseWriter, r *http.Requ
 	if value := strings.TrimSpace(r.FormValue("recorded_date")); value != "" {
 		recordedAt, err = time.ParseInLocation("2006-01-02", value, time.Local)
 		if err != nil {
-			http.Error(w, "a valid adjustment date is required", http.StatusBadRequest)
+			a.setFlash(w, "A valid adjustment date is required.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
 	}
@@ -2468,17 +2477,20 @@ func (a *App) financeAccountStatementHandler(w http.ResponseWriter, r *http.Requ
 	user, _ := a.currentUser(r.Context())
 	accountID := parseInt64Query(r.URL.Query().Get("account_id"))
 	if accountID <= 0 {
-		http.Error(w, "account is required", http.StatusBadRequest)
+		a.setFlash(w, "Select a valid finance account to open its statement.")
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
 		return
 	}
 	account, err := a.findFinanceAccountByID(accountID)
 	if err != nil {
-		http.Error(w, "account not found", http.StatusNotFound)
+		a.setFlash(w, "Finance account not found.")
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
 		return
 	}
 	statement, err := a.buildFinanceStatement(accountID, strings.TrimSpace(r.URL.Query().Get("from")), strings.TrimSpace(r.URL.Query().Get("to")))
 	if err != nil {
-		http.Error(w, "could not build account statement", http.StatusInternalServerError)
+		a.setFlash(w, "Account statement could not be loaded.")
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format"))) == "csv" {
