@@ -268,6 +268,32 @@ func TestAdmissionManagementTemplateRenders(t *testing.T) {
 	}
 }
 
+func TestStudentIDCardTemplateRenders(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	html := renderTemplateToString(t, templates, "student-id-card", TemplateData{
+		Title:       "Student ID",
+		Description: "Printable student identity card.",
+		HideChrome:  true,
+		SelectedAdmission: &Admission{
+			ID:            1,
+			StudentID:     "STU-0001",
+			FullName:      "Test Student",
+			DateOfBirth:   "2012-01-15",
+			AdmissionDate: "2026-08-01",
+			PhotoPath:     "/uploads/students/photos/student-photo-test.jpg",
+			QRCodePath:    "/uploads/students/qr/student-qr-test.png",
+		},
+	})
+
+	if !strings.Contains(html, "Student ID Card") || !strings.Contains(html, "Test Student") || !strings.Contains(html, "STU-0001") {
+		t.Fatalf("expected student id card content to render")
+	}
+}
+
 func TestUploadStorageConfigurationAndCreation(t *testing.T) {
 	defaultRoot, err := resolveUploadRoot("")
 	if err != nil {
@@ -3960,6 +3986,7 @@ func TestAdmissionAndEnrollmentManagementHandlersRender(t *testing.T) {
 		handler func(http.ResponseWriter, *http.Request)
 	}{
 		{name: "admissions", path: "/admin/admissions", handler: app.admissionManagementHandler},
+		{name: "student-id", path: "/admin/admissions/student-id?id=" + strconv.FormatInt(admissionID, 10), handler: app.studentIDCardHandler},
 		{name: "enrollments", path: "/admin/enrollments", handler: app.enrollmentManagementHandler},
 	}
 

@@ -120,6 +120,37 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 	a.render(w, "admission-management", data, http.StatusOK)
 }
 
+func (a *App) studentIDCardHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	admissionID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+	if err != nil || admissionID <= 0 {
+		http.Error(w, "invalid admission id", http.StatusBadRequest)
+		return
+	}
+
+	admission, err := a.findAdmissionByID(admissionID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "student not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("find admission for student id card: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, nil)
+	data.Title = "Student ID"
+	data.Description = "Printable student identity card."
+	data.HideChrome = true
+	data.SelectedAdmission = admission
+	a.render(w, "student-id-card", data, http.StatusOK)
+}
+
 func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

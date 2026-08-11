@@ -715,6 +715,15 @@
                 </a>
 
                 <a
+                  href="/admin/admissions/student-id?id={{.ID}}"
+                  target="_blank"
+                  rel="noopener"
+                  class="inline-flex h-9 items-center justify-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate shadow-sm transition hover:border-aqua/50 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
+                >
+                  ID
+                </a>
+
+                <a
                   href="/admin/admissions?action=edit&id={{.ID}}#admission-edit"
                   class="inline-flex h-9 items-center justify-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate shadow-sm transition hover:border-aqua/50 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
                 >
@@ -1042,6 +1051,25 @@
       </div>
 
       <div class="flex flex-col gap-2 sm:flex-row">
+        <a
+          href="/admin/admissions/student-id?id={{.SelectedAdmission.ID}}"
+          target="_blank"
+          rel="noopener"
+          class="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            class="h-4 w-4"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 7.5h16.5M3.75 16.5h16.5M7.5 12h.008v.008H7.5V12Zm3 0h5.75" />
+          </svg>
+          Generate ID
+        </a>
+
         <a
           href="/admin/admissions?action=edit&id={{.SelectedAdmission.ID}}#admission-edit"
           class="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"
