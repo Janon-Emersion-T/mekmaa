@@ -149,16 +149,21 @@ func (a *App) checkMigrationReadiness() error {
 }
 
 func (a *App) checkUploadReadiness() error {
-	probe, err := os.CreateTemp(a.uploads.EventDir, ".mekmaa-ready-*")
-	if err != nil {
-		return err
+	for _, dir := range []string{a.uploads.EventDir, a.uploads.StudentPhotoDir, a.uploads.StudentQRDir} {
+		probe, err := os.CreateTemp(dir, ".mekmaa-ready-*")
+		if err != nil {
+			return err
+		}
+		probeName := probe.Name()
+		if err := probe.Close(); err != nil {
+			_ = os.Remove(probeName)
+			return err
+		}
+		if err := os.Remove(probeName); err != nil {
+			return err
+		}
 	}
-	probeName := probe.Name()
-	if err := probe.Close(); err != nil {
-		_ = os.Remove(probeName)
-		return err
-	}
-	return os.Remove(probeName)
+	return nil
 }
 
 func (a *App) setupWarningsForUser(user *User) []SetupWarning {

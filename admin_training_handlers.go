@@ -120,6 +120,168 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 	a.render(w, "admission-management", data, http.StatusOK)
 }
 
+func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+	enrollments, err := a.listStudentEnrollments()
+	if err != nil {
+		log.Printf("list student enrollments: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	admissions, err := a.listAdmissions()
+	if err != nil {
+		log.Printf("list admissions for enrollments: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	trainingPrograms, err := a.listTrainingPrograms(false)
+	if err != nil {
+		log.Printf("list training programmes for enrollments: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Enrollment Manager"
+	data.Description = "Assign students to training programmes and collect programme-level fees."
+	data.Enrollments = enrollments
+	data.Admissions = admissions
+	data.TrainingPrograms = trainingPrograms
+	a.render(w, "enrollment-management", data, http.StatusOK)
+}
+
+func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	admissionID, err := parsePositiveInt64(r.FormValue("admission_id"))
+	if err != nil {
+		http.Error(w, "select a valid student", http.StatusBadRequest)
+		return
+	}
+	trainingProgramID, err := parsePositiveInt64(r.FormValue("training_program_id"))
+	if err != nil {
+		http.Error(w, "select a valid training programme", http.StatusBadRequest)
+		return
+	}
+	trainingProgram, err := a.findTrainingProgramByID(trainingProgramID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "training programme not found", http.StatusBadRequest)
+			return
+		}
+		log.Printf("find training programme for enrollment: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	enrollment := StudentEnrollment{
+		AdmissionID:         admissionID,
+		TrainingProgramID:   trainingProgramID,
+		TrainingProgramName: trainingProgram.Name,
+		FreeAdmission:       r.FormValue("free_admission") == "true",
+		FreeMonthlyFee:      r.FormValue("free_monthly_fee") == "true",
+	}
+	if err := validateEnrollment(enrollment); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	collectPayment := r.FormValue("payment_collected") == "true" && !enrollment.FreeAdmission
+	recordedByUserID := int64(0)
+	if currentUser != nil {
+		recordedByUserID = currentUser.ID
+	}
+	_, financeTransactionID, err := a.createStudentEnrollmentWithOptionalPayment(enrollment, collectPayment, recordedByUserID)
+	if err != nil {
+		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("create student enrollment: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if collectPayment && financeTransactionID > 0 {
+		http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(financeTransactionID, 10), http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Enrollment created.")
+	http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+}
+
+func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	enrollmentID, err := parsePositiveInt64(r.FormValue("enrollment_id"))
+	if err != nil {
+		http.Error(w, "invalid enrollment id", http.StatusBadRequest)
+		return
+	}
+	enrollment, err := a.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "enrollment not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("find enrollment for fee collection: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	recordedByUserID := int64(0)
+	if currentUser != nil {
+		recordedByUserID = currentUser.ID
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	transactionID, err := a.collectEnrollmentAdmissionPaymentTx(tx, *enrollment, recordedByUserID)
+	if err != nil {
+		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("collect enrollment admission fee: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
 func (a *App) trainingProgramManagementHandler(
 	w http.ResponseWriter,
 	r *http.Request,

@@ -3,6 +3,8 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -33,6 +35,9 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			a.guardian_contact_number,
 			a.guardian_alternative_contact_number,
 			a.medical_information,
+			COALESCE(a.photo_path, ''),
+			COALESCE(a.qr_code_path, ''),
+			COALESCE(a.qr_code_value, ''),
 			COALESCE(a.free_admission, 0),
 			COALESCE(a.free_monthly_fee, 0),
 			COALESCE(a.payment_collected, 0),
@@ -80,6 +85,9 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			&admission.GuardianContactNumber,
 			&admission.GuardianAlternativePhone,
 			&admission.MedicalInformation,
+			&admission.PhotoPath,
+			&admission.QRCodePath,
+			&admission.QRCodeValue,
 			&freeAdmission,
 			&freeMonthlyFee,
 			&paymentCollected,
@@ -102,7 +110,15 @@ func (a *App) listAdmissions() ([]Admission, error) {
 		admissions = append(admissions, admission)
 	}
 
-	return admissions, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := a.populateAdmissionsTrainingPrograms(admissions); err != nil {
+		return nil, err
+	}
+
+	return admissions, nil
 }
 
 func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int, error) {
@@ -162,6 +178,9 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 			a.guardian_contact_number,
 			a.guardian_alternative_contact_number,
 			a.medical_information,
+			COALESCE(a.photo_path, ''),
+			COALESCE(a.qr_code_path, ''),
+			COALESCE(a.qr_code_value, ''),
 			COALESCE(a.free_admission, 0),
 			COALESCE(a.free_monthly_fee, 0),
 			COALESCE(a.payment_collected, 0),
@@ -210,6 +229,9 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 			&admission.GuardianContactNumber,
 			&admission.GuardianAlternativePhone,
 			&admission.MedicalInformation,
+			&admission.PhotoPath,
+			&admission.QRCodePath,
+			&admission.QRCodeValue,
 			&freeAdmission,
 			&freeMonthlyFee,
 			&paymentCollected,
@@ -230,7 +252,405 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 		admissions = append(admissions, admission)
 	}
 
-	return admissions, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if err := a.populateAdmissionsTrainingPrograms(admissions); err != nil {
+		return nil, 0, err
+	}
+
+	return admissions, total, nil
+}
+
+func (a *App) populateAdmissionsTrainingPrograms(admissions []Admission) error {
+	if len(admissions) == 0 {
+		return nil
+	}
+
+	admissionIDs := make([]int64, 0, len(admissions))
+	indexByID := make(map[int64]int, len(admissions))
+	for i := range admissions {
+		admissionIDs = append(admissionIDs, admissions[i].ID)
+		indexByID[admissions[i].ID] = i
+		if admissions[i].TrainingProgramID > 0 {
+			admissions[i].TrainingProgramIDs = []int64{admissions[i].TrainingProgramID}
+			admissions[i].TrainingProgramNames = admissions[i].TrainingProgramName
+		}
+	}
+
+	assignments, err := a.listTrainingProgramsForAdmissions(admissionIDs)
+	if err != nil {
+		return err
+	}
+
+	for admissionID, programs := range assignments {
+		index, ok := indexByID[admissionID]
+		if !ok {
+			continue
+		}
+		admissions[index].TrainingPrograms = programs
+		admissions[index].TrainingProgramIDs = make([]int64, 0, len(programs))
+		names := make([]string, 0, len(programs))
+		for _, program := range programs {
+			admissions[index].TrainingProgramIDs = append(admissions[index].TrainingProgramIDs, program.ID)
+			names = append(names, program.Name)
+		}
+		if len(names) > 0 {
+			admissions[index].TrainingProgramNames = strings.Join(names, ", ")
+		}
+	}
+
+	return nil
+}
+
+func (a *App) listTrainingProgramsForAdmissions(admissionIDs []int64) (map[int64][]TrainingProgram, error) {
+	if len(admissionIDs) == 0 {
+		return map[int64][]TrainingProgram{}, nil
+	}
+
+	placeholders := make([]string, 0, len(admissionIDs))
+	args := make([]any, 0, len(admissionIDs))
+	for _, admissionID := range admissionIDs {
+		placeholders = append(placeholders, "?")
+		args = append(args, admissionID)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			atp.admission_id,
+			tp.id,
+			tp.name,
+			tp.activity,
+			tp.training_format,
+			COALESCE(tp.admission_fee, 0),
+			COALESCE(tp.monthly_fee, 0),
+			COALESCE(tp.active, 0),
+			COALESCE(tp.sort_order, 0),
+			tp.created_at,
+			tp.updated_at
+		FROM admission_training_programs atp
+		JOIN training_programs tp
+			ON tp.id = atp.training_program_id
+		WHERE atp.admission_id IN (%s)
+		ORDER BY atp.admission_id, tp.sort_order ASC, tp.name ASC, tp.id ASC
+	`, strings.Join(placeholders, ", "))
+
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	assignments := make(map[int64][]TrainingProgram, len(admissionIDs))
+	for rows.Next() {
+		var admissionID int64
+		var program TrainingProgram
+		var active int
+		if err := rows.Scan(
+			&admissionID,
+			&program.ID,
+			&program.Name,
+			&program.Activity,
+			&program.TrainingFormat,
+			&program.AdmissionFee,
+			&program.MonthlyFee,
+			&active,
+			&program.SortOrder,
+			&program.CreatedAt,
+			&program.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		program.Active = active == 1
+		assignments[admissionID] = append(assignments[admissionID], program)
+	}
+
+	return assignments, rows.Err()
+}
+
+func (a *App) listTrainingProgramsByIDs(programIDs []int64) ([]TrainingProgram, error) {
+	if len(programIDs) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, 0, len(programIDs))
+	args := make([]any, 0, len(programIDs))
+	for _, programID := range programIDs {
+		placeholders = append(placeholders, "?")
+		args = append(args, programID)
+	}
+
+	rows, err := a.db.Query(fmt.Sprintf(`
+		SELECT
+			id,
+			name,
+			activity,
+			training_format,
+			admission_fee,
+			monthly_fee,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM training_programs
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ", ")), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	byID := make(map[int64]TrainingProgram, len(programIDs))
+	for rows.Next() {
+		var program TrainingProgram
+		var active int
+		if err := rows.Scan(
+			&program.ID,
+			&program.Name,
+			&program.Activity,
+			&program.TrainingFormat,
+			&program.AdmissionFee,
+			&program.MonthlyFee,
+			&active,
+			&program.SortOrder,
+			&program.CreatedAt,
+			&program.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		program.Active = active == 1
+		byID[program.ID] = program
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	programs := make([]TrainingProgram, 0, len(programIDs))
+	for _, id := range programIDs {
+		program, ok := byID[id]
+		if !ok {
+			return nil, sql.ErrNoRows
+		}
+		programs = append(programs, program)
+	}
+
+	return programs, nil
+}
+
+func trainingProgramNames(programs []TrainingProgram) string {
+	names := make([]string, 0, len(programs))
+	for _, program := range programs {
+		if strings.TrimSpace(program.Name) == "" {
+			continue
+		}
+		names = append(names, program.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
+func trainingProgramIDsCSV(programIDs []int64) string {
+	if len(programIDs) == 0 {
+		return ""
+	}
+	values := make([]string, 0, len(programIDs))
+	for _, programID := range programIDs {
+		values = append(values, strconv.FormatInt(programID, 10))
+	}
+	return strings.Join(values, ",")
+}
+
+func (a *App) listStudentEnrollments() ([]StudentEnrollment, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			se.id,
+			se.admission_id,
+			se.training_program_id,
+			COALESCE(tp.name, ''),
+			COALESCE(se.free_admission, 0),
+			COALESCE(se.free_monthly_fee, 0),
+			COALESCE(se.payment_collected, 0),
+			se.payment_collected_at,
+			COALESCE(se.admission_payment_amount, 0),
+			COALESCE(se.finance_transaction_id, 0),
+			COALESCE(se.active, 1),
+			se.created_at,
+			se.updated_at,
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.address, ''),
+			COALESCE(a.passport_number, ''),
+			COALESCE(a.school, ''),
+			COALESCE(a.guardian_name, ''),
+			COALESCE(a.guardian_relationship, ''),
+			COALESCE(a.guardian_contact_number, ''),
+			COALESCE(a.guardian_alternative_contact_number, ''),
+			COALESCE(a.medical_information, ''),
+			COALESCE(a.photo_path, ''),
+			COALESCE(a.qr_code_path, ''),
+			COALESCE(a.qr_code_value, '')
+		FROM student_enrollments se
+		JOIN admissions a
+			ON a.id = se.admission_id
+		JOIN training_programs tp
+			ON tp.id = se.training_program_id
+		ORDER BY a.full_name COLLATE NOCASE, tp.sort_order ASC, tp.name ASC, se.id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var enrollments []StudentEnrollment
+	for rows.Next() {
+		var enrollment StudentEnrollment
+		var freeAdmission int
+		var freeMonthlyFee int
+		var paymentCollected int
+		var active int
+		var paidAt sql.NullTime
+		if err := rows.Scan(
+			&enrollment.ID,
+			&enrollment.AdmissionID,
+			&enrollment.TrainingProgramID,
+			&enrollment.TrainingProgramName,
+			&freeAdmission,
+			&freeMonthlyFee,
+			&paymentCollected,
+			&paidAt,
+			&enrollment.AdmissionPaymentAmount,
+			&enrollment.FinanceTransactionID,
+			&active,
+			&enrollment.CreatedAt,
+			&enrollment.UpdatedAt,
+			&enrollment.Student.ID,
+			&enrollment.Student.StudentID,
+			&enrollment.Student.FullName,
+			&enrollment.Student.AdmissionDate,
+			&enrollment.Student.DateOfBirth,
+			&enrollment.Student.Gender,
+			&enrollment.Student.PracticeType,
+			&enrollment.Student.Address,
+			&enrollment.Student.PassportNumber,
+			&enrollment.Student.School,
+			&enrollment.Student.GuardianName,
+			&enrollment.Student.GuardianRelationship,
+			&enrollment.Student.GuardianContactNumber,
+			&enrollment.Student.GuardianAlternativePhone,
+			&enrollment.Student.MedicalInformation,
+			&enrollment.Student.PhotoPath,
+			&enrollment.Student.QRCodePath,
+			&enrollment.Student.QRCodeValue,
+		); err != nil {
+			return nil, err
+		}
+		enrollment.FreeAdmission = freeAdmission == 1
+		enrollment.FreeMonthlyFee = freeMonthlyFee == 1
+		enrollment.AdmissionPaymentPaid = paymentCollected == 1
+		enrollment.Active = active == 1
+		if paidAt.Valid {
+			enrollment.AdmissionPaymentPaidAt = paidAt.Time
+		}
+		enrollments = append(enrollments, enrollment)
+	}
+	return enrollments, rows.Err()
+}
+
+func (a *App) findStudentEnrollmentByID(enrollmentID int64) (*StudentEnrollment, error) {
+	row := a.db.QueryRow(`
+		SELECT
+			se.id,
+			se.admission_id,
+			se.training_program_id,
+			COALESCE(tp.name, ''),
+			COALESCE(se.free_admission, 0),
+			COALESCE(se.free_monthly_fee, 0),
+			COALESCE(se.payment_collected, 0),
+			se.payment_collected_at,
+			COALESCE(se.admission_payment_amount, 0),
+			COALESCE(se.finance_transaction_id, 0),
+			COALESCE(se.active, 1),
+			se.created_at,
+			se.updated_at,
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.address, ''),
+			COALESCE(a.passport_number, ''),
+			COALESCE(a.school, ''),
+			COALESCE(a.guardian_name, ''),
+			COALESCE(a.guardian_relationship, ''),
+			COALESCE(a.guardian_contact_number, ''),
+			COALESCE(a.guardian_alternative_contact_number, ''),
+			COALESCE(a.medical_information, ''),
+			COALESCE(a.photo_path, ''),
+			COALESCE(a.qr_code_path, ''),
+			COALESCE(a.qr_code_value, '')
+		FROM student_enrollments se
+		JOIN admissions a
+			ON a.id = se.admission_id
+		JOIN training_programs tp
+			ON tp.id = se.training_program_id
+		WHERE se.id = ?
+	`, enrollmentID)
+
+	var enrollment StudentEnrollment
+	var freeAdmission int
+	var freeMonthlyFee int
+	var paymentCollected int
+	var active int
+	var paidAt sql.NullTime
+	if err := row.Scan(
+		&enrollment.ID,
+		&enrollment.AdmissionID,
+		&enrollment.TrainingProgramID,
+		&enrollment.TrainingProgramName,
+		&freeAdmission,
+		&freeMonthlyFee,
+		&paymentCollected,
+		&paidAt,
+		&enrollment.AdmissionPaymentAmount,
+		&enrollment.FinanceTransactionID,
+		&active,
+		&enrollment.CreatedAt,
+		&enrollment.UpdatedAt,
+		&enrollment.Student.ID,
+		&enrollment.Student.StudentID,
+		&enrollment.Student.FullName,
+		&enrollment.Student.AdmissionDate,
+		&enrollment.Student.DateOfBirth,
+		&enrollment.Student.Gender,
+		&enrollment.Student.PracticeType,
+		&enrollment.Student.Address,
+		&enrollment.Student.PassportNumber,
+		&enrollment.Student.School,
+		&enrollment.Student.GuardianName,
+		&enrollment.Student.GuardianRelationship,
+		&enrollment.Student.GuardianContactNumber,
+		&enrollment.Student.GuardianAlternativePhone,
+		&enrollment.Student.MedicalInformation,
+		&enrollment.Student.PhotoPath,
+		&enrollment.Student.QRCodePath,
+		&enrollment.Student.QRCodeValue,
+	); err != nil {
+		return nil, err
+	}
+	enrollment.FreeAdmission = freeAdmission == 1
+	enrollment.FreeMonthlyFee = freeMonthlyFee == 1
+	enrollment.AdmissionPaymentPaid = paymentCollected == 1
+	enrollment.Active = active == 1
+	if paidAt.Valid {
+		enrollment.AdmissionPaymentPaidAt = paidAt.Time
+	}
+	return &enrollment, nil
 }
 
 func (a *App) listEvents() ([]Event, error) {

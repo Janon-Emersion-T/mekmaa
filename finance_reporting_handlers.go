@@ -485,8 +485,14 @@ func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var receiptAdmission *Admission
+	var receiptEnrollment *StudentEnrollment
 	if transaction.ReferenceType == "admission" && transaction.ReferenceID > 0 {
 		receiptAdmission, _ = a.findAdmissionByID(transaction.ReferenceID)
+	} else if transaction.ReferenceType == "student_enrollment" && transaction.ReferenceID > 0 {
+		receiptEnrollment, _ = a.findStudentEnrollmentByID(transaction.ReferenceID)
+		if receiptEnrollment != nil {
+			receiptAdmission = &receiptEnrollment.Student
+		}
 	}
 
 	data := a.newTemplateData(w, r, user)
@@ -495,6 +501,7 @@ func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 	data.HideChrome = true
 	data.SelectedFinance = transaction
 	data.ReceiptAdmission = receiptAdmission
+	data.ReceiptEnrollment = receiptEnrollment
 	if transaction.Category == "booking_payment" && transaction.ReferenceID > 0 {
 		collections, _ := a.listBookingPaymentCollectionsForScheduleIDs([]int64{transaction.ReferenceID})
 		for _, collection := range collections {

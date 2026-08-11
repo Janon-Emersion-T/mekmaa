@@ -242,47 +242,118 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 	monthEnd := monthDate.AddDate(0, 1, -1).Format("2006-01-02")
 	rows, err := a.db.Query(`
 		SELECT
-			a.id,
-			a.student_id,
-			a.full_name,
-			COALESCE(a.admission_date, ''),
-			a.date_of_birth,
-			a.gender,
-			a.practice_type,
-			COALESCE(a.training_program_id, 0),
-			COALESCE(
-				tp.name,
-				CASE
-					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
-					ELSE ''
-				END
-			),
-			a.address,
-			a.passport_number,
-			a.school,
-			a.guardian_name,
-			a.guardian_relationship,
-			a.guardian_contact_number, a.guardian_alternative_contact_number, a.medical_information,
-			COALESCE(a.free_admission, 0), COALESCE(a.free_monthly_fee, 0),
-			COALESCE(a.payment_collected, 0), a.payment_collected_at, COALESCE(a.admission_payment_amount, 0),
-			COALESCE(a.finance_transaction_id, 0), a.created_at,
-			COALESCE(tp.monthly_fee, ap.monthly_fee, 0),
-			smp.id, smp.amount, smp.payment_method, smp.finance_transaction_id,
-			COALESCE(smp.collected_by_user_id, 0), smp.collected_at, smp.created_at
-		FROM admissions a
-		LEFT JOIN training_programs tp
-			ON tp.id = a.training_program_id
-		LEFT JOIN admission_pricing ap
-			ON COALESCE(a.training_program_id, 0) = 0
-			AND ap.practice_type = a.practice_type
-		LEFT JOIN student_monthly_payments smp
-			ON smp.admission_id = a.id AND smp.payment_month = ?
-		WHERE a.admission_date <= ?
+			payment_rows.enrollment_id,
+			payment_rows.admission_id,
+			payment_rows.student_id,
+			payment_rows.full_name,
+			payment_rows.admission_date,
+			payment_rows.date_of_birth,
+			payment_rows.gender,
+			payment_rows.photo_path,
+			payment_rows.qr_code_path,
+			payment_rows.qr_code_value,
+			payment_rows.training_program_id,
+			payment_rows.training_program_name,
+			payment_rows.free_monthly_fee,
+			payment_rows.original_monthly_fee,
+			payment_rows.payment_id,
+			payment_rows.payment_amount,
+			payment_rows.payment_method,
+			payment_rows.finance_transaction_id,
+			payment_rows.collected_by_user_id,
+			payment_rows.collected_at,
+			payment_rows.payment_created_at
+		FROM (
+			SELECT
+				se.id AS enrollment_id,
+				a.id AS admission_id,
+				a.student_id,
+				a.full_name,
+				COALESCE(a.admission_date, '') AS admission_date,
+				a.date_of_birth,
+				a.gender,
+				COALESCE(a.photo_path, '') AS photo_path,
+				COALESCE(a.qr_code_path, '') AS qr_code_path,
+				COALESCE(a.qr_code_value, '') AS qr_code_value,
+				tp.id AS training_program_id,
+				tp.name AS training_program_name,
+				COALESCE(se.free_monthly_fee, 0) AS free_monthly_fee,
+				COALESCE(tp.monthly_fee, 0) AS original_monthly_fee,
+				smp.id AS payment_id,
+				smp.amount AS payment_amount,
+				smp.payment_method AS payment_method,
+				smp.finance_transaction_id AS finance_transaction_id,
+				COALESCE(smp.collected_by_user_id, 0) AS collected_by_user_id,
+				smp.collected_at AS collected_at,
+				smp.created_at AS payment_created_at,
+				COALESCE(tp.sort_order, 0) AS program_sort_order
+			FROM student_enrollments se
+			JOIN admissions a
+				ON a.id = se.admission_id
+			JOIN training_programs tp
+				ON tp.id = se.training_program_id
+			LEFT JOIN student_monthly_payments smp
+				ON smp.enrollment_id = se.id AND smp.payment_month = ? AND COALESCE(smp.voided, 0) = 0
+			WHERE a.admission_date <= ?
+			  AND COALESCE(se.active, 1) = 1
+
+			UNION ALL
+
+			SELECT
+				0 AS enrollment_id,
+				a.id AS admission_id,
+				a.student_id,
+				a.full_name,
+				COALESCE(a.admission_date, '') AS admission_date,
+				a.date_of_birth,
+				a.gender,
+				COALESCE(a.photo_path, '') AS photo_path,
+				COALESCE(a.qr_code_path, '') AS qr_code_path,
+				COALESCE(a.qr_code_value, '') AS qr_code_value,
+				COALESCE(tp.id, 0) AS training_program_id,
+				COALESCE(
+					tp.name,
+					CASE
+						WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
+						ELSE ''
+					END
+				) AS training_program_name,
+				COALESCE(a.free_monthly_fee, 0) AS free_monthly_fee,
+				COALESCE(tp.monthly_fee, ap.monthly_fee, 0) AS original_monthly_fee,
+				smp.id AS payment_id,
+				smp.amount AS payment_amount,
+				smp.payment_method AS payment_method,
+				smp.finance_transaction_id AS finance_transaction_id,
+				COALESCE(smp.collected_by_user_id, 0) AS collected_by_user_id,
+				smp.collected_at AS collected_at,
+				smp.created_at AS payment_created_at,
+				COALESCE(tp.sort_order, 0) AS program_sort_order
+			FROM admissions a
+			LEFT JOIN training_programs tp
+				ON tp.id = a.training_program_id
+			LEFT JOIN admission_pricing ap
+				ON ap.practice_type = a.practice_type
+			LEFT JOIN student_monthly_payments smp
+				ON smp.admission_id = a.id
+				AND (smp.enrollment_id IS NULL OR smp.enrollment_id = 0)
+				AND smp.payment_month = ?
+				AND COALESCE(smp.voided, 0) = 0
+			WHERE a.admission_date <= ?
+			  AND NOT EXISTS (
+				SELECT 1
+				FROM student_enrollments se
+				WHERE se.admission_id = a.id
+				  AND COALESCE(se.active, 1) = 1
+			  )
+		) AS payment_rows
 		ORDER BY
-			CASE WHEN smp.id IS NULL THEN 0 ELSE 1 END,
-			a.full_name COLLATE NOCASE,
-			a.id
-	`, paymentMonth, monthEnd)
+			CASE WHEN payment_rows.payment_id IS NULL THEN 0 ELSE 1 END,
+			payment_rows.full_name COLLATE NOCASE,
+			payment_rows.program_sort_order ASC,
+			payment_rows.training_program_name ASC,
+			payment_rows.enrollment_id,
+			payment_rows.admission_id
+	`, paymentMonth, monthEnd, paymentMonth, monthEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -292,10 +363,8 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 	for rows.Next() {
 		var (
 			row               StudentPaymentRow
-			freeAdmission     int
+			enrollmentID      int64
 			freeMonthlyFee    int
-			admissionPaid     int
-			admissionPaidAt   sql.NullTime
 			paymentID         sql.NullInt64
 			paymentAmount     sql.NullFloat64
 			paymentMethod     sql.NullString
@@ -305,33 +374,36 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			paymentCreatedAt  sql.NullTime
 		)
 		if err := rows.Scan(
+			&enrollmentID,
 			&row.Admission.ID, &row.Admission.StudentID, &row.Admission.FullName, &row.Admission.AdmissionDate,
 			&row.Admission.DateOfBirth,
 			&row.Admission.Gender,
-			&row.Admission.PracticeType,
-			&row.Admission.TrainingProgramID,
-			&row.Admission.TrainingProgramName,
-			&row.Admission.Address,
-			&row.Admission.PassportNumber, &row.Admission.School, &row.Admission.GuardianName,
-			&row.Admission.GuardianRelationship, &row.Admission.GuardianContactNumber,
-			&row.Admission.GuardianAlternativePhone, &row.Admission.MedicalInformation, &freeAdmission, &freeMonthlyFee, &admissionPaid,
-			&admissionPaidAt, &row.Admission.AdmissionPaymentAmount, &row.Admission.FinanceTransactionID,
-			&row.Admission.CreatedAt, &row.OriginalMonthlyFee, &paymentID, &paymentAmount, &paymentMethod,
+			&row.Admission.PhotoPath,
+			&row.Admission.QRCodePath,
+			&row.Admission.QRCodeValue,
+			&row.Enrollment.TrainingProgramID,
+			&row.Enrollment.TrainingProgramName,
+			&freeMonthlyFee, &row.OriginalMonthlyFee, &paymentID, &paymentAmount, &paymentMethod,
 			&transactionID, &collectedByUserID, &collectedAt, &paymentCreatedAt,
 		); err != nil {
 			return nil, err
 		}
-		row.Admission.FreeAdmission = freeAdmission == 1
-		row.Admission.FreeMonthlyFee = freeMonthlyFee == 1
-		row.Admission.PaymentCollected = admissionPaid == 1
-		if admissionPaidAt.Valid {
-			row.Admission.PaymentCollectedAt = admissionPaidAt.Time
-		}
+		row.Enrollment.ID = enrollmentID
+		row.Enrollment.AdmissionID = row.Admission.ID
+		row.Enrollment.Student = row.Admission
+		row.Enrollment.FreeMonthlyFee = freeMonthlyFee == 1
 		row.MonthlyFee = effectiveMonthlyFee(row.Admission, row.OriginalMonthlyFee)
+		if row.Enrollment.FreeMonthlyFee {
+			row.Admission.FreeMonthlyFee = true
+			row.MonthlyFee = 0
+		}
+		row.Admission.TrainingProgramName = row.Enrollment.TrainingProgramName
+		row.Admission.TrainingProgramNames = row.Enrollment.TrainingProgramName
 		if paymentID.Valid {
 			row.Payment = &StudentMonthlyPayment{
 				ID:                   paymentID.Int64,
 				AdmissionID:          row.Admission.ID,
+				EnrollmentID:         row.Enrollment.ID,
 				PaymentMonth:         paymentMonth,
 				Amount:               paymentAmount.Float64,
 				PaymentMethod:        paymentMethod.String,
@@ -343,7 +415,10 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 		}
 		paymentRows = append(paymentRows, row)
 	}
-	return paymentRows, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return paymentRows, nil
 }
 
 func (a *App) getPricingSettings() (*PricingSettings, error) {
@@ -1695,7 +1770,6 @@ func (a *App) updateAdmission(admission Admission) error {
 			date_of_birth = ?,
 			gender = ?,
 			practice_type = ?,
-			training_program_id = ?,
 			address = ?,
 			passport_number = ?,
 			school = ?,
@@ -1704,6 +1778,9 @@ func (a *App) updateAdmission(admission Admission) error {
 			guardian_contact_number = ?,
 			guardian_alternative_contact_number = ?,
 			medical_information = ?,
+			photo_path = ?,
+			qr_code_path = ?,
+			qr_code_value = ?,
 			updated_at = ?
 		WHERE id = ?
 	`,
@@ -1713,7 +1790,6 @@ func (a *App) updateAdmission(admission Admission) error {
 		admission.DateOfBirth,
 		admission.Gender,
 		admission.PracticeType,
-		admission.TrainingProgramID,
 		admission.Address,
 		admission.PassportNumber,
 		admission.School,
@@ -1722,6 +1798,9 @@ func (a *App) updateAdmission(admission Admission) error {
 		admission.GuardianContactNumber,
 		admission.GuardianAlternativePhone,
 		admission.MedicalInformation,
+		admission.PhotoPath,
+		admission.QRCodePath,
+		admission.QRCodeValue,
 		time.Now().UTC(),
 		admission.ID,
 	)
@@ -1739,6 +1818,153 @@ func (a *App) updateAdmission(admission Admission) error {
 	}
 
 	return nil
+}
+
+func syncAdmissionTrainingProgramsTx(tx *sql.Tx, admissionID int64, programIDs []int64, createdAt time.Time) error {
+	if _, err := tx.Exec(`DELETE FROM admission_training_programs WHERE admission_id = ?`, admissionID); err != nil {
+		return err
+	}
+	for _, programID := range programIDs {
+		if _, err := tx.Exec(`
+			INSERT INTO admission_training_programs (
+				admission_id,
+				training_program_id,
+				created_at
+			) VALUES (?, ?, ?)
+		`, admissionID, programID, createdAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrollment, collectPayment bool, recordedByUserID int64) (int64, int64, error) {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	result, err := tx.Exec(`
+		INSERT INTO student_enrollments (
+			admission_id,
+			training_program_id,
+			free_admission,
+			free_monthly_fee,
+			payment_collected,
+			payment_collected_at,
+			admission_payment_amount,
+			finance_transaction_id,
+			active,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, 0, NULL, 0, NULL, 1, ?, ?)
+	`,
+		enrollment.AdmissionID,
+		enrollment.TrainingProgramID,
+		boolToInt(enrollment.FreeAdmission),
+		boolToInt(enrollment.FreeMonthlyFee),
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+	enrollmentID, err := result.LastInsertId()
+	if err != nil {
+		return 0, 0, err
+	}
+	enrollment.ID = enrollmentID
+
+	if _, err := tx.Exec(`
+		INSERT INTO admission_training_programs (
+			admission_id,
+			training_program_id,
+			created_at
+		)
+		SELECT ?, ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM admission_training_programs
+			WHERE admission_id = ?
+				AND training_program_id = ?
+		)
+	`, enrollment.AdmissionID, enrollment.TrainingProgramID, now, enrollment.AdmissionID, enrollment.TrainingProgramID); err != nil {
+		return 0, 0, err
+	}
+
+	var financeTransactionID int64
+	if collectPayment && !enrollment.FreeAdmission {
+		financeTransactionID, err = a.collectEnrollmentAdmissionPaymentTx(tx, enrollment, recordedByUserID)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	return enrollmentID, financeTransactionID, nil
+}
+
+func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment StudentEnrollment, recordedByUserID int64) (int64, error) {
+	var studentName string
+	if err := tx.QueryRow(`SELECT full_name FROM admissions WHERE id = ?`, enrollment.AdmissionID).Scan(&studentName); err != nil {
+		return 0, err
+	}
+	var admissionFee float64
+	if err := tx.QueryRow(`SELECT COALESCE(admission_fee, 0) FROM training_programs WHERE id = ?`, enrollment.TrainingProgramID).Scan(&admissionFee); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrAdmissionFeeNotConfigured
+		}
+		return 0, err
+	}
+	if enrollment.FreeAdmission {
+		admissionFee = 0
+	}
+	if admissionFee <= 0 {
+		return 0, ErrAdmissionFeeNotConfigured
+	}
+	now := time.Now().UTC()
+	receiptNumber := fmt.Sprintf("ENR-%s-%06d", now.Format("20060102150405"), enrollment.ID)
+	account, err := findFinanceAccountForPaymentMethodTx(tx, "cash")
+	if err != nil {
+		return 0, err
+	}
+	description := fmt.Sprintf("Admission payment for %s - %s", studentName, enrollment.TrainingProgramName)
+	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
+		ReceiptNumber:    receiptNumber,
+		ReferenceNumber:  receiptNumber,
+		Category:         "admission_payment",
+		TransactionType:  financeTxnTypeIncome,
+		ReferenceType:    "student_enrollment",
+		ReferenceID:      enrollment.ID,
+		SourceType:       "student_enrollment",
+		SourceID:         enrollment.ID,
+		FinanceAccountID: account.ID,
+		PersonName:       studentName,
+		Description:      description,
+		PaymentMethod:    "cash",
+		Amount:           admissionFee,
+		RecordedByUserID: recordedByUserID,
+		RecordedAt:       now,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`
+		UPDATE student_enrollments
+		SET payment_collected = 1,
+		    payment_collected_at = ?,
+		    admission_payment_amount = ?,
+		    finance_transaction_id = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`, now, admissionFee, transactionID, now, enrollment.ID); err != nil {
+		return 0, err
+	}
+	return transactionID, nil
 }
 
 func (a *App) createAdmissionWithOptionalPayment(
@@ -1771,6 +1997,9 @@ func (a *App) createAdmissionWithOptionalPayment(
 			guardian_contact_number,
 			guardian_alternative_contact_number,
 			medical_information,
+			photo_path,
+			qr_code_path,
+			qr_code_value,
 			free_admission,
 			free_monthly_fee,
 			payment_collected,
@@ -1781,8 +2010,8 @@ func (a *App) createAdmissionWithOptionalPayment(
 			updated_at
 		)
 		VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-			0, NULL, 0, NULL, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?
 		)
 	`,
 		admission.StudentID,
@@ -1800,8 +2029,15 @@ func (a *App) createAdmissionWithOptionalPayment(
 		admission.GuardianContactNumber,
 		admission.GuardianAlternativePhone,
 		admission.MedicalInformation,
+		admission.PhotoPath,
+		admission.QRCodePath,
+		admission.QRCodeValue,
 		boolToInt(admission.FreeAdmission),
 		boolToInt(admission.FreeMonthlyFee),
+		0,
+		nil,
+		0,
+		nil,
 		now,
 		now,
 	)
@@ -1815,6 +2051,9 @@ func (a *App) createAdmissionWithOptionalPayment(
 	}
 
 	admission.ID = admissionID
+	if err := syncAdmissionTrainingProgramsTx(tx, admissionID, admission.TrainingProgramIDs, now); err != nil {
+		return 0, 0, err
+	}
 
 	var financeTransactionID int64
 
@@ -1861,7 +2100,6 @@ func (a *App) updateAdmissionWithOptionalPayment(
 			date_of_birth = ?,
 			gender = ?,
 			practice_type = ?,
-			training_program_id = ?,
 			address = ?,
 			passport_number = ?,
 			school = ?,
@@ -1870,8 +2108,9 @@ func (a *App) updateAdmissionWithOptionalPayment(
 			guardian_contact_number = ?,
 			guardian_alternative_contact_number = ?,
 			medical_information = ?,
-			free_admission = ?,
-			free_monthly_fee = ?,
+			photo_path = ?,
+			qr_code_path = ?,
+			qr_code_value = ?,
 			updated_at = ?
 		WHERE id = ?
 	`,
@@ -1881,7 +2120,6 @@ func (a *App) updateAdmissionWithOptionalPayment(
 		admission.DateOfBirth,
 		admission.Gender,
 		admission.PracticeType,
-		admission.TrainingProgramID,
 		admission.Address,
 		admission.PassportNumber,
 		admission.School,
@@ -1890,8 +2128,9 @@ func (a *App) updateAdmissionWithOptionalPayment(
 		admission.GuardianContactNumber,
 		admission.GuardianAlternativePhone,
 		admission.MedicalInformation,
-		boolToInt(admission.FreeAdmission),
-		boolToInt(admission.FreeMonthlyFee),
+		admission.PhotoPath,
+		admission.QRCodePath,
+		admission.QRCodeValue,
 		time.Now().UTC(),
 		admission.ID,
 	)
@@ -1907,7 +2146,6 @@ func (a *App) updateAdmissionWithOptionalPayment(
 	if rowsAffected == 0 {
 		return 0, sql.ErrNoRows
 	}
-
 	var financeTransactionID int64
 
 	if collectPayment && !existing.PaymentCollected && !admission.FreeAdmission {

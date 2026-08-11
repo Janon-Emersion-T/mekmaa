@@ -77,8 +77,37 @@ func runMigrations(db *sql.DB) error {
 			admission_payment_amount REAL NOT NULL DEFAULT 0,
 			finance_transaction_id INTEGER,
 			training_program_id INTEGER,
+			photo_path TEXT NOT NULL DEFAULT '',
+			qr_code_path TEXT NOT NULL DEFAULT '',
+			qr_code_value TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS admission_training_programs (
+			admission_id INTEGER NOT NULL,
+			training_program_id INTEGER NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY (admission_id, training_program_id),
+			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
+			FOREIGN KEY (training_program_id) REFERENCES training_programs(id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS student_enrollments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			admission_id INTEGER NOT NULL,
+			training_program_id INTEGER NOT NULL,
+			free_admission INTEGER NOT NULL DEFAULT 0,
+			free_monthly_fee INTEGER NOT NULL DEFAULT 0,
+			payment_collected INTEGER NOT NULL DEFAULT 0,
+			payment_collected_at DATETIME,
+			admission_payment_amount REAL NOT NULL DEFAULT 0,
+			finance_transaction_id INTEGER,
+			active INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			UNIQUE(admission_id, training_program_id),
+			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
+			FOREIGN KEY (training_program_id) REFERENCES training_programs(id),
+			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS student_groups (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -265,6 +294,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS student_monthly_payments (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			admission_id INTEGER NOT NULL,
+			enrollment_id INTEGER,
 			payment_month TEXT NOT NULL,
 			amount REAL NOT NULL DEFAULT 0,
 			payment_method TEXT NOT NULL DEFAULT 'cash',
@@ -273,6 +303,7 @@ func runMigrations(db *sql.DB) error {
 			collected_at DATETIME NOT NULL,
 			created_at DATETIME NOT NULL,
 			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
+			FOREIGN KEY (enrollment_id) REFERENCES student_enrollments(id) ON DELETE CASCADE,
 			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS events (
@@ -455,7 +486,13 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_admissions_created_at ON admissions(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_admissions_qr_code_value ON admissions(qr_code_value)`,
 
+		`CREATE INDEX IF NOT EXISTS idx_admission_training_programs_admission_id ON admission_training_programs(admission_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_admission_training_programs_program_id ON admission_training_programs(training_program_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_admission_id ON student_enrollments(admission_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_program_id ON student_enrollments(training_program_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_active ON student_enrollments(active, admission_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
@@ -489,7 +526,8 @@ ON court_closures(activity, active, closure_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_recorded_at ON finance_transactions(recorded_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_reference ON finance_transactions(reference_type, reference_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_admissions_finance_transaction_id ON admissions(finance_transaction_id)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_student_month ON student_monthly_payments(admission_id, payment_month)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_student_month ON student_monthly_payments(admission_id, payment_month) WHERE enrollment_id IS NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_enrollment_month ON student_monthly_payments(enrollment_id, payment_month) WHERE enrollment_id IS NOT NULL`,
 		`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_finance_transaction_id ON student_monthly_payments(finance_transaction_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_month ON student_monthly_payments(payment_month, collected_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date, start_time)`,
@@ -591,6 +629,26 @@ ON court_closures(activity, active, closure_date)`,
 			stmt:   `ALTER TABLE admissions ADD COLUMN free_monthly_fee INTEGER NOT NULL DEFAULT 0`,
 		},
 		{
+			table:  "admissions",
+			column: "photo_path",
+			stmt:   `ALTER TABLE admissions ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "admissions",
+			column: "qr_code_path",
+			stmt:   `ALTER TABLE admissions ADD COLUMN qr_code_path TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "admissions",
+			column: "qr_code_value",
+			stmt:   `ALTER TABLE admissions ADD COLUMN qr_code_value TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			table:  "student_monthly_payments",
+			column: "enrollment_id",
+			stmt:   `ALTER TABLE student_monthly_payments ADD COLUMN enrollment_id INTEGER`,
+		},
+		{
 			table:  "space_schedules",
 			column: "customer_message",
 			stmt:   `ALTER TABLE space_schedules ADD COLUMN customer_message TEXT NOT NULL DEFAULT ''`,
@@ -660,6 +718,120 @@ ON court_closures(activity, active, closure_date)`,
 				return fmt.Errorf("add %s %s column: %w", migration.table, migration.column, err)
 			}
 		}
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS admission_training_programs (
+			admission_id INTEGER NOT NULL,
+			training_program_id INTEGER NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY (admission_id, training_program_id),
+			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
+			FOREIGN KEY (training_program_id) REFERENCES training_programs(id)
+		)
+	`); err != nil {
+		return fmt.Errorf("create admission training programmes table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admission_training_programs_admission_id ON admission_training_programs(admission_id)`); err != nil {
+		return fmt.Errorf("create admission training programmes admission index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admission_training_programs_program_id ON admission_training_programs(training_program_id)`); err != nil {
+		return fmt.Errorf("create admission training programmes programme index: %w", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO admission_training_programs (
+			admission_id,
+			training_program_id,
+			created_at
+		)
+		SELECT
+			a.id,
+			a.training_program_id,
+			COALESCE(a.created_at, CURRENT_TIMESTAMP)
+		FROM admissions a
+		WHERE COALESCE(a.training_program_id, 0) > 0
+			AND NOT EXISTS (
+				SELECT 1
+				FROM admission_training_programs atp
+				WHERE atp.admission_id = a.id
+					AND atp.training_program_id = a.training_program_id
+			)
+	`); err != nil {
+		return fmt.Errorf("backfill admission training programmes: %w", err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS student_enrollments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			admission_id INTEGER NOT NULL,
+			training_program_id INTEGER NOT NULL,
+			free_admission INTEGER NOT NULL DEFAULT 0,
+			free_monthly_fee INTEGER NOT NULL DEFAULT 0,
+			payment_collected INTEGER NOT NULL DEFAULT 0,
+			payment_collected_at DATETIME,
+			admission_payment_amount REAL NOT NULL DEFAULT 0,
+			finance_transaction_id INTEGER,
+			active INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			UNIQUE(admission_id, training_program_id),
+			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
+			FOREIGN KEY (training_program_id) REFERENCES training_programs(id),
+			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id)
+		)
+	`); err != nil {
+		return fmt.Errorf("create student enrollments table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_enrollments_admission_id ON student_enrollments(admission_id)`); err != nil {
+		return fmt.Errorf("create student enrollments admission index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_enrollments_program_id ON student_enrollments(training_program_id)`); err != nil {
+		return fmt.Errorf("create student enrollments programme index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_enrollments_active ON student_enrollments(active, admission_id)`); err != nil {
+		return fmt.Errorf("create student enrollments active index: %w", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO student_enrollments (
+			admission_id,
+			training_program_id,
+			free_admission,
+			free_monthly_fee,
+			payment_collected,
+			payment_collected_at,
+			admission_payment_amount,
+			finance_transaction_id,
+			active,
+			created_at,
+			updated_at
+		)
+		SELECT
+			atp.admission_id,
+			atp.training_program_id,
+			CASE WHEN atp.training_program_id = a.training_program_id THEN COALESCE(a.free_admission, 0) ELSE 0 END,
+			CASE WHEN atp.training_program_id = a.training_program_id THEN COALESCE(a.free_monthly_fee, 0) ELSE 0 END,
+			CASE WHEN atp.training_program_id = a.training_program_id THEN COALESCE(a.payment_collected, 0) ELSE 0 END,
+			CASE WHEN atp.training_program_id = a.training_program_id THEN a.payment_collected_at ELSE NULL END,
+			CASE WHEN atp.training_program_id = a.training_program_id THEN COALESCE(a.admission_payment_amount, 0) ELSE 0 END,
+			CASE WHEN atp.training_program_id = a.training_program_id THEN a.finance_transaction_id ELSE NULL END,
+			1,
+			COALESCE(a.created_at, CURRENT_TIMESTAMP),
+			COALESCE(a.updated_at, COALESCE(a.created_at, CURRENT_TIMESTAMP))
+		FROM admission_training_programs atp
+		JOIN admissions a
+			ON a.id = atp.admission_id
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM student_enrollments se
+			WHERE se.admission_id = atp.admission_id
+				AND se.training_program_id = atp.training_program_id
+		)
+	`); err != nil {
+		return fmt.Errorf("backfill student enrollments: %w", err)
+	}
+	if err := backfillStudentMonthlyPaymentEnrollments(db); err != nil {
+		return fmt.Errorf("backfill student monthly payment enrollments: %w", err)
+	}
+	if _, err := db.Exec(`UPDATE admissions SET qr_code_value = student_id WHERE qr_code_value IS NULL OR TRIM(qr_code_value) = ''`); err != nil {
+		return fmt.Errorf("backfill admission qr code values: %w", err)
 	}
 	if _, err := db.Exec(`UPDATE space_schedules SET status_change_source = '' WHERE status_change_source IS NULL`); err != nil {
 		return err
@@ -1065,6 +1237,61 @@ func backfillBookingFinancials(db *sql.DB) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func backfillStudentMonthlyPaymentEnrollments(db *sql.DB) error {
+	rows, err := db.Query(`
+		SELECT id, admission_id
+		FROM student_monthly_payments
+		WHERE enrollment_id IS NULL
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type paymentRecord struct {
+		paymentID   int64
+		admissionID int64
+	}
+
+	var payments []paymentRecord
+	for rows.Next() {
+		var payment paymentRecord
+		if err := rows.Scan(&payment.paymentID, &payment.admissionID); err != nil {
+			return err
+		}
+		payments = append(payments, payment)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, payment := range payments {
+		var enrollmentID int64
+		err := db.QueryRow(`
+			SELECT se.id
+			FROM student_enrollments se
+			LEFT JOIN admissions a
+				ON a.id = se.admission_id
+			WHERE se.admission_id = ?
+			ORDER BY
+				CASE WHEN se.training_program_id = COALESCE(a.training_program_id, 0) THEN 0 ELSE 1 END,
+				se.id
+			LIMIT 1
+		`, payment.admissionID).Scan(&enrollmentID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+		if _, err := db.Exec(`UPDATE student_monthly_payments SET enrollment_id = ? WHERE id = ?`, enrollmentID, payment.paymentID); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

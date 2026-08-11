@@ -32,10 +32,14 @@ func isIgnorableMigrationError(err error, stmt string) bool {
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN student_id") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN admission_date") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN practice_type") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN photo_path") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN qr_code_path") ||
+		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN qr_code_value") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN payment_collected") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN payment_collected_at") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN admission_payment_amount") ||
 		strings.Contains(stmt, "ALTER TABLE admissions ADD COLUMN finance_transaction_id") ||
+		strings.Contains(stmt, "ALTER TABLE student_monthly_payments ADD COLUMN enrollment_id") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN status") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_name") ||
 		strings.Contains(stmt, "ALTER TABLE space_schedules ADD COLUMN requester_email") ||
@@ -124,6 +128,14 @@ func buildTemplates() (map[string]*template.Template, error) {
 		},
 		"containsPermission": func(permissions []string, permission string) bool {
 			return containsPermission(permissions, permission)
+		},
+		"containsInt64": func(values []int64, target int64) bool {
+			for _, value := range values {
+				if value == target {
+					return true
+				}
+			}
+			return false
 		},
 		"hasPermission": func(user *User, permission string) bool {
 			if user == nil {
@@ -259,6 +271,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"user-management":             "templates/dashboard/user-management.html",
 		"role-management":             "templates/dashboard/role-management.html",
 		"admission-management":        "templates/dashboard/admission-management.html",
+		"enrollment-management":       "templates/dashboard/enrollment-management.html",
 		"coach-management":            "templates/dashboard/coach-management.html",
 		"training-program-management": "templates/dashboard/training-program-management.html",
 		"student-group-management":    "templates/dashboard/student-group-management.html",

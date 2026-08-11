@@ -3215,104 +3215,61 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxStudentPhotoSize + (1 << 20)); err != nil {
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
 
-	trainingProgramID, err := parsePositiveInt64(
-		r.FormValue("training_program_id"),
-	)
-	if err != nil {
-		http.Error(
-			w,
-			"select a valid training programme",
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	trainingProgram, err := a.findTrainingProgramByID(trainingProgramID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(
-				w,
-				"training programme not found",
-				http.StatusBadRequest,
-			)
-			return
-		}
-
-		log.Printf("find training programme for admission: %v", err)
-		http.Error(
-			w,
-			"internal server error",
-			http.StatusInternalServerError,
-		)
-		return
-	}
-
-	if !trainingProgram.Active {
-		http.Error(
-			w,
-			"the selected training programme is inactive",
-			http.StatusBadRequest,
-		)
-		return
-	}
-
 	admission := admissionFromRequest(r)
-	admission.TrainingProgramID = trainingProgram.ID
-	admission.TrainingProgramName = trainingProgram.Name
-	admission.PracticeType = legacyPracticeTypeForTrainingFormat(
-		trainingProgram.TrainingFormat,
-	)
-
-	collectPayment := r.FormValue("payment_collected") == "true" && !admission.FreeAdmission
+	admission.PracticeType = "student"
+	admission.QRCodeValue = admission.StudentID
+	photoPath, err := a.uploadedStudentPhotoPath(r, "photo")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	admission.PhotoPath = photoPath
+	qrPath, err := a.uploads.saveStudentQRCode(admission.StudentID, admission.QRCodeValue)
+	if err != nil {
+		if admission.PhotoPath != "" {
+			a.removeUploadedStudentPhoto(admission.PhotoPath)
+		}
+		log.Printf("generate student qr: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	admission.QRCodePath = qrPath
 
 	if err := validateAdmission(admission); err != nil {
+		if admission.PhotoPath != "" {
+			a.removeUploadedStudentPhoto(admission.PhotoPath)
+		}
+		if admission.QRCodePath != "" {
+			a.removeUploadedStudentQRCode(admission.QRCodePath)
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	currentUser, _ := a.currentUser(r.Context())
-
 	recordedByUserID := int64(0)
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
 	}
 
-	_, financeTransactionID, err := a.createAdmissionWithOptionalPayment(
-		admission,
-		collectPayment,
-		recordedByUserID,
-	)
+	_, _, err = a.createAdmissionWithOptionalPayment(admission, false, recordedByUserID)
 	if err != nil {
-		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
-			http.Error(
-				w,
-				err.Error(),
-				http.StatusBadRequest,
-			)
-			return
+		if admission.PhotoPath != "" {
+			a.removeUploadedStudentPhoto(admission.PhotoPath)
 		}
-
+		if admission.QRCodePath != "" {
+			a.removeUploadedStudentQRCode(admission.QRCodePath)
+		}
 		log.Printf("create admission: %v", err)
 		http.Error(
 			w,
 			"internal server error",
 			http.StatusInternalServerError,
-		)
-		return
-	}
-
-	if collectPayment && financeTransactionID > 0 {
-		http.Redirect(
-			w,
-			r,
-			"/admin/finance/receipt?transaction_id="+
-				strconv.FormatInt(financeTransactionID, 10),
-			http.StatusSeeOther,
 		)
 		return
 	}
@@ -3335,7 +3292,7 @@ func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid csrf token", http.StatusForbidden)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxStudentPhotoSize + (1 << 20)); err != nil {
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
@@ -3346,64 +3303,72 @@ func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trainingProgramID, err := parsePositiveInt64(
-		r.FormValue("training_program_id"),
-	)
-	if err != nil {
-		http.Error(
-			w,
-			"select a valid training programme",
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	trainingProgram, err := a.findTrainingProgramByID(trainingProgramID)
+	existing, err := a.findAdmissionByID(admissionID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(
-				w,
-				"training programme not found",
-				http.StatusBadRequest,
-			)
+			http.Error(w, "student not found", http.StatusNotFound)
 			return
 		}
-
-		log.Printf("find training programme for admission update: %v", err)
+		log.Printf("find admission for update: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
 	admission := admissionFromRequest(r)
 	admission.ID = admissionID
-	admission.TrainingProgramID = trainingProgram.ID
-	admission.TrainingProgramName = trainingProgram.Name
-	admission.PracticeType = legacyPracticeTypeForTrainingFormat(
-		trainingProgram.TrainingFormat,
-	)
-
-	collectPayment := r.FormValue("payment_collected") == "true" && !admission.FreeAdmission
-
-	if err := validateAdmission(admission); err != nil {
+	admission.PracticeType = existing.PracticeType
+	admission.PhotoPath = existing.PhotoPath
+	admission.QRCodePath = existing.QRCodePath
+	admission.QRCodeValue = admission.StudentID
+	photoPath, err := a.uploadedStudentPhotoPath(r, "photo")
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	currentUser, _ := a.currentUser(r.Context())
-	recordedByUserID := int64(0)
-	if currentUser != nil {
-		recordedByUserID = currentUser.ID
+	if photoPath != "" {
+		admission.PhotoPath = photoPath
 	}
-	financeTransactionID, err := a.updateAdmissionWithOptionalPayment(admission, collectPayment, recordedByUserID)
+	if admission.StudentID != existing.StudentID || admission.QRCodePath == "" {
+		qrPath, err := a.uploads.saveStudentQRCode(admission.StudentID, admission.QRCodeValue)
+		if err != nil {
+			if photoPath != "" {
+				a.removeUploadedStudentPhoto(photoPath)
+			}
+			log.Printf("regenerate student qr: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		admission.QRCodePath = qrPath
+	}
+
+	if err := validateAdmission(admission); err != nil {
+		if photoPath != "" {
+			a.removeUploadedStudentPhoto(photoPath)
+		}
+		if admission.QRCodePath != existing.QRCodePath {
+			a.removeUploadedStudentQRCode(admission.QRCodePath)
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	financeTransactionID, err := a.updateAdmissionWithOptionalPayment(admission, false, 0)
 	if err != nil {
+		if photoPath != "" {
+			a.removeUploadedStudentPhoto(photoPath)
+		}
+		if admission.QRCodePath != existing.QRCodePath {
+			a.removeUploadedStudentQRCode(admission.QRCodePath)
+		}
 		log.Printf("update admission: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	if collectPayment && financeTransactionID > 0 {
-		http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(financeTransactionID, 10), http.StatusSeeOther)
-		return
+	if photoPath != "" && existing.PhotoPath != "" && existing.PhotoPath != photoPath {
+		a.removeUploadedStudentPhoto(existing.PhotoPath)
 	}
+	if existing.QRCodePath != "" && existing.QRCodePath != admission.QRCodePath {
+		a.removeUploadedStudentQRCode(existing.QRCodePath)
+	}
+	_ = financeTransactionID
 	a.setFlash(w, "Admission updated.")
 	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
 }
@@ -3422,9 +3387,9 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	admissionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("admission_id")), 10, 64)
-	if err != nil || admissionID <= 0 {
-		http.Error(w, "invalid admission id", http.StatusBadRequest)
+	enrollmentID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("enrollment_id")), 10, 64)
+	if err != nil || enrollmentID <= 0 {
+		http.Error(w, "invalid enrollment id", http.StatusBadRequest)
 		return
 	}
 	paymentMonth := strings.TrimSpace(r.FormValue("payment_month"))
@@ -3448,10 +3413,10 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
 	}
-	transactionID, err := a.collectStudentMonthlyPayment(admissionID, paymentMonth, monthDate, paymentMethod, recordedByUserID)
+	transactionID, err := a.collectStudentMonthlyPayment(enrollmentID, paymentMonth, monthDate, paymentMethod, recordedByUserID)
 	if err != nil {
 		if errors.Is(err, ErrStudentPaymentAlreadyCollected) {
-			a.setFlash(w, "That student's payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")
+			a.setFlash(w, "That enrollment payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")
 			http.Redirect(w, r, "/admin/student-payments?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
 			return
 		}

@@ -3,12 +3,14 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/skip2/go-qrcode"
 	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -71,8 +73,10 @@ func prepareUploadStorage(configuredRoot string) (UploadStorage, error) {
 	}
 
 	storage := UploadStorage{
-		Root:     resolvedRoot,
-		EventDir: filepath.Join(resolvedRoot, "events"),
+		Root:           resolvedRoot,
+		EventDir:       filepath.Join(resolvedRoot, "events"),
+		StudentPhotoDir: filepath.Join(resolvedRoot, "students", "photos"),
+		StudentQRDir:    filepath.Join(resolvedRoot, "students", "qr"),
 	}
 	if err := os.MkdirAll(storage.Root, 0o755); err != nil {
 		return UploadStorage{}, fmt.Errorf("create upload directory %s: %w", storage.Root, err)
@@ -80,18 +84,33 @@ func prepareUploadStorage(configuredRoot string) (UploadStorage, error) {
 	if err := os.MkdirAll(storage.EventDir, 0o755); err != nil {
 		return UploadStorage{}, fmt.Errorf("create event upload directory %s: %w", storage.EventDir, err)
 	}
+	if err := os.MkdirAll(storage.StudentPhotoDir, 0o755); err != nil {
+		return UploadStorage{}, fmt.Errorf("create student photo upload directory %s: %w", storage.StudentPhotoDir, err)
+	}
+	if err := os.MkdirAll(storage.StudentQRDir, 0o755); err != nil {
+		return UploadStorage{}, fmt.Errorf("create student qr upload directory %s: %w", storage.StudentQRDir, err)
+	}
 
-	probe, err := os.CreateTemp(storage.EventDir, ".mekmaa-write-check-*")
-	if err != nil {
-		return UploadStorage{}, fmt.Errorf("event upload directory is not writable %s: %w", storage.EventDir, err)
-	}
-	probeName := probe.Name()
-	if err := probe.Close(); err != nil {
-		_ = os.Remove(probeName)
-		return UploadStorage{}, fmt.Errorf("close event upload write check %s: %w", probeName, err)
-	}
-	if err := os.Remove(probeName); err != nil {
-		return UploadStorage{}, fmt.Errorf("remove event upload write check %s: %w", probeName, err)
+	for _, dir := range []struct {
+		path  string
+		label string
+	}{
+		{storage.EventDir, "event upload"},
+		{storage.StudentPhotoDir, "student photo upload"},
+		{storage.StudentQRDir, "student qr upload"},
+	} {
+		probe, err := os.CreateTemp(dir.path, ".mekmaa-write-check-*")
+		if err != nil {
+			return UploadStorage{}, fmt.Errorf("%s directory is not writable %s: %w", dir.label, dir.path, err)
+		}
+		probeName := probe.Name()
+		if err := probe.Close(); err != nil {
+			_ = os.Remove(probeName)
+			return UploadStorage{}, fmt.Errorf("close %s write check %s: %w", dir.label, probeName, err)
+		}
+		if err := os.Remove(probeName); err != nil {
+			return UploadStorage{}, fmt.Errorf("remove %s write check %s: %w", dir.label, probeName, err)
+		}
 	}
 	return storage, nil
 }
@@ -125,6 +144,19 @@ func (a *App) uploadedEventImagePath(r *http.Request) (string, error) {
 	defer file.Close()
 
 	return a.uploads.saveEventImage(file, header)
+}
+
+func (a *App) uploadedStudentPhotoPath(r *http.Request, fieldName string) (string, error) {
+	file, header, err := r.FormFile(fieldName)
+	if err != nil {
+		if errors.Is(err, http.ErrMissingFile) {
+			return "", nil
+		}
+		return "", errors.New("invalid student photo upload")
+	}
+	defer file.Close()
+
+	return a.uploads.saveStudentPhoto(file, header)
 }
 
 func (s UploadStorage) saveEventImage(file multipart.File, header *multipart.FileHeader) (string, error) {
@@ -227,6 +259,119 @@ func eventImageExtension(contentType string) (string, bool) {
 	}
 }
 
+func (s UploadStorage) saveStudentPhoto(file multipart.File, header *multipart.FileHeader) (string, error) {
+	if header != nil && header.Size > maxStudentPhotoSize {
+		return "", errors.New("student photo must be 5MB or smaller")
+	}
+
+	buf := make([]byte, 512)
+	n, err := io.ReadFull(file, buf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", fmt.Errorf("read uploaded student photo: %w", err)
+	}
+	if n == 0 {
+		return "", errors.New("student photo is empty")
+	}
+	contentType := http.DetectContentType(buf[:n])
+	ext, ok := eventImageExtension(contentType)
+	if !ok {
+		return "", errors.New("student photo must be a JPEG, PNG or WebP file")
+	}
+
+	filename, err := newStudentPhotoFilename(ext)
+	if err != nil {
+		return "", err
+	}
+	targetPath := filepath.Join(s.StudentPhotoDir, filename)
+	dst, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return "", fmt.Errorf("create uploaded student photo %s: %w", targetPath, err)
+	}
+	complete := false
+	closed := false
+	defer func() {
+		if !closed {
+			_ = dst.Close()
+		}
+		if !complete {
+			_ = os.Remove(targetPath)
+		}
+	}()
+
+	if _, err := dst.Write(buf[:n]); err != nil {
+		return "", fmt.Errorf("write uploaded student photo %s: %w", targetPath, err)
+	}
+	remaining := int64(maxStudentPhotoSize - n)
+	copied, err := io.Copy(dst, io.LimitReader(file, remaining+1))
+	if err != nil {
+		return "", fmt.Errorf("copy uploaded student photo %s: %w", targetPath, err)
+	}
+	if int64(n)+copied > maxStudentPhotoSize {
+		return "", errors.New("student photo must be 5MB or smaller")
+	}
+	if err := dst.Close(); err != nil {
+		closed = true
+		return "", fmt.Errorf("close uploaded student photo %s: %w", targetPath, err)
+	}
+	closed = true
+	complete = true
+
+	return studentPhotoPublicPath(filename)
+}
+
+func (s UploadStorage) saveStudentQRCode(studentID, value string) (string, error) {
+	filename, err := newStudentQRFilename()
+	if err != nil {
+		return "", err
+	}
+	targetPath := filepath.Join(s.StudentQRDir, filename)
+	if err := qrcode.WriteFile(strings.TrimSpace(value), qrcode.Medium, 256, targetPath); err != nil {
+		return "", fmt.Errorf("write student qr image %s: %w", targetPath, err)
+	}
+	return studentQRPublicPath(filename)
+}
+
+func newStudentPhotoFilename(extension string) (string, error) {
+	if extension != ".jpg" && extension != ".png" && extension != ".webp" {
+		return "", errors.New("unsupported student photo extension")
+	}
+	token, err := generateToken(18)
+	if err != nil {
+		return "", fmt.Errorf("generate student photo filename: %w", err)
+	}
+	filename := "student-photo-" + strings.ToLower(token) + extension
+	if !studentPhotoPattern.MatchString(filename) {
+		return "", errors.New("generated student photo filename is invalid")
+	}
+	return filename, nil
+}
+
+func newStudentQRFilename() (string, error) {
+	token, err := generateToken(18)
+	if err != nil {
+		return "", fmt.Errorf("generate student qr filename: %w", err)
+	}
+	filename := "student-qr-" + strings.ToLower(token) + ".png"
+	if !studentQRPattern.MatchString(filename) {
+		return "", errors.New("generated student qr filename is invalid")
+	}
+	return filename, nil
+}
+
+func studentPhotoPublicPath(filename string) (string, error) {
+	if !studentPhotoPattern.MatchString(filename) || filepath.Base(filename) != filename {
+		return "", errors.New("invalid student photo filename")
+	}
+	return "/uploads/students/photos/" + filename, nil
+}
+
+func studentQRPublicPath(filename string) (string, error) {
+	if !studentQRPattern.MatchString(filename) || filepath.Base(filename) != filename {
+		return "", errors.New("invalid student qr filename")
+	}
+	return "/uploads/students/qr/" + filename, nil
+}
+
 func (s UploadStorage) deleteEventImage(imagePath string) error {
 	trimmed := strings.TrimSpace(imagePath)
 	if trimmed == "" {
@@ -257,6 +402,42 @@ func (a *App) removeUploadedEventImage(imagePath string) {
 	if err := a.uploads.deleteEventImage(imagePath); err != nil {
 		log.Printf("remove uploaded event image: %v", err)
 	}
+}
+
+func (a *App) removeUploadedStudentPhoto(photoPath string) {
+	if err := a.uploads.deleteStudentPhoto(photoPath); err != nil {
+		log.Printf("remove uploaded student photo: %v", err)
+	}
+}
+
+func (a *App) removeUploadedStudentQRCode(qrPath string) {
+	if err := a.uploads.deleteStudentQRCode(qrPath); err != nil {
+		log.Printf("remove uploaded student qr: %v", err)
+	}
+}
+
+func (s UploadStorage) deleteStudentPhoto(photoPath string) error {
+	return s.deleteStudentAsset(photoPath, "/uploads/students/photos/", s.StudentPhotoDir, studentPhotoPattern, "student photo")
+}
+
+func (s UploadStorage) deleteStudentQRCode(qrPath string) error {
+	return s.deleteStudentAsset(qrPath, "/uploads/students/qr/", s.StudentQRDir, studentQRPattern, "student qr")
+}
+
+func (s UploadStorage) deleteStudentAsset(publicPath, prefix, dir string, pattern *regexp.Regexp, label string) error {
+	trimmed := strings.TrimSpace(publicPath)
+	if trimmed == "" || !strings.HasPrefix(trimmed, prefix) {
+		return nil
+	}
+	filename := strings.TrimPrefix(trimmed, prefix)
+	if !pattern.MatchString(filename) || filepath.Base(filename) != filename {
+		return fmt.Errorf("invalid %s path", label)
+	}
+	localPath := filepath.Join(dir, filename)
+	if err := os.Remove(localPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("delete %s %s: %w", label, localPath, err)
+	}
+	return nil
 }
 
 func financeCategoryLabel(value string) string {

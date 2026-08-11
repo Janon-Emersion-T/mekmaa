@@ -22,6 +22,7 @@ const (
 	otpTTL                          = 10 * time.Minute
 	maxEventImageSize               = 8 << 20
 	maxEventFormSize                = maxEventImageSize + (1 << 20)
+	maxStudentPhotoSize             = 5 << 20
 	defaultUploadDir                = "./data/uploads"
 	defaultBookingAccessTokenSecret = "MEKMAA_DEV_BOOKING_ACCESS_TOKEN_SECRET_CHANGE_ME"
 	financeAccountTypeCash          = "cash"
@@ -44,6 +45,8 @@ var (
 	roleNamePattern     = regexp.MustCompile(`^[a-z][a-z0-9_-]{2,31}$`)
 	eventImagePattern   = regexp.MustCompile(`^event-[a-z0-9_-]{12,64}\.(jpg|png|webp)$`)
 	storedEventPattern  = regexp.MustCompile(`^event-[a-z0-9_-]{12,64}\.(jpg|png|gif|webp)$`)
+	studentPhotoPattern = regexp.MustCompile(`^student-photo-[a-z0-9_-]{12,64}\.(jpg|png|webp)$`)
+	studentQRPattern    = regexp.MustCompile(`^student-qr-[a-z0-9_-]{12,64}\.png$`)
 	allRoles            = []string{"superadmin", "admin", "editor", "coach", "customer"}
 	allPermissions      = []string{
 		"dashboard.view",
@@ -333,6 +336,8 @@ type App struct {
 type UploadStorage struct {
 	Root     string
 	EventDir string
+	StudentPhotoDir string
+	StudentQRDir    string
 }
 
 type AppEnvironment string
@@ -464,6 +469,34 @@ type Admission struct {
 	CreatedAt                time.Time
 	TrainingProgramID        int64
 	TrainingProgramName      string
+	TrainingProgramIDs       []int64
+	TrainingPrograms         []TrainingProgram
+	TrainingProgramNames     string
+	PhotoPath                string
+	QRCodePath               string
+	QRCodeValue              string
+}
+
+type StudentEnrollment struct {
+	ID                      int64
+	AdmissionID             int64
+	TrainingProgramID       int64
+	TrainingProgramName     string
+	TrainingProgram         *TrainingProgram
+	Student                 Admission
+	FreeAdmission           bool
+	FreeMonthlyFee          bool
+	AdmissionPaymentAmount  float64
+	AdmissionPaymentPaid    bool
+	AdmissionPaymentPaidAt  time.Time
+	FinanceTransactionID    int64
+	PaymentVoidReason       string
+	PaymentVoidedByUserID   int64
+	PaymentVoidedByUserName string
+	PaymentVoidedAt         time.Time
+	Active                  bool
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 type FinanceTransaction struct {
@@ -713,6 +746,7 @@ type OperationalReport struct {
 type StudentMonthlyPayment struct {
 	ID                   int64
 	AdmissionID          int64
+	EnrollmentID         int64
 	PaymentMonth         string
 	Amount               float64
 	PaymentMethod        string
@@ -724,6 +758,7 @@ type StudentMonthlyPayment struct {
 
 type StudentPaymentRow struct {
 	Admission          Admission
+	Enrollment         StudentEnrollment
 	MonthlyFee         float64
 	OriginalMonthlyFee float64
 	Payment            *StudentMonthlyPayment
@@ -1253,6 +1288,9 @@ type TemplateData struct {
 	TrainingPrograms                []TrainingProgram
 	SelectedTrainingProgram         *TrainingProgram
 	TrainingProgramMode             string
+	Enrollments                     []StudentEnrollment
+	SelectedEnrollment              *StudentEnrollment
+	EnrollmentMode                  string
 	PricingSettings                 *PricingSettings
 	ReferralPartners                []ReferralPartner
 	ReferralPartnerRows             []ReferralPartnerSummary
@@ -1291,6 +1329,7 @@ type TemplateData struct {
 	BookingStatusUnavailableMessage string
 	Report                          *OperationalReport
 	ReceiptAdmission                *Admission
+	ReceiptEnrollment               *StudentEnrollment
 	ReceiptBookingPayment           *BookingPaymentCollection
 	ReceiptBookingSchedule          *SpaceSchedule
 	ReceiptBookingFinancial         *BookingFinancial

@@ -32,9 +32,25 @@ func admissionFromRequest(r *http.Request) Admission {
 		GuardianContactNumber:    strings.TrimSpace(r.FormValue("guardian_contact_number")),
 		GuardianAlternativePhone: strings.TrimSpace(r.FormValue("guardian_alternative_contact_number")),
 		MedicalInformation:       strings.TrimSpace(r.FormValue("medical_information")),
-		FreeAdmission:            r.FormValue("free_admission") == "true",
-		FreeMonthlyFee:           r.FormValue("free_monthly_fee") == "true",
 	}
+}
+
+func trainingProgramIDsFromRequest(r *http.Request) []int64 {
+	values := r.Form["training_program_id"]
+	seen := make(map[int64]struct{}, len(values))
+	ids := make([]int64, 0, len(values))
+	for _, value := range values {
+		id, err := parsePositiveInt64(value)
+		if err != nil {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func scheduleFromRequest(r *http.Request) SpaceSchedule {
@@ -235,13 +251,6 @@ func studentGroupFromRequest(r *http.Request) StudentGroup {
 }
 
 func validateAdmission(admission Admission) error {
-	if admission.TrainingProgramID <= 0 {
-		return errors.New("training programme is required")
-	}
-
-	if strings.TrimSpace(admission.TrainingProgramName) == "" {
-		return errors.New("training programme name is required")
-	}
 	switch {
 	case admission.StudentID == "":
 		return errors.New("student id is required")
@@ -318,6 +327,19 @@ func validatePricingSettings(settings PricingSettings) error {
 		return errors.New("peak end hour must be after peak start hour")
 	}
 	return nil
+}
+
+func validateEnrollment(enrollment StudentEnrollment) error {
+	switch {
+	case enrollment.AdmissionID <= 0:
+		return errors.New("student is required")
+	case enrollment.TrainingProgramID <= 0:
+		return errors.New("training programme is required")
+	case strings.TrimSpace(enrollment.TrainingProgramName) == "":
+		return errors.New("training programme name is required")
+	default:
+		return nil
+	}
 }
 
 func validateEvent(event Event) error {

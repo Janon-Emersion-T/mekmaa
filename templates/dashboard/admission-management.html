@@ -133,7 +133,7 @@
       </a>
     </div>
 
-    <form action="/admin/admissions/create" method="post" class="p-5 sm:p-8">
+    <form action="/admin/admissions/create" method="post" enctype="multipart/form-data" class="p-5 sm:p-8">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
 
       <!-- Student information -->
@@ -263,44 +263,17 @@
           </div>
 
           <div class="space-y-2">
-            <label
-              for="new-training-program"
-              class="block text-sm font-semibold text-obsidian"
-            >
-              Training programme
+            <label for="new-student-photo" class="block text-sm font-semibold text-obsidian">
+              Student photo
             </label>
-
-            <select
-              id="new-training-program"
-              name="training_program_id"
-              required
-              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-            >
-              <option value="">Select training programme</option>
-
-              {{range .TrainingPrograms}}
-              {{if .Active}}
-              <option
-                value="{{.ID}}"
-                data-admission-fee="{{printf "%.2f" .AdmissionFee}}"
-                data-monthly-fee="{{printf "%.2f" .MonthlyFee}}"
-              >
-                {{.Name}}
-              </option>
-              {{end}}
-              {{end}}
-            </select>
-
-            {{if not .TrainingPrograms}}
-            <p class="text-xs leading-5 text-red-600">
-              No active training programmes are available. Add or activate a programme
-              in Training Manager before creating an admission.
-            </p>
-            {{else}}
-            <p class="text-xs leading-5 text-slate/50">
-              Programme fees are managed from Training Manager.
-            </p>
-            {{end}}
+            <input
+              id="new-student-photo"
+              type="file"
+              name="photo"
+              accept="image/jpeg,image/png,image/webp"
+              class="block w-full rounded-2xl border border-slate/15 bg-white px-4 py-3 text-sm text-obsidian shadow-sm outline-none transition file:mr-4 file:rounded-xl file:border-0 file:bg-cloud file:px-4 file:py-2 file:text-sm file:font-semibold file:text-obsidian hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+            <p class="text-xs leading-5 text-slate/50">Upload a clear student photo. A QR code will be generated automatically from the student ID.</p>
           </div>
 
           <div class="space-y-2">
@@ -507,71 +480,6 @@
         </div>
       </fieldset>
 
-      <fieldset class="mt-8 border-t border-slate/10 pt-8">
-        <div class="flex items-center gap-3">
-          <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-4 w-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-          </span>
-          <div>
-            <legend class="text-base font-semibold text-obsidian">
-              Payment collection
-            </legend>
-            <p class="text-xs leading-5 text-slate/50">
-              Tick this if the one-time admission fee has been collected now. A finance entry and thermal receipt will be created automatically.
-            </p>
-          </div>
-        </div>
-
-        <div class="mt-5 rounded-3xl border border-slate/10 bg-cloud/60 p-4 sm:p-5">
-          <div class="grid gap-3 sm:grid-cols-2">
-            <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white/80 px-4 py-3">
-              <input
-                id="new-free-admission"
-                type="checkbox"
-                name="free_admission"
-                value="true"
-                class="mt-1 h-4 w-4 rounded border-slate/30 text-emerald-600 focus:ring-emerald-200"
-              />
-              <span class="min-w-0">
-                <span class="block text-sm font-semibold text-obsidian">Free admission</span>
-                <span class="mt-1 block text-xs leading-5 text-slate/55">No admission payment or finance receipt will be created for this student.</span>
-              </span>
-            </label>
-
-            <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white/80 px-4 py-3">
-              <input
-                id="new-free-monthly-fee"
-                type="checkbox"
-                name="free_monthly_fee"
-                value="true"
-                class="mt-1 h-4 w-4 rounded border-slate/30 text-emerald-600 focus:ring-emerald-200"
-              />
-              <span class="min-w-0">
-                <span class="block text-sm font-semibold text-obsidian">Free monthly fee</span>
-                <span class="mt-1 block text-xs leading-5 text-slate/55">This student will be excluded from monthly fee collection without creating finance records.</span>
-              </span>
-            </label>
-          </div>
-
-          <label class="flex items-start gap-3">
-            <input
-              id="new-payment-collected"
-              type="checkbox"
-              name="payment_collected"
-              value="true"
-              class="mt-1 h-4 w-4 rounded border-slate/30 text-emerald-600 focus:ring-emerald-200"
-            />
-            <span class="min-w-0">
-              <span class="block text-sm font-semibold text-obsidian">Admission payment collected</span>
-              <span id="new-payment-preview" class="mt-1 block text-sm leading-6 text-slate/60">
-                Select a training programme to view its admission fee.
-              </span>
-            </span>
-          </label>
-        </div>
-      </fieldset>
 
       <div class="mt-8 flex flex-col-reverse gap-3 border-t border-slate/10 pt-6 sm:flex-row sm:justify-end">
         <a
@@ -717,8 +625,8 @@
             <th scope="col" class="px-5 py-4">Student ID</th>
             <th scope="col" class="px-5 py-4">Admission</th>
             <th scope="col" class="px-5 py-4">DOB / Gender</th>
-            <th scope="col" class="px-5 py-4">Training programme</th>
-            <th scope="col" class="px-5 py-4">Payment</th>
+            <th scope="col" class="px-5 py-4">Programmes</th>
+            <th scope="col" class="px-5 py-4">Identity / QR</th>
             <th scope="col" class="px-6 py-4 text-right">Actions</th>
           </tr>
         </thead>
@@ -728,9 +636,17 @@
           <tr class="bg-white/55 align-middle transition hover:bg-cloud/60">
             <td class="px-6 py-5">
               <div class="flex min-w-[14rem] items-center gap-3">
+                {{if .PhotoPath}}
+                <img
+                  src="{{.PhotoPath}}"
+                  alt="{{.FullName}}"
+                  class="h-10 w-10 shrink-0 rounded-xl object-cover ring-1 ring-slate/10"
+                />
+                {{else}}
                 <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-obsidian text-sm font-semibold uppercase text-cloud shadow-sm">
                   {{printf "%.1s" .FullName}}
                 </div>
+                {{end}}
 
                 <div class="min-w-0">
                   <p class="truncate font-semibold text-obsidian">
@@ -766,8 +682,8 @@
 
             <td class="px-5 py-5">
               <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-2.5 py-1 text-xs font-medium text-slate/70">
-                {{if .TrainingProgramName}}
-                  {{.TrainingProgramName}}
+                {{if .TrainingProgramNames}}
+                  {{.TrainingProgramNames}}
                 {{else}}
                   Legacy programme
                 {{end}}
@@ -776,30 +692,17 @@
 
 
             <td class="px-5 py-5">
-              {{if .PaymentCollected}}
               <div class="space-y-1">
-                <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                  Paid
+                <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-2.5 py-1 text-xs font-semibold text-slate/70">
+                  {{if .QRCodeValue}}QR ready{{else}}QR pending{{end}}
                 </span>
-                <p class="text-xs text-slate/55">{{money .AdmissionPaymentAmount}}</p>
-                {{if gt .FinanceTransactionID 0}}
-                <a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="text-xs font-semibold text-obsidian underline decoration-slate/30 underline-offset-2">
-                  Receipt
+                <p class="text-xs font-mono text-slate/55">
+                  {{if .QRCodeValue}}{{.QRCodeValue}}{{else}}No payload yet{{end}}
+                </p>
+                <a href="/admin/enrollments" class="text-xs font-semibold text-obsidian underline decoration-slate/30 underline-offset-2">
+                  Manage enrollments
                 </a>
-                {{end}}
               </div>
-              {{else if .FreeAdmission}}
-              <div class="space-y-1">
-                <span class="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">
-                  Free
-                </span>
-                <p class="text-xs text-slate/55">Admission fee waived</p>
-              </div>
-              {{else}}
-              <span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                Pending
-              </span>
-              {{end}}
             </td>
 
             <td class="px-6 py-5">
@@ -975,14 +878,14 @@
 
             <div>
               <dt class="text-xs font-medium uppercase tracking-[0.12em] text-slate/45">
-                Training programme
+                Programmes
               </dt>
 
               <dd class="mt-1 font-medium text-obsidian">
-                {{if .TrainingProgramName}}
-                  {{.TrainingProgramName}}
+                {{if .TrainingProgramNames}}
+                  {{.TrainingProgramNames}}
                 {{else}}
-                  Legacy programme
+                  Manage through Enrollment Manager
                 {{end}}
               </dd>
             </div>
@@ -1032,25 +935,18 @@
 
             <div class="col-span-2">
               <dt class="text-xs font-medium uppercase tracking-[0.12em] text-slate/45">
-                Payment
+                QR payload
               </dt>
 
-              <dd class="mt-1 font-medium text-obsidian">
-                {{if .PaymentCollected}}Collected{{else}}Pending{{end}}
+              <dd class="mt-1 font-mono text-xs font-semibold text-obsidian">
+                {{if .QRCodeValue}}{{.QRCodeValue}}{{else}}No payload yet{{end}}
               </dd>
 
-              {{if .PaymentCollected}}
-              <dd class="mt-0.5 text-xs text-slate/50">
-                {{money .AdmissionPaymentAmount}}
-              </dd>
-              {{if gt .FinanceTransactionID 0}}
               <dd class="mt-1">
-                <a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="text-xs font-semibold text-obsidian underline decoration-slate/30 underline-offset-2">
-                  View receipt
+                <a href="/admin/enrollments" class="text-xs font-semibold text-obsidian underline decoration-slate/30 underline-offset-2">
+                  Manage enrolments
                 </a>
               </dd>
-              {{end}}
-              {{end}}
             </div>
           </dl>
         </div>
@@ -1266,56 +1162,26 @@
             </div>
 
             <div>
-  <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
-    Training programme
-  </dt>
-
-  <dd class="mt-2 text-sm font-medium text-obsidian">
-    {{if .SelectedAdmission.TrainingProgramName}}
-      {{.SelectedAdmission.TrainingProgramName}}
-    {{else}}
-      Legacy programme
-    {{end}}
-  </dd>
-</div>
-
-            <div>
               <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
-                Payment status
+                Active programmes
               </dt>
 
               <dd class="mt-2 text-sm font-medium text-obsidian">
-                {{if .SelectedAdmission.PaymentCollected}}Collected{{else if .SelectedAdmission.FreeAdmission}}Free{{else}}Pending{{end}}
+                {{if .SelectedAdmission.TrainingProgramNames}}
+                  {{.SelectedAdmission.TrainingProgramNames}}
+                {{else}}
+                  Manage through Enrollment Manager
+                {{end}}
               </dd>
             </div>
 
             <div>
               <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
-                Admission fee
+                QR payload
               </dt>
 
-              <dd class="mt-2 text-sm font-medium text-obsidian">
-                {{if .SelectedAdmission.PaymentCollected}}{{money .SelectedAdmission.AdmissionPaymentAmount}}{{else if .SelectedAdmission.FreeAdmission}}Waived{{else}}Not collected{{end}}
-              </dd>
-            </div>
-
-            <div>
-              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
-                Monthly fee
-              </dt>
-
-              <dd class="mt-2 text-sm font-medium text-obsidian">
-                {{if .SelectedAdmission.FreeMonthlyFee}}Free{{else}}Standard{{end}}
-              </dd>
-            </div>
-
-            <div>
-              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
-                Collected at
-              </dt>
-
-              <dd class="mt-2 text-sm font-medium text-obsidian">
-                {{if hasTime .SelectedAdmission.PaymentCollectedAt}}{{formatDateTime .SelectedAdmission.PaymentCollectedAt}}{{else}}—{{end}}
+              <dd class="mt-2 font-mono text-sm font-semibold text-obsidian">
+                {{if .SelectedAdmission.QRCodeValue}}{{.SelectedAdmission.QRCodeValue}}{{else}}—{{end}}
               </dd>
             </div>
 
@@ -1349,20 +1215,39 @@
               </dd>
             </div>
 
-            {{if gt .SelectedAdmission.FinanceTransactionID 0}}
-            <div class="sm:col-span-2 lg:col-span-3">
-              <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
-                Receipt
-              </dt>
-
-              <dd class="mt-2">
-                <a href="/admin/finance/receipt?transaction_id={{.SelectedAdmission.FinanceTransactionID}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">
-                  Open printable receipt
-                </a>
-              </dd>
-            </div>
-            {{end}}
           </dl>
+        </section>
+
+        <section class="rounded-[1.5rem] border border-slate/10 bg-white p-5 shadow-sm">
+          <div class="flex items-center gap-3">
+            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-aqua/10 text-obsidian shadow-sm">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-4 w-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 7.5h15m-15 0A1.5 1.5 0 0 1 6 6h12a1.5 1.5 0 0 1 1.5 1.5m-15 0v9A1.5 1.5 0 0 0 6 18h12a1.5 1.5 0 0 0 1.5-1.5v-9M9 10.5h6v4.5H9z" />
+              </svg>
+            </span>
+            <h3 class="font-semibold text-obsidian">Identity assets</h3>
+          </div>
+
+          <div class="mt-5 space-y-4">
+            <div class="rounded-3xl border border-slate/10 bg-cloud/55 p-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Student photo</p>
+              {{if .SelectedAdmission.PhotoPath}}
+              <img src="{{.SelectedAdmission.PhotoPath}}" alt="{{.SelectedAdmission.FullName}}" class="mt-3 h-44 w-full rounded-3xl object-cover" />
+              {{else}}
+              <div class="mt-3 flex h-44 items-center justify-center rounded-3xl bg-white text-sm font-semibold text-slate/50">No photo uploaded</div>
+              {{end}}
+            </div>
+
+            <div class="rounded-3xl border border-slate/10 bg-cloud/55 p-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">QR code</p>
+              {{if .SelectedAdmission.QRCodePath}}
+              <img src="{{.SelectedAdmission.QRCodePath}}" alt="QR code for {{.SelectedAdmission.StudentID}}" class="mt-3 h-44 w-full rounded-3xl bg-white object-contain p-4" />
+              <a href="{{.SelectedAdmission.QRCodePath}}" target="_blank" rel="noopener" class="mt-3 inline-flex text-sm font-semibold text-obsidian underline decoration-aqua decoration-2 underline-offset-4">Open QR image</a>
+              {{else}}
+              <div class="mt-3 flex h-44 items-center justify-center rounded-3xl bg-white text-sm font-semibold text-slate/50">QR not available</div>
+              {{end}}
+            </div>
+          </div>
         </section>
 
         <!-- Guardian details -->
@@ -1529,7 +1414,7 @@
       </a>
     </div>
 
-    <form action="/admin/admissions/update" method="post" class="p-5 sm:p-8">
+    <form action="/admin/admissions/update" method="post" enctype="multipart/form-data" class="p-5 sm:p-8">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
       <input type="hidden" name="admission_id" value="{{.SelectedAdmission.ID}}" />
 
@@ -1659,36 +1544,20 @@
           </div>
 
           <div class="space-y-2">
-            <label
-              for="edit-training-program"
-              class="block text-sm font-semibold text-obsidian"
-            >
-              Training programme
+            <label for="edit-student-photo" class="block text-sm font-semibold text-obsidian">
+              Student photo
             </label>
-
-            <select
-              id="edit-training-program"
-              name="training_program_id"
-              required
-              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-            >
-              <option value="">Select training programme</option>
-
-              {{range $.TrainingPrograms}}
-              <option
-                value="{{.ID}}"
-                data-admission-fee="{{printf "%.2f" .AdmissionFee}}"
-                data-monthly-fee="{{printf "%.2f" .MonthlyFee}}"
-                {{if eq .ID $.SelectedAdmission.TrainingProgramID}}selected{{end}}
-              >
-                {{.Name}}{{if not .Active}} — Inactive{{end}}
-              </option>
-              {{end}}
-            </select>
-
-            <p class="text-xs leading-5 text-slate/50">
-              Inactive programmes remain selectable for existing student records.
-            </p>
+            {{if .SelectedAdmission.PhotoPath}}
+            <img src="{{.SelectedAdmission.PhotoPath}}" alt="{{.SelectedAdmission.FullName}}" class="h-24 w-24 rounded-3xl object-cover ring-1 ring-slate/10" />
+            {{end}}
+            <input
+              id="edit-student-photo"
+              type="file"
+              name="photo"
+              accept="image/jpeg,image/png,image/webp"
+              class="block w-full rounded-2xl border border-slate/15 bg-white px-4 py-3 text-sm text-obsidian shadow-sm outline-none transition file:mr-4 file:rounded-xl file:border-0 file:bg-cloud file:px-4 file:py-2 file:text-sm file:font-semibold file:text-obsidian hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+            <p class="text-xs leading-5 text-slate/50">Upload a new image only if the student photo needs to be replaced.</p>
           </div>
 
           <div class="space-y-2">
@@ -1879,89 +1748,6 @@
         </div>
       </fieldset>
 
-      <fieldset class="mt-8 border-t border-slate/10 pt-8">
-        <div class="flex items-center gap-3">
-          <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-4 w-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-          </span>
-
-          <div>
-            <legend class="text-base font-semibold text-obsidian">
-              Payment collection
-            </legend>
-            <p class="text-xs leading-5 text-slate/50">
-              Collect the one-time admission fee and print a 5-inch thermal receipt immediately.
-            </p>
-          </div>
-        </div>
-
-        <div class="mt-5 rounded-3xl border border-slate/10 bg-cloud/60 p-4 sm:p-5">
-          <div class="mb-4 grid gap-3 sm:grid-cols-2">
-            <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white/80 px-4 py-3">
-              <input
-                id="edit-free-admission"
-                type="checkbox"
-                name="free_admission"
-                value="true"
-                {{if .SelectedAdmission.FreeAdmission}}checked{{end}}
-                class="mt-1 h-4 w-4 rounded border-slate/30 text-emerald-600 focus:ring-emerald-200"
-              />
-              <span class="min-w-0">
-                <span class="block text-sm font-semibold text-obsidian">Free admission</span>
-                <span class="mt-1 block text-xs leading-5 text-slate/55">This only waives future admission collection. Existing finance entries stay unchanged.</span>
-              </span>
-            </label>
-
-            <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white/80 px-4 py-3">
-              <input
-                id="edit-free-monthly-fee"
-                type="checkbox"
-                name="free_monthly_fee"
-                value="true"
-                {{if .SelectedAdmission.FreeMonthlyFee}}checked{{end}}
-                class="mt-1 h-4 w-4 rounded border-slate/30 text-emerald-600 focus:ring-emerald-200"
-              />
-              <span class="min-w-0">
-                <span class="block text-sm font-semibold text-obsidian">Free monthly fee</span>
-                <span class="mt-1 block text-xs leading-5 text-slate/55">This student will not appear as monthly fee pending while the waiver is active.</span>
-              </span>
-            </label>
-          </div>
-
-          {{if .SelectedAdmission.PaymentCollected}}
-          <div class="space-y-2">
-            <p class="text-sm font-semibold text-emerald-700">Admission payment already collected.</p>
-            <p class="text-sm leading-6 text-slate/60">
-              Amount: {{money .SelectedAdmission.AdmissionPaymentAmount}}
-              {{if hasTime .SelectedAdmission.PaymentCollectedAt}}on {{formatDateTime .SelectedAdmission.PaymentCollectedAt}}{{end}}.
-            </p>
-            {{if gt .SelectedAdmission.FinanceTransactionID 0}}
-            <a href="/admin/finance/receipt?transaction_id={{.SelectedAdmission.FinanceTransactionID}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">
-              Reprint receipt
-            </a>
-            {{end}}
-          </div>
-          {{else}}
-          <label class="flex items-start gap-3">
-            <input
-              id="edit-payment-collected"
-              type="checkbox"
-              name="payment_collected"
-              value="true"
-              class="mt-1 h-4 w-4 rounded border-slate/30 text-emerald-600 focus:ring-emerald-200"
-            />
-            <span class="min-w-0">
-              <span class="block text-sm font-semibold text-obsidian">Admission payment collected</span>
-              <span id="edit-payment-preview" class="mt-1 block text-sm leading-6 text-slate/60">
-                Select a training programme to view its admission fee.
-              </span>
-            </span>
-          </label>
-          {{end}}
-        </div>
-      </fieldset>
 
       <div class="mt-8 flex flex-col-reverse gap-3 border-t border-slate/10 pt-6 sm:flex-row sm:justify-end">
         <a
@@ -2061,33 +1847,33 @@
           return;
         }
 
-        const selectedOption =
-          programmeInput.options[programmeInput.selectedIndex];
+        const selectedOptions = Array.from(programmeInput.selectedOptions || [])
+          .filter((option) => option.value);
 
-        if (!selectedOption || !selectedOption.value) {
+        if (selectedOptions.length === 0) {
           previewNode.textContent =
-            "Select a training programme to view its admission fee.";
+            "Select at least one training programme to view the combined admission fee.";
           return;
         }
+        let admissionFee = 0;
+        const selectedLabels = [];
 
-        const rawAdmissionFee =
-          selectedOption.dataset.admissionFee || "";
+        for (const option of selectedOptions) {
+          const rawAdmissionFee = option.dataset.admissionFee || "";
+          const fee = Number(rawAdmissionFee);
 
-        const admissionFee = Number(rawAdmissionFee);
+          if (rawAdmissionFee === "" || Number.isNaN(fee) || fee < 0) {
+            previewNode.textContent =
+              "Admission fee is not configured for one of the selected training programmes.";
+            return;
+          }
 
-        if (
-          rawAdmissionFee === "" ||
-          Number.isNaN(admissionFee) ||
-          admissionFee < 0
-        ) {
-          previewNode.textContent =
-            "Admission fee is not configured for this training programme.";
-          return;
+          admissionFee += fee;
+          selectedLabels.push(option.textContent.trim());
         }
 
         previewNode.textContent =
-          `Receipt amount: LKR ${admissionFee.toFixed(2)} ` +
-          `for ${selectedOption.textContent.trim()}.`;
+          `Receipt amount: LKR ${admissionFee.toFixed(2)} for ${selectedLabels.join(", ")}.`;
       };
 
       syncPreview();
