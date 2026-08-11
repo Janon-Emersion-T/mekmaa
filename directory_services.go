@@ -741,7 +741,7 @@ func (a *App) listPublishedEvents() ([]Event, error) {
 func (a *App) listStudentGroups() ([]StudentGroup, error) {
 	rows, err := a.db.Query(`
 		SELECT sg.id, sg.name, sg.code, sg.description, COALESCE(sg.training_program_id, 0), COALESCE(tp.name, ''), sg.created_at
-		FROM student_groups
+		FROM student_groups sg
 		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
 		ORDER BY created_at DESC, id DESC
 	`)
