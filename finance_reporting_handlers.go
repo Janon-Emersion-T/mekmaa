@@ -68,7 +68,8 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	var allMonthlyRows []StudentPaymentRow
 
 	if needAccounts {
-		accounts, err := a.listFinanceAccounts(true)
+		activeOnly := page != "accounts"
+		accounts, err := a.listFinanceAccounts(activeOnly)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list finance accounts duration=%s err=%v", page, time.Since(started), err)
 			return data, err

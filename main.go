@@ -401,6 +401,8 @@ func main() {
 	mux.Handle("/admin/finance/transactions/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransactionHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transfers/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransferHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transfers/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransferHandler), "finance.manage")))
+	mux.Handle("/admin/finance/accounts/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAccountHandler), "finance.manage")))
+	mux.Handle("/admin/finance/accounts/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateFinanceAccountHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/opening-balance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceOpeningBalanceHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/adjustment", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAdjustmentHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/statement", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountStatementHandler), "finance.manage")))

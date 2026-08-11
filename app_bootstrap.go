@@ -1367,6 +1367,11 @@ type TemplateData struct {
 	FinanceLedgerPreviousPageURL    string
 	FinanceLedgerNextPageURL        string
 	FinanceSummary                  FinanceSummary
+	StatementOpeningBalance         float64
+	StatementClosingBalance         float64
+	StatementMoneyIn                float64
+	StatementMoneyOut               float64
+	StatementNetMovement            float64
 	BookingFinancials               []BookingFinancial
 	BookingPaymentCollections       []BookingPaymentCollection
 	BookingCommunications           []BookingCommunication

@@ -588,6 +588,88 @@ func (a *App) findFinanceAccountByID(accountID int64) (*FinanceAccount, error) {
 	return findFinanceAccountByIDQuery(a.db, accountID)
 }
 
+func normalizeFinanceAccountName(name string) string {
+	return strings.TrimSpace(name)
+}
+
+func (a *App) createFinanceAccount(name, accountType, description string, createdByUserID int64) (int64, error) {
+	name = normalizeFinanceAccountName(name)
+	description = strings.TrimSpace(description)
+	if name == "" {
+		return 0, errors.New("account name is required")
+	}
+	if !validFinanceAccountType(accountType) {
+		return 0, errors.New("a valid account type is required")
+	}
+	now := time.Now().UTC()
+	result, err := a.db.Exec(`
+		INSERT INTO finance_accounts (
+			name, account_type, description, opening_balance, is_system, is_active,
+			created_at, updated_at, created_by_user_id, updated_by_user_id
+		) VALUES (?, ?, ?, 0, 0, 1, ?, ?, ?, ?)
+	`, name, accountType, description, now, now, nullIfZero(createdByUserID), nullIfZero(createdByUserID))
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return 0, errors.New("a finance account with that name already exists")
+		}
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (a *App) updateFinanceAccount(accountID int64, name, accountType, description string, isActive bool, updatedByUserID int64) error {
+	name = normalizeFinanceAccountName(name)
+	description = strings.TrimSpace(description)
+	if accountID <= 0 {
+		return errors.New("finance account is required")
+	}
+	if name == "" {
+		return errors.New("account name is required")
+	}
+	if !validFinanceAccountType(accountType) {
+		return errors.New("a valid account type is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	account, err := findFinanceAccountByIDQuery(tx, accountID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("finance account was not found")
+		}
+		return err
+	}
+	if account.IsSystem {
+		name = account.Name
+		accountType = account.AccountType
+		isActive = true
+	}
+	if !isActive {
+		var transactionCount int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE finance_account_id = ? AND voided_at IS NULL`, accountID).Scan(&transactionCount); err != nil {
+			return err
+		}
+		if transactionCount > 0 {
+			return errors.New("accounts with finance history cannot be deactivated")
+		}
+	}
+	_, err = tx.Exec(`
+		UPDATE finance_accounts
+		SET name = ?, account_type = ?, description = ?, is_active = ?, updated_at = ?, updated_by_user_id = ?
+		WHERE id = ?
+	`, name, accountType, description, boolToInt(isActive), time.Now().UTC(), nullIfZero(updatedByUserID), accountID)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return errors.New("a finance account with that name already exists")
+		}
+		return err
+	}
+	return tx.Commit()
+}
+
 func findFinanceAccountByNameTx(tx *sql.Tx, name string) (*FinanceAccount, error) {
 	row := tx.QueryRow(`
 		SELECT id, name, account_type, description, opening_balance, is_system, is_active,
@@ -2059,6 +2141,75 @@ func (a *App) createFinanceTransferHandler(w http.ResponseWriter, r *http.Reques
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
 }
 
+func (a *App) createFinanceAccountHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	accountID, err := a.createFinanceAccount(
+		strings.TrimSpace(r.FormValue("name")),
+		strings.ToLower(strings.TrimSpace(r.FormValue("account_type"))),
+		strings.TrimSpace(r.FormValue("description")),
+		currentUser.ID,
+	)
+	if err != nil {
+		a.setFlash(w, "Finance account could not be created: "+err.Error())
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Finance account created.")
+	http.Redirect(w, r, "/admin/finance/accounts/statement?account_id="+strconv.FormatInt(accountID, 10), http.StatusSeeOther)
+}
+
+func (a *App) updateFinanceAccountHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	accountID := parseInt64Query(r.FormValue("account_id"))
+	err := a.updateFinanceAccount(
+		accountID,
+		strings.TrimSpace(r.FormValue("name")),
+		strings.ToLower(strings.TrimSpace(r.FormValue("account_type"))),
+		strings.TrimSpace(r.FormValue("description")),
+		r.FormValue("is_active") != "0",
+		currentUser.ID,
+	)
+	if err != nil {
+		a.setFlash(w, "Finance account could not be updated: "+err.Error())
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Finance account updated.")
+	http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
+}
+
 func (a *App) createFinanceOpeningBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2360,12 +2511,23 @@ func (a *App) financeAccountStatementHandler(w http.ResponseWriter, r *http.Requ
 	data := a.newTemplateData(w, r, user)
 	data.Title = account.Name + " Statement"
 	data.Description = "Account statement."
+	data.FinancePage = "statement"
 	data.SelectedFinanceAccount = account
 	data.FinanceTransactions = statement.Rows
-	data.FinanceSummary = FinanceSummary{
-		CashBalance:         statement.OpeningBalance,
-		BankBalance:         statement.ClosingBalance,
-		TotalAvailableFunds: statement.ClosingBalance,
+	data.FinanceFilter = FinanceFilter{
+		From:      strings.TrimSpace(r.URL.Query().Get("from")),
+		To:        strings.TrimSpace(r.URL.Query().Get("to")),
+		AccountID: accountID,
 	}
+	data.StatementOpeningBalance = statement.OpeningBalance
+	data.StatementClosingBalance = statement.ClosingBalance
+	for _, row := range statement.Rows {
+		if row.Voided {
+			continue
+		}
+		data.StatementMoneyIn += row.MoneyIn
+		data.StatementMoneyOut += row.MoneyOut
+	}
+	data.StatementNetMovement = normalizeMoney(data.StatementMoneyIn - data.StatementMoneyOut)
 	a.render(w, "finance-management", data, http.StatusOK)
 }
