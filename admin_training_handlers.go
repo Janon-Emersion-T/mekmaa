@@ -246,7 +246,8 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if isUniqueConstraintError(err) {
-			http.Error(w, "this student is already enrolled in the selected training programme", http.StatusConflict)
+			a.setFlash(w, "This student is already enrolled in the selected training programme.")
+			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
 			return
 		}
 		log.Printf("create student enrollment: %v", err)

@@ -4060,11 +4060,21 @@ func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
 
 	app.createEnrollmentHandler(rec, req)
 
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("expected conflict for duplicate enrollment, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect for duplicate enrollment, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "already enrolled") {
-		t.Fatalf("expected duplicate enrollment message, got %s", rec.Body.String())
+	if location := rec.Header().Get("Location"); location != "/admin/enrollments" {
+		t.Fatalf("expected redirect to enrollments, got %q", location)
+	}
+	foundFlash := false
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == flashCookieName && cookie.Value != "" {
+			foundFlash = true
+			break
+		}
+	}
+	if !foundFlash {
+		t.Fatal("expected flash cookie for duplicate enrollment message")
 	}
 }
 
