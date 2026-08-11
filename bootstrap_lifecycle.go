@@ -509,7 +509,6 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_program_id ON student_enrollments(training_program_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_active ON student_enrollments(active, admission_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_student_groups_training_program_id ON student_groups(training_program_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_sessions_group_id ON student_group_sessions(group_id, active, day_of_week, start_time)`,
@@ -517,9 +516,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_coach_profiles_parent ON coach_profiles(parent_coach_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_attendance_user_date ON coach_attendance_records(user_id, attendance_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_coach_attendance_date ON coach_attendance_records(attendance_date)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_group_session_student_date ON attendance_records(group_id, COALESCE(session_id, 0), admission_id, attendance_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_attendance_group_date ON attendance_records(group_id, attendance_date)`,
-		`CREATE INDEX IF NOT EXISTS idx_attendance_admission_month ON attendance_records(admission_id, attendance_date, status)`,
 		`CREATE INDEX IF NOT EXISTS idx_courts_active_order
 		ON courts(active, sort_order, name)`,
 
