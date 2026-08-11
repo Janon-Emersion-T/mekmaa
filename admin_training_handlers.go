@@ -245,6 +245,10 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if isUniqueConstraintError(err) {
+			http.Error(w, "this student is already enrolled in the selected training programme", http.StatusConflict)
+			return
+		}
 		log.Printf("create student enrollment: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return

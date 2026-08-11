@@ -4002,6 +4002,72 @@ func TestAdmissionAndEnrollmentManagementHandlersRender(t *testing.T) {
 	}
 }
 
+func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:                "STD-DUP-001",
+		FullName:                 "Duplicate Enrollment Student",
+		AdmissionDate:            "2026-08-01",
+		DateOfBirth:              "2012-02-10",
+		Gender:                   "male",
+		PracticeType:             "student",
+		Address:                  "Jaffna",
+		PassportNumber:           "TP-DUP-001",
+		School:                   "Test School",
+		GuardianName:             "Guardian",
+		GuardianRelationship:     "Parent",
+		GuardianContactNumber:    "0770000000",
+		GuardianAlternativePhone: "0770000001",
+		MedicalInformation:       "None",
+		QRCodeValue:              "STD-DUP-001",
+		QRCodePath:               "/uploads/students/qr/student-qr-dup.png",
+	}, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+
+	trainingProgramID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Duplicate Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2000,
+		Active:         true,
+		SortOrder:      10,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: trainingProgramID,
+	}, false, 0); err != nil {
+		t.Fatalf("seed first enrollment: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":          {"token"},
+		"admission_id":        {strconv.FormatInt(admissionID, 10)},
+		"training_program_id": {strconv.FormatInt(trainingProgramID, 10)},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/enrollments/create", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+
+	app.createEnrollmentHandler(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected conflict for duplicate enrollment, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "already enrolled") {
+		t.Fatalf("expected duplicate enrollment message, got %s", rec.Body.String())
+	}
+}
+
 func TestRunMigrationsHandlesLegacyAdmissionsWithoutQRCodeColumns(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+strings.ReplaceAll(fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), "/", "-")+"?mode=memory&cache=shared")
 	if err != nil {
