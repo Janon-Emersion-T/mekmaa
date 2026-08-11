@@ -486,7 +486,6 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_admissions_created_at ON admissions(created_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_admissions_qr_code_value ON admissions(qr_code_value)`,
 
 		`CREATE INDEX IF NOT EXISTS idx_admission_training_programs_admission_id ON admission_training_programs(admission_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_admission_training_programs_program_id ON admission_training_programs(training_program_id)`,
@@ -526,8 +525,6 @@ ON court_closures(activity, active, closure_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_recorded_at ON finance_transactions(recorded_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_reference ON finance_transactions(reference_type, reference_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_admissions_finance_transaction_id ON admissions(finance_transaction_id)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_student_month ON student_monthly_payments(admission_id, payment_month) WHERE enrollment_id IS NULL`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_enrollment_month ON student_monthly_payments(enrollment_id, payment_month) WHERE enrollment_id IS NOT NULL`,
 		`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_finance_transaction_id ON student_monthly_payments(finance_transaction_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_month ON student_monthly_payments(payment_month, collected_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date, start_time)`,
@@ -788,6 +785,15 @@ ON court_closures(activity, active, closure_date)`,
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_enrollments_active ON student_enrollments(active, admission_id)`); err != nil {
 		return fmt.Errorf("create student enrollments active index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admissions_qr_code_value ON admissions(qr_code_value)`); err != nil {
+		return fmt.Errorf("create admissions qr code index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_student_month ON student_monthly_payments(admission_id, payment_month) WHERE enrollment_id IS NULL`); err != nil {
+		return fmt.Errorf("create legacy student monthly payment unique index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_enrollment_month ON student_monthly_payments(enrollment_id, payment_month) WHERE enrollment_id IS NOT NULL`); err != nil {
+		return fmt.Errorf("create enrollment student monthly payment unique index: %w", err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO student_enrollments (

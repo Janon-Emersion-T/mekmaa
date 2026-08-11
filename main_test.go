@@ -3837,6 +3837,7 @@ func TestPublicBookingRejectsUnpricedActivityWithClearMessage(t *testing.T) {
 		t.Fatalf("build templates: %v", err)
 	}
 	app.templates = templates
+	slotDate := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 	if _, err := app.db.Exec(`
 		UPDATE pricing_rules
 		SET weekday_offpeak_price = 0, weekday_peak_price = 0, weekend_offpeak_price = 0, weekend_peak_price = 0
@@ -3847,7 +3848,7 @@ func TestPublicBookingRejectsUnpricedActivityWithClearMessage(t *testing.T) {
 	form := url.Values{
 		"csrf_token":      {"token"},
 		"entry_type":      {"booking"},
-		"slot_date":       {"2026-08-10"},
+		"slot_date":       {slotDate},
 		"slot_hour":       {"18:00"},
 		"activity":        {"badminton"},
 		"quantity":        {"1"},
@@ -3873,10 +3874,11 @@ func TestPublicBookingRejectsUnpricedActivityWithClearMessage(t *testing.T) {
 
 func TestPublicBookingAcceptsPricedActivity(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
+	slotDate := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 	form := url.Values{
 		"csrf_token":      {"token"},
 		"entry_type":      {"booking"},
-		"slot_date":       {"2026-08-10"},
+		"slot_date":       {slotDate},
 		"slot_hour":       {"18:00"},
 		"activity":        {"badminton"},
 		"quantity":        {"1"},
@@ -3900,6 +3902,156 @@ func TestPublicBookingAcceptsPricedActivity(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected priced booking to be created, got %d", count)
+	}
+}
+
+func TestAdmissionAndEnrollmentManagementHandlersRender(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	admission := Admission{
+		StudentID:                "STD-ENR-001",
+		FullName:                 "Enrollment Student",
+		AdmissionDate:            "2026-08-01",
+		DateOfBirth:              "2012-04-10",
+		Gender:                   "male",
+		PracticeType:             "student",
+		Address:                  "Jaffna",
+		PassportNumber:           "TP001",
+		School:                   "Test School",
+		GuardianName:             "Guardian",
+		GuardianRelationship:     "Parent",
+		GuardianContactNumber:    "0770000000",
+		GuardianAlternativePhone: "0770000001",
+		MedicalInformation:       "None",
+		QRCodeValue:              "STD-ENR-001",
+		QRCodePath:               "/uploads/students/qr/std-enr-001.png",
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	trainingProgramID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Handler Test Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2000,
+		Active:         true,
+		SortOrder:      10,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: trainingProgramID,
+	}, false, 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		path    string
+		handler func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "admissions", path: "/admin/admissions", handler: app.admissionManagementHandler},
+		{name: "enrollments", path: "/admin/enrollments", handler: app.enrollmentManagementHandler},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			tt.handler(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestRunMigrationsHandlesLegacyAdmissionsWithoutQRCodeColumns(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+strings.ReplaceAll(fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), "/", "-")+"?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	for _, stmt := range []string{
+		`PRAGMA foreign_keys = ON`,
+		`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, created_at DATETIME NOT NULL)`,
+		`CREATE TABLE roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)`,
+		`CREATE TABLE user_roles (user_id INTEGER NOT NULL, role_id INTEGER NOT NULL, PRIMARY KEY (user_id, role_id))`,
+		`CREATE TABLE role_permissions (role_id INTEGER NOT NULL, permission TEXT NOT NULL, PRIMARY KEY (role_id, permission))`,
+		`CREATE TABLE sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at DATETIME NOT NULL, created_at DATETIME NOT NULL)`,
+		`CREATE TABLE email_verifications (user_id INTEGER PRIMARY KEY, otp_hash TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME NOT NULL)`,
+		`CREATE TABLE admissions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			student_id TEXT NOT NULL UNIQUE,
+			full_name TEXT NOT NULL,
+			admission_date TEXT NOT NULL,
+			date_of_birth TEXT NOT NULL,
+			gender TEXT NOT NULL,
+			practice_type TEXT NOT NULL DEFAULT 'group_practice',
+			address TEXT NOT NULL,
+			passport_number TEXT NOT NULL,
+			school TEXT NOT NULL,
+			guardian_name TEXT NOT NULL,
+			guardian_relationship TEXT NOT NULL,
+			guardian_contact_number TEXT NOT NULL,
+			guardian_alternative_contact_number TEXT NOT NULL,
+			medical_information TEXT NOT NULL,
+			free_admission INTEGER NOT NULL DEFAULT 0,
+			free_monthly_fee INTEGER NOT NULL DEFAULT 0,
+			payment_collected INTEGER NOT NULL DEFAULT 0,
+			payment_collected_at DATETIME,
+			admission_payment_amount REAL NOT NULL DEFAULT 0,
+			finance_transaction_id INTEGER,
+			training_program_id INTEGER,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE student_monthly_payments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			admission_id INTEGER NOT NULL,
+			payment_month TEXT NOT NULL,
+			amount REAL NOT NULL,
+			payment_method TEXT NOT NULL,
+			finance_transaction_id INTEGER,
+			collected_by_user_id INTEGER,
+			collected_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL
+		)`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("seed legacy schema: %v", err)
+		}
+	}
+
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations on legacy admissions schema: %v", err)
+	}
+
+	for _, column := range []string{"photo_path", "qr_code_path", "qr_code_value"} {
+		exists, err := tableHasColumn(db, "admissions", column)
+		if err != nil {
+			t.Fatalf("check admissions %s column: %v", column, err)
+		}
+		if !exists {
+			t.Fatalf("expected admissions column %s to exist after migration", column)
+		}
+	}
+	exists, err := tableHasColumn(db, "student_monthly_payments", "enrollment_id")
+	if err != nil {
+		t.Fatalf("check student_monthly_payments enrollment_id column: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected student_monthly_payments.enrollment_id to exist after migration")
 	}
 }
 
