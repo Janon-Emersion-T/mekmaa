@@ -716,12 +716,8 @@
             <th scope="col" class="px-6 py-4">Student</th>
             <th scope="col" class="px-5 py-4">Student ID</th>
             <th scope="col" class="px-5 py-4">Admission</th>
-            <th scope="col" class="px-5 py-4">Date of birth</th>
-            <th scope="col" class="px-5 py-4">Gender</th>
+            <th scope="col" class="px-5 py-4">Date of birth / Gender</th>
             <th scope="col" class="px-5 py-4">Training programme</th>
-            <th scope="col" class="px-5 py-4">School</th>
-            <th scope="col" class="px-5 py-4">Guardian</th>
-            <th scope="col" class="px-5 py-4">Contact</th>
             <th scope="col" class="px-5 py-4">Payment</th>
             <th scope="col" class="px-6 py-4 text-right">Actions</th>
           </tr>
@@ -764,13 +760,8 @@
               <div class="space-y-1">
                 <p>{{.DateOfBirth}}</p>
                 <p class="text-xs font-medium text-slate/50">Age {{admissionAge .DateOfBirth}}</p>
+                <p class="text-xs font-medium text-slate/50">Gender {{.Gender}}</p>
               </div>
-            </td>
-
-            <td class="px-5 py-5">
-              <span class="inline-flex rounded-full border border-slate/10 bg-white px-2.5 py-1 text-xs font-medium capitalize text-slate/70">
-                {{.Gender}}
-              </span>
             </td>
 
             <td class="px-5 py-5">
@@ -783,32 +774,6 @@
               </span>
             </td>
 
-            <td class="max-w-[14rem] px-5 py-5 text-slate/70">
-              <p class="truncate">{{.School}}</p>
-            </td>
-
-            <td class="px-5 py-5">
-              <p class="font-medium text-obsidian">
-                {{.GuardianName}}
-              </p>
-
-              <p class="mt-1 text-xs capitalize text-slate/50">
-                {{.GuardianRelationship}}
-              </p>
-            </td>
-
-            <td class="whitespace-nowrap px-5 py-5">
-              <a
-                href="tel:{{.GuardianContactNumber}}"
-                class="font-medium text-obsidian transition hover:text-slate"
-              >
-                {{.GuardianContactNumber}}
-              </a>
-
-              <p class="mt-1 text-xs text-slate/50">
-                {{.GuardianAlternativePhone}}
-              </p>
-            </td>
 
             <td class="px-5 py-5">
               {{if .PaymentCollected}}
@@ -1364,7 +1329,7 @@
               </dd>
             </div>
 
-            <!-- <div>
+            <div>
               <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
                 School
               </dt>
@@ -1372,7 +1337,7 @@
               <dd class="mt-2 text-sm font-medium text-obsidian">
                 {{.SelectedAdmission.School}}
               </dd>
-            </div> -->
+            </div>
 
             <div class="sm:col-span-2 lg:col-span-3">
               <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
