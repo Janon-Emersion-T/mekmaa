@@ -457,15 +457,23 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, row := range rows {
-		if row.Payment != nil {
-			data.PaymentTotalDue += row.Payment.Amount
-			data.PaymentCollected += row.Payment.Amount
-			data.PaymentPaidCount++
-		} else if row.MonthlyFee > 0 {
+		if row.MonthlyFee > 0 {
 			data.PaymentTotalDue += row.MonthlyFee
-			data.PaymentOutstanding += row.MonthlyFee
-			data.PaymentPendingCount++
 		}
+		collectedAmount := 0.0
+		if row.Payment != nil {
+			collectedAmount = row.Payment.Amount
+			data.PaymentCollected += collectedAmount
+		}
+		if row.MonthlyFee <= 0 {
+			continue
+		}
+		if collectedAmount+0.004 >= row.MonthlyFee {
+			data.PaymentPaidCount++
+			continue
+		}
+		data.PaymentOutstanding += row.MonthlyFee - collectedAmount
+		data.PaymentPendingCount++
 	}
 	a.render(w, "student-payments", data, http.StatusOK)
 }

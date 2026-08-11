@@ -125,6 +125,7 @@
             <option value="pending">Pending only</option>
             <option value="paid">Paid only</option>
             <option value="free">Free only</option>
+            <option value="review">Review only</option>
           </select>
         </label>
       </div>
@@ -135,15 +136,15 @@
       <article
         data-payment-row
         data-search="{{.Admission.FullName}} {{.Admission.StudentID}} {{.Enrollment.TrainingProgramName}}"
-        data-status="{{if .Payment}}paid{{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}free{{else}}pending{{end}}"
-        class="rounded-[1.5rem] border {{if .Payment}}border-emerald-200/70 bg-emerald-50/45{{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}border-sky-200/80 bg-sky-50/50{{else}}border-slate/10 bg-cloud/45{{end}} p-4 sm:p-5"
+        data-status="{{if .Payment}}{{if gt .Payment.Amount .MonthlyFee}}review{{else}}paid{{end}}{{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}free{{else}}pending{{end}}"
+        class="rounded-[1.5rem] border {{if .Payment}}{{if gt .Payment.Amount .MonthlyFee}}border-amber-200/70 bg-amber-50/45{{else}}border-emerald-200/70 bg-emerald-50/45{{end}}{{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}border-sky-200/80 bg-sky-50/50{{else}}border-slate/10 bg-cloud/45{{end}} p-4 sm:p-5"
       >
         <div class="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,.8fr)_minmax(19rem,1fr)] xl:items-center">
           <div class="flex min-w-0 items-start gap-4">
             {{if .Admission.PhotoPath}}
             <img src="{{.Admission.PhotoPath}}" alt="{{.Admission.FullName}}" class="h-12 w-12 shrink-0 rounded-2xl object-cover ring-1 ring-slate/10" />
             {{else}}
-            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl {{if .Payment}}bg-emerald-900 text-white{{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}bg-sky-700 text-white{{else}}bg-obsidian text-aqua{{end}} text-sm font-semibold">
+            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl {{if .Payment}}{{if gt .Payment.Amount .MonthlyFee}}bg-amber-700 text-white{{else}}bg-emerald-900 text-white{{end}}{{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}bg-sky-700 text-white{{else}}bg-obsidian text-aqua{{end}} text-sm font-semibold">
               {{printf "%.1s" .Admission.FullName}}
             </div>
             {{end}}
@@ -151,7 +152,11 @@
               <div class="flex flex-wrap items-center gap-2">
                 <h3 class="truncate text-base font-semibold text-obsidian">{{.Admission.FullName}}</h3>
                 {{if .Payment}}
+                {{if gt .Payment.Amount .MonthlyFee}}
+                <span class="rounded-full bg-amber-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-amber-800">Review</span>
+                {{else}}
                 <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-emerald-800">Paid</span>
+                {{end}}
                 {{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}
                 <span class="rounded-full bg-sky-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-sky-800">Free</span>
                 {{else}}
@@ -173,6 +178,9 @@
             <p class="mt-2 text-2xl font-semibold text-obsidian">{{if .Payment}}{{money .Payment.Amount}}{{else if .Enrollment.FreeMonthlyFee}}Free{{else}}{{money .MonthlyFee}}{{end}}</p>
             {{if gt .LeaveAmount 0.0}}
             <p class="mt-1 text-xs font-medium text-sky-700">{{money .LeaveAmount}} deducted for approved leave</p>
+            {{end}}
+            {{if and .Payment (gt .Payment.Amount .MonthlyFee)}}
+            <p class="mt-1 text-xs font-medium text-amber-700">Collected {{money .Payment.Amount}} but the leave-adjusted due amount is {{money .MonthlyFee}}.</p>
             {{end}}
             {{if eq .MonthlyFee 0.0}}
             {{if .Enrollment.FreeMonthlyFee}}
