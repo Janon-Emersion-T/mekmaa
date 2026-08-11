@@ -560,6 +560,92 @@ func (a *App) listStudentEnrollments() ([]StudentEnrollment, error) {
 	return enrollments, rows.Err()
 }
 
+func (a *App) listStudentEnrollmentLeaves(enrollmentID int64) ([]StudentEnrollmentLeave, error) {
+	rows, err := a.db.Query(`
+		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(active, 1), created_at, updated_at
+		FROM student_enrollment_leaves
+		WHERE enrollment_id = ?
+		ORDER BY start_date DESC, end_date DESC, id DESC
+	`, enrollmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var leaves []StudentEnrollmentLeave
+	for rows.Next() {
+		var leave StudentEnrollmentLeave
+		var active int
+		if err := rows.Scan(
+			&leave.ID,
+			&leave.EnrollmentID,
+			&leave.StartDate,
+			&leave.EndDate,
+			&leave.Reason,
+			&active,
+			&leave.CreatedAt,
+			&leave.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		leave.Active = active == 1
+		leaves = append(leaves, leave)
+	}
+	return leaves, rows.Err()
+}
+
+func (a *App) listStudentEnrollmentLeavesByEnrollmentIDs(enrollmentIDs []int64) (map[int64][]StudentEnrollmentLeave, error) {
+	result := make(map[int64][]StudentEnrollmentLeave, len(enrollmentIDs))
+	if len(enrollmentIDs) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, 0, len(enrollmentIDs))
+	args := make([]any, 0, len(enrollmentIDs))
+	for _, enrollmentID := range enrollmentIDs {
+		if enrollmentID <= 0 {
+			continue
+		}
+		placeholders = append(placeholders, "?")
+		args = append(args, enrollmentID)
+	}
+	if len(placeholders) == 0 {
+		return result, nil
+	}
+
+	rows, err := a.db.Query(fmt.Sprintf(`
+		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(active, 1), created_at, updated_at
+		FROM student_enrollment_leaves
+		WHERE enrollment_id IN (%s)
+		  AND COALESCE(active, 1) = 1
+		ORDER BY enrollment_id ASC, start_date ASC, end_date ASC, id ASC
+	`, strings.Join(placeholders, ", ")), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var leave StudentEnrollmentLeave
+		var active int
+		if err := rows.Scan(
+			&leave.ID,
+			&leave.EnrollmentID,
+			&leave.StartDate,
+			&leave.EndDate,
+			&leave.Reason,
+			&active,
+			&leave.CreatedAt,
+			&leave.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		leave.Active = active == 1
+		result[leave.EnrollmentID] = append(result[leave.EnrollmentID], leave)
+	}
+	return result, rows.Err()
+}
+
 func (a *App) findStudentEnrollmentByID(enrollmentID int64) (*StudentEnrollment, error) {
 	row := a.db.QueryRow(`
 		SELECT

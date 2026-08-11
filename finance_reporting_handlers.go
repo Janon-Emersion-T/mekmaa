@@ -445,6 +445,17 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	data.PaymentMonth = paymentMonth
 	data.PaymentMonthLabel = paymentMonthLabel(paymentMonth)
 	data.TodayDate = time.Now().Format("2006-01")
+	selectedEnrollmentID := parseInt64Query(r.URL.Query().Get("enrollment_id"))
+	if selectedEnrollmentID > 0 {
+		selectedEnrollment, err := a.findStudentEnrollmentByID(selectedEnrollmentID)
+		if err == nil {
+			data.SelectedEnrollment = selectedEnrollment
+			leaves, err := a.listStudentEnrollmentLeaves(selectedEnrollmentID)
+			if err == nil {
+				data.EnrollmentLeaves = leaves
+			}
+		}
+	}
 	for _, row := range rows {
 		if row.Payment != nil {
 			data.PaymentTotalDue += row.Payment.Amount

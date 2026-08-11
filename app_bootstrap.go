@@ -756,11 +756,27 @@ type StudentMonthlyPayment struct {
 	CreatedAt            time.Time
 }
 
+type StudentEnrollmentLeave struct {
+	ID           int64
+	EnrollmentID int64
+	StartDate    string
+	EndDate      string
+	Reason       string
+	Active       bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type StudentPaymentRow struct {
 	Admission          Admission
 	Enrollment         StudentEnrollment
 	MonthlyFee         float64
 	OriginalMonthlyFee float64
+	LeaveDays          int
+	BillableDays       int
+	MonthDays          int
+	LeaveAmount        float64
+	Leaves             []StudentEnrollmentLeave
 	Payment            *StudentMonthlyPayment
 }
 
@@ -1364,6 +1380,7 @@ type TemplateData struct {
 	ReceiptBookingSchedule          *SpaceSchedule
 	ReceiptBookingFinancial         *BookingFinancial
 	StudentPaymentRows              []StudentPaymentRow
+	EnrollmentLeaves                []StudentEnrollmentLeave
 	PaymentMonth                    string
 	PaymentMonthLabel               string
 	PaymentTotalDue                 float64
@@ -1414,6 +1431,8 @@ var (
 	ErrEmailTaken                = errors.New("email already exists")
 	ErrInvalidOTP                = errors.New("invalid verification code")
 	ErrMonthlyFeeNotConfigured   = errors.New("monthly fee is not configured for this training programme")
+	ErrStudentLeaveOverlap       = errors.New("this leave overlaps an existing leave period for the selected enrollment")
+	ErrStudentLeaveCoversMonth   = errors.New("student is fully on leave for the selected month")
 	ErrAdmissionFeeNotConfigured = errors.New(
 		"admission fee is not configured for the selected training programme",
 	)

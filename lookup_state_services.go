@@ -772,6 +772,20 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 	if monthlyFee <= 0 {
 		return 0, ErrMonthlyFeeNotConfigured
 	}
+	if enrollment != nil {
+		leaves, err := listStudentEnrollmentLeavesTx(tx, enrollment.ID)
+		if err != nil {
+			return 0, err
+		}
+		leaveDays, err := overlappingLeaveDaysForMonth(leaves, monthDate)
+		if err != nil {
+			return 0, err
+		}
+		monthlyFee, _ = proratedMonthlyFee(monthlyFee, leaveDays, monthDate.AddDate(0, 1, -1).Day())
+		if monthlyFee <= 0 {
+			return 0, ErrStudentLeaveCoversMonth
+		}
+	}
 	now := time.Now().UTC()
 	account, err := findFinanceAccountForPaymentMethodTx(tx, "cash")
 	if err != nil {
@@ -838,6 +852,41 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 		return 0, err
 	}
 	return transactionID, nil
+}
+
+func listStudentEnrollmentLeavesTx(tx *sql.Tx, enrollmentID int64) ([]StudentEnrollmentLeave, error) {
+	rows, err := tx.Query(`
+		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(active, 1), created_at, updated_at
+		FROM student_enrollment_leaves
+		WHERE enrollment_id = ?
+		  AND COALESCE(active, 1) = 1
+		ORDER BY start_date ASC, end_date ASC, id ASC
+	`, enrollmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var leaves []StudentEnrollmentLeave
+	for rows.Next() {
+		var leave StudentEnrollmentLeave
+		var active int
+		if err := rows.Scan(
+			&leave.ID,
+			&leave.EnrollmentID,
+			&leave.StartDate,
+			&leave.EndDate,
+			&leave.Reason,
+			&active,
+			&leave.CreatedAt,
+			&leave.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		leave.Active = active == 1
+		leaves = append(leaves, leave)
+	}
+	return leaves, rows.Err()
 }
 
 func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {

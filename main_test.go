@@ -1020,11 +1020,13 @@ func TestCollectStudentMonthlyPayment(t *testing.T) {
 		User: &User{Name: "Test Admin", Email: "admin@example.com"},
 		StudentPaymentRows: []StudentPaymentRow{{
 			Admission:  Admission{ID: 1, StudentID: "STD-TEST", FullName: "Test Student", PracticeType: "group_practice"},
+			Enrollment: StudentEnrollment{ID: 1, TrainingProgramName: "Academy"},
 			MonthlyFee: 0,
 		}},
-		PaymentMonth:      "2026-07",
-		PaymentMonthLabel: "July 2026",
-		TodayDate:         "2026-07",
+		SelectedEnrollment: &StudentEnrollment{ID: 1, TrainingProgramName: "Academy", Student: Admission{FullName: "Test Student"}},
+		PaymentMonth:       "2026-07",
+		PaymentMonthLabel:  "July 2026",
+		TodayDate:          "2026-07",
 	}); err != nil {
 		t.Fatalf("render student payments template: %v", err)
 	}
@@ -3020,6 +3022,140 @@ func TestListStudentPaymentRowsTreatsFreeMonthlyFeeAsNonPayable(t *testing.T) {
 		return
 	}
 	t.Fatalf("expected payment row for admission %d", admissionID)
+}
+
+func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Leave Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     6200,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-LEAVE-001",
+		FullName:              "Leave Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000000",
+	}, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+	}, false, 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+	enrollments, err := app.listStudentEnrollments()
+	if err != nil {
+		t.Fatalf("list enrollments: %v", err)
+	}
+	var enrollmentID int64
+	for _, enrollment := range enrollments {
+		if enrollment.AdmissionID == admissionID && enrollment.TrainingProgramID == programID {
+			enrollmentID = enrollment.ID
+			break
+		}
+	}
+	if enrollmentID == 0 {
+		t.Fatal("expected enrollment to exist")
+	}
+	if err := app.createStudentEnrollmentLeave(enrollmentID, "2026-08-10", "2026-08-19", "Family travel"); err != nil {
+		t.Fatalf("create leave: %v", err)
+	}
+
+	rows, err := app.listStudentPaymentRows("2026-08")
+	if err != nil {
+		t.Fatalf("list student payment rows: %v", err)
+	}
+	for _, row := range rows {
+		if row.Enrollment.ID != enrollmentID {
+			continue
+		}
+		if row.LeaveDays != 10 {
+			t.Fatalf("leave days = %d, want 10", row.LeaveDays)
+		}
+		if row.MonthDays != 31 {
+			t.Fatalf("month days = %d, want 31", row.MonthDays)
+		}
+		if row.MonthlyFee != 4200 {
+			t.Fatalf("monthly fee = %.2f, want 4200.00", row.MonthlyFee)
+		}
+		if row.LeaveAmount != 2000 {
+			t.Fatalf("leave amount = %.2f, want 2000.00", row.LeaveAmount)
+		}
+		return
+	}
+	t.Fatalf("expected payment row for enrollment %d", enrollmentID)
+}
+
+func TestCollectStudentMonthlyPaymentRejectsFullMonthLeave(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Full Leave Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     5000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-LEAVE-002",
+		FullName:              "Full Leave Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000001",
+	}, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+	}, false, 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+	enrollments, err := app.listStudentEnrollments()
+	if err != nil {
+		t.Fatalf("list enrollments: %v", err)
+	}
+	var enrollmentID int64
+	for _, enrollment := range enrollments {
+		if enrollment.AdmissionID == admissionID && enrollment.TrainingProgramID == programID {
+			enrollmentID = enrollment.ID
+			break
+		}
+	}
+	if enrollmentID == 0 {
+		t.Fatal("expected enrollment to exist")
+	}
+	if err := app.createStudentEnrollmentLeave(enrollmentID, "2026-08-01", "2026-08-31", "Medical leave"); err != nil {
+		t.Fatalf("create leave: %v", err)
+	}
+	monthDate, _ := parsePaymentMonth("2026-08")
+	if _, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-08", monthDate, "cash", 0); !errors.Is(err, ErrStudentLeaveCoversMonth) {
+		t.Fatalf("expected full-month leave error, got %v", err)
+	}
 }
 
 func TestFinanceOperationIdempotencyPreventsDuplicatePosts(t *testing.T) {

@@ -418,6 +418,8 @@ func main() {
 	mux.Handle("/admin/referrals/payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidReferralCommissionPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentPaymentsHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStudentPaymentHandler), "finance.manage")))
+	mux.Handle("/admin/student-payments/leaves/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentEnrollmentLeaveHandler), "finance.manage")))
+	mux.Handle("/admin/student-payments/leaves/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentEnrollmentLeaveHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidStudentPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 

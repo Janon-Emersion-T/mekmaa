@@ -234,11 +234,67 @@ func (a *App) listOutstandingBookingFinancials() ([]BookingFinancial, error) {
 	return filtered, nil
 }
 
+func overlappingLeaveDaysForMonth(leaves []StudentEnrollmentLeave, monthStart time.Time) (int, error) {
+	if len(leaves) == 0 {
+		return 0, nil
+	}
+	monthStart = monthStart.UTC()
+	monthEnd := monthStart.AddDate(0, 1, -1)
+	covered := make([]bool, monthEnd.Day())
+
+	for _, leave := range leaves {
+		startDate, err := time.Parse("2006-01-02", strings.TrimSpace(leave.StartDate))
+		if err != nil {
+			return 0, err
+		}
+		endDate, err := time.Parse("2006-01-02", strings.TrimSpace(leave.EndDate))
+		if err != nil {
+			return 0, err
+		}
+		if endDate.Before(monthStart) || startDate.After(monthEnd) {
+			continue
+		}
+		if startDate.Before(monthStart) {
+			startDate = monthStart
+		}
+		if endDate.After(monthEnd) {
+			endDate = monthEnd
+		}
+		for day := startDate; !day.After(endDate); day = day.AddDate(0, 0, 1) {
+			covered[day.Day()-1] = true
+		}
+	}
+
+	days := 0
+	for _, present := range covered {
+		if present {
+			days++
+		}
+	}
+	return days, nil
+}
+
+func proratedMonthlyFee(baseAmount float64, leaveDays int, monthDays int) (float64, float64) {
+	if baseAmount <= 0 || leaveDays <= 0 || monthDays <= 0 {
+		return baseAmount, 0
+	}
+	if leaveDays >= monthDays {
+		return 0, baseAmount
+	}
+	leaveAmount := math.Round((baseAmount*float64(leaveDays)/float64(monthDays))*100) / 100
+	dueAmount := math.Round((baseAmount-leaveAmount)*100) / 100
+	if dueAmount < 0 {
+		dueAmount = 0
+	}
+	return dueAmount, leaveAmount
+}
+
 func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, error) {
 	monthDate, err := parsePaymentMonth(paymentMonth)
 	if err != nil {
 		return nil, err
 	}
+	monthDays := monthDate.AddDate(0, 1, -1).Day()
 	monthEnd := monthDate.AddDate(0, 1, -1).Format("2006-01-02")
 	rows, err := a.db.Query(`
 		SELECT
@@ -360,6 +416,7 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 	defer rows.Close()
 
 	var paymentRows []StudentPaymentRow
+	enrollmentIDs := make([]int64, 0)
 	for rows.Next() {
 		var (
 			row               StudentPaymentRow
@@ -392,10 +449,15 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 		row.Enrollment.AdmissionID = row.Admission.ID
 		row.Enrollment.Student = row.Admission
 		row.Enrollment.FreeMonthlyFee = freeMonthlyFee == 1
+		row.MonthDays = monthDays
+		row.BillableDays = monthDays
 		row.MonthlyFee = effectiveMonthlyFee(row.Admission, row.OriginalMonthlyFee)
 		if row.Enrollment.FreeMonthlyFee {
 			row.Admission.FreeMonthlyFee = true
 			row.MonthlyFee = 0
+		}
+		if enrollmentID > 0 {
+			enrollmentIDs = append(enrollmentIDs, enrollmentID)
 		}
 		row.Admission.TrainingProgramName = row.Enrollment.TrainingProgramName
 		row.Admission.TrainingProgramNames = row.Enrollment.TrainingProgramName
@@ -418,7 +480,107 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	leaveMap, err := a.listStudentEnrollmentLeavesByEnrollmentIDs(enrollmentIDs)
+	if err != nil {
+		return nil, err
+	}
+	for i := range paymentRows {
+		if paymentRows[i].Enrollment.ID <= 0 {
+			continue
+		}
+		paymentRows[i].Leaves = leaveMap[paymentRows[i].Enrollment.ID]
+		if paymentRows[i].Enrollment.FreeMonthlyFee || paymentRows[i].OriginalMonthlyFee <= 0 {
+			continue
+		}
+		leaveDays, err := overlappingLeaveDaysForMonth(paymentRows[i].Leaves, monthDate)
+		if err != nil {
+			return nil, err
+		}
+		paymentRows[i].LeaveDays = leaveDays
+		paymentRows[i].BillableDays = paymentRows[i].MonthDays - leaveDays
+		if paymentRows[i].BillableDays < 0 {
+			paymentRows[i].BillableDays = 0
+		}
+		paymentRows[i].MonthlyFee, paymentRows[i].LeaveAmount = proratedMonthlyFee(paymentRows[i].MonthlyFee, leaveDays, paymentRows[i].MonthDays)
+	}
 	return paymentRows, nil
+}
+
+func (a *App) createStudentEnrollmentLeave(enrollmentID int64, startDate string, endDate string, reason string) error {
+	startDate = strings.TrimSpace(startDate)
+	endDate = strings.TrimSpace(endDate)
+	reason = strings.TrimSpace(reason)
+	if enrollmentID <= 0 {
+		return errors.New("select a valid enrollment")
+	}
+	start, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return errors.New("enter a valid leave start date")
+	}
+	end, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return errors.New("enter a valid leave end date")
+	}
+	if end.Before(start) {
+		return errors.New("leave end date must be on or after the start date")
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	enrollment, err := findStudentEnrollmentByIDTx(tx, enrollmentID)
+	if err != nil {
+		return err
+	}
+	if enrollment.Student.AdmissionDate != "" && startDate < enrollment.Student.AdmissionDate {
+		return errors.New("leave cannot start before the student admission date")
+	}
+
+	var overlapCount int
+	if err := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM student_enrollment_leaves
+		WHERE enrollment_id = ?
+		  AND COALESCE(active, 1) = 1
+		  AND NOT (end_date < ? OR start_date > ?)
+	`, enrollmentID, startDate, endDate).Scan(&overlapCount); err != nil {
+		return err
+	}
+	if overlapCount > 0 {
+		return ErrStudentLeaveOverlap
+	}
+
+	now := time.Now().UTC()
+	if _, err := tx.Exec(`
+		INSERT INTO student_enrollment_leaves (
+			enrollment_id, start_date, end_date, reason, active, created_at, updated_at
+		) VALUES (?, ?, ?, ?, 1, ?, ?)
+	`, enrollmentID, startDate, endDate, reason, now, now); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) deleteStudentEnrollmentLeave(leaveID int64, enrollmentID int64) error {
+	if leaveID <= 0 || enrollmentID <= 0 {
+		return errors.New("select a valid leave record")
+	}
+	result, err := a.db.Exec(`DELETE FROM student_enrollment_leaves WHERE id = ? AND enrollment_id = ?`, leaveID, enrollmentID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (a *App) getPricingSettings() (*PricingSettings, error) {

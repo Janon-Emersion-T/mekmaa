@@ -109,6 +109,17 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (training_program_id) REFERENCES training_programs(id),
 			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS student_enrollment_leaves (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			enrollment_id INTEGER NOT NULL,
+			start_date TEXT NOT NULL,
+			end_date TEXT NOT NULL,
+			reason TEXT NOT NULL DEFAULT '',
+			active INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (enrollment_id) REFERENCES student_enrollments(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS student_groups (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
@@ -508,6 +519,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_admission_id ON student_enrollments(admission_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_program_id ON student_enrollments(training_program_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_active ON student_enrollments(active, admission_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_enrollment_leaves_enrollment_dates ON student_enrollment_leaves(enrollment_id, active, start_date, end_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
@@ -811,6 +823,22 @@ ON court_closures(activity, active, closure_date)`,
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_enrollments_active ON student_enrollments(active, admission_id)`); err != nil {
 		return fmt.Errorf("create student enrollments active index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS student_enrollment_leaves (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		enrollment_id INTEGER NOT NULL,
+		start_date TEXT NOT NULL,
+		end_date TEXT NOT NULL,
+		reason TEXT NOT NULL DEFAULT '',
+		active INTEGER NOT NULL DEFAULT 1,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		FOREIGN KEY (enrollment_id) REFERENCES student_enrollments(id) ON DELETE CASCADE
+	)`); err != nil {
+		return fmt.Errorf("create student enrollment leaves table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_enrollment_leaves_enrollment_dates ON student_enrollment_leaves(enrollment_id, active, start_date, end_date)`); err != nil {
+		return fmt.Errorf("create student enrollment leaves index: %w", err)
 	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS student_group_sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

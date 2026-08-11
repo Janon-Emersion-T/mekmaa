@@ -3465,12 +3465,89 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if errors.Is(err, ErrStudentLeaveCoversMonth) {
+			a.setFlash(w, "This student is fully on leave for "+paymentMonthLabel(paymentMonth)+", so no monthly fee is due.")
+			http.Redirect(w, r, "/admin/student-payments?month="+url.QueryEscape(paymentMonth)+"&enrollment_id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+			return
+		}
 		log.Printf("collect student monthly payment: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) createStudentEnrollmentLeaveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	enrollmentID := parseInt64Query(r.FormValue("enrollment_id"))
+	paymentMonth := strings.TrimSpace(r.FormValue("payment_month"))
+	target := "/admin/student-payments"
+	if paymentMonth != "" {
+		target += "?month=" + url.QueryEscape(paymentMonth)
+		if enrollmentID > 0 {
+			target += "&enrollment_id=" + strconv.FormatInt(enrollmentID, 10)
+		}
+	}
+	if err := a.createStudentEnrollmentLeave(
+		enrollmentID,
+		r.FormValue("start_date"),
+		r.FormValue("end_date"),
+		r.FormValue("reason"),
+	); err != nil {
+		a.setFlash(w, "Leave could not be saved: "+err.Error())
+		http.Redirect(w, r, target+"#leave-manager", http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, "Student leave saved.")
+	http.Redirect(w, r, target+"#leave-manager", http.StatusSeeOther)
+}
+
+func (a *App) deleteStudentEnrollmentLeaveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	leaveID := parseInt64Query(r.FormValue("leave_id"))
+	enrollmentID := parseInt64Query(r.FormValue("enrollment_id"))
+	paymentMonth := strings.TrimSpace(r.FormValue("payment_month"))
+	target := "/admin/student-payments"
+	if paymentMonth != "" {
+		target += "?month=" + url.QueryEscape(paymentMonth)
+		if enrollmentID > 0 {
+			target += "&enrollment_id=" + strconv.FormatInt(enrollmentID, 10)
+		}
+	}
+	if err := a.deleteStudentEnrollmentLeave(leaveID, enrollmentID); err != nil {
+		a.setFlash(w, "Leave could not be deleted: "+err.Error())
+		http.Redirect(w, r, target+"#leave-manager", http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, "Student leave deleted.")
+	http.Redirect(w, r, target+"#leave-manager", http.StatusSeeOther)
 }
 
 func (a *App) voidAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request) {

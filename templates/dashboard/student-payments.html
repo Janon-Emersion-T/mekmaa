@@ -45,6 +45,68 @@
   </div>
 
   <div class="rounded-[2rem] border border-white/80 bg-white/85 p-4 shadow-sm sm:p-6">
+    {{if .SelectedEnrollment}}
+    <div id="leave-manager" class="mb-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.9fr)]">
+      <div class="rounded-[1.5rem] border border-sky-200/80 bg-sky-50/70 p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-800/70">Temporary leave</p>
+        <h2 class="mt-3 text-xl font-semibold text-obsidian">{{.SelectedEnrollment.Student.FullName}}</h2>
+        <p class="mt-1 text-sm text-slate/65">{{.SelectedEnrollment.TrainingProgramName}} · {{.PaymentMonthLabel}}</p>
+        <form action="/admin/student-payments/leaves/create" method="post" class="mt-5 grid gap-3 sm:grid-cols-2">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <input type="hidden" name="enrollment_id" value="{{.SelectedEnrollment.ID}}" />
+          <input type="hidden" name="payment_month" value="{{.PaymentMonth}}" />
+          <label class="space-y-2">
+            <span class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">Start date</span>
+            <input type="date" name="start_date" required class="h-11 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
+          <label class="space-y-2">
+            <span class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">End date</span>
+            <input type="date" name="end_date" required class="h-11 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
+          <label class="space-y-2 sm:col-span-2">
+            <span class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">Reason</span>
+            <input type="text" name="reason" placeholder="Optional note for the leave" class="h-11 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          </label>
+          <div class="sm:col-span-2 flex items-center justify-between gap-3">
+            <p class="text-xs text-slate/55">Leave is prorated by the number of leave days inside each payment month.</p>
+            <button type="submit" class="h-11 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Save leave</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Saved leave periods</p>
+            <h3 class="mt-2 text-lg font-semibold text-obsidian">Enrollment leave history</h3>
+          </div>
+          <a href="/admin/student-payments?month={{.PaymentMonth}}" class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55 underline decoration-aqua decoration-2 underline-offset-4">Close</a>
+        </div>
+        <div class="mt-4 space-y-3">
+          {{range .EnrollmentLeaves}}
+          <div class="rounded-2xl border border-slate/10 bg-cloud/50 px-4 py-3">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p class="font-semibold text-obsidian">{{.StartDate}} to {{.EndDate}}</p>
+                <p class="mt-1 text-sm text-slate/62">{{if .Reason}}{{.Reason}}{{else}}No reason provided{{end}}</p>
+              </div>
+              <form action="/admin/student-payments/leaves/delete" method="post" onsubmit="return confirm('Delete this leave period?')">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                <input type="hidden" name="leave_id" value="{{.ID}}" />
+                <input type="hidden" name="enrollment_id" value="{{$.SelectedEnrollment.ID}}" />
+                <input type="hidden" name="payment_month" value="{{$.PaymentMonth}}" />
+                <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50">Delete</button>
+              </form>
+            </div>
+          </div>
+          {{else}}
+          <div class="rounded-2xl border border-dashed border-slate/15 bg-cloud/40 px-4 py-6 text-sm text-slate/58">No leave periods saved for this enrollment.</div>
+          {{end}}
+        </div>
+      </div>
+    </div>
+    {{end}}
+
     <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
         <h2 class="text-xl font-semibold text-obsidian">{{.PaymentMonthLabel}} register</h2>
@@ -100,15 +162,23 @@
               <p class="mt-2 text-xs text-slate/60">
   {{.Enrollment.TrainingProgramName}} · Admitted {{.Admission.AdmissionDate}}
 </p>
+              {{if gt .LeaveDays 0}}
+              <p class="mt-2 text-xs font-semibold text-sky-800">Leave in {{$.PaymentMonthLabel}}: {{.LeaveDays}} / {{.MonthDays}} days</p>
+              {{end}}
             </div>
           </div>
 
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">{{if .Payment}}Amount collected{{else if .Enrollment.FreeMonthlyFee}}Waiver{{else}}Amount due{{end}}</p>
             <p class="mt-2 text-2xl font-semibold text-obsidian">{{if .Payment}}{{money .Payment.Amount}}{{else if .Enrollment.FreeMonthlyFee}}Free{{else}}{{money .MonthlyFee}}{{end}}</p>
+            {{if gt .LeaveAmount 0.0}}
+            <p class="mt-1 text-xs font-medium text-sky-700">{{money .LeaveAmount}} deducted for approved leave</p>
+            {{end}}
             {{if eq .MonthlyFee 0.0}}
             {{if .Enrollment.FreeMonthlyFee}}
             <p class="mt-1 text-xs font-medium text-sky-700">Monthly fee waived for this enrollment</p>
+            {{else if gt .LeaveDays 0}}
+            <p class="mt-1 text-xs font-medium text-sky-700">This month is fully covered by leave.</p>
             {{else}}
             <p class="mt-1 text-xs font-medium text-amber-700">Monthly fee is not configured</p>
             {{end}}
@@ -127,15 +197,24 @@
           <div class="flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800">
             Monthly fee collection not required for this enrollment.
           </div>
+          {{else if and (eq .MonthlyFee 0.0) (gt .LeaveDays 0)}}
+          <div class="flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800">
+            This month is fully covered by leave.
+          </div>
           {{else}}
-          <form action="/admin/student-payments/collect" method="post" class="flex flex-col gap-2 sm:flex-row" onsubmit="return confirm('Collect {{money .MonthlyFee}} from {{.Admission.FullName}} for {{.Enrollment.TrainingProgramName}} in {{$.PaymentMonthLabel}}?')">
-            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-            <input type="hidden" name="enrollment_id" value="{{.Enrollment.ID}}" />
-            <input type="hidden" name="payment_month" value="{{$.PaymentMonth}}" />
-            <input type="hidden" name="payment_method" value="cash" />
-            <div class="flex h-11 min-w-0 flex-1 items-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">Cash in Hand</div>
-            <button type="submit" {{if eq .MonthlyFee 0.0}}disabled title="Configure this monthly fee in Training Manager first"{{end}} class="h-11 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate disabled:cursor-not-allowed disabled:opacity-35">Collect payment</button>
-          </form>
+          <div class="flex flex-col gap-2">
+            <form action="/admin/student-payments/collect" method="post" class="flex flex-col gap-2 sm:flex-row" onsubmit="return confirm('Collect {{money .MonthlyFee}} from {{.Admission.FullName}} for {{.Enrollment.TrainingProgramName}} in {{$.PaymentMonthLabel}}?')">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+              <input type="hidden" name="enrollment_id" value="{{.Enrollment.ID}}" />
+              <input type="hidden" name="payment_month" value="{{$.PaymentMonth}}" />
+              <input type="hidden" name="payment_method" value="cash" />
+              <div class="flex h-11 min-w-0 flex-1 items-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">Cash in Hand</div>
+              <button type="submit" {{if eq .MonthlyFee 0.0}}disabled title="Configure this monthly fee in Training Manager first"{{end}} class="h-11 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate disabled:cursor-not-allowed disabled:opacity-35">Collect payment</button>
+            </form>
+            {{if gt .Enrollment.ID 0}}
+            <a href="/admin/student-payments?month={{$.PaymentMonth}}&enrollment_id={{.Enrollment.ID}}#leave-manager" class="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800 transition hover:bg-sky-50">Manage leave</a>
+            {{end}}
+          </div>
           {{end}}
         </div>
       </article>
