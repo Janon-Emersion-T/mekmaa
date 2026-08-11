@@ -135,15 +135,15 @@
       <article
         data-payment-row
         data-search="{{.Admission.FullName}} {{.Admission.StudentID}} {{.Enrollment.TrainingProgramName}}"
-        data-status="{{if .Payment}}paid{{else if .Enrollment.FreeMonthlyFee}}free{{else}}pending{{end}}"
-        class="rounded-[1.5rem] border {{if .Payment}}border-emerald-200/70 bg-emerald-50/45{{else if .Enrollment.FreeMonthlyFee}}border-sky-200/80 bg-sky-50/50{{else}}border-slate/10 bg-cloud/45{{end}} p-4 sm:p-5"
+        data-status="{{if .Payment}}paid{{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}free{{else}}pending{{end}}"
+        class="rounded-[1.5rem] border {{if .Payment}}border-emerald-200/70 bg-emerald-50/45{{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}border-sky-200/80 bg-sky-50/50{{else}}border-slate/10 bg-cloud/45{{end}} p-4 sm:p-5"
       >
         <div class="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,.8fr)_minmax(19rem,1fr)] xl:items-center">
           <div class="flex min-w-0 items-start gap-4">
             {{if .Admission.PhotoPath}}
             <img src="{{.Admission.PhotoPath}}" alt="{{.Admission.FullName}}" class="h-12 w-12 shrink-0 rounded-2xl object-cover ring-1 ring-slate/10" />
             {{else}}
-            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl {{if .Payment}}bg-emerald-900 text-white{{else if .Enrollment.FreeMonthlyFee}}bg-sky-700 text-white{{else}}bg-obsidian text-aqua{{end}} text-sm font-semibold">
+            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl {{if .Payment}}bg-emerald-900 text-white{{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}bg-sky-700 text-white{{else}}bg-obsidian text-aqua{{end}} text-sm font-semibold">
               {{printf "%.1s" .Admission.FullName}}
             </div>
             {{end}}
@@ -152,7 +152,7 @@
                 <h3 class="truncate text-base font-semibold text-obsidian">{{.Admission.FullName}}</h3>
                 {{if .Payment}}
                 <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-emerald-800">Paid</span>
-                {{else if .Enrollment.FreeMonthlyFee}}
+                {{else if or .Enrollment.FreeMonthlyFee (and (eq .MonthlyFee 0.0) (gt .LeaveDays 0))}}
                 <span class="rounded-full bg-sky-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-sky-800">Free</span>
                 {{else}}
                 <span class="rounded-full bg-amber-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-amber-800">Pending</span>
