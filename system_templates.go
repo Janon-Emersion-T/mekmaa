@@ -295,6 +295,10 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"templates/dashboard/src/header.html",
 		"templates/dashboard/src/footer.html",
 		"templates/dashboard/src/receipt-print.html",
+		"templates/dashboard/src/finance-shell.html",
+		"templates/dashboard/src/finance-receivables.html",
+		"templates/dashboard/src/finance-ledger.html",
+		"templates/dashboard/src/finance-operations.html",
 	}
 	templates := make(map[string]*template.Template, len(pages))
 	for page, path := range pages {

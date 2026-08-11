@@ -1,0 +1,267 @@
+{{define "finance-ledger-section"}}
+<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+  <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Income and expense</p>
+    <h2 class="mt-2 text-xl font-semibold text-obsidian">Record other operating movements</h2>
+    <form method="post" action="/admin/finance/transactions/create" class="mt-5 grid gap-3">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="text-xs font-medium text-slate/60">Direction
+          <select name="direction" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+            <option value="expense">Expense</option>
+            <option value="income">Income</option>
+          </select>
+        </label>
+        <label class="text-xs font-medium text-slate/60">Amount
+          <input name="amount" type="number" min="0.01" step="0.01" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+        </label>
+      </div>
+      <label class="text-xs font-medium text-slate/60">Account
+        <select name="account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+          {{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}} · {{financeAccountTypeLabel .AccountType}}</option>{{end}}
+        </select>
+      </label>
+      <label class="text-xs font-medium text-slate/60">Category
+        <select name="category" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+          <option value="other_expense">Other expense</option>
+          <option value="utilities_expense">Utilities</option>
+          <option value="maintenance_expense">Maintenance and repairs</option>
+          <option value="staff_expense">Staff and wages</option>
+          <option value="equipment_expense">Equipment</option>
+          <option value="sports_supplies_expense">Sports supplies</option>
+          <option value="refreshments_expense">Refreshments and drinks</option>
+          <option value="prizes_expense">Prizes and awards</option>
+          <option value="marketing_expense">Marketing</option>
+          <option value="transport_expense">Transport</option>
+          <option value="event_expense">Event expense</option>
+          <option value="bank_charges_expense">Bank charges</option>
+          <option value="manual_income">Other income</option>
+          <option value="sponsorship_income">Sponsorship income</option>
+          <option value="other_income">Other income (general)</option>
+        </select>
+      </label>
+      <label class="text-xs font-medium text-slate/60">Paid to / received from
+        <input name="person_name" required maxlength="120" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+      </label>
+      <label class="text-xs font-medium text-slate/60">Description
+        <textarea name="description" required rows="2" maxlength="300" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+      </label>
+      <label class="text-xs font-medium text-slate/60">Internal notes
+        <textarea name="notes" rows="2" maxlength="400" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+      </label>
+      <label class="text-xs font-medium text-slate/60">Date
+        <input name="recorded_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+      </label>
+      <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Post ledger entry</button>
+    </form>
+  </section>
+
+  <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Quick links</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">Related finance work</h2>
+      </div>
+    </div>
+    <div class="mt-5 grid gap-3">
+      <a href="/admin/finance/transfers" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
+        <span>Record transfer</span>
+        <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Bank</span>
+      </a>
+      <a href="/admin/finance/reconciliations" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
+        <span>Reconcile cash</span>
+        <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Audit</span>
+      </a>
+      <a href="/admin/finance/accounts" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
+        <span>View accounts</span>
+        <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Balances</span>
+      </a>
+    </div>
+  </section>
+</div>
+
+<section id="ledger" class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+  <div class="border-b border-slate/10 p-5 sm:p-6">
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Ledger</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">Account-linked transaction history</h2>
+      </div>
+      <form method="get" action="/admin/finance/ledger" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+        <input name="search" value="{{.FinanceFilter.Search}}" placeholder="Reference, party, note" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua xl:col-span-2">
+        <input name="reference" value="{{.FinanceFilter.Reference}}" placeholder="Voucher or receipt" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+        <input name="from" type="date" value="{{.FinanceFilter.From}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+        <input name="to" type="date" value="{{.FinanceFilter.To}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+        <select name="direction" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+          <option value="">All directions</option>
+          <option value="income" {{if eq .FinanceFilter.Direction "income"}}selected{{end}}>Money in</option>
+          <option value="expense" {{if eq .FinanceFilter.Direction "expense"}}selected{{end}}>Money out</option>
+        </select>
+        <select name="status" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+          <option value="">All statuses</option>
+          <option value="active" {{if eq .FinanceFilter.Status "active"}}selected{{end}}>Active</option>
+          <option value="voided" {{if eq .FinanceFilter.Status "voided"}}selected{{end}}>Voided</option>
+        </select>
+        <select name="account_id" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+          <option value="">All accounts</option>
+          {{range .FinanceAccounts}}<option value="{{.ID}}" {{if eq $.FinanceFilter.AccountID .ID}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        <select name="category" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+          <option value="">All categories</option>
+          <option value="admission_payment" {{if eq .FinanceFilter.Category "admission_payment"}}selected{{end}}>Admission payment</option>
+          <option value="student_monthly_payment" {{if eq .FinanceFilter.Category "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
+          <option value="booking_payment" {{if eq .FinanceFilter.Category "booking_payment"}}selected{{end}}>Booking payment</option>
+          <option value="referral_commission_payment" {{if eq .FinanceFilter.Category "referral_commission_payment"}}selected{{end}}>Referral payment</option>
+          <option value="manual_income" {{if eq .FinanceFilter.Category "manual_income"}}selected{{end}}>Manual income</option>
+          <option value="other_income" {{if eq .FinanceFilter.Category "other_income"}}selected{{end}}>Other income</option>
+          <option value="other_expense" {{if eq .FinanceFilter.Category "other_expense"}}selected{{end}}>Other expense</option>
+          <option value="staff_expense" {{if eq .FinanceFilter.Category "staff_expense"}}selected{{end}}>Staff expense</option>
+          <option value="utilities_expense" {{if eq .FinanceFilter.Category "utilities_expense"}}selected{{end}}>Utilities</option>
+          <option value="maintenance_expense" {{if eq .FinanceFilter.Category "maintenance_expense"}}selected{{end}}>Maintenance</option>
+          <option value="marketing_expense" {{if eq .FinanceFilter.Category "marketing_expense"}}selected{{end}}>Marketing</option>
+          <option value="transport_expense" {{if eq .FinanceFilter.Category "transport_expense"}}selected{{end}}>Transport</option>
+          <option value="event_expense" {{if eq .FinanceFilter.Category "event_expense"}}selected{{end}}>Event expense</option>
+          <option value="cash_adjustment" {{if eq .FinanceFilter.Category "cash_adjustment"}}selected{{end}}>Adjustment</option>
+          <option value="opening_balance" {{if eq .FinanceFilter.Category "opening_balance"}}selected{{end}}>Opening balance</option>
+        </select>
+        <select name="transaction_type" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+          <option value="">All transaction types</option>
+          <option value="income" {{if eq .FinanceFilter.TransactionType "income"}}selected{{end}}>Income</option>
+          <option value="expense" {{if eq .FinanceFilter.TransactionType "expense"}}selected{{end}}>Expense</option>
+          <option value="transfer_in" {{if eq .FinanceFilter.TransactionType "transfer_in"}}selected{{end}}>Transfer in</option>
+          <option value="transfer_out" {{if eq .FinanceFilter.TransactionType "transfer_out"}}selected{{end}}>Transfer out</option>
+          <option value="opening_balance" {{if eq .FinanceFilter.TransactionType "opening_balance"}}selected{{end}}>Opening balance</option>
+          <option value="adjustment" {{if eq .FinanceFilter.TransactionType "adjustment"}}selected{{end}}>Adjustment</option>
+        </select>
+        <select name="source_type" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+          <option value="">All sources</option>
+          <option value="manual" {{if eq .FinanceFilter.SourceType "manual"}}selected{{end}}>Manual</option>
+          <option value="admission" {{if eq .FinanceFilter.SourceType "admission"}}selected{{end}}>Admission</option>
+          <option value="student_monthly_payment" {{if eq .FinanceFilter.SourceType "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
+          <option value="booking_payment_collection" {{if eq .FinanceFilter.SourceType "booking_payment_collection"}}selected{{end}}>Booking collection</option>
+          <option value="booking_referral_payment" {{if eq .FinanceFilter.SourceType "booking_referral_payment"}}selected{{end}}>Referral payout</option>
+          <option value="finance_adjustment" {{if eq .FinanceFilter.SourceType "finance_adjustment"}}selected{{end}}>Adjustment</option>
+          <option value="finance_account_opening_balance" {{if eq .FinanceFilter.SourceType "finance_account_opening_balance"}}selected{{end}}>Opening balance</option>
+        </select>
+        <select name="payment_method" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+          <option value="">All payment methods</option>
+          <option value="cash" {{if eq .FinanceFilter.PaymentMethod "cash"}}selected{{end}}>Cash</option>
+          <option value="bank_transfer" {{if eq .FinanceFilter.PaymentMethod "bank_transfer"}}selected{{end}}>Bank transfer</option>
+        </select>
+        <select name="limit" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+          <option value="25" {{if eq .FinanceFilter.Limit 25}}selected{{end}}>25 rows</option>
+          <option value="50" {{if eq .FinanceFilter.Limit 50}}selected{{end}}>50 rows</option>
+          <option value="100" {{if eq .FinanceFilter.Limit 100}}selected{{end}}>100 rows</option>
+          <option value="200" {{if eq .FinanceFilter.Limit 200}}selected{{end}}>200 rows</option>
+        </select>
+        <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-semibold text-cloud transition hover:bg-slate">Apply</button>
+        <a href="/admin/finance/ledger#ledger" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Clear</a>
+      </form>
+    </div>
+  </div>
+
+  <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="text-xs text-slate/50">{{len .FinanceTransactions}} shown of {{.FinanceTransactionsTotal}} matching transactions</p>
+      <div class="flex flex-wrap items-center gap-2">
+        {{if .FinanceLedgerHasPreviousPage}}<a href="{{.FinanceLedgerPreviousPageURL}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Previous</a>{{end}}
+        {{if .FinanceLedgerHasNextPage}}<a href="{{.FinanceLedgerNextPageURL}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Next</a>{{end}}
+        <a href="/admin/finance/export?from={{urlquery .FinanceFilter.From}}&to={{urlquery .FinanceFilter.To}}&direction={{urlquery .FinanceFilter.Direction}}&category={{urlquery .FinanceFilter.Category}}&account_id={{.FinanceFilter.AccountID}}&status={{urlquery .FinanceFilter.Status}}&search={{urlquery .FinanceFilter.Search}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Export CSV</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="hidden overflow-x-auto lg:block">
+    <table class="min-w-full text-left text-sm">
+      <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+        <tr>
+          <th class="px-5 py-4 font-medium sm:px-6">Reference</th>
+          <th class="px-5 py-4 font-medium">Date</th>
+          <th class="px-5 py-4 font-medium">Account</th>
+          <th class="px-5 py-4 font-medium">Type</th>
+          <th class="px-5 py-4 font-medium">Category</th>
+          <th class="px-5 py-4 font-medium">Party</th>
+          <th class="px-5 py-4 font-medium">Money in</th>
+          <th class="px-5 py-4 font-medium">Money out</th>
+          <th class="px-5 py-4 font-medium">Status</th>
+          <th class="px-5 py-4 font-medium text-right sm:px-6">Voucher</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate/10">
+        {{range .FinanceTransactions}}
+        <tr class="bg-white/70 align-top">
+          <td class="px-5 py-4 sm:px-6">
+            <p class="font-mono text-xs font-bold text-obsidian">{{if .ReferenceNumber}}{{.ReferenceNumber}}{{else}}{{.ReceiptNumber}}{{end}}</p>
+            <p class="mt-1 text-xs text-slate/55">{{.Description}}</p>
+          </td>
+          <td class="px-5 py-4 text-slate/70">{{formatDateTime .RecordedAt}}</td>
+          <td class="px-5 py-4 text-slate/70">{{.FinanceAccountName}}</td>
+          <td class="px-5 py-4 text-slate/70">{{financeTransactionTypeLabel .TransactionType}}</td>
+          <td class="px-5 py-4 text-slate/70">{{financeCategoryLabel .Category}}</td>
+          <td class="px-5 py-4 text-slate/70">{{.PersonName}}</td>
+          <td class="px-5 py-4 font-semibold text-emerald-800">{{if gt .MoneyIn 0.0}}{{money .MoneyIn}}{{else}}—{{end}}</td>
+          <td class="px-5 py-4 font-semibold text-rose-800">{{if gt .MoneyOut 0.0}}{{money .MoneyOut}}{{else}}—{{end}}</td>
+          <td class="px-5 py-4">
+            <div class="flex flex-col gap-2">
+              <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{if .Voided}}bg-rose-100 text-rose-800{{else}}bg-emerald-100 text-emerald-800{{end}}">{{financeTransactionStatusLabel .}}</span>
+              {{if and (hasRole $.User "superadmin") (not .Voided) .GeneralVoidAllowed}}
+              <form method="post" action="/admin/finance/transactions/void" class="grid gap-2" onsubmit="return confirm('Void this posted finance record?');">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="transaction_id" value="{{.ID}}">
+                <input type="text" name="void_reason" required placeholder="Void reason" class="h-9 rounded-lg border border-rose-200 bg-white px-3 text-[0.7rem] outline-none focus:border-rose-400">
+                <button class="h-9 rounded-lg border border-rose-200 bg-white px-3 text-[0.7rem] font-semibold text-rose-700">Void</button>
+              </form>
+              {{else if and (hasRole $.User "superadmin") (not .Voided) .OrphanedSource}}
+              <p class="max-w-[14rem] text-[0.7rem] leading-5 text-amber-800">Source record no longer exists. You can void this orphaned invoice from the ledger.</p>
+              {{else if and (hasRole $.User "superadmin") (not .Voided)}}
+              <p class="max-w-[14rem] text-[0.7rem] leading-5 text-amber-800">{{financeVoidWorkflowMessage .}}</p>
+              {{end}}
+            </div>
+          </td>
+          <td class="px-5 py-4 text-right sm:px-6"><a href="/admin/finance/receipt?transaction_id={{.ID}}" class="text-xs font-semibold text-slate hover:text-obsidian">View</a></td>
+        </tr>
+        {{else}}
+        <tr><td colspan="10" class="px-6 py-10 text-center text-sm text-slate/60">No ledger entries match the selected filters.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid gap-3 p-4 lg:hidden">
+    {{range .FinanceTransactions}}
+    <article class="rounded-[1.25rem] border {{if .Voided}}border-rose-200 bg-rose-50/45{{else}}border-slate/10 bg-cloud/35{{end}} p-4">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="font-mono text-xs font-bold text-obsidian">{{if .ReferenceNumber}}{{.ReferenceNumber}}{{else}}{{.ReceiptNumber}}{{end}}</p>
+          <p class="mt-1 text-sm font-semibold text-obsidian">{{financeCategoryLabel .Category}}</p>
+          <p class="mt-1 text-xs text-slate/55">{{.FinanceAccountName}} · {{financeTransactionTypeLabel .TransactionType}}</p>
+        </div>
+        <span class="rounded-full px-2.5 py-1 text-[0.68rem] font-semibold {{if .Voided}}bg-rose-100 text-rose-800{{else}}bg-emerald-100 text-emerald-800{{end}}">{{financeTransactionStatusLabel .}}</span>
+      </div>
+      <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Money in</p><p class="mt-1 font-semibold text-emerald-800">{{if gt .MoneyIn 0.0}}{{money .MoneyIn}}{{else}}—{{end}}</p></div>
+        <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Money out</p><p class="mt-1 font-semibold text-rose-800">{{if gt .MoneyOut 0.0}}{{money .MoneyOut}}{{else}}—{{end}}</p></div>
+      </div>
+      <div class="mt-3 flex items-center justify-between text-xs text-slate/50">
+        <span>{{formatDateTime .RecordedAt}}</span>
+        <a href="/admin/finance/receipt?transaction_id={{.ID}}" class="font-semibold text-slate">Voucher</a>
+      </div>
+      {{if and (hasRole $.User "superadmin") (not .Voided) .GeneralVoidAllowed}}
+      <form method="post" action="/admin/finance/transactions/void" class="mt-3 grid gap-2" onsubmit="return confirm('Void this posted finance record?');">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="transaction_id" value="{{.ID}}">
+        <input type="text" name="void_reason" required placeholder="Void reason" class="h-10 rounded-lg border border-rose-200 bg-white px-3 text-xs outline-none focus:border-rose-400">
+        <button class="h-10 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700">Void</button>
+      </form>
+      {{else if and (hasRole $.User "superadmin") (not .Voided) .OrphanedSource}}
+      <p class="mt-3 text-[0.72rem] leading-5 text-amber-800">Source record no longer exists. You can void this orphaned invoice from the ledger.</p>
+      {{else if and (hasRole $.User "superadmin") (not .Voided)}}
+      <p class="mt-3 text-[0.72rem] leading-5 text-amber-800">{{financeVoidWorkflowMessage .}}</p>
+      {{end}}
+    </article>
+    {{else}}
+    <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No ledger entries match the selected filters.</div>
+    {{end}}
+  </div>
+</section>
+{{end}}
