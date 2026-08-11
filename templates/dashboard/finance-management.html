@@ -26,6 +26,38 @@
     </div>
   </div>
 
+  {{if or (eq .FinancePage "ledger") (eq .FinancePage "transfers") (eq .FinancePage "reconciliations") (eq .FinancePage "accounts")}}
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <article class="rounded-[1.5rem] border border-emerald-200/70 bg-emerald-50/80 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700/70">Cash in hand</p>
+      <p class="mt-3 text-2xl font-semibold text-emerald-950">{{money .FinanceSummary.CashBalance}}</p>
+      <p class="mt-2 text-xs text-emerald-800/65">Live balance in cash accounts</p>
+    </article>
+    <article class="rounded-[1.5rem] border border-sky-200/70 bg-sky-50/80 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700/70">Bank balance</p>
+      <p class="mt-3 text-2xl font-semibold text-sky-950">{{money .FinanceSummary.BankBalance}}</p>
+      <p class="mt-2 text-xs text-sky-800/65">Live balance in bank accounts</p>
+    </article>
+    <article class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Available funds</p>
+      <p class="mt-3 text-2xl font-semibold text-obsidian">{{money .FinanceSummary.TotalAvailableFunds}}</p>
+      <p class="mt-2 text-xs text-slate/55">Cash and bank combined</p>
+    </article>
+    <article class="rounded-[1.5rem] border {{if lt .FinanceSummary.NetOperatingCashFlow 0.0}}border-rose-200/70 bg-rose-50/70{{else}}border-white/80 bg-white/85{{end}} p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] {{if lt .FinanceSummary.NetOperatingCashFlow 0.0}}text-rose-700/80{{else}}text-slate/50{{end}}">Operating flow</p>
+      <p class="mt-3 text-2xl font-semibold {{if lt .FinanceSummary.NetOperatingCashFlow 0.0}}text-rose-900{{else}}text-obsidian{{end}}">{{money .FinanceSummary.NetOperatingCashFlow}}</p>
+      <p class="mt-2 text-xs {{if lt .FinanceSummary.NetOperatingCashFlow 0.0}}text-rose-800/65{{else}}text-slate/55{{end}}">Income and expense excluding transfers</p>
+    </article>
+    <article class="rounded-[1.5rem] border {{if eq .FinanceSummary.UnreconciledCashDelta 0.0}}border-white/80 bg-white/85{{else}}border-amber-200/70 bg-amber-50/80{{end}} p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] {{if eq .FinanceSummary.UnreconciledCashDelta 0.0}}text-slate/50{{else}}text-amber-700/80{{end}}">Cash check gap</p>
+      <p class="mt-3 text-2xl font-semibold {{if eq .FinanceSummary.UnreconciledCashDelta 0.0}}text-obsidian{{else}}text-amber-950{{end}}">{{money .FinanceSummary.UnreconciledCashDelta}}</p>
+      <p class="mt-2 text-xs {{if eq .FinanceSummary.UnreconciledCashDelta 0.0}}text-slate/55{{else}}text-amber-800/65{{end}}">
+        {{if .FinanceSummary.LastCashReconciliationOn}}Compared with {{.FinanceSummary.LastCashReconciliationOn}}{{else}}No cash reconciliation recorded yet{{end}}
+      </p>
+    </article>
+  </div>
+  {{end}}
+
   {{if eq .FinancePage "receivables"}}
   <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     <article class="rounded-[1.5rem] border border-amber-100 bg-amber-50 p-5 shadow-sm">
@@ -73,6 +105,42 @@
               <div class="rounded-xl bg-white p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Outstanding</p><p class="mt-1 text-sm font-semibold text-amber-900">{{money .OutstandingAmount}}</p></div>
             </div>
           </div>
+          <div class="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_18rem]">
+            <div class="grid gap-2 sm:grid-cols-3">
+              <div class="rounded-xl bg-white p-3">
+                <p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Last payment</p>
+                <p class="mt-1 text-sm font-semibold text-obsidian">{{if .LastPaymentDate.IsZero}}None yet{{else}}{{formatDateTime .LastPaymentDate}}{{end}}</p>
+              </div>
+              <div class="rounded-xl bg-white p-3">
+                <p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Active collections</p>
+                <p class="mt-1 text-sm font-semibold text-obsidian">{{.ActivePaymentCount}}</p>
+              </div>
+              <div class="rounded-xl bg-white p-3">
+                <p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Voided collections</p>
+                <p class="mt-1 text-sm font-semibold text-obsidian">{{.VoidedPaymentCount}}</p>
+              </div>
+            </div>
+            <form action="/admin/bookings/payments/collect" method="post" class="rounded-[1.25rem] border border-amber-200/70 bg-amber-50/60 p-4">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="schedule_id" value="{{.ScheduleID}}">
+              <input type="hidden" name="payment_method" value="cash">
+              <input type="hidden" name="return_to" value="/admin/finance/receivables">
+              <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Collect booking balance</p>
+              <div class="mt-3 grid gap-3">
+                <label class="text-xs font-medium text-slate/60">Amount
+                  <input name="amount" type="number" min="0.01" step="0.01" value="{{printf "%.2f" .OutstandingAmount}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+                </label>
+                <label class="text-xs font-medium text-slate/60">Note
+                  <input name="payment_note" maxlength="250" placeholder="Optional collection note" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+                </label>
+                <label class="flex items-start gap-3 rounded-xl border border-slate/10 bg-white px-3 py-3 text-xs text-slate/60">
+                  <input type="checkbox" name="allow_overpayment" value="1" class="mt-0.5 h-4 w-4 rounded border-slate/20 text-aqua focus:ring-aqua">
+                  <span>Allow overpayment when the customer intentionally pays more than the current outstanding amount.</span>
+                </label>
+                <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Collect now</button>
+              </div>
+            </form>
+          </div>
         </article>
         {{else}}
         <div class="rounded-[1.4rem] border border-dashed border-emerald-200 bg-emerald-50 px-5 py-10 text-center">
@@ -84,6 +152,42 @@
     </section>
 
     <aside class="space-y-6">
+      <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+        <div class="flex items-end justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Student receivables</p>
+            <h2 class="mt-2 text-xl font-semibold text-obsidian">{{.PaymentMonthLabel}} dues</h2>
+          </div>
+          <p class="text-xs text-slate/50">{{len .StudentPaymentRows}} pending enrollments</p>
+        </div>
+        <div class="mt-5 grid gap-3">
+          {{range .StudentPaymentRows}}
+          <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/45 p-4">
+            <div class="flex items-start gap-3">
+              {{if .Admission.PhotoPath}}
+              <img src="{{.Admission.PhotoPath}}" alt="{{.Admission.FullName}}" class="h-12 w-12 rounded-2xl object-cover ring-1 ring-slate/10" />
+              {{else}}
+              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-obsidian text-sm font-semibold text-aqua">{{printf "%.1s" .Admission.FullName}}</div>
+              {{end}}
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-semibold text-obsidian">{{.Admission.FullName}}</p>
+                <p class="mt-1 text-xs text-slate/55">{{.Enrollment.TrainingProgramName}}</p>
+                <p class="mt-2 text-xs font-medium text-amber-800">Due {{money .MonthlyFee}}{{if gt .LeaveAmount 0.0}} after {{money .LeaveAmount}} leave deduction{{end}}</p>
+              </div>
+            </div>
+            <div class="mt-3 flex gap-2">
+              <a href="/admin/student-payments?month={{$.PaymentMonth}}" class="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-obsidian transition hover:bg-cloud">Open register</a>
+              <a href="/admin/student-leaves?admission_id={{.Admission.ID}}&enrollment_id={{.Enrollment.ID}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-sky-200 bg-white px-3 text-xs font-semibold text-sky-800 transition hover:bg-sky-50">Leave</a>
+            </div>
+          </article>
+          {{else}}
+          <div class="rounded-[1.25rem] border border-dashed border-emerald-200 bg-emerald-50 px-4 py-8 text-center text-sm text-emerald-900">
+            No student receivables are open for {{.PaymentMonthLabel}}.
+          </div>
+          {{end}}
+        </div>
+      </section>
+
       <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Related payment pages</p>
         <h2 class="mt-2 text-xl font-semibold text-obsidian">Open other collection workflows</h2>
@@ -188,16 +292,16 @@
     </section>
   </div>
 
-  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+  <section id="ledger" class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
     <div class="border-b border-slate/10 p-5 sm:p-6">
       <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Ledger</p>
           <h2 class="mt-2 text-xl font-semibold text-obsidian">Account-linked transaction history</h2>
         </div>
-        <form method="get" action="/admin/finance/ledger" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-8">
-          <input type="hidden" name="limit" value="{{.FinanceFilter.Limit}}">
+        <form method="get" action="/admin/finance/ledger" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
           <input name="search" value="{{.FinanceFilter.Search}}" placeholder="Reference, party, note" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua xl:col-span-2">
+          <input name="reference" value="{{.FinanceFilter.Reference}}" placeholder="Voucher or receipt" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
           <input name="from" type="date" value="{{.FinanceFilter.From}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
           <input name="to" type="date" value="{{.FinanceFilter.To}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
           <select name="direction" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
@@ -214,7 +318,56 @@
             <option value="">All accounts</option>
             {{range .FinanceAccounts}}<option value="{{.ID}}" {{if eq $.FinanceFilter.AccountID .ID}}selected{{end}}>{{.Name}}</option>{{end}}
           </select>
+          <select name="category" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+            <option value="">All categories</option>
+            <option value="admission_payment" {{if eq .FinanceFilter.Category "admission_payment"}}selected{{end}}>Admission payment</option>
+            <option value="student_monthly_payment" {{if eq .FinanceFilter.Category "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
+            <option value="booking_payment" {{if eq .FinanceFilter.Category "booking_payment"}}selected{{end}}>Booking payment</option>
+            <option value="referral_commission_payment" {{if eq .FinanceFilter.Category "referral_commission_payment"}}selected{{end}}>Referral payment</option>
+            <option value="manual_income" {{if eq .FinanceFilter.Category "manual_income"}}selected{{end}}>Manual income</option>
+            <option value="other_income" {{if eq .FinanceFilter.Category "other_income"}}selected{{end}}>Other income</option>
+            <option value="other_expense" {{if eq .FinanceFilter.Category "other_expense"}}selected{{end}}>Other expense</option>
+            <option value="staff_expense" {{if eq .FinanceFilter.Category "staff_expense"}}selected{{end}}>Staff expense</option>
+            <option value="utilities_expense" {{if eq .FinanceFilter.Category "utilities_expense"}}selected{{end}}>Utilities</option>
+            <option value="maintenance_expense" {{if eq .FinanceFilter.Category "maintenance_expense"}}selected{{end}}>Maintenance</option>
+            <option value="marketing_expense" {{if eq .FinanceFilter.Category "marketing_expense"}}selected{{end}}>Marketing</option>
+            <option value="transport_expense" {{if eq .FinanceFilter.Category "transport_expense"}}selected{{end}}>Transport</option>
+            <option value="event_expense" {{if eq .FinanceFilter.Category "event_expense"}}selected{{end}}>Event expense</option>
+            <option value="cash_adjustment" {{if eq .FinanceFilter.Category "cash_adjustment"}}selected{{end}}>Adjustment</option>
+            <option value="opening_balance" {{if eq .FinanceFilter.Category "opening_balance"}}selected{{end}}>Opening balance</option>
+          </select>
+          <select name="transaction_type" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+            <option value="">All transaction types</option>
+            <option value="income" {{if eq .FinanceFilter.TransactionType "income"}}selected{{end}}>Income</option>
+            <option value="expense" {{if eq .FinanceFilter.TransactionType "expense"}}selected{{end}}>Expense</option>
+            <option value="transfer_in" {{if eq .FinanceFilter.TransactionType "transfer_in"}}selected{{end}}>Transfer in</option>
+            <option value="transfer_out" {{if eq .FinanceFilter.TransactionType "transfer_out"}}selected{{end}}>Transfer out</option>
+            <option value="opening_balance" {{if eq .FinanceFilter.TransactionType "opening_balance"}}selected{{end}}>Opening balance</option>
+            <option value="adjustment" {{if eq .FinanceFilter.TransactionType "adjustment"}}selected{{end}}>Adjustment</option>
+          </select>
+          <select name="source_type" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+            <option value="">All sources</option>
+            <option value="manual" {{if eq .FinanceFilter.SourceType "manual"}}selected{{end}}>Manual</option>
+            <option value="admission" {{if eq .FinanceFilter.SourceType "admission"}}selected{{end}}>Admission</option>
+            <option value="student_monthly_payment" {{if eq .FinanceFilter.SourceType "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
+            <option value="booking_payment_collection" {{if eq .FinanceFilter.SourceType "booking_payment_collection"}}selected{{end}}>Booking collection</option>
+            <option value="booking_referral_payment" {{if eq .FinanceFilter.SourceType "booking_referral_payment"}}selected{{end}}>Referral payout</option>
+            <option value="finance_adjustment" {{if eq .FinanceFilter.SourceType "finance_adjustment"}}selected{{end}}>Adjustment</option>
+            <option value="finance_account_opening_balance" {{if eq .FinanceFilter.SourceType "finance_account_opening_balance"}}selected{{end}}>Opening balance</option>
+          </select>
+          <select name="payment_method" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+            <option value="">All payment methods</option>
+            <option value="cash" {{if eq .FinanceFilter.PaymentMethod "cash"}}selected{{end}}>Cash</option>
+            <option value="bank_transfer" {{if eq .FinanceFilter.PaymentMethod "bank_transfer"}}selected{{end}}>Bank transfer</option>
+          </select>
+          <select name="limit" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+            <option value="25" {{if eq .FinanceFilter.Limit 25}}selected{{end}}>25 rows</option>
+            <option value="50" {{if eq .FinanceFilter.Limit 50}}selected{{end}}>50 rows</option>
+            <option value="100" {{if eq .FinanceFilter.Limit 100}}selected{{end}}>100 rows</option>
+            <option value="200" {{if eq .FinanceFilter.Limit 200}}selected{{end}}>200 rows</option>
+          </select>
           <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-semibold text-cloud transition hover:bg-slate">Apply</button>
+          <a href="/admin/finance/ledger#ledger" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Clear</a>
         </form>
       </div>
     </div>
@@ -384,7 +537,7 @@
               {{if .Description}}<p class="mt-2 text-xs text-slate/65">{{.Description}}</p>{{end}}
               {{if .Voided}}<p class="mt-2 text-xs text-rose-800">Voided {{formatDateTime .VoidedAt}}. Reason: {{.VoidReason}}</p>{{end}}
             </div>
-            {{if and (hasRole .User "superadmin") (not .Voided)}}
+            {{if and (hasRole $.User "superadmin") (not .Voided)}}
             <form method="post" action="/admin/finance/transfers/void" class="grid gap-2 sm:min-w-[15rem]" onsubmit="return confirm('Void this transfer pair?');">
               <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
               <input type="hidden" name="group_id" value="{{.GroupID}}">
@@ -467,7 +620,14 @@
             <div>
               <p class="text-sm font-semibold text-obsidian">{{.Name}}</p>
               <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate/55">{{financeAccountTypeLabel .AccountType}}</p>
+              <p class="mt-3 text-2xl font-semibold text-obsidian">{{money .CurrentBalance}}</p>
+              <p class="mt-1 text-xs text-slate/55">Opening balance {{money .OpeningBalance}}</p>
               {{if .Description}}<p class="mt-2 text-xs text-slate/60">{{.Description}}</p>{{end}}
+              {{if .LastAuditDate}}
+              <p class="mt-2 text-xs {{if eq .LastAuditStatus "balanced"}}text-emerald-800{{else if eq .LastAuditStatus "short"}}text-rose-800{{else}}text-amber-800{{end}}">
+                Last cash check {{.LastAuditDate}} · {{.LastAuditStatus}} · delta {{money .LastCashDelta}}
+              </p>
+              {{end}}
             </div>
             <a href="/admin/finance/accounts/statement?account_id={{.ID}}" class="inline-flex h-9 items-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate">Statement</a>
           </div>

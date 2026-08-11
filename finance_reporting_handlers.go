@@ -56,12 +56,16 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	data.FinancePage = page
 	data.TodayDate = time.Now().Format("2006-01-02")
 
+	needOperationalSummary := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts"
 	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts"
-	needAllTransactions := page == "ledger" || page == "accounts"
+	needAllTransactions := page == "ledger" || page == "accounts" || page == "transfers" || page == "reconciliations"
 	needBookingFinancials := page == "receivables"
 	needMonthlyRows := page == "receivables"
 	needTransfers := page == "transfers"
 	needReconciliations := page == "reconciliations"
+
+	var allTransactions []FinanceTransaction
+	var allMonthlyRows []StudentPaymentRow
 
 	if needAccounts {
 		accounts, err := a.listFinanceAccounts(true)
@@ -73,7 +77,8 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if needAllTransactions {
-		allTransactions, err := a.listFinanceTransactions()
+		var err error
+		allTransactions, err = a.listFinanceTransactions()
 		if err != nil {
 			log.Printf("finance %s load failed: op=list finance summary transactions duration=%s err=%v", page, time.Since(started), err)
 			return data, err
@@ -108,12 +113,16 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if needMonthlyRows {
-		monthlyRows, err := a.listStudentPaymentRows(time.Now().Format("2006-01"))
+		paymentMonth := time.Now().Format("2006-01")
+		monthlyRows, err := a.listStudentPaymentRows(paymentMonth)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list monthly receivables duration=%s err=%v", page, time.Since(started), err)
 			return data, err
 		}
-		data.StudentPaymentRows = monthlyRows
+		allMonthlyRows = monthlyRows
+		data.PaymentMonth = paymentMonth
+		data.PaymentMonthLabel = paymentMonthLabel(paymentMonth)
+		data.StudentPaymentRows = pendingStudentPaymentRows(monthlyRows)
 	}
 
 	if page == "receivables" {
@@ -123,7 +132,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 			return data, err
 		}
 		data.BookingReferrals = referrals
-		data.FinanceSummary = buildFinanceSummary(nil, nil, data.BookingFinancials, data.StudentPaymentRows, referrals, nil)
+		data.FinanceSummary = buildFinanceSummary(nil, nil, data.BookingFinancials, allMonthlyRows, referrals, nil)
 	}
 
 	if needTransfers {
@@ -144,7 +153,77 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		data.CashReconciliations = reconciliations
 	}
 
+	if needOperationalSummary {
+		reconciliations := data.CashReconciliations
+		if len(reconciliations) == 0 {
+			var err error
+			reconciliations, err = a.listCashReconciliations(0)
+			if err != nil {
+				log.Printf("finance %s load failed: op=list finance overview reconciliations duration=%s err=%v", page, time.Since(started), err)
+				return data, err
+			}
+			if page == "reconciliations" {
+				data.CashReconciliations = reconciliations
+			}
+		}
+		data.FinanceSummary = buildFinanceSummary(data.FinanceAccounts, allTransactions, nil, nil, nil, reconciliations)
+		data.FinanceAccounts = financeAccountsWithBalances(data.FinanceAccounts, allTransactions, reconciliations)
+	}
+
 	return data, nil
+}
+
+func pendingStudentPaymentRows(rows []StudentPaymentRow) []StudentPaymentRow {
+	filtered := make([]StudentPaymentRow, 0, len(rows))
+	for _, row := range rows {
+		collectedAmount := 0.0
+		if row.Payment != nil {
+			collectedAmount = row.Payment.Amount
+		}
+		if row.MonthlyFee <= 0 {
+			continue
+		}
+		if collectedAmount+0.004 >= row.MonthlyFee {
+			continue
+		}
+		filtered = append(filtered, row)
+	}
+	return filtered
+}
+
+func financeAccountsWithBalances(accounts []FinanceAccount, transactions []FinanceTransaction, reconciliations []CashReconciliation) []FinanceAccount {
+	if len(accounts) == 0 {
+		return accounts
+	}
+	balances := make(map[int64]float64, len(accounts))
+	for _, transaction := range transactions {
+		if transaction.Voided {
+			continue
+		}
+		balances[transaction.FinanceAccountID] = normalizeMoney(balances[transaction.FinanceAccountID] + transaction.Amount)
+	}
+	lastByAccount := make(map[int64]CashReconciliation, len(reconciliations))
+	for _, item := range reconciliations {
+		if item.Voided {
+			continue
+		}
+		current, exists := lastByAccount[item.FinanceAccountID]
+		if !exists || item.ReconciliationDate > current.ReconciliationDate || (item.ReconciliationDate == current.ReconciliationDate && item.ID > current.ID) {
+			lastByAccount[item.FinanceAccountID] = item
+		}
+	}
+	enriched := make([]FinanceAccount, len(accounts))
+	copy(enriched, accounts)
+	for i := range enriched {
+		enriched[i].CurrentBalance = balances[enriched[i].ID]
+		if item, ok := lastByAccount[enriched[i].ID]; ok {
+			enriched[i].LastAuditDate = item.ReconciliationDate
+			enriched[i].LastAuditStatus = item.Status
+			enriched[i].LastCashDelta = item.Difference
+			enriched[i].LastCountedCash = item.CountedBalance
+		}
+	}
+	return enriched
 }
 
 func (a *App) createFinanceTransactionHandler(w http.ResponseWriter, r *http.Request) {

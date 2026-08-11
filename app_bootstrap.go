@@ -540,6 +540,11 @@ type FinanceAccount struct {
 	AccountType     string
 	Description     string
 	OpeningBalance  float64
+	CurrentBalance  float64
+	LastCountedCash float64
+	LastCashDelta   float64
+	LastAuditDate   string
+	LastAuditStatus string
 	IsSystem        bool
 	IsActive        bool
 	CreatedByUserID int64
