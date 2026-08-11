@@ -203,6 +203,7 @@ func main() {
 	mux.Handle("/admin/roles/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteRoleHandler), "roles.manage")))
 	mux.Handle("/admin/admissions", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.admissionManagementHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/student-id", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentIDCardHandler), "admissions.manage")))
+	mux.Handle("/admin/student-leaves", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentLeaveManagementHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateAdmissionHandler), "admissions.manage")))
 	mux.Handle("/admin/admissions/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteAdmissionHandler), "admissions.manage")))
@@ -418,8 +419,8 @@ func main() {
 	mux.Handle("/admin/referrals/payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidReferralCommissionPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentPaymentsHandler), "finance.manage")))
 	mux.Handle("/admin/student-payments/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStudentPaymentHandler), "finance.manage")))
-	mux.Handle("/admin/student-payments/leaves/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentEnrollmentLeaveHandler), "finance.manage")))
-	mux.Handle("/admin/student-payments/leaves/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentEnrollmentLeaveHandler), "finance.manage")))
+	mux.Handle("/admin/student-leaves/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentEnrollmentLeaveHandler), "admissions.manage")))
+	mux.Handle("/admin/student-leaves/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentEnrollmentLeaveHandler), "admissions.manage")))
 	mux.Handle("/admin/student-payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidStudentPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 

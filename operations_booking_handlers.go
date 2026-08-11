@@ -3467,7 +3467,11 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 		}
 		if errors.Is(err, ErrStudentLeaveCoversMonth) {
 			a.setFlash(w, "This student is fully on leave for "+paymentMonthLabel(paymentMonth)+", so no monthly fee is due.")
-			http.Redirect(w, r, "/admin/student-payments?month="+url.QueryEscape(paymentMonth)+"&enrollment_id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+			admissionID := enrollmentID
+			if enrollment, findErr := a.findStudentEnrollmentByID(enrollmentID); findErr == nil {
+				admissionID = enrollment.AdmissionID
+			}
+			http.Redirect(w, r, "/admin/student-leaves?admission_id="+strconv.FormatInt(admissionID, 10)+"&enrollment_id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 			return
 		}
 		log.Printf("collect student monthly payment: %v", err)
@@ -3476,6 +3480,76 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) studentLeaveManagementHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+	admissions, err := a.listAdmissions()
+	if err != nil {
+		log.Printf("list admissions for student leaves: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	allEnrollments, err := a.listStudentEnrollments()
+	if err != nil {
+		log.Printf("list student enrollments for student leaves: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Student Leave"
+	data.Description = "Manage temporary leave periods for student enrollments."
+	data.Admissions = admissions
+
+	admissionID := parseInt64Query(r.URL.Query().Get("admission_id"))
+	selectedEnrollmentID := parseInt64Query(r.URL.Query().Get("enrollment_id"))
+
+	if admissionID > 0 {
+		for i := range admissions {
+			if admissions[i].ID == admissionID {
+				data.SelectedAdmission = &admissions[i]
+				break
+			}
+		}
+	}
+
+	if data.SelectedAdmission != nil {
+		filtered := make([]StudentEnrollment, 0)
+		for _, enrollment := range allEnrollments {
+			if enrollment.AdmissionID == data.SelectedAdmission.ID {
+				filtered = append(filtered, enrollment)
+			}
+		}
+		data.Enrollments = filtered
+		if selectedEnrollmentID <= 0 && len(filtered) > 0 {
+			selectedEnrollmentID = filtered[0].ID
+		}
+		if selectedEnrollmentID > 0 {
+			for i := range filtered {
+				if filtered[i].ID == selectedEnrollmentID {
+					data.SelectedEnrollment = &filtered[i]
+					break
+				}
+			}
+		}
+		if data.SelectedEnrollment != nil {
+			leaves, err := a.listStudentEnrollmentLeaves(data.SelectedEnrollment.ID)
+			if err != nil {
+				log.Printf("list enrollment leaves: %v", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			data.EnrollmentLeaves = leaves
+		}
+	}
+
+	a.render(w, "student-leave-management", data, http.StatusOK)
 }
 
 func (a *App) createStudentEnrollmentLeaveHandler(w http.ResponseWriter, r *http.Request) {
@@ -3493,10 +3567,10 @@ func (a *App) createStudentEnrollmentLeaveHandler(w http.ResponseWriter, r *http
 	}
 
 	enrollmentID := parseInt64Query(r.FormValue("enrollment_id"))
-	paymentMonth := strings.TrimSpace(r.FormValue("payment_month"))
-	target := "/admin/student-payments"
-	if paymentMonth != "" {
-		target += "?month=" + url.QueryEscape(paymentMonth)
+	admissionID := parseInt64Query(r.FormValue("admission_id"))
+	target := "/admin/student-leaves"
+	if admissionID > 0 {
+		target += "?admission_id=" + strconv.FormatInt(admissionID, 10)
 		if enrollmentID > 0 {
 			target += "&enrollment_id=" + strconv.FormatInt(enrollmentID, 10)
 		}
@@ -3532,10 +3606,10 @@ func (a *App) deleteStudentEnrollmentLeaveHandler(w http.ResponseWriter, r *http
 
 	leaveID := parseInt64Query(r.FormValue("leave_id"))
 	enrollmentID := parseInt64Query(r.FormValue("enrollment_id"))
-	paymentMonth := strings.TrimSpace(r.FormValue("payment_month"))
-	target := "/admin/student-payments"
-	if paymentMonth != "" {
-		target += "?month=" + url.QueryEscape(paymentMonth)
+	admissionID := parseInt64Query(r.FormValue("admission_id"))
+	target := "/admin/student-leaves"
+	if admissionID > 0 {
+		target += "?admission_id=" + strconv.FormatInt(admissionID, 10)
 		if enrollmentID > 0 {
 			target += "&enrollment_id=" + strconv.FormatInt(enrollmentID, 10)
 		}
