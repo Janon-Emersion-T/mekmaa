@@ -1,0 +1,1933 @@
+package main
+
+import (
+	"database/sql"
+	"errors"
+	"strings"
+	"time"
+)
+
+func (a *App) listAdmissions() ([]Admission, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.training_program_id, 0),
+			COALESCE(
+				tp.name,
+				CASE
+					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
+					ELSE ''
+				END
+			),
+			a.address,
+			a.passport_number,
+			a.school,
+			a.guardian_name,
+			a.guardian_relationship,
+			a.guardian_contact_number,
+			a.guardian_alternative_contact_number,
+			a.medical_information,
+			COALESCE(a.free_admission, 0),
+			COALESCE(a.free_monthly_fee, 0),
+			COALESCE(a.payment_collected, 0),
+			a.payment_collected_at,
+			COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0),
+			a.created_at
+		FROM admissions a
+		LEFT JOIN training_programs tp
+			ON tp.id = a.training_program_id
+		ORDER BY
+			a.admission_date DESC,
+			a.created_at DESC,
+			a.id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var admissions []Admission
+
+	for rows.Next() {
+		var admission Admission
+		var freeAdmission int
+		var freeMonthlyFee int
+		var paymentCollected int
+		var paymentCollectedAt sql.NullTime
+
+		if err := rows.Scan(
+			&admission.ID,
+			&admission.StudentID,
+			&admission.FullName,
+			&admission.AdmissionDate,
+			&admission.DateOfBirth,
+			&admission.Gender,
+			&admission.PracticeType,
+			&admission.TrainingProgramID,
+			&admission.TrainingProgramName,
+			&admission.Address,
+			&admission.PassportNumber,
+			&admission.School,
+			&admission.GuardianName,
+			&admission.GuardianRelationship,
+			&admission.GuardianContactNumber,
+			&admission.GuardianAlternativePhone,
+			&admission.MedicalInformation,
+			&freeAdmission,
+			&freeMonthlyFee,
+			&paymentCollected,
+			&paymentCollectedAt,
+			&admission.AdmissionPaymentAmount,
+			&admission.FinanceTransactionID,
+			&admission.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		admission.FreeAdmission = freeAdmission == 1
+		admission.FreeMonthlyFee = freeMonthlyFee == 1
+		admission.PaymentCollected = paymentCollected == 1
+
+		if paymentCollectedAt.Valid {
+			admission.PaymentCollectedAt = paymentCollectedAt.Time
+		}
+
+		admissions = append(admissions, admission)
+	}
+
+	return admissions, rows.Err()
+}
+
+func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int, error) {
+	whereParts := make([]string, 0, 1)
+	args := make([]any, 0, 8)
+
+	if filter.Search != "" {
+		searchLike := "%" + strings.ToLower(filter.Search) + "%"
+		whereParts = append(whereParts, `(LOWER(COALESCE(a.student_id, '')) LIKE ? OR LOWER(COALESCE(a.full_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_contact_number, '')) LIKE ?)`)
+		args = append(args, searchLike, searchLike, searchLike, searchLike)
+	}
+
+	whereSQL := ""
+	if len(whereParts) > 0 {
+		whereSQL = " WHERE " + strings.Join(whereParts, " AND ")
+	}
+
+	var total int
+	countQuery := `
+		SELECT COUNT(*)
+		FROM admissions a
+	` + whereSQL
+	if err := a.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	orderDirection := "ASC"
+	if filter.Direction == "desc" {
+		orderDirection = "DESC"
+	}
+
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, filter.Limit, (filter.Page-1)*filter.Limit)
+
+	rows, err := a.db.Query(`
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.training_program_id, 0),
+			COALESCE(
+				tp.name,
+				CASE
+					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
+					ELSE ''
+				END
+			),
+			a.address,
+			a.passport_number,
+			a.school,
+			a.guardian_name,
+			a.guardian_relationship,
+			a.guardian_contact_number,
+			a.guardian_alternative_contact_number,
+			a.medical_information,
+			COALESCE(a.free_admission, 0),
+			COALESCE(a.free_monthly_fee, 0),
+			COALESCE(a.payment_collected, 0),
+			a.payment_collected_at,
+			COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0),
+			a.created_at
+		FROM admissions a
+		LEFT JOIN training_programs tp
+			ON tp.id = a.training_program_id
+	`+whereSQL+`
+		ORDER BY
+			LOWER(COALESCE(a.student_id, '')) `+orderDirection+`,
+			a.created_at `+orderDirection+`,
+			a.id `+orderDirection+`
+		LIMIT ? OFFSET ?
+	`, queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	admissions := make([]Admission, 0, filter.Limit)
+	for rows.Next() {
+		var admission Admission
+		var freeAdmission int
+		var freeMonthlyFee int
+		var paymentCollected int
+		var paymentCollectedAt sql.NullTime
+
+		if err := rows.Scan(
+			&admission.ID,
+			&admission.StudentID,
+			&admission.FullName,
+			&admission.AdmissionDate,
+			&admission.DateOfBirth,
+			&admission.Gender,
+			&admission.PracticeType,
+			&admission.TrainingProgramID,
+			&admission.TrainingProgramName,
+			&admission.Address,
+			&admission.PassportNumber,
+			&admission.School,
+			&admission.GuardianName,
+			&admission.GuardianRelationship,
+			&admission.GuardianContactNumber,
+			&admission.GuardianAlternativePhone,
+			&admission.MedicalInformation,
+			&freeAdmission,
+			&freeMonthlyFee,
+			&paymentCollected,
+			&paymentCollectedAt,
+			&admission.AdmissionPaymentAmount,
+			&admission.FinanceTransactionID,
+			&admission.CreatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+
+		admission.FreeAdmission = freeAdmission == 1
+		admission.FreeMonthlyFee = freeMonthlyFee == 1
+		admission.PaymentCollected = paymentCollected > 0
+		if paymentCollectedAt.Valid {
+			admission.PaymentCollectedAt = paymentCollectedAt.Time
+		}
+		admissions = append(admissions, admission)
+	}
+
+	return admissions, total, rows.Err()
+}
+
+func (a *App) listEvents() ([]Event, error) {
+	rows, err := a.db.Query(`
+		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
+		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
+		       cta_label, cta_link, published, created_at, updated_at
+		FROM events
+		ORDER BY event_date ASC, start_time ASC, id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		var event Event
+		var published int
+		if err := rows.Scan(
+			&event.ID,
+			&event.Title,
+			&event.Category,
+			&event.EventDate,
+			&event.StartTime,
+			&event.EndTime,
+			&event.RegistrationDeadline,
+			&event.Venue,
+			&event.Summary,
+			&event.ImagePath,
+			&event.CTALabel,
+			&event.CTALink,
+			&published,
+			&event.CreatedAt,
+			&event.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		event.Published = published == 1
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+func (a *App) listPublishedEvents() ([]Event, error) {
+	rows, err := a.db.Query(`
+		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
+		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
+		       cta_label, cta_link, published, created_at, updated_at
+		FROM events
+		WHERE published = 1
+		ORDER BY event_date ASC, start_time ASC, id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		var event Event
+		var published int
+		if err := rows.Scan(
+			&event.ID,
+			&event.Title,
+			&event.Category,
+			&event.EventDate,
+			&event.StartTime,
+			&event.EndTime,
+			&event.RegistrationDeadline,
+			&event.Venue,
+			&event.Summary,
+			&event.ImagePath,
+			&event.CTALabel,
+			&event.CTALink,
+			&published,
+			&event.CreatedAt,
+			&event.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		event.Published = published == 1
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+func (a *App) listStudentGroups() ([]StudentGroup, error) {
+	rows, err := a.db.Query(`
+		SELECT id, name, code, description, created_at
+		FROM student_groups
+		ORDER BY created_at DESC, id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var groups []StudentGroup
+	for rows.Next() {
+		var group StudentGroup
+		if err := rows.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.CreatedAt); err != nil {
+			return nil, err
+		}
+		groups = append(groups, group)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range groups {
+		students, err := a.listStudentsForGroup(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		coaches, err := a.listCoachesForGroup(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		groups[i].Students = students
+		groups[i].StudentCount = len(students)
+		groups[i].Coaches = coaches
+		groups[i].CoachCount = len(coaches)
+	}
+
+	return groups, nil
+}
+
+func (a *App) listStudentGroupsForCoach(userID int64) ([]StudentGroup, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			sg.id,
+			sg.name,
+			sg.code,
+			sg.description,
+			sg.created_at
+		FROM student_groups sg
+		JOIN student_group_coaches sgc
+			ON sgc.group_id = sg.id
+		WHERE sgc.user_id = ?
+		ORDER BY sg.created_at DESC, sg.id DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var groups []StudentGroup
+
+	for rows.Next() {
+		var group StudentGroup
+
+		if err := rows.Scan(
+			&group.ID,
+			&group.Name,
+			&group.Code,
+			&group.Description,
+			&group.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		groups = append(groups, group)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range groups {
+		students, err := a.listStudentsForGroup(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		coaches, err := a.listCoachesForGroup(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		groups[i].Students = students
+		groups[i].StudentCount = len(students)
+		groups[i].Coaches = coaches
+		groups[i].CoachCount = len(coaches)
+	}
+
+	return groups, nil
+}
+
+func (a *App) coachAssignedToGroup(
+	userID int64,
+	groupID int64,
+) (bool, error) {
+	var assigned int
+
+	err := a.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM student_group_coaches
+			WHERE user_id = ?
+				AND group_id = ?
+		)
+	`, userID, groupID).Scan(&assigned)
+	if err != nil {
+		return false, err
+	}
+
+	return assigned == 1, nil
+}
+
+func (a *App) listAttendanceRecords(groupID int64, attendanceDate string) ([]AttendanceRecord, error) {
+	rows, err := a.db.Query(`
+		SELECT id, group_id, admission_id, attendance_date, status, note, recorded_at, updated_at
+		FROM attendance_records
+		WHERE group_id = ? AND attendance_date = ?
+		ORDER BY admission_id ASC, id ASC
+	`, groupID, attendanceDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []AttendanceRecord
+	for rows.Next() {
+		var record AttendanceRecord
+		if err := rows.Scan(
+			&record.ID,
+			&record.GroupID,
+			&record.AdmissionID,
+			&record.AttendanceDate,
+			&record.Status,
+			&record.Note,
+			&record.RecordedAt,
+			&record.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (a *App) listRecentAttendanceDates(groupID int64, limit int) ([]string, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	rows, err := a.db.Query(`
+		SELECT DISTINCT attendance_date
+		FROM attendance_records
+		WHERE group_id = ?
+		ORDER BY attendance_date DESC
+		LIMIT ?
+	`, groupID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dates []string
+	for rows.Next() {
+		var date string
+		if err := rows.Scan(&date); err != nil {
+			return nil, err
+		}
+		dates = append(dates, date)
+	}
+	return dates, rows.Err()
+}
+
+func (a *App) getAttendanceSummary(
+	groupID int64,
+) (AttendanceSummary, error) {
+	var summary AttendanceSummary
+
+	err := a.db.QueryRow(`
+		SELECT
+			COUNT(DISTINCT attendance_date),
+			COALESCE(SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'excused' THEN 1 ELSE 0 END), 0),
+			COUNT(*)
+		FROM attendance_records
+		WHERE group_id = ?
+	`, groupID).Scan(
+		&summary.SessionCount,
+		&summary.PresentCount,
+		&summary.AbsentCount,
+		&summary.LateCount,
+		&summary.ExcusedCount,
+		&summary.TotalEntries,
+	)
+	if err != nil {
+		return AttendanceSummary{}, err
+	}
+
+	return summary, nil
+}
+
+func (a *App) listCourts(includeInactive bool) ([]Court, error) {
+	query := `
+		SELECT
+			id,
+			name,
+			code,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM courts
+	`
+
+	if !includeInactive {
+		query += ` WHERE active = 1`
+	}
+
+	query += ` ORDER BY sort_order, name, id`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+
+	var courts []Court
+
+	for rows.Next() {
+		var court Court
+
+		if err := rows.Scan(
+			&court.ID,
+			&court.Name,
+			&court.Code,
+			&court.Description,
+			&court.Active,
+			&court.SortOrder,
+			&court.CreatedAt,
+			&court.UpdatedAt,
+		); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+
+		courts = append(courts, court)
+	}
+
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range courts {
+		layouts, err := a.listCourtLayouts(
+			courts[i].ID,
+			includeInactive,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		courts[i].Layouts = layouts
+	}
+
+	return courts, nil
+}
+
+func (a *App) findCourtByID(courtID int64) (*Court, error) {
+	var court Court
+
+	err := a.db.QueryRow(`
+		SELECT
+			id,
+			name,
+			code,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM courts
+		WHERE id = ?
+	`, courtID).Scan(
+		&court.ID,
+		&court.Name,
+		&court.Code,
+		&court.Description,
+		&court.Active,
+		&court.SortOrder,
+		&court.CreatedAt,
+		&court.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	activities, err := a.listCourtActivities(court.ID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	layouts, err := a.listCourtLayouts(court.ID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	court.Activities = activities
+	court.Layouts = layouts
+
+	return &court, nil
+}
+
+func (a *App) listCourtActivities(
+	courtID int64,
+	includeInactive bool,
+) ([]CourtActivity, error) {
+	query := `
+		SELECT
+			id,
+			court_id,
+			activity,
+			display_name,
+			max_quantity,
+			auto_accept,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM court_activities
+		WHERE court_id = ?
+	`
+
+	if !includeInactive {
+		query += ` AND active = 1`
+	}
+
+	query += ` ORDER BY sort_order, display_name, id`
+
+	rows, err := a.db.Query(query, courtID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var activities []CourtActivity
+
+	for rows.Next() {
+		var activity CourtActivity
+		var autoAccept int
+
+		err := rows.Scan(
+			&activity.ID,
+			&activity.CourtID,
+			&activity.Activity,
+			&activity.DisplayName,
+			&activity.MaxQuantity,
+			&autoAccept,
+			&activity.Active,
+			&activity.SortOrder,
+			&activity.CreatedAt,
+			&activity.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		activity.AutoAccept = autoAccept == 1
+
+		activities = append(activities, activity)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return activities, nil
+}
+
+func (a *App) listCourtLayouts(
+	courtID int64,
+	includeInactive bool,
+) ([]CourtLayout, error) {
+	query := `
+		SELECT
+			id,
+			court_id,
+			name,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM court_layouts
+		WHERE court_id = ?
+	`
+
+	if !includeInactive {
+		query += ` AND active = 1`
+	}
+
+	query += ` ORDER BY sort_order, name, id`
+
+	rows, err := a.db.Query(query, courtID)
+	if err != nil {
+		return nil, err
+	}
+
+	var layouts []CourtLayout
+
+	for rows.Next() {
+		var layout CourtLayout
+
+		if err := rows.Scan(
+			&layout.ID,
+			&layout.CourtID,
+			&layout.Name,
+			&layout.Description,
+			&layout.Active,
+			&layout.SortOrder,
+			&layout.CreatedAt,
+			&layout.UpdatedAt,
+		); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+
+		layouts = append(layouts, layout)
+	}
+
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range layouts {
+		items, err := a.listCourtLayoutItems(layouts[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		layouts[i].Items = items
+	}
+
+	return layouts, nil
+}
+
+func (a *App) findCourtLayoutByID(layoutID int64) (*CourtLayout, error) {
+	var layout CourtLayout
+
+	err := a.db.QueryRow(`
+		SELECT
+			id,
+			court_id,
+			name,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM court_layouts
+		WHERE id = ?
+	`, layoutID).Scan(
+		&layout.ID,
+		&layout.CourtID,
+		&layout.Name,
+		&layout.Description,
+		&layout.Active,
+		&layout.SortOrder,
+		&layout.CreatedAt,
+		&layout.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	items, err := a.listCourtLayoutItems(layout.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	layout.Items = items
+
+	return &layout, nil
+}
+
+func (a *App) listCourtLayoutItems(
+	layoutID int64,
+) ([]CourtLayoutItem, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			cli.id,
+			cli.layout_id,
+			cli.activity,
+			COALESCE(ca.display_name, cli.activity),
+			cli.quantity
+		FROM court_layout_items cli
+		LEFT JOIN court_layouts cl
+			ON cl.id = cli.layout_id
+		LEFT JOIN court_activities ca
+			ON ca.court_id = cl.court_id
+			AND ca.activity = cli.activity
+		WHERE cli.layout_id = ?
+		ORDER BY
+			COALESCE(ca.sort_order, 9999),
+			COALESCE(ca.display_name, cli.activity),
+			cli.id
+	`, layoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []CourtLayoutItem
+
+	for rows.Next() {
+		var item CourtLayoutItem
+
+		err := rows.Scan(
+			&item.ID,
+			&item.LayoutID,
+			&item.Activity,
+			&item.DisplayName,
+			&item.Quantity,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (a *App) listCourtClosures(
+	courtID int64,
+	includeInactive bool,
+) ([]CourtClosure, error) {
+	query := `
+		SELECT
+			cc.id,
+			cc.court_id,
+			c.name,
+			cc.closure_date,
+			cc.start_hour,
+			cc.end_hour,
+			cc.activity,
+			cc.title,
+			cc.reason,
+			cc.active,
+			cc.created_at,
+			cc.updated_at
+		FROM court_closures cc
+		JOIN courts c
+			ON c.id = cc.court_id
+		WHERE cc.court_id = ?
+	`
+
+	if !includeInactive {
+		query += ` AND cc.active = 1`
+	}
+
+	query += `
+		ORDER BY
+			cc.closure_date DESC,
+			cc.start_hour,
+			cc.id DESC
+	`
+
+	rows, err := a.db.Query(
+		query,
+		courtID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var closures []CourtClosure
+
+	for rows.Next() {
+		var closure CourtClosure
+
+		if err := rows.Scan(
+			&closure.ID,
+			&closure.CourtID,
+			&closure.CourtName,
+			&closure.ClosureDate,
+			&closure.StartHour,
+			&closure.EndHour,
+			&closure.Activity,
+			&closure.Title,
+			&closure.Reason,
+			&closure.Active,
+			&closure.CreatedAt,
+			&closure.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		closures = append(
+			closures,
+			closure,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return closures, nil
+}
+
+func (a *App) findCourtClosureByID(
+	closureID int64,
+) (*CourtClosure, error) {
+	var closure CourtClosure
+
+	err := a.db.QueryRow(`
+		SELECT
+			cc.id,
+			cc.court_id,
+			c.name,
+			cc.closure_date,
+			cc.start_hour,
+			cc.end_hour,
+			cc.activity,
+			cc.title,
+			cc.reason,
+			cc.active,
+			cc.created_at,
+			cc.updated_at
+		FROM court_closures cc
+		JOIN courts c
+			ON c.id = cc.court_id
+		WHERE cc.id = ?
+	`, closureID).Scan(
+		&closure.ID,
+		&closure.CourtID,
+		&closure.CourtName,
+		&closure.ClosureDate,
+		&closure.StartHour,
+		&closure.EndHour,
+		&closure.Activity,
+		&closure.Title,
+		&closure.Reason,
+		&closure.Active,
+		&closure.CreatedAt,
+		&closure.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &closure, nil
+}
+
+func (a *App) listActiveCourtClosures() (
+	[]CourtClosure,
+	error,
+) {
+	return listActiveCourtClosuresQuery(a.db)
+}
+
+type sqlQueryer interface {
+	Query(string, ...any) (*sql.Rows, error)
+	QueryRow(string, ...any) *sql.Row
+}
+
+func listActiveCourtClosuresQuery(queryer sqlQueryer) (
+	[]CourtClosure,
+	error,
+) {
+	rows, err := queryer.Query(`
+		SELECT
+			cc.id,
+			cc.court_id,
+			c.name,
+			cc.closure_date,
+			cc.start_hour,
+			cc.end_hour,
+			cc.activity,
+			cc.title,
+			cc.reason,
+			cc.active,
+			cc.created_at,
+			cc.updated_at
+		FROM court_closures cc
+		JOIN courts c
+			ON c.id = cc.court_id
+		WHERE cc.active = 1
+		  AND c.active = 1
+		ORDER BY
+			cc.closure_date,
+			cc.start_hour,
+			cc.id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var closures []CourtClosure
+	for rows.Next() {
+		var closure CourtClosure
+		if err := rows.Scan(
+			&closure.ID,
+			&closure.CourtID,
+			&closure.CourtName,
+			&closure.ClosureDate,
+			&closure.StartHour,
+			&closure.EndHour,
+			&closure.Activity,
+			&closure.Title,
+			&closure.Reason,
+			&closure.Active,
+			&closure.CreatedAt,
+			&closure.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		closures = append(closures, closure)
+	}
+
+	return closures, rows.Err()
+}
+
+func activeBookingConfigurationQuery(
+	queryer sqlQueryer,
+) ([]CourtActivity, []CourtLayout, error) {
+	activitiesRows, err := queryer.Query(`
+		SELECT
+			ca.id,
+			ca.court_id,
+			ca.activity,
+			ca.display_name,
+			ca.max_quantity,
+			ca.auto_accept,
+			ca.active,
+			ca.sort_order,
+			ca.created_at,
+			ca.updated_at
+		FROM court_activities ca
+		JOIN courts c
+			ON c.id = ca.court_id
+		WHERE ca.active = 1
+		  AND c.active = 1
+		ORDER BY
+			ca.sort_order,
+			ca.display_name,
+			ca.id
+	`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer activitiesRows.Close()
+
+	var activities []CourtActivity
+	for activitiesRows.Next() {
+		var activity CourtActivity
+		var autoAccept int
+		if err := activitiesRows.Scan(
+			&activity.ID,
+			&activity.CourtID,
+			&activity.Activity,
+			&activity.DisplayName,
+			&activity.MaxQuantity,
+			&autoAccept,
+			&activity.Active,
+			&activity.SortOrder,
+			&activity.CreatedAt,
+			&activity.UpdatedAt,
+		); err != nil {
+			return nil, nil, err
+		}
+		activity.AutoAccept = autoAccept == 1
+		activities = append(activities, activity)
+	}
+	if err := activitiesRows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	layoutRows, err := queryer.Query(`
+		SELECT
+			cl.id,
+			cl.court_id,
+			cl.name,
+			cl.description,
+			cl.active,
+			cl.sort_order,
+			cl.created_at,
+			cl.updated_at,
+			COALESCE(cli.id, 0),
+			COALESCE(cli.activity, ''),
+			COALESCE(ca.display_name, cli.activity, ''),
+			COALESCE(cli.quantity, 0)
+		FROM court_layouts cl
+		JOIN courts c
+			ON c.id = cl.court_id
+		LEFT JOIN court_layout_items cli
+			ON cli.layout_id = cl.id
+		LEFT JOIN court_activities ca
+			ON ca.court_id = cl.court_id
+			AND ca.activity = cli.activity
+		WHERE cl.active = 1
+		  AND c.active = 1
+		ORDER BY
+			cl.sort_order,
+			cl.name,
+			cl.id,
+			COALESCE(ca.sort_order, 9999),
+			COALESCE(ca.display_name, cli.activity),
+			cli.id
+	`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer layoutRows.Close()
+
+	layoutMap := make(map[int64]*CourtLayout)
+	layoutOrder := make([]int64, 0)
+
+	for layoutRows.Next() {
+		var (
+			layout          CourtLayout
+			itemID          int64
+			itemActivity    string
+			itemDisplayName string
+			itemQuantity    int
+		)
+
+		if err := layoutRows.Scan(
+			&layout.ID,
+			&layout.CourtID,
+			&layout.Name,
+			&layout.Description,
+			&layout.Active,
+			&layout.SortOrder,
+			&layout.CreatedAt,
+			&layout.UpdatedAt,
+			&itemID,
+			&itemActivity,
+			&itemDisplayName,
+			&itemQuantity,
+		); err != nil {
+			return nil, nil, err
+		}
+
+		existing := layoutMap[layout.ID]
+		if existing == nil {
+			layoutCopy := layout
+			layoutMap[layout.ID] = &layoutCopy
+			layoutOrder = append(layoutOrder, layout.ID)
+			existing = &layoutCopy
+		}
+
+		if itemID > 0 {
+			existing.Items = append(existing.Items, CourtLayoutItem{
+				ID:          itemID,
+				LayoutID:    layout.ID,
+				Activity:    itemActivity,
+				DisplayName: itemDisplayName,
+				Quantity:    itemQuantity,
+			})
+		}
+	}
+	if err := layoutRows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	layouts := make([]CourtLayout, 0, len(layoutOrder))
+	for _, layoutID := range layoutOrder {
+		layouts = append(layouts, *layoutMap[layoutID])
+	}
+
+	if len(layouts) == 0 {
+		return nil, nil, errors.New("no active court layouts are configured")
+	}
+
+	return activities, layouts, nil
+}
+
+func (a *App) activeCourtClosuresForDate(
+	closureDate string,
+) ([]CourtClosure, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			cc.id,
+			cc.court_id,
+			c.name,
+			cc.closure_date,
+			cc.start_hour,
+			cc.end_hour,
+			cc.activity,
+			cc.title,
+			cc.reason,
+			cc.active,
+			cc.created_at,
+			cc.updated_at
+		FROM court_closures cc
+		JOIN courts c
+			ON c.id = cc.court_id
+		WHERE cc.active = 1
+		  AND c.active = 1
+		  AND cc.closure_date = ?
+		ORDER BY
+			c.sort_order,
+			cc.start_hour,
+			cc.id
+	`, closureDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var closures []CourtClosure
+
+	for rows.Next() {
+		var closure CourtClosure
+
+		if err := rows.Scan(
+			&closure.ID,
+			&closure.CourtID,
+			&closure.CourtName,
+			&closure.ClosureDate,
+			&closure.StartHour,
+			&closure.EndHour,
+			&closure.Activity,
+			&closure.Title,
+			&closure.Reason,
+			&closure.Active,
+			&closure.CreatedAt,
+			&closure.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		closures = append(
+			closures,
+			closure,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return closures, nil
+}
+
+func (a *App) createCourtClosure(
+	closure CourtClosure,
+) (int64, error) {
+	activities, err := a.listCourtActivities(
+		closure.CourtID,
+		false,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := validateCourtClosure(
+		closure,
+		activities,
+	); err != nil {
+		return 0, err
+	}
+
+	now := time.Now().UTC()
+
+	result, err := a.db.Exec(`
+		INSERT INTO court_closures (
+			court_id,
+			closure_date,
+			start_hour,
+			end_hour,
+			activity,
+			title,
+			reason,
+			active,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		closure.CourtID,
+		closure.ClosureDate,
+		closure.StartHour,
+		closure.EndHour,
+		closure.Activity,
+		closure.Title,
+		closure.Reason,
+		closure.Active,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.LastInsertId()
+}
+
+func (a *App) updateCourtClosure(
+	closure CourtClosure,
+) error {
+	if closure.ID <= 0 {
+		return errors.New(
+			"valid court closure is required",
+		)
+	}
+
+	activities, err := a.listCourtActivities(
+		closure.CourtID,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := validateCourtClosure(
+		closure,
+		activities,
+	); err != nil {
+		return err
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE court_closures
+		SET
+			court_id = ?,
+			closure_date = ?,
+			start_hour = ?,
+			end_hour = ?,
+			activity = ?,
+			title = ?,
+			reason = ?,
+			active = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		closure.CourtID,
+		closure.ClosureDate,
+		closure.StartHour,
+		closure.EndHour,
+		closure.Activity,
+		closure.Title,
+		closure.Reason,
+		closure.Active,
+		time.Now().UTC(),
+		closure.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (a *App) toggleCourtClosure(
+	closureID int64,
+) error {
+	if closureID <= 0 {
+		return errors.New(
+			"valid court closure is required",
+		)
+	}
+
+	var active bool
+
+	if err := a.db.QueryRow(`
+		SELECT active
+		FROM court_closures
+		WHERE id = ?
+	`, closureID).Scan(&active); err != nil {
+		return err
+	}
+
+	_, err := a.db.Exec(`
+		UPDATE court_closures
+		SET
+			active = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		!active,
+		time.Now().UTC(),
+		closureID,
+	)
+
+	return err
+}
+
+func (a *App) deleteCourtClosure(
+	closureID int64,
+) error {
+	if closureID <= 0 {
+		return errors.New(
+			"valid court closure is required",
+		)
+	}
+
+	result, err := a.db.Exec(`
+		DELETE FROM court_closures
+		WHERE id = ?
+	`, closureID)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (a *App) listActiveCourtLayouts() ([]CourtLayout, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			cl.id,
+			cl.court_id,
+			cl.name,
+			cl.description,
+			cl.active,
+			cl.sort_order,
+			cl.created_at,
+			cl.updated_at
+		FROM court_layouts cl
+		JOIN courts c
+			ON c.id = cl.court_id
+		WHERE cl.active = 1
+		  AND c.active = 1
+		ORDER BY
+			c.sort_order,
+			cl.sort_order,
+			cl.name,
+			cl.id
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	var layouts []CourtLayout
+
+	for rows.Next() {
+		var layout CourtLayout
+
+		if err := rows.Scan(
+			&layout.ID,
+			&layout.CourtID,
+			&layout.Name,
+			&layout.Description,
+			&layout.Active,
+			&layout.SortOrder,
+			&layout.CreatedAt,
+			&layout.UpdatedAt,
+		); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+
+		layouts = append(layouts, layout)
+	}
+
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for i := range layouts {
+		items, err := a.listCourtLayoutItems(layouts[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		layouts[i].Items = items
+	}
+
+	return layouts, nil
+}
+
+func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
+	rows, err := a.db.Query(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       COALESCE(customer_message, ''),
+		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
+		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
+		       created_at, updated_at
+		FROM space_schedules
+		ORDER BY slot_date ASC, slot_hour ASC, entry_type ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []SpaceSchedule
+	for rows.Next() {
+		var schedule SpaceSchedule
+		var statusChangedAt sql.NullTime
+		if err := rows.Scan(
+			&schedule.ID,
+			&schedule.SlotDate,
+			&schedule.SlotHour,
+			&schedule.EntryType,
+			&schedule.Activity,
+			&schedule.Quantity,
+			&schedule.Title,
+			&schedule.Notes,
+			&schedule.Status,
+			&schedule.RequesterName,
+			&schedule.RequesterEmail,
+			&schedule.RequesterPhone,
+			&schedule.RequestedByUser,
+			&schedule.ReviewNote,
+			&schedule.CustomerMessage,
+			&statusChangedAt,
+			&schedule.StatusChangedBy,
+			&schedule.StatusSource,
+			&schedule.CancellationReason,
+			&schedule.CancellationFinanceNote,
+			&schedule.CreatedAt,
+			&schedule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if statusChangedAt.Valid {
+			schedule.StatusChangedAt = statusChangedAt.Time
+		}
+		schedules = append(schedules, schedule)
+	}
+	return schedules, rows.Err()
+}
+
+func (a *App) listActiveSpaceSchedulesBetween(
+	startDate string,
+	endDate string,
+) ([]SpaceSchedule, error) {
+	rows, err := a.db.Query(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       COALESCE(customer_message, ''),
+		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
+		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
+		       created_at, updated_at
+		FROM space_schedules
+		WHERE slot_date >= ?
+		  AND slot_date <= ?
+		ORDER BY slot_date ASC, slot_hour ASC, entry_type ASC, id ASC
+	`, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []SpaceSchedule
+	for rows.Next() {
+		var schedule SpaceSchedule
+		var statusChangedAt sql.NullTime
+		if err := rows.Scan(
+			&schedule.ID,
+			&schedule.SlotDate,
+			&schedule.SlotHour,
+			&schedule.EntryType,
+			&schedule.Activity,
+			&schedule.Quantity,
+			&schedule.Title,
+			&schedule.Notes,
+			&schedule.Status,
+			&schedule.RequesterName,
+			&schedule.RequesterEmail,
+			&schedule.RequesterPhone,
+			&schedule.RequestedByUser,
+			&schedule.ReviewNote,
+			&schedule.CustomerMessage,
+			&statusChangedAt,
+			&schedule.StatusChangedBy,
+			&schedule.StatusSource,
+			&schedule.CancellationReason,
+			&schedule.CancellationFinanceNote,
+			&schedule.CreatedAt,
+			&schedule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if statusChangedAt.Valid {
+			schedule.StatusChangedAt = statusChangedAt.Time
+		}
+		schedules = append(schedules, schedule)
+	}
+
+	return schedules, rows.Err()
+}
+
+func (a *App) listPricingRules() ([]PricingRule, error) {
+	return listPricingRulesQuery(a.db)
+}
+
+func listPricingRulesQuery(queryer sqlQueryer) ([]PricingRule, error) {
+	rows, err := queryer.Query(`
+		SELECT id, activity, quantity, weekday_offpeak_price, weekday_peak_price,
+		       weekend_offpeak_price, weekend_peak_price, created_at, updated_at
+		FROM pricing_rules
+		ORDER BY activity ASC, quantity ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var rules []PricingRule
+	for rows.Next() {
+		var rule PricingRule
+		if err := rows.Scan(
+			&rule.ID,
+			&rule.Activity,
+			&rule.Quantity,
+			&rule.WeekdayOffPeak,
+			&rule.WeekdayPeak,
+			&rule.WeekendOffPeak,
+			&rule.WeekendPeak,
+			&rule.CreatedAt,
+			&rule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		rules = append(rules, rule)
+	}
+	return rules, rows.Err()
+}
+
+func (a *App) listTrainingPrograms(includeInactive bool) ([]TrainingProgram, error) {
+	query := `
+		SELECT
+			id,
+			name,
+			activity,
+			training_format,
+			admission_fee,
+			monthly_fee,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM training_programs
+	`
+
+	if !includeInactive {
+		query += ` WHERE active = 1`
+	}
+
+	query += ` ORDER BY sort_order ASC, name ASC, id ASC`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var programs []TrainingProgram
+
+	for rows.Next() {
+		var program TrainingProgram
+		var active int
+
+		if err := rows.Scan(
+			&program.ID,
+			&program.Name,
+			&program.Activity,
+			&program.TrainingFormat,
+			&program.AdmissionFee,
+			&program.MonthlyFee,
+			&active,
+			&program.SortOrder,
+			&program.CreatedAt,
+			&program.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		program.Active = active == 1
+		programs = append(programs, program)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return programs, nil
+}
+
+func (a *App) findTrainingProgramByID(programID int64) (*TrainingProgram, error) {
+	row := a.db.QueryRow(`
+		SELECT
+			id,
+			name,
+			activity,
+			training_format,
+			admission_fee,
+			monthly_fee,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM training_programs
+		WHERE id = ?
+	`, programID)
+
+	var program TrainingProgram
+	var active int
+
+	if err := row.Scan(
+		&program.ID,
+		&program.Name,
+		&program.Activity,
+		&program.TrainingFormat,
+		&program.AdmissionFee,
+		&program.MonthlyFee,
+		&active,
+		&program.SortOrder,
+		&program.CreatedAt,
+		&program.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	program.Active = active == 1
+
+	return &program, nil
+}
+
+func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
+	now := time.Now().UTC()
+
+	result, err := a.db.Exec(`
+		INSERT INTO training_programs (
+			name,
+			activity,
+			training_format,
+			admission_fee,
+			monthly_fee,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		program.Name,
+		program.Activity,
+		program.TrainingFormat,
+		program.AdmissionFee,
+		program.MonthlyFee,
+		boolToInt(program.Active),
+		program.SortOrder,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	programID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	return programID, nil
+}
+
+func (a *App) updateTrainingProgram(program TrainingProgram) error {
+	_, err := a.db.Exec(`
+		UPDATE training_programs
+		SET
+			name = ?,
+			activity = ?,
+			training_format = ?,
+			admission_fee = ?,
+			monthly_fee = ?,
+			active = ?,
+			sort_order = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		program.Name,
+		program.Activity,
+		program.TrainingFormat,
+		program.AdmissionFee,
+		program.MonthlyFee,
+		boolToInt(program.Active),
+		program.SortOrder,
+		time.Now().UTC(),
+		program.ID,
+	)
+
+	return err
+}
+
+func (a *App) setTrainingProgramActive(programID int64, active bool) error {
+	result, err := a.db.Exec(`
+		UPDATE training_programs
+		SET active = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		boolToInt(active),
+		time.Now().UTC(),
+		programID,
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (a *App) deleteTrainingProgram(programID int64) error {
+	var admissionCount int
+
+	err := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM admissions
+		WHERE training_program_id = ?
+	`, programID).Scan(&admissionCount)
+	if err != nil {
+		return err
+	}
+
+	if admissionCount > 0 {
+		return errors.New(
+			"this training programme is assigned to students and cannot be deleted",
+		)
+	}
+
+	result, err := a.db.Exec(`
+		DELETE FROM training_programs
+		WHERE id = ?
+	`, programID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}

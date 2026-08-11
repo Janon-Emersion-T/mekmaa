@@ -1,0 +1,3963 @@
+package main
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+)
+
+func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	groups, err := a.listStudentGroups()
+	if err != nil {
+		log.Printf("list student groups: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	admissions, err := a.listAdmissions()
+	if err != nil {
+		log.Printf("list admissions for groups: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	coaches, err := a.listCoachUsers()
+	if err != nil {
+		log.Printf("list coach users for student groups: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Student Groups"
+	data.Description = "Manage student groups."
+	data.StudentGroups = groups
+	data.Admissions = admissions
+	data.AvailableCoaches = coaches
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "view", "edit":
+		data.GroupMode = mode
+	}
+	if data.GroupMode == "view" || data.GroupMode == "edit" {
+		groupID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && groupID > 0 {
+			selectedGroup, err := a.findStudentGroupByID(groupID)
+			if err == nil {
+				data.SelectedGroup = selectedGroup
+			}
+		}
+	}
+	a.render(w, "student-group-management", data, http.StatusOK)
+}
+
+func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+
+	var (
+		groups []StudentGroup
+		err    error
+	)
+
+	if userHasRole(user, "coach") &&
+		!userHasRole(user, "admin") &&
+		!userHasRole(user, "superadmin") {
+		groups, err = a.listStudentGroupsForCoach(user.ID)
+	} else {
+		groups, err = a.listStudentGroups()
+	}
+
+	if err != nil {
+		log.Printf("list student groups for attendance: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Attendance"
+	data.Description = "Manage student attendance by group."
+	data.StudentGroups = groups
+	data.TodayDate = time.Now().Format("2006-01-02")
+	data.AttendanceDate = strings.TrimSpace(r.URL.Query().Get("date"))
+	if data.AttendanceDate == "" {
+		data.AttendanceDate = data.TodayDate
+	} else if parsedDate, err := time.Parse("2006-01-02", data.AttendanceDate); err != nil {
+		data.AttendanceDate = data.TodayDate
+	} else if parsedDate.Format("2006-01-02") > data.TodayDate {
+		data.AttendanceDate = data.TodayDate
+	} else {
+		data.AttendanceDate = parsedDate.Format("2006-01-02")
+	}
+
+	groupID, err := strconv.ParseInt(
+		strings.TrimSpace(r.URL.Query().Get("group_id")),
+		10,
+		64,
+	)
+
+	if err == nil && groupID > 0 {
+		var selectedGroup *StudentGroup
+
+		for i := range groups {
+			if groups[i].ID == groupID {
+				selectedGroup = &groups[i]
+				break
+			}
+		}
+
+		if selectedGroup != nil {
+			data.SelectedGroup = selectedGroup
+
+			records, err := a.listAttendanceRecords(
+				groupID,
+				data.AttendanceDate,
+			)
+			if err != nil {
+				log.Printf("list attendance records: %v", err)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
+			}
+
+			data.AttendanceRecords = records
+
+			recentDates, err := a.listRecentAttendanceDates(groupID, 8)
+			if err != nil {
+				log.Printf("list recent attendance dates: %v", err)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
+			}
+
+			data.RecentDates = recentDates
+
+			summary, err := a.getAttendanceSummary(groupID)
+			if err != nil {
+				log.Printf("get attendance summary: %v", err)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
+			}
+
+			data.AttendanceSummary = summary
+		}
+	}
+
+	a.render(w, "attendance-management", data, http.StatusOK)
+}
+
+func (a *App) courtManagementHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+
+	courts, err := a.listCourts(true)
+	if err != nil {
+		log.Printf("list courts: %v", err)
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Court Manager"
+	data.Description = "Manage court activities and simultaneous-use configurations."
+	data.Courts = courts
+
+	courtID, err := strconv.ParseInt(
+		strings.TrimSpace(r.URL.Query().Get("court_id")),
+		10,
+		64,
+	)
+	if err != nil || courtID <= 0 {
+		if len(courts) > 0 {
+			courtID = courts[0].ID
+		}
+	}
+
+	if courtID > 0 {
+		selectedCourt, err := a.findCourtByID(courtID)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				log.Printf("find court: %v", err)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
+			}
+		} else {
+			data.SelectedCourt = selectedCourt
+			data.CourtActivities = selectedCourt.Activities
+			data.CourtLayouts = selectedCourt.Layouts
+
+			closures, err := a.listCourtClosures(
+				selectedCourt.ID,
+				true,
+			)
+			if err != nil {
+				log.Printf(
+					"list court closures: %v",
+					err,
+				)
+				http.Error(
+					w,
+					"internal server error",
+					http.StatusInternalServerError,
+				)
+				return
+			}
+
+			data.CourtClosures = closures
+
+			mode := strings.ToLower(
+				strings.TrimSpace(
+					r.URL.Query().Get("action"),
+				),
+			)
+
+			closureAction := strings.ToLower(
+				strings.TrimSpace(
+					r.URL.Query().Get("closure_action"),
+				),
+			)
+
+			switch closureAction {
+			case "new", "edit":
+				data.CourtClosureMode = closureAction
+			}
+
+			if data.CourtClosureMode == "edit" {
+				closureID, err := strconv.ParseInt(
+					strings.TrimSpace(
+						r.URL.Query().Get("closure_id"),
+					),
+					10,
+					64,
+				)
+
+				if err == nil && closureID > 0 {
+					closure, err :=
+						a.findCourtClosureByID(
+							closureID,
+						)
+
+					if err == nil &&
+						closure.CourtID ==
+							selectedCourt.ID {
+						data.SelectedCourtClosure =
+							closure
+					}
+				}
+			}
+
+			switch mode {
+			case "new", "edit":
+				data.CourtLayoutMode = mode
+			}
+
+			if data.CourtLayoutMode == "edit" {
+				layoutID, err := strconv.ParseInt(
+					strings.TrimSpace(
+						r.URL.Query().Get("layout_id"),
+					),
+					10,
+					64,
+				)
+
+				if err == nil && layoutID > 0 {
+					layout, err := a.findCourtLayoutByID(
+						layoutID,
+					)
+					if err == nil &&
+						layout.CourtID == selectedCourt.ID {
+						data.SelectedCourtLayout = layout
+					}
+				}
+			}
+		}
+	}
+
+	a.render(
+		w,
+		"court-management",
+		data,
+		http.StatusOK,
+	)
+}
+
+func (a *App) createCourtLayoutHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layout, err := courtLayoutFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				url.QueryEscape(r.FormValue("court_id"))+
+				"&action=new#layout-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	layoutID, err := a.createCourtLayout(layout)
+	if err != nil {
+		log.Printf("create court layout: %v", err)
+		a.setFlash(
+			w,
+			"Unable to create the court layout: "+
+				err.Error(),
+		)
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				strconv.FormatInt(layout.CourtID, 10)+
+				"&action=new#layout-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "Court layout created successfully.")
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			strconv.FormatInt(layout.CourtID, 10)+
+			"&action=edit&layout_id="+
+			strconv.FormatInt(layoutID, 10)+
+			"#layout-form",
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) updateCourtLayoutHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layoutID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("layout_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || layoutID <= 0 {
+		http.Error(
+			w,
+			"invalid court layout",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layout, err := courtLayoutFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				url.QueryEscape(r.FormValue("court_id"))+
+				"&action=edit&layout_id="+
+				strconv.FormatInt(layoutID, 10)+
+				"#layout-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	layout.ID = layoutID
+
+	if err := a.updateCourtLayout(layout); err != nil {
+		log.Printf("update court layout: %v", err)
+		a.setFlash(
+			w,
+			"Unable to update the court layout: "+
+				err.Error(),
+		)
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				strconv.FormatInt(layout.CourtID, 10)+
+				"&action=edit&layout_id="+
+				strconv.FormatInt(layout.ID, 10)+
+				"#layout-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "Court layout updated successfully.")
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			strconv.FormatInt(layout.CourtID, 10),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) toggleCourtLayoutHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layoutID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("layout_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || layoutID <= 0 {
+		http.Error(
+			w,
+			"invalid court layout",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err := a.toggleCourtLayout(layoutID); err != nil {
+		log.Printf("toggle court layout: %v", err)
+		a.setFlash(
+			w,
+			"Unable to update the court layout.",
+		)
+	} else {
+		a.setFlash(
+			w,
+			"Court layout status updated.",
+		)
+	}
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			url.QueryEscape(r.FormValue("court_id")),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) deleteCourtLayoutHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	layoutID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("layout_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || layoutID <= 0 {
+		http.Error(
+			w,
+			"invalid court layout",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err := a.deleteCourtLayout(layoutID); err != nil {
+		log.Printf("delete court layout: %v", err)
+		a.setFlash(
+			w,
+			"Unable to delete the court layout: "+
+				err.Error(),
+		)
+	} else {
+		a.setFlash(
+			w,
+			"Court layout deleted successfully.",
+		)
+	}
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			url.QueryEscape(r.FormValue("court_id")),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) createCourtClosureHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closure, err :=
+		courtClosureFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				url.QueryEscape(
+					r.FormValue("court_id"),
+				)+
+				"&closure_action=new"+
+				"#closure-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	closureID, err :=
+		a.createCourtClosure(closure)
+	if err != nil {
+		log.Printf(
+			"create court closure: %v",
+			err,
+		)
+
+		a.setFlash(
+			w,
+			"Unable to create the closure: "+
+				err.Error(),
+		)
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				strconv.FormatInt(
+					closure.CourtID,
+					10,
+				)+
+				"&closure_action=new"+
+				"#closure-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(
+		w,
+		"Court closure created successfully.",
+	)
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			strconv.FormatInt(
+				closure.CourtID,
+				10,
+			)+
+			"&closure_action=edit"+
+			"&closure_id="+
+			strconv.FormatInt(
+				closureID,
+				10,
+			)+
+			"#closure-form",
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) updateCourtClosureHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closureID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("closure_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || closureID <= 0 {
+		http.Error(
+			w,
+			"invalid court closure",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closure, err :=
+		courtClosureFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				url.QueryEscape(
+					r.FormValue("court_id"),
+				)+
+				"&closure_action=edit"+
+				"&closure_id="+
+				strconv.FormatInt(
+					closureID,
+					10,
+				)+
+				"#closure-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	closure.ID = closureID
+
+	if err := a.updateCourtClosure(
+		closure,
+	); err != nil {
+		log.Printf(
+			"update court closure: %v",
+			err,
+		)
+
+		a.setFlash(
+			w,
+			"Unable to update the closure: "+
+				err.Error(),
+		)
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/courts?court_id="+
+				strconv.FormatInt(
+					closure.CourtID,
+					10,
+				)+
+				"&closure_action=edit"+
+				"&closure_id="+
+				strconv.FormatInt(
+					closure.ID,
+					10,
+				)+
+				"#closure-form",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(
+		w,
+		"Court closure updated successfully.",
+	)
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			strconv.FormatInt(
+				closure.CourtID,
+				10,
+			),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) toggleCourtClosureHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closureID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("closure_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || closureID <= 0 {
+		http.Error(
+			w,
+			"invalid court closure",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err := a.toggleCourtClosure(
+		closureID,
+	); err != nil {
+		log.Printf(
+			"toggle court closure: %v",
+			err,
+		)
+
+		a.setFlash(
+			w,
+			"Unable to update the closure.",
+		)
+	} else {
+		a.setFlash(
+			w,
+			"Court closure status updated.",
+		)
+	}
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			url.QueryEscape(
+				r.FormValue("court_id"),
+			),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) deleteCourtClosureHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid form submission",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	closureID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("closure_id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || closureID <= 0 {
+		http.Error(
+			w,
+			"invalid court closure",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err := a.deleteCourtClosure(
+		closureID,
+	); err != nil {
+		log.Printf(
+			"delete court closure: %v",
+			err,
+		)
+
+		a.setFlash(
+			w,
+			"Unable to delete the closure: "+
+				err.Error(),
+		)
+	} else {
+		a.setFlash(
+			w,
+			"Court closure deleted successfully.",
+		)
+	}
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/courts?court_id="+
+			url.QueryEscape(
+				r.FormValue("court_id"),
+			),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) bookingManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	data, err := a.buildBookingTemplateData(w, r, user)
+	if err != nil {
+		log.Printf("build booking data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "view", "edit":
+		data.ScheduleMode = mode
+	}
+	if data.ScheduleMode == "new" {
+		data.DraftSchedule = prefillAdminBookingDraft(r, data.CalendarDate)
+	}
+	if data.ScheduleMode == "view" || data.ScheduleMode == "edit" {
+		scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && scheduleID > 0 {
+			selectedSchedule, err := a.findSpaceScheduleByID(scheduleID)
+			if err == nil {
+				if data.ScheduleMode == "edit" {
+					applyAdminBookingQueryDraft(r, selectedSchedule)
+				}
+				data.SelectedSchedule = selectedSchedule
+			}
+		}
+	}
+	a.render(w, "booking-management", data, http.StatusOK)
+}
+
+func (a *App) adminBookingOptionsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slotDate := strings.TrimSpace(r.URL.Query().Get("slot_date"))
+	slotHour := strings.TrimSpace(r.URL.Query().Get("slot_hour"))
+	entryType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entry_type")))
+	if entryType == "" {
+		entryType = "booking"
+	}
+
+	candidate := SpaceSchedule{
+		EntryType: entryType,
+		SlotDate:  slotDate,
+		SlotHour:  slotHour,
+	}
+
+	scheduleID, _ := strconv.ParseInt(
+		strings.TrimSpace(r.URL.Query().Get("schedule_id")),
+		10,
+		64,
+	)
+
+	if _, err := time.Parse("2006-01-02", slotDate); err != nil {
+		http.Error(w, "invalid slot date", http.StatusBadRequest)
+		return
+	}
+	if _, err := time.Parse("15:04", slotHour); err != nil {
+		http.Error(w, "invalid slot hour", http.StatusBadRequest)
+		return
+	}
+	if entryType != "booking" && entryType != "training" {
+		http.Error(w, "invalid entry type", http.StatusBadRequest)
+		return
+	}
+
+	options, blockedReason, err := a.adminBookingOptionsForSchedule(candidate, scheduleID)
+	if err != nil {
+		log.Printf("build admin booking options: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"options":        options,
+		"blocked_reason": blockedReason,
+	}); err != nil {
+		log.Printf("encode admin booking options: %v", err)
+	}
+}
+
+func (a *App) bookingRequestsHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	data, err := a.buildBookingTemplateData(w, r, user)
+	if err != nil {
+		log.Printf("build booking data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.Title = "Booking Requests"
+	data.Description = "Review unresolved booking requests."
+	data.BookingCommunications, err = a.listBookingCommunicationsForScheduleIDs(scheduleIDs(data.BookingRequests))
+	if err != nil {
+		log.Printf("list booking communications: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("action")), "reschedule") {
+		if requestID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64); err == nil && requestID > 0 {
+			if selectedRequest, err := a.findSpaceScheduleByID(requestID); err == nil &&
+				unresolvedBookingRequestStatus(selectedRequest.Status) &&
+				selectedRequest.EntryType == "booking" &&
+				(selectedRequest.RequesterName != "" || selectedRequest.RequesterEmail != "" || selectedRequest.RequestedByUser > 0) {
+				draft := *selectedRequest
+				applyAdminBookingQueryDraft(r, &draft)
+				draft.ReviewNote = strings.TrimSpace(r.URL.Query().Get("review_note"))
+				data.SelectedSchedule = selectedRequest
+				data.DraftSchedule = &draft
+
+				options, blockedReason, optionErr := a.adminBookingOptionsForSchedule(draft, selectedRequest.ID)
+				if optionErr != nil {
+					log.Printf("build booking request reschedule options: %v", optionErr)
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+
+				data.AdminBookingOptions = options
+				data.AdminBookingBlockedReason = blockedReason
+			}
+		}
+	}
+
+	a.render(w, "booking-requests", data, http.StatusOK)
+}
+
+func (a *App) resendBookingCommunicationHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	if currentUser == nil || (!containsPermission(currentUser.Permissions, "space_bookings.manage") && !containsPermission(currentUser.Permissions, "booking_requests.manage")) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		http.Error(w, "schedule not found", http.StatusNotFound)
+		return
+	}
+
+	communications, err := a.listBookingCommunicationsForScheduleIDs([]int64{scheduleID})
+	if err != nil {
+		log.Printf("list booking communications for resend: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	relatedEventType := latestResendableEventType(schedule, communications)
+	if relatedEventType == "" {
+		a.setFlash(w, "No customer communication template is available for this booking state.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+		return
+	}
+
+	eventKey := fmt.Sprintf("schedule:%d:%s:%s:%d", scheduleID, bookingCommEventResent, relatedEventType, time.Now().UTC().UnixNano())
+	results, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventResent, relatedEventType, eventKey, currentUser.ID)
+	if commErr != nil {
+		log.Printf("resend booking communication: %v", commErr)
+		a.setFlash(w, "The communication resend could not be prepared automatically.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, communicationFlashMessage("Customer communication resent.", results))
+	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) rotateBookingAccessHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		http.Error(w, "schedule not found", http.StatusNotFound)
+		return
+	}
+	rawToken, err := a.rotateBookingAccessToken(scheduleID, "status")
+	if err != nil {
+		log.Printf("rotate booking access token: %v", err)
+		a.setFlash(w, "Unable to rotate the customer status link.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Customer status link rotated. One-time URL: "+a.bookingTrackingURL(rawToken))
+	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) revokeBookingAccessHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	schedule, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		http.Error(w, "schedule not found", http.StatusNotFound)
+		return
+	}
+	if err := a.revokeBookingAccessToken(scheduleID, "status"); err != nil {
+		log.Printf("revoke booking access token: %v", err)
+		a.setFlash(w, "Unable to revoke the customer status link.")
+	} else {
+		a.setFlash(w, "Customer status link revoked.")
+	}
+	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, schedule.Status, schedule.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) cancelBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	reason := strings.TrimSpace(r.FormValue("cancellation_reason"))
+	financeNote := strings.TrimSpace(r.FormValue("cancellation_finance_note"))
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	updated, changeID, err := a.transitionManagedBookingStatus(scheduleID, bookingStatusCancelled, reason, customerMessage, reason, financeNote, "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be cancelled: "+err.Error())
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
+		return
+	}
+	requests, _ := a.listBookingCancellationRequestsForScheduleIDs([]int64{scheduleID})
+	if pending := pendingCancellationRequestFor(requests, scheduleID); pending != nil {
+		_, _ = a.db.Exec(`
+			UPDATE booking_cancellation_requests
+			SET status = 'approved', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
+			WHERE id = ? AND status = 'pending'
+		`, reason, time.Now().UTC(), nullIfZero(currentUserID(r)), pending.ID)
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventCancelledByAdmin, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventCancelledByAdmin, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send admin cancellation communication: %v", commErr)
+	}
+	a.setFlash(w, "Booking cancelled.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) completeBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	updated, changeID, err := a.transitionManagedBookingStatus(scheduleID, bookingStatusCompleted, "", customerMessage, "", "", "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be marked completed: "+err.Error())
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
+		return
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventCompleted, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventCompleted, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send booking completed communication: %v", commErr)
+	}
+	a.setFlash(w, "Booking marked completed.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) noShowBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	updated, changeID, err := a.transitionManagedBookingStatus(scheduleID, bookingStatusNoShow, "", customerMessage, "", "", "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be marked no-show: "+err.Error())
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
+		return
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventNoShow, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventNoShow, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send booking no-show communication: %v", commErr)
+		a.setFlash(w, "Booking marked no-show, but the customer communication could not be prepared automatically.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Booking marked no-show.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) holdBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	updated, changeID, err := a.transitionBookingRequestStatus(scheduleID, bookingStatusHeld, reviewNote, customerMessage, "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be placed on hold: "+err.Error())
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	communications, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventHeld, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventHeld, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send booking hold communication: %v", commErr)
+		a.setFlash(w, "Booking request placed on hold, but the customer communication could not be prepared automatically.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, communicationFlashMessage("Booking request placed on hold.", communications))
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) approveBookingCancellationRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	requestID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("request_id")), 10, 64)
+	if err != nil || requestID <= 0 {
+		http.Error(w, "invalid request id", http.StatusBadRequest)
+		return
+	}
+	row := a.db.QueryRow(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
+	var scheduleID int64
+	var reason string
+	var status string
+	if err := row.Scan(&scheduleID, &reason, &status); err != nil {
+		http.Error(w, "request not found", http.StatusNotFound)
+		return
+	}
+	if status != bookingStatusPending {
+		http.Error(w, "request is no longer pending", http.StatusBadRequest)
+		return
+	}
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	financeNote := strings.TrimSpace(r.FormValue("cancellation_finance_note"))
+	updated, changeID, err := a.transitionManagedBookingStatus(scheduleID, bookingStatusCancelled, reason, customerMessage, reason, financeNote, "customer_request_approved", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Cancellation request could not be approved: "+err.Error())
+		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
+		return
+	}
+	if _, err := a.db.Exec(`
+		UPDATE booking_cancellation_requests
+		SET status = 'approved', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
+		WHERE id = ? AND status = 'pending'
+	`, strings.TrimSpace(r.FormValue("review_note")), time.Now().UTC(), nullIfZero(currentUserID(r)), requestID); err != nil {
+		log.Printf("approve cancellation request row: %v", err)
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventCancellationApproved, "", fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventCancellationApproved, changeID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send cancellation approved communication: %v", commErr)
+	}
+	a.setFlash(w, "Cancellation request approved.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) rejectBookingCancellationRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	requestID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("request_id")), 10, 64)
+	if err != nil || requestID <= 0 {
+		http.Error(w, "invalid request id", http.StatusBadRequest)
+		return
+	}
+	row := a.db.QueryRow(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
+	var scheduleID int64
+	var reason string
+	var status string
+	if err := row.Scan(&scheduleID, &reason, &status); err != nil {
+		http.Error(w, "request not found", http.StatusNotFound)
+		return
+	}
+	if status != bookingStatusPending {
+		http.Error(w, "request is no longer pending", http.StatusBadRequest)
+		return
+	}
+	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	if reviewNote == "" {
+		http.Error(w, "review note is required", http.StatusBadRequest)
+		return
+	}
+	if _, err := a.db.Exec(`
+		UPDATE booking_cancellation_requests
+		SET status = 'rejected', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
+		WHERE id = ? AND status = 'pending'
+	`, reviewNote, time.Now().UTC(), nullIfZero(currentUserID(r)), requestID); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	schedule, _ := a.findSpaceScheduleByID(scheduleID)
+	if schedule != nil {
+		financial := bookingFinancialForSchedule(mustListBookingFinancialsTxMust(a.db, scheduleID), scheduleID)
+		if financial != nil {
+			schedule.QuotedPrice = financial.QuotedAmount
+		}
+		if _, err := a.recordBookingLifecycleChange(schedule, "cancellation_request_rejected", schedule.Status, schedule.Status, reviewNote, customerMessage, "", "admin", currentUserID(r)); err != nil {
+			log.Printf("record cancellation rejection history: %v", err)
+		}
+	}
+	_, commErr := a.sendBookingCommunicationEvent(scheduleID, bookingCommEventCancellationRejected, "", fmt.Sprintf("schedule:%d:%s:req:%d", scheduleID, bookingCommEventCancellationRejected, requestID), currentUserID(r))
+	if commErr != nil {
+		log.Printf("send cancellation rejected communication: %v", commErr)
+	}
+	a.setFlash(w, "Cancellation request rejected.")
+	http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
+}
+
+func (a *App) rescheduleBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	changedByUserID := int64(0)
+	if currentUser != nil {
+		changedByUserID = currentUser.ID
+	}
+
+	schedule := scheduleFromRequest(r)
+	schedule.ID = scheduleID
+	schedule.EntryType = "booking"
+	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+
+	if err := validateSpaceScheduleInput(schedule); err != nil {
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, strings.TrimSpace(r.FormValue("customer_message")), err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, strings.TrimSpace(r.FormValue("customer_message")), err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	result, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, customerMessage, "rescheduled", false, changedByUserID)
+	if err != nil {
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, customerMessage, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	flashMessage := "Pending booking request updated with the proposed slot."
+	if result != nil && result.ChangeID > 0 {
+		communications, commErr := a.sendBookingCommunicationEvent(
+			scheduleID,
+			bookingCommEventRescheduledPending,
+			"",
+			fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventRescheduledPending, result.ChangeID),
+			changedByUserID,
+		)
+		if commErr != nil {
+			log.Printf("send pending reschedule communication: %v", commErr)
+			flashMessage = "Pending booking request updated, but the customer communication could not be prepared automatically."
+		} else if !communicationDelivered(communications, bookingCommChannelEmail) {
+			flashMessage = "Pending booking request updated, but email delivery failed or is not configured."
+		}
+	}
+	a.setFlash(w, flashMessage)
+	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+}
+
+func (a *App) rescheduleAndConfirmBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	changedByUserID := int64(0)
+	if currentUser != nil {
+		changedByUserID = currentUser.ID
+	}
+
+	schedule := scheduleFromRequest(r)
+	schedule.ID = scheduleID
+	schedule.EntryType = "booking"
+	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+
+	if err := validateSpaceScheduleInput(schedule); err != nil {
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, strings.TrimSpace(r.FormValue("customer_message")), err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, strings.TrimSpace(r.FormValue("customer_message")), err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	result, err := a.rescheduleBookingRequest(scheduleID, schedule, reviewNote, customerMessage, "rescheduled_confirmed", true, changedByUserID)
+	if err != nil {
+		a.writeBookingRequestRescheduleError(w, r, scheduleID, &schedule, reviewNote, customerMessage, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	eventType := bookingCommEventConfirmed
+	eventKey := fmt.Sprintf("schedule:%d:%s", scheduleID, bookingCommEventConfirmed)
+	if result != nil && result.ChangeID > 0 {
+		eventType = bookingCommEventRescheduledConfirmed
+		eventKey = fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventRescheduledConfirmed, result.ChangeID)
+	}
+	communications, commErr := a.sendBookingCommunicationEvent(
+		scheduleID,
+		eventType,
+		"",
+		eventKey,
+		changedByUserID,
+	)
+	if commErr != nil {
+		log.Printf("send reschedule confirm communication: %v", commErr)
+		a.setFlash(w, "Booking request was rescheduled and confirmed, but the customer communication could not be prepared automatically.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, communicationFlashMessage("Booking request rescheduled and confirmed.", communications))
+	http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+}
+
+func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		log.Printf("list pricing rules: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		log.Printf("get pricing settings: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Booking Pricing"
+	data.Description = "Manage booking pricing."
+	data.Pricings = pricings
+	data.PricingSettings = settings
+	data.SetupWarnings = a.setupWarningsForUser(user)
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "view", "edit":
+		data.PricingMode = mode
+	}
+	if data.PricingMode == "view" || data.PricingMode == "edit" {
+		pricingID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && pricingID > 0 {
+			selectedPricing, err := a.findPricingRuleByID(pricingID)
+			if err == nil {
+				data.SelectedPricing = selectedPricing
+			}
+		}
+	}
+	a.render(w, "pricing-management", data, http.StatusOK)
+}
+
+func (a *App) eventManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	events, err := a.listEvents()
+	if err != nil {
+		log.Printf("list events: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Events"
+	data.Description = "Manage public events."
+	data.Events = events
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "view", "edit":
+		data.EventMode = mode
+	}
+	if data.EventMode == "view" || data.EventMode == "edit" {
+		eventID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && eventID > 0 {
+			selectedEvent, err := a.findEventByID(eventID)
+			if err == nil {
+				data.SelectedEvent = selectedEvent
+			}
+		}
+	}
+	a.render(w, "events-management", data, http.StatusOK)
+}
+
+func (a *App) updatePricingSettingsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	settings := PricingSettings{
+		PeakStartHour: strings.TrimSpace(r.FormValue("peak_start_hour")),
+		PeakEndHour:   strings.TrimSpace(r.FormValue("peak_end_hour")),
+	}
+	if err := validatePricingSettings(settings); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updatePricingSettings(settings); err != nil {
+		log.Printf("update pricing settings: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Pricing settings updated.")
+	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
+func (a *App) updateReferralSettingsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	amount, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("referral_commission_amount")), 64)
+	if err != nil || amount < 0 {
+		http.Error(w, "a valid referral commission amount is required", http.StatusBadRequest)
+		return
+	}
+	if err := a.updateReferralCommissionAmount(amount); err != nil {
+		log.Printf("update referral commission: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Referral commission updated.")
+	http.Redirect(w, r, "/admin/referrals#programme-settings", http.StatusSeeOther)
+}
+
+func (a *App) createReferralPartnerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	partner := ReferralPartner{
+		Name:   strings.TrimSpace(r.FormValue("name")),
+		Code:   strings.ToUpper(strings.TrimSpace(r.FormValue("code"))),
+		Email:  strings.ToLower(strings.TrimSpace(r.FormValue("email"))),
+		Phone:  strings.TrimSpace(r.FormValue("phone")),
+		Active: true,
+	}
+	if err := validateReferralPartner(partner); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createReferralPartner(partner); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			http.Error(w, "that referral code is already in use", http.StatusConflict)
+			return
+		}
+		log.Printf("create referral partner: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Referral partner created.")
+	http.Redirect(w, r, "/admin/referrals#partners", http.StatusSeeOther)
+}
+
+func (a *App) updateReferralPartnerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	partnerID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("partner_id")), 10, 64)
+	if err != nil || partnerID <= 0 {
+		http.Error(w, "invalid referral partner", http.StatusBadRequest)
+		return
+	}
+	partner := ReferralPartner{
+		ID:    partnerID,
+		Name:  strings.TrimSpace(r.FormValue("name")),
+		Code:  strings.ToUpper(strings.TrimSpace(r.FormValue("code"))),
+		Email: strings.ToLower(strings.TrimSpace(r.FormValue("email"))),
+		Phone: strings.TrimSpace(r.FormValue("phone")),
+	}
+	if err := validateReferralPartner(partner); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateReferralPartner(partner); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "that referral code is already in use", http.StatusConflict)
+			return
+		}
+		log.Printf("update referral partner: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Referral partner updated.")
+	http.Redirect(w, r, "/admin/referrals#partners", http.StatusSeeOther)
+}
+
+func (a *App) toggleReferralPartnerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	partnerID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("partner_id")), 10, 64)
+	if err != nil || partnerID <= 0 {
+		http.Error(w, "invalid referral partner", http.StatusBadRequest)
+		return
+	}
+	if err := a.toggleReferralPartner(partnerID); err != nil {
+		log.Printf("toggle referral partner: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Referral partner status updated.")
+	http.Redirect(w, r, "/admin/referrals#partners", http.StatusSeeOther)
+}
+
+func (a *App) payReferralCommissionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	referralID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("referral_id")), 10, 64)
+	if err != nil || referralID <= 0 {
+		http.Error(w, "invalid referral commission", http.StatusBadRequest)
+		return
+	}
+	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
+	if paymentMethod != "cash" && paymentMethod != "bank_transfer" {
+		http.Error(w, "invalid payment method", http.StatusBadRequest)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	recordedBy := int64(0)
+	if currentUser != nil {
+		recordedBy = currentUser.ID
+	}
+	transactionID, err := a.payReferralCommission(referralID, paymentMethod, recordedBy)
+	if err != nil {
+		a.setFlash(w, "Commission could not be paid: "+err.Error())
+		http.Redirect(w, r, "/admin/referrals", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) confirmBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(r.FormValue("schedule_id"), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	updated, changeID, err := a.transitionBookingRequestStatus(scheduleID, bookingStatusConfirmed, "", customerMessage, "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be confirmed and remains pending: "+err.Error())
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	communications, commErr := a.sendBookingCommunicationEvent(
+		scheduleID,
+		bookingCommEventConfirmed,
+		"",
+		fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventConfirmed, changeID),
+		currentUserID(r),
+	)
+	if commErr != nil {
+		log.Printf("send booking confirmation communication: %v", commErr)
+		a.setFlash(w, "Booking request confirmed, but the customer communication could not be prepared automatically.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, communicationFlashMessage("Booking request confirmed.", communications))
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) rejectBookingRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(r.FormValue("schedule_id"), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	reviewNote := strings.TrimSpace(r.FormValue("review_note"))
+	customerMessage := strings.TrimSpace(r.FormValue("customer_message"))
+	if reviewNote == "" {
+		a.setFlash(w, "Add a clear rejection reason before closing the request.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	if customerMessage == "" {
+		a.setFlash(w, "Add the customer-facing message that should appear on the booking status page.")
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	updated, changeID, err := a.transitionBookingRequestStatus(scheduleID, bookingStatusRejected, reviewNote, customerMessage, "admin", currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Booking could not be rejected: "+err.Error())
+		http.Redirect(w, r, "/admin/booking-requests", http.StatusSeeOther)
+		return
+	}
+	communications, commErr := a.sendBookingCommunicationEvent(
+		scheduleID,
+		bookingCommEventRejected,
+		"",
+		fmt.Sprintf("schedule:%d:%s:change:%d", scheduleID, bookingCommEventRejected, changeID),
+		currentUserID(r),
+	)
+	if commErr != nil {
+		log.Printf("send booking rejection communication: %v", commErr)
+		a.setFlash(w, "Booking request rejected, but the rejection email could not be prepared automatically.")
+		http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+		return
+	}
+	if communicationDelivered(communications, bookingCommChannelEmail) {
+		a.setFlash(w, "Booking request rejected and the customer was notified by email.")
+	} else {
+		a.setFlash(w, "Booking request rejected, but the rejection email failed or is not configured.")
+	}
+	http.Redirect(w, r, adminBookingCommunicationRedirect(updated.ID, updated.Status, updated.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) createPricingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	pricing, err := pricingRuleFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validatePricingRule(pricing); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createPricingRule(pricing); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "pricing already exists for that option", http.StatusConflict)
+			return
+		}
+		log.Printf("create pricing rule: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Pricing created.")
+	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
+func (a *App) updatePricingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	pricingID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("pricing_id")), 10, 64)
+	if err != nil || pricingID <= 0 {
+		http.Error(w, "invalid pricing id", http.StatusBadRequest)
+		return
+	}
+	pricing, err := pricingRuleFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	pricing.ID = pricingID
+	if err := validatePricingRule(pricing); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updatePricingRule(pricing); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "pricing already exists for that option", http.StatusConflict)
+			return
+		}
+		log.Printf("update pricing rule: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Pricing updated.")
+	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
+func (a *App) deletePricingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	pricingID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("pricing_id")), 10, 64)
+	if err != nil || pricingID <= 0 {
+		http.Error(w, "invalid pricing id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deletePricingRule(pricingID); err != nil {
+		log.Printf("delete pricing rule: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Pricing deleted.")
+	http.Redirect(w, r, "/admin/pricing", http.StatusSeeOther)
+}
+
+func (a *App) createEventHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxEventFormSize)
+	if err := r.ParseMultipartForm(maxEventImageSize); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+
+	event, err := a.eventFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateEvent(event); err != nil {
+		a.removeUploadedEventImage(event.ImagePath)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createEvent(event); err != nil {
+		a.removeUploadedEventImage(event.ImagePath)
+		log.Printf("create event: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Event created.")
+	http.Redirect(w, r, "/admin/events", http.StatusSeeOther)
+}
+
+func (a *App) updateEventHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxEventFormSize)
+	if err := r.ParseMultipartForm(maxEventImageSize); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+
+	eventID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("event_id")), 10, 64)
+	if err != nil || eventID <= 0 {
+		http.Error(w, "invalid event id", http.StatusBadRequest)
+		return
+	}
+
+	existingEvent, err := a.findEventByID(eventID)
+	if err != nil {
+		http.Error(w, "event not found", http.StatusNotFound)
+		return
+	}
+
+	event, err := a.eventFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	event.ID = eventID
+	uploadedReplacement := event.ImagePath
+	if event.ImagePath == "" {
+		event.ImagePath = existingEvent.ImagePath
+	}
+	deleteOldImage := false
+	if r.FormValue("remove_image") == "true" && uploadedReplacement == "" {
+		event.ImagePath = ""
+		deleteOldImage = true
+	}
+	if err := validateEvent(event); err != nil {
+		if uploadedReplacement != "" {
+			a.removeUploadedEventImage(uploadedReplacement)
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateEvent(event); err != nil {
+		if uploadedReplacement != "" {
+			a.removeUploadedEventImage(uploadedReplacement)
+		}
+		log.Printf("update event: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if uploadedReplacement != "" && existingEvent.ImagePath != "" && existingEvent.ImagePath != uploadedReplacement {
+		a.removeUploadedEventImage(existingEvent.ImagePath)
+	}
+	if deleteOldImage && existingEvent.ImagePath != "" && uploadedReplacement == "" {
+		a.removeUploadedEventImage(existingEvent.ImagePath)
+	}
+
+	a.setFlash(w, "Event updated.")
+	http.Redirect(w, r, "/admin/events", http.StatusSeeOther)
+}
+
+func (a *App) deleteEventHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	eventID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("event_id")), 10, 64)
+	if err != nil || eventID <= 0 {
+		http.Error(w, "invalid event id", http.StatusBadRequest)
+		return
+	}
+	existingEvent, _ := a.findEventByID(eventID)
+	if err := a.deleteEvent(eventID); err != nil {
+		log.Printf("delete event: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if existingEvent != nil {
+		a.removeUploadedEventImage(existingEvent.ImagePath)
+	}
+
+	a.setFlash(w, "Event deleted.")
+	http.Redirect(w, r, "/admin/events", http.StatusSeeOther)
+}
+
+func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, user *User) (TemplateData, error) {
+	isBookingCalendar := r.URL.Path == "/admin/bookings"
+	now := time.Now()
+	a.expireOverdueBookingRequests(now)
+
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		return TemplateData{}, err
+	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	courtActivities, courtLayouts, err :=
+		a.activeBookingConfiguration()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	courtClosures, err :=
+		a.listActiveCourtClosures()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Booking Manager"
+	data.Description = "Manage bookings and training sessions."
+	data.Pricings = pricings
+	data.PricingSettings = settings
+	data.CourtActivities = courtActivities
+	data.CourtLayouts = courtLayouts
+	data.CourtClosures = courtClosures
+	data.Activities = bookingActivities()
+	data.Hours = bookingHours()
+	data.TodayDate = time.Now().Format("2006-01-02")
+	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
+	if data.CalendarDate == "" {
+		data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("slot_date"))
+	}
+	if data.CalendarDate == "" {
+		data.CalendarDate = time.Now().Format("2006-01-02")
+	}
+	selectedDate, err := time.Parse("2006-01-02", data.CalendarDate)
+	if err != nil {
+		selectedDate = time.Now()
+		data.CalendarDate = selectedDate.Format("2006-01-02")
+	}
+	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
+	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
+
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	selectedScheduleID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+
+	if isBookingCalendar {
+		weekStart, weekEnd := bookingCalendarWindow(selectedDate)
+		rangeSchedules, err := a.listActiveSpaceSchedulesBetween(
+			weekStart.Format("2006-01-02"),
+			weekEnd.Format("2006-01-02"),
+		)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		pendingCount, err := a.countPendingSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		heldCount, err := a.countHeldSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		reschedulePendingCount, err := a.countReschedulePendingSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		filteredClosures := courtClosuresBetween(
+			courtClosures,
+			weekStart.Format("2006-01-02"),
+			weekEnd.Format("2006-01-02"),
+		)
+
+		activeSchedules := activeSchedulesOnly(rangeSchedules)
+		data.Schedules = rangeSchedules
+		data.PendingRequestCount = pendingCount
+		data.HeldRequestCount = heldCount
+		data.DaySchedules = schedulesForDate(rangeSchedules, data.CalendarDate)
+		data.BookingRequests = customerBookingRequests(data.DaySchedules)
+		data.BookingReminders = buildBookingReminders(customerBookingRequests(rangeSchedules), now)
+		data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, pendingCount, heldCount, reschedulePendingCount)
+
+		relevantScheduleIDs := scheduleIDs(data.DaySchedules)
+		if selectedScheduleID > 0 {
+			relevantScheduleIDs = appendInt64Unique(relevantScheduleIDs, selectedScheduleID)
+		}
+
+		data.BookingFinancials, err = a.listBookingFinancialsForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingPaymentCollections, err = a.listBookingPaymentCollectionsForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingReferrals, err = a.listBookingReferralsForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingRequestChanges, err = a.listBookingRequestChangesForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingCommunications, err = a.listBookingCommunicationsForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingAccessTokens, err = a.listBookingAccessTokensForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingCancellationRequests, err = a.listBookingCancellationRequestsForScheduleIDs(relevantScheduleIDs)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.WeekDays = buildBookingWeekDays(
+			activeSchedules,
+			selectedDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+			filteredClosures,
+		)
+		data.BookingSlots = buildBookingSlotAvailability(
+			activeSchedules,
+			data.CalendarDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+			filteredClosures,
+		)
+		data.AdminCalendarHours = buildAdminCalendarHours(
+			data.CalendarDate,
+			data.Hours,
+			data.DaySchedules,
+			courtActivities,
+			courtLayouts,
+			filteredClosures,
+			pricings,
+			settings,
+			data.BookingFinancials,
+			data.BookingReferrals,
+			data.BookingRequestChanges,
+		)
+		data.DailyStats = buildAdminCalendarStats(data.AdminCalendarHours)
+	} else {
+		schedules, err := a.listSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		pending, err := a.listPendingSpaceSchedules()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		bookingFinancials, err := a.listBookingFinancials()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		bookingReferrals, err := a.listBookingReferrals()
+		if err != nil {
+			return TemplateData{}, err
+		}
+		bookingRequestChanges, err := a.listBookingRequestChanges()
+		if err != nil {
+			return TemplateData{}, err
+		}
+
+		data.Schedules = schedules
+		data.PendingSchedules = pending
+		data.PendingRequestCount = 0
+		data.HeldRequestCount = 0
+		reschedulePendingCount := 0
+		for _, schedule := range pending {
+			if schedule.Status == bookingStatusPending {
+				data.PendingRequestCount++
+			}
+			if schedule.Status == bookingStatusHeld {
+				data.HeldRequestCount++
+			}
+			if schedule.Status == bookingStatusReschedulePending {
+				reschedulePendingCount++
+			}
+		}
+		data.BookingRequests = customerBookingRequests(schedules)
+		data.BookingRequestStats = buildBookingRequestStats(data.BookingRequests)
+		data.BookingReminders = buildBookingReminders(data.BookingRequests, now)
+		data.BookingAttentionStats = buildBookingAttentionStats(data.BookingReminders, data.PendingRequestCount, data.HeldRequestCount, reschedulePendingCount)
+		data.BookingFinancials = bookingFinancials
+		data.BookingPaymentCollections, err = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingReferrals = bookingReferrals
+		data.BookingRequestChanges = bookingRequestChanges
+		data.BookingCommunications, err = a.listBookingCommunicationsForScheduleIDs(scheduleIDs(data.BookingRequests))
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingAccessTokens, err = a.listBookingAccessTokensForScheduleIDs(scheduleIDs(data.BookingRequests))
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.BookingCancellationRequests, err = a.listBookingCancellationRequestsForScheduleIDs(scheduleIDs(data.BookingRequests))
+		if err != nil {
+			return TemplateData{}, err
+		}
+
+		activeSchedules := activeSchedulesOnly(schedules)
+		data.DaySchedules = schedulesForDate(activeSchedules, data.CalendarDate)
+		data.DailyStats = buildDailyBookingStats(data.DaySchedules, data.Hours)
+		data.WeekDays = buildBookingWeekDays(
+			activeSchedules,
+			selectedDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+			courtClosures,
+		)
+		data.BookingSlots = buildBookingSlotAvailability(
+			activeSchedules,
+			data.CalendarDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+			courtClosures,
+		)
+	}
+
+	activeSchedulesForOptions := activeSchedulesOnly(data.Schedules)
+
+	switch mode {
+	case "new":
+		draft := prefillAdminBookingDraft(r, data.CalendarDate)
+		options, blockedReason, err := buildAdminBookingOptions(
+			activeSchedulesForOptions,
+			draft,
+			0,
+			courtActivities,
+			courtLayouts,
+			courtClosures,
+			pricings,
+			settings,
+		)
+		if err != nil {
+			return TemplateData{}, err
+		}
+		data.DraftSchedule = draft
+		data.AdminBookingOptions = options
+		data.AdminBookingBlockedReason = blockedReason
+	case "edit":
+		scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && scheduleID > 0 {
+			selectedSchedule, err := a.findSpaceScheduleByID(scheduleID)
+			if err == nil {
+				draft := *selectedSchedule
+				applyAdminBookingQueryDraft(r, &draft)
+				options, blockedReason, err := buildAdminBookingOptions(
+					activeSchedulesForOptions,
+					&draft,
+					draft.ID,
+					courtActivities,
+					courtLayouts,
+					courtClosures,
+					pricings,
+					settings,
+				)
+				if err != nil {
+					return TemplateData{}, err
+				}
+				data.SelectedSchedule = &draft
+				data.AdminBookingOptions = options
+				data.AdminBookingBlockedReason = blockedReason
+			}
+		}
+	}
+	return data, nil
+}
+
+func (a *App) buildPublicBookingData(
+	w http.ResponseWriter,
+	r *http.Request,
+	viewer *User,
+) (TemplateData, error) {
+	schedules, err := a.listActiveSpaceSchedules()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	courtActivities, courtLayouts, err :=
+		a.activeBookingConfiguration()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	courtClosures, err :=
+		a.listActiveCourtClosures()
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	data := a.newTemplateData(w, r, nil)
+	data.Viewer = viewer
+	data.Title = "Book a Slot"
+	data.Description =
+		"Check availability and request a booking."
+	data.Schedules = schedules
+	data.Pricings = pricings
+	data.PricingSettings = settings
+	data.CourtActivities = courtActivities
+	data.CourtLayouts = courtLayouts
+	data.Activities = bookingActivities()
+	data.Hours = bookingHours()
+
+	data.CalendarDate = strings.TrimSpace(
+		r.URL.Query().Get("date"),
+	)
+
+	if data.CalendarDate == "" {
+		data.CalendarDate =
+			time.Now().Format("2006-01-02")
+	}
+
+	selectedDate, err := time.Parse(
+		"2006-01-02",
+		data.CalendarDate,
+	)
+	if err != nil {
+		selectedDate = time.Now()
+		data.CalendarDate =
+			selectedDate.Format("2006-01-02")
+	}
+
+	data.TodayDate =
+		time.Now().Format("2006-01-02")
+
+	if data.CalendarDate < data.TodayDate {
+		selectedDate = time.Now()
+		data.CalendarDate = data.TodayDate
+	}
+
+	data.PreviousDate = selectedDate.
+		AddDate(0, 0, -1).
+		Format("2006-01-02")
+
+	data.NextDate = selectedDate.
+		AddDate(0, 0, 1).
+		Format("2006-01-02")
+
+	data.CalendarCanGoBack =
+		data.CalendarDate > data.TodayDate
+
+	data.BookingSlots = filterPricedBookingSlots(
+		buildBookingSlotAvailability(
+			schedules,
+			data.CalendarDate,
+			data.Hours,
+			courtActivities,
+			courtLayouts,
+			courtClosures,
+		),
+		data.CalendarDate,
+		pricings,
+		settings,
+	)
+
+	data.WeekDays = buildPricedBookingWeekDays(
+		schedules,
+		selectedDate,
+		data.Hours,
+		pricings,
+		settings,
+		courtActivities,
+		courtLayouts,
+		courtClosures,
+	)
+
+	data.DraftSchedule =
+		prefillPublicBookingDraft(
+			r,
+			viewer,
+			data.CalendarDate,
+		)
+
+	return data, nil
+}
+
+func (a *App) writePublicBookingError(w http.ResponseWriter, r *http.Request, draft *SpaceSchedule, message string, status int) {
+	viewer := a.optionalUser(r)
+	data, err := a.buildPublicBookingData(w, r, viewer)
+	if err != nil {
+		log.Printf("build public booking data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.Error = message
+	data.DraftSchedule = draft
+	a.render(w, "book", data, status)
+}
+
+func (a *App) writeBookingError(w http.ResponseWriter, r *http.Request, mode string, selected *SpaceSchedule, message string, status int) {
+	user, _ := a.currentUser(r.Context())
+	data, err := a.buildBookingTemplateData(w, r, user)
+	if err != nil {
+		log.Printf("build booking data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.Error = message
+	data.ScheduleMode = mode
+	if mode == "edit" {
+		data.SelectedSchedule = selected
+	} else if mode == "new" {
+		data.DraftSchedule = selected
+	}
+	if selected != nil {
+		closures, closureErr := a.listActiveCourtClosures()
+		if closureErr == nil {
+			options, blockedReason, optionErr := buildAdminBookingOptions(
+				activeSchedulesOnly(data.Schedules),
+				selected,
+				selected.ID,
+				data.CourtActivities,
+				data.CourtLayouts,
+				closures,
+				data.Pricings,
+				data.PricingSettings,
+			)
+			if optionErr == nil {
+				data.AdminBookingOptions = options
+				data.AdminBookingBlockedReason = blockedReason
+			}
+		} else {
+			log.Printf("load booking error closures: %v", closureErr)
+		}
+	}
+	a.render(w, "booking-management", data, status)
+}
+
+func (a *App) writeBookingRequestRescheduleError(
+	w http.ResponseWriter,
+	r *http.Request,
+	scheduleID int64,
+	proposed *SpaceSchedule,
+	reviewNote string,
+	customerMessage string,
+	message string,
+	status int,
+) {
+	user, _ := a.currentUser(r.Context())
+	data, err := a.buildBookingTemplateData(w, r, user)
+	if err != nil {
+		log.Printf("build booking request data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data.Title = "Booking Requests"
+	data.Description = "Review pending booking requests."
+	data.Error = message
+
+	selectedRequest, findErr := a.findSpaceScheduleByID(scheduleID)
+	if findErr == nil {
+		draft := *selectedRequest
+		if proposed != nil {
+			draft.SlotDate = proposed.SlotDate
+			draft.SlotHour = proposed.SlotHour
+			draft.Activity = proposed.Activity
+			draft.Quantity = proposed.Quantity
+		}
+		draft.ReviewNote = reviewNote
+		draft.CustomerMessage = customerMessage
+		data.SelectedSchedule = selectedRequest
+		data.DraftSchedule = &draft
+
+		options, blockedReason, optionErr := a.adminBookingOptionsForSchedule(draft, selectedRequest.ID)
+		if optionErr == nil {
+			data.AdminBookingOptions = options
+			data.AdminBookingBlockedReason = blockedReason
+		}
+	}
+
+	a.render(w, "booking-requests", data, status)
+}
+
+func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	name := strings.TrimSpace(r.FormValue("name"))
+	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+	password := r.FormValue("password")
+	roles, err := a.normalizeExistingRoles(r.Form["roles"])
+	verified := r.FormValue("verified") == "true"
+	if err != nil {
+		http.Error(w, "one or more selected roles are invalid", http.StatusBadRequest)
+		return
+	}
+
+	if name == "" || !emailPattern.MatchString(email) || !passwordPattern.MatchString(password) {
+		http.Error(w, "invalid user fields", http.StatusBadRequest)
+		return
+	}
+	if len(roles) == 0 {
+		http.Error(w, "at least one role must be selected", http.StatusBadRequest)
+		return
+	}
+	current, _ := a.currentUser(r.Context())
+	if containsPrivilegedRole(roles) && !containsRole(current.Roles, "superadmin") {
+		http.Error(w, "only a superadmin can assign administrator roles", http.StatusForbidden)
+		return
+	}
+
+	if _, err := a.createManagedUser(name, email, password, roles, verified); err != nil {
+		if errors.Is(err, ErrEmailTaken) {
+			http.Error(w, "email already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("create managed user: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "User created.")
+	http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
+}
+
+func (a *App) createCoachHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	coach, password, err := coachFromRequest(r, true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, err := a.createCoach(coach, password); err != nil {
+		if errors.Is(err, ErrEmailTaken) {
+			http.Error(w, "email already exists", http.StatusConflict)
+			return
+		}
+		if errors.Is(err, ErrCoachRequiresMainCoach) || errors.Is(err, ErrCoachParentMustBeMain) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("create coach: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Coach created.")
+	http.Redirect(w, r, "/admin/coaches", http.StatusSeeOther)
+}
+
+func (a *App) updateCoachHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	coach, _, err := coachFromRequest(r, false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if coach.ID <= 0 {
+		http.Error(w, "invalid coach id", http.StatusBadRequest)
+		return
+	}
+	if err := a.updateCoach(coach); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "coach not found", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, ErrEmailTaken) {
+			http.Error(w, "email already exists", http.StatusConflict)
+			return
+		}
+		if errors.Is(err, ErrCoachRequiresMainCoach) || errors.Is(err, ErrCoachParentMustBeMain) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, ErrCoachHasSubCoaches) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		log.Printf("update coach: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Coach updated.")
+	http.Redirect(w, r, "/admin/coaches", http.StatusSeeOther)
+}
+
+func (a *App) deleteCoachHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	coachID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("coach_id")), 10, 64)
+	if err != nil || coachID <= 0 {
+		http.Error(w, "invalid coach id", http.StatusBadRequest)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if currentUser != nil && currentUser.ID == coachID {
+		http.Error(w, "you cannot delete your own account", http.StatusForbidden)
+		return
+	}
+	if err := a.deleteCoach(coachID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "coach not found", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, ErrCoachHasOtherRoles) || errors.Is(err, ErrCoachHasSubCoaches) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		log.Printf("delete coach: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Coach deleted.")
+	http.Redirect(w, r, "/admin/coaches", http.StatusSeeOther)
+}
+
+func (a *App) createRoleHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	name := normalizeRoleName(r.FormValue("name"))
+	permissions := normalizePermissions(r.Form["permissions"])
+	if !roleNamePattern.MatchString(name) || isSystemRole(name) {
+		http.Error(w, "role name must be 3-32 lowercase letters, numbers, hyphens, or underscores and cannot be a system role", http.StatusBadRequest)
+		return
+	}
+	if len(permissions) == 0 {
+		http.Error(w, "at least one permission must be selected", http.StatusBadRequest)
+		return
+	}
+	current, _ := a.currentUser(r.Context())
+	if containsSensitivePermission(permissions) && !containsRole(current.Roles, "superadmin") {
+		http.Error(w, "only a superadmin can grant identity administration permissions", http.StatusForbidden)
+		return
+	}
+	if err := a.createRole(name, permissions); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "a role with this name already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("create role: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Role created.")
+	http.Redirect(w, r, "/admin/roles", http.StatusSeeOther)
+}
+
+func (a *App) updateRoleHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	roleID, err := strconv.ParseInt(r.FormValue("role_id"), 10, 64)
+	if err != nil || roleID <= 0 {
+		http.Error(w, "invalid role id", http.StatusBadRequest)
+		return
+	}
+	name := normalizeRoleName(r.FormValue("name"))
+	permissions := normalizePermissions(r.Form["permissions"])
+	if !roleNamePattern.MatchString(name) || isSystemRole(name) {
+		http.Error(w, "role name must be 3-32 lowercase letters, numbers, hyphens, or underscores and cannot be a system role", http.StatusBadRequest)
+		return
+	}
+	if len(permissions) == 0 {
+		http.Error(w, "at least one permission must be selected", http.StatusBadRequest)
+		return
+	}
+	role, err := a.findRoleByID(roleID)
+	if err != nil {
+		http.Error(w, "role not found", http.StatusNotFound)
+		return
+	}
+	if role.System {
+		http.Error(w, "system roles are protected and cannot be changed", http.StatusForbidden)
+		return
+	}
+	current, _ := a.currentUser(r.Context())
+	if containsSensitivePermission(permissions) && !containsRole(current.Roles, "superadmin") {
+		http.Error(w, "only a superadmin can grant identity administration permissions", http.StatusForbidden)
+		return
+	}
+	if !containsRole(current.Roles, "superadmin") {
+		assigned, err := a.userHasRole(current.ID, role.Name)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if assigned {
+			http.Error(w, "you cannot change a role assigned to your own account", http.StatusForbidden)
+			return
+		}
+	}
+
+	if err := a.updateRole(roleID, name, permissions); err != nil {
+		log.Printf("update role: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Role updated.")
+	http.Redirect(w, r, "/admin/roles", http.StatusSeeOther)
+}
+
+func (a *App) deleteRoleHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	roleID, err := strconv.ParseInt(r.FormValue("role_id"), 10, 64)
+	if err != nil || roleID <= 0 {
+		http.Error(w, "invalid role id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteRole(roleID); err != nil {
+		if errors.Is(err, ErrRoleAssigned) || errors.Is(err, ErrSystemRoleProtected) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		log.Printf("delete role: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Role deleted.")
+	http.Redirect(w, r, "/admin/roles", http.StatusSeeOther)
+}
+
+func (a *App) updateRolesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	targetID, err := strconv.ParseInt(r.FormValue("user_id"), 10, 64)
+	if err != nil || targetID <= 0 {
+		http.Error(w, "invalid user id", http.StatusBadRequest)
+		return
+	}
+
+	roles, err := a.normalizeExistingRoles(r.Form["roles"])
+	if err != nil {
+		http.Error(w, "one or more selected roles are invalid", http.StatusBadRequest)
+		return
+	}
+	if len(roles) == 0 {
+		http.Error(w, "at least one role must be selected", http.StatusBadRequest)
+		return
+	}
+
+	current, _ := a.currentUser(r.Context())
+	if current.ID == targetID {
+		http.Error(w, "you cannot change roles on your own account", http.StatusForbidden)
+		return
+	}
+	target, err := a.findUserByID(targetID)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+	currentIsSuperadmin := containsRole(current.Roles, "superadmin")
+	if (containsPrivilegedRole(target.Roles) || containsPrivilegedRole(roles)) && !currentIsSuperadmin {
+		http.Error(w, "only a superadmin can manage administrator accounts", http.StatusForbidden)
+		return
+	}
+
+	if err := a.replaceUserRoles(targetID, roles); err != nil {
+		log.Printf("replace roles: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	redirectTo := r.FormValue("return_to")
+	if redirectTo != "/admin/users" && redirectTo != "/admin/roles" {
+		redirectTo = "/admin/users"
+	}
+	a.setFlash(w, "Roles updated.")
+	http.Redirect(w, r, redirectTo, http.StatusSeeOther)
+}
+
+func (a *App) updateCourtActivityAutoAcceptHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	activityID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("activity_id")), 10, 64)
+	if err != nil || activityID <= 0 {
+		http.Error(w, "invalid activity id", http.StatusBadRequest)
+		return
+	}
+	courtID := strings.TrimSpace(r.FormValue("court_id"))
+	autoAccept := r.FormValue("auto_accept") == "1"
+	if _, err := a.db.Exec(`
+		UPDATE court_activities
+		SET auto_accept = ?, updated_at = ?
+		WHERE id = ?
+	`, boolToInt(autoAccept), time.Now().UTC(), activityID); err != nil {
+		log.Printf("update court activity auto accept: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "Activity auto-accept setting updated.")
+	http.Redirect(w, r, "/admin/courts?court_id="+url.QueryEscape(courtID), http.StatusSeeOther)
+}
+
+func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	trainingProgramID, err := parsePositiveInt64(
+		r.FormValue("training_program_id"),
+	)
+	if err != nil {
+		http.Error(
+			w,
+			"select a valid training programme",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	trainingProgram, err := a.findTrainingProgramByID(trainingProgramID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(
+				w,
+				"training programme not found",
+				http.StatusBadRequest,
+			)
+			return
+		}
+
+		log.Printf("find training programme for admission: %v", err)
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	if !trainingProgram.Active {
+		http.Error(
+			w,
+			"the selected training programme is inactive",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	admission := admissionFromRequest(r)
+	admission.TrainingProgramID = trainingProgram.ID
+	admission.TrainingProgramName = trainingProgram.Name
+	admission.PracticeType = legacyPracticeTypeForTrainingFormat(
+		trainingProgram.TrainingFormat,
+	)
+
+	collectPayment := r.FormValue("payment_collected") == "true" && !admission.FreeAdmission
+
+	if err := validateAdmission(admission); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+
+	recordedByUserID := int64(0)
+	if currentUser != nil {
+		recordedByUserID = currentUser.ID
+	}
+
+	_, financeTransactionID, err := a.createAdmissionWithOptionalPayment(
+		admission,
+		collectPayment,
+		recordedByUserID,
+	)
+	if err != nil {
+		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
+			http.Error(
+				w,
+				err.Error(),
+				http.StatusBadRequest,
+			)
+			return
+		}
+
+		log.Printf("create admission: %v", err)
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	if collectPayment && financeTransactionID > 0 {
+		http.Redirect(
+			w,
+			r,
+			"/admin/finance/receipt?transaction_id="+
+				strconv.FormatInt(financeTransactionID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "Admission created.")
+	http.Redirect(
+		w,
+		r,
+		"/admin/admissions",
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	admissionID, err := strconv.ParseInt(r.FormValue("admission_id"), 10, 64)
+	if err != nil || admissionID <= 0 {
+		http.Error(w, "invalid admission id", http.StatusBadRequest)
+		return
+	}
+
+	trainingProgramID, err := parsePositiveInt64(
+		r.FormValue("training_program_id"),
+	)
+	if err != nil {
+		http.Error(
+			w,
+			"select a valid training programme",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	trainingProgram, err := a.findTrainingProgramByID(trainingProgramID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(
+				w,
+				"training programme not found",
+				http.StatusBadRequest,
+			)
+			return
+		}
+
+		log.Printf("find training programme for admission update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	admission := admissionFromRequest(r)
+	admission.ID = admissionID
+	admission.TrainingProgramID = trainingProgram.ID
+	admission.TrainingProgramName = trainingProgram.Name
+	admission.PracticeType = legacyPracticeTypeForTrainingFormat(
+		trainingProgram.TrainingFormat,
+	)
+
+	collectPayment := r.FormValue("payment_collected") == "true" && !admission.FreeAdmission
+
+	if err := validateAdmission(admission); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	recordedByUserID := int64(0)
+	if currentUser != nil {
+		recordedByUserID = currentUser.ID
+	}
+	financeTransactionID, err := a.updateAdmissionWithOptionalPayment(admission, collectPayment, recordedByUserID)
+	if err != nil {
+		log.Printf("update admission: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if collectPayment && financeTransactionID > 0 {
+		http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(financeTransactionID, 10), http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Admission updated.")
+	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+}
+
+func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	admissionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("admission_id")), 10, 64)
+	if err != nil || admissionID <= 0 {
+		http.Error(w, "invalid admission id", http.StatusBadRequest)
+		return
+	}
+	paymentMonth := strings.TrimSpace(r.FormValue("payment_month"))
+	monthDate, err := parsePaymentMonth(paymentMonth)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if paymentMonth > time.Now().Format("2006-01") {
+		http.Error(w, "payments cannot be collected for a future month", http.StatusBadRequest)
+		return
+	}
+	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
+	if !validPaymentMethod(paymentMethod) {
+		http.Error(w, "invalid payment method", http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	recordedByUserID := int64(0)
+	if currentUser != nil {
+		recordedByUserID = currentUser.ID
+	}
+	transactionID, err := a.collectStudentMonthlyPayment(admissionID, paymentMonth, monthDate, paymentMethod, recordedByUserID)
+	if err != nil {
+		if errors.Is(err, ErrStudentPaymentAlreadyCollected) {
+			a.setFlash(w, "That student's payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")
+			http.Redirect(w, r, "/admin/student-payments?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+			return
+		}
+		if errors.Is(err, ErrStudentNotAdmittedForMonth) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, ErrMonthlyFeeNotConfigured) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("collect student monthly payment: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) voidAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	admissionID := parseInt64Query(r.FormValue("admission_id"))
+	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	if err := a.voidAdmissionPayment(admissionID, reason, currentUser.ID); err != nil {
+		a.setFlash(w, "Admission payment could not be voided: "+err.Error())
+		http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Admission payment was voided.")
+	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+}
+
+func (a *App) voidStudentPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	paymentID := parseInt64Query(r.FormValue("payment_id"))
+	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	redirectMonth := strings.TrimSpace(r.FormValue("payment_month"))
+	if err := a.voidStudentMonthlyPayment(paymentID, reason, currentUser.ID); err != nil {
+		a.setFlash(w, "Student payment could not be voided: "+err.Error())
+		target := "/admin/student-payments"
+		if redirectMonth != "" {
+			target += "?month=" + url.QueryEscape(redirectMonth)
+		}
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Student payment was voided.")
+	target := "/admin/student-payments"
+	if redirectMonth != "" {
+		target += "?month=" + url.QueryEscape(redirectMonth)
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func (a *App) voidReferralCommissionPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	referralID := parseInt64Query(r.FormValue("referral_id"))
+	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	if err := a.voidReferralCommissionPayment(referralID, reason, currentUser.ID); err != nil {
+		a.setFlash(w, "Referral payment could not be voided: "+err.Error())
+		http.Redirect(w, r, "/admin/referrals", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Referral payment was voided.")
+	http.Redirect(w, r, "/admin/referrals", http.StatusSeeOther)
+}
+
+func (a *App) deleteAdmissionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	admissionID, err := strconv.ParseInt(r.FormValue("admission_id"), 10, 64)
+	if err != nil || admissionID <= 0 {
+		http.Error(w, "invalid admission id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteAdmission(admissionID); err != nil {
+		log.Printf("delete admission: %v", err)
+		message := "Student could not be deleted: " + err.Error()
+		if errors.Is(err, sql.ErrNoRows) {
+			message = "Student could not be deleted: student was not found."
+		}
+		a.setFlash(w, message)
+		http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, "Student deleted.")
+	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+}
+
+func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	group := studentGroupFromRequest(r)
+	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
+	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
+	if err := validateStudentGroup(group); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createStudentGroup(group, admissionIDs, coachIDs); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "group code already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("create student group: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Student group created.")
+	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+}
+
+func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	groupID, err := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
+	if err != nil || groupID <= 0 {
+		http.Error(w, "invalid group id", http.StatusBadRequest)
+		return
+	}
+
+	group := studentGroupFromRequest(r)
+	group.ID = groupID
+	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
+	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
+	if err := validateStudentGroup(group); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateStudentGroup(group, admissionIDs, coachIDs); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "group code already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("update student group: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Student group updated.")
+	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+}
+
+func (a *App) deleteStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	groupID, err := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
+	if err != nil || groupID <= 0 {
+		http.Error(w, "invalid group id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteStudentGroup(groupID); err != nil {
+		log.Printf("delete student group: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Student group deleted.")
+	http.Redirect(w, r, "/admin/student-groups", http.StatusSeeOther)
+}
+
+func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	groupID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("group_id")), 10, 64)
+	if err != nil || groupID <= 0 {
+		http.Error(w, "invalid group id", http.StatusBadRequest)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+
+	if userHasRole(currentUser, "coach") &&
+		!userHasRole(currentUser, "admin") &&
+		!userHasRole(currentUser, "superadmin") {
+		assigned, err := a.coachAssignedToGroup(currentUser.ID, groupID)
+		if err != nil {
+			log.Printf("check coach group assignment: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		if !assigned {
+			http.Error(w, "you are not assigned to this group", http.StatusForbidden)
+			return
+		}
+	}
+	attendanceDate := strings.TrimSpace(r.FormValue("attendance_date"))
+	parsedAttendanceDate, err := time.Parse("2006-01-02", attendanceDate)
+	if err != nil {
+		http.Error(w, "invalid attendance date", http.StatusBadRequest)
+		return
+	}
+	today := time.Now().Format("2006-01-02")
+	if parsedAttendanceDate.Format("2006-01-02") > today {
+		http.Error(w, "attendance date cannot be in the future", http.StatusBadRequest)
+		return
+	}
+
+	group, err := a.findStudentGroupByID(groupID)
+	if err != nil {
+		http.Error(w, "group not found", http.StatusBadRequest)
+		return
+	}
+
+	records := make([]AttendanceRecord, 0, len(group.Students))
+	for _, student := range group.Students {
+		status := normalizeAttendanceStatus(r.FormValue(fmt.Sprintf("status_%d", student.ID)))
+		note := strings.TrimSpace(r.FormValue(fmt.Sprintf("note_%d", student.ID)))
+		records = append(records, AttendanceRecord{
+			GroupID:        groupID,
+			AdmissionID:    student.ID,
+			AttendanceDate: attendanceDate,
+			Status:         status,
+			Note:           note,
+		})
+	}
+
+	if err := a.replaceAttendanceRecords(groupID, attendanceDate, records); err != nil {
+		log.Printf("save attendance: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Attendance saved.")
+	http.Redirect(w, r, "/admin/attendance?group_id="+strconv.FormatInt(groupID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
+}
+
+func (a *App) saveCoachAttendanceHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	attendanceDate := strings.TrimSpace(r.FormValue("attendance_date"))
+	parsedAttendanceDate, err := time.Parse("2006-01-02", attendanceDate)
+	if err != nil {
+		http.Error(w, "invalid attendance date", http.StatusBadRequest)
+		return
+	}
+	today := time.Now().Format("2006-01-02")
+	if parsedAttendanceDate.Format("2006-01-02") > today {
+		http.Error(w, "attendance date cannot be in the future", http.StatusBadRequest)
+		return
+	}
+
+	coaches, err := a.listCoachUsersDetailed(false)
+	if err != nil {
+		log.Printf("list active coaches for attendance: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	records := make([]CoachAttendanceRecord, 0, len(coaches))
+	for _, coach := range coaches {
+		records = append(records, CoachAttendanceRecord{
+			UserID:           coach.ID,
+			AttendanceDate:   attendanceDate,
+			Status:           normalizeAttendanceStatus(r.FormValue(fmt.Sprintf("status_%d", coach.ID))),
+			Note:             strings.TrimSpace(r.FormValue(fmt.Sprintf("note_%d", coach.ID))),
+			RecordedByUserID: currentUser.ID,
+		})
+	}
+
+	if err := a.replaceCoachAttendanceRecords(attendanceDate, records); err != nil {
+		log.Printf("save coach attendance: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Coach attendance saved.")
+	http.Redirect(w, r, "/admin/coaches?date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
+}
+
+func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		a.writeBookingError(w, r, "new", nil, "Invalid session token. Refresh and try again.", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		a.writeBookingError(w, r, "new", nil, "Invalid form submission.", http.StatusBadRequest)
+		return
+	}
+
+	schedule := scheduleFromRequest(r)
+	if err := validateSpaceScheduleInput(schedule); err != nil {
+		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if schedule.EntryType == "booking" {
+		quotedPrice, err := a.bookingQuote(schedule)
+		if err != nil {
+			a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
+			return
+		}
+		schedule.QuotedPrice = quotedPrice
+	}
+	if err := a.createSpaceSchedule(schedule); err != nil {
+		log.Printf("create booking: %v", err)
+		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.setFlash(w, "Schedule created.")
+	http.Redirect(w, r, "/admin/bookings?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		a.writeBookingError(w, r, "edit", nil, "Invalid session token. Refresh and try again.", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		a.writeBookingError(w, r, "edit", nil, "Invalid form submission.", http.StatusBadRequest)
+		return
+	}
+
+	scheduleID, err := strconv.ParseInt(r.FormValue("schedule_id"), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		a.writeBookingError(w, r, "edit", nil, "Invalid schedule id.", http.StatusBadRequest)
+		return
+	}
+
+	schedule := scheduleFromRequest(r)
+	schedule.ID = scheduleID
+	if err := validateSpaceScheduleInput(schedule); err != nil {
+		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if schedule.EntryType == "booking" {
+		quotedPrice, err := a.bookingQuote(schedule)
+		if err != nil {
+			a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
+			return
+		}
+		schedule.QuotedPrice = quotedPrice
+	}
+	if err := a.updateSpaceSchedule(schedule); err != nil {
+		log.Printf("update booking: %v", err)
+		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.setFlash(w, "Schedule updated.")
+	http.Redirect(w, r, "/admin/bookings?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
+}
+
+func (a *App) deleteBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	scheduleID, err := strconv.ParseInt(r.FormValue("schedule_id"), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid schedule id", http.StatusBadRequest)
+		return
+	}
+	schedule, _ := a.findSpaceScheduleByID(scheduleID)
+	if err := a.deleteSpaceSchedule(scheduleID); err != nil {
+		log.Printf("delete booking: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Schedule deleted.")
+	redirectTo := "/admin/bookings"
+	if schedule != nil {
+		redirectTo += "?date=" + url.QueryEscape(schedule.SlotDate)
+	}
+	http.Redirect(w, r, redirectTo, http.StatusSeeOther)
+}

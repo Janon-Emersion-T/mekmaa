@@ -1,0 +1,614 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"mime/multipart"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+func (a *App) bookingQuote(schedule SpaceSchedule) (float64, error) {
+	pricings, err := a.listPricingRules()
+	if err != nil {
+		return 0, err
+	}
+	settings, err := a.getPricingSettings()
+	if err != nil {
+		return 0, err
+	}
+	rule := pricingRuleForOption(pricings, schedule.Activity, schedule.Quantity)
+	if rule == nil {
+		return 0, errors.New("pricing is not configured for this booking")
+	}
+	amount := priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour)
+	if amount <= 0 {
+		return 0, errors.New("a positive price is required before creating this booking")
+	}
+	return amount, nil
+}
+
+func money(value float64) string {
+	return fmt.Sprintf("LKR %.2f", value)
+}
+
+func negate(value float64) float64 {
+	return -value
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func nullIfBlank(value string) any {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return trimmed
+}
+
+func nullIfZero(value int64) any {
+	if value == 0 {
+		return nil
+	}
+	return value
+}
+
+func prepareUploadStorage(configuredRoot string) (UploadStorage, error) {
+	resolvedRoot, err := resolveUploadRoot(configuredRoot)
+	if err != nil {
+		return UploadStorage{}, err
+	}
+
+	storage := UploadStorage{
+		Root:     resolvedRoot,
+		EventDir: filepath.Join(resolvedRoot, "events"),
+	}
+	if err := os.MkdirAll(storage.Root, 0o755); err != nil {
+		return UploadStorage{}, fmt.Errorf("create upload directory %s: %w", storage.Root, err)
+	}
+	if err := os.MkdirAll(storage.EventDir, 0o755); err != nil {
+		return UploadStorage{}, fmt.Errorf("create event upload directory %s: %w", storage.EventDir, err)
+	}
+
+	probe, err := os.CreateTemp(storage.EventDir, ".mekmaa-write-check-*")
+	if err != nil {
+		return UploadStorage{}, fmt.Errorf("event upload directory is not writable %s: %w", storage.EventDir, err)
+	}
+	probeName := probe.Name()
+	if err := probe.Close(); err != nil {
+		_ = os.Remove(probeName)
+		return UploadStorage{}, fmt.Errorf("close event upload write check %s: %w", probeName, err)
+	}
+	if err := os.Remove(probeName); err != nil {
+		return UploadStorage{}, fmt.Errorf("remove event upload write check %s: %w", probeName, err)
+	}
+	return storage, nil
+}
+
+func registerUploadRoutes(mux *http.ServeMux, storage UploadStorage) {
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(storage.Root))))
+	// Keep previously persisted /event-images/ paths available during migration.
+	mux.Handle("/event-images/", http.StripPrefix("/event-images/", http.FileServer(http.Dir(storage.EventDir))))
+}
+
+func resolveUploadRoot(configuredRoot string) (string, error) {
+	root := strings.TrimSpace(configuredRoot)
+	if root == "" {
+		root = defaultUploadDir
+	}
+	resolvedRoot, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return "", fmt.Errorf("resolve upload directory %q: %w", root, err)
+	}
+	return resolvedRoot, nil
+}
+
+func (a *App) uploadedEventImagePath(r *http.Request) (string, error) {
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		if errors.Is(err, http.ErrMissingFile) {
+			return "", nil
+		}
+		return "", errors.New("invalid event image upload")
+	}
+	defer file.Close()
+
+	return a.uploads.saveEventImage(file, header)
+}
+
+func (s UploadStorage) saveEventImage(file multipart.File, header *multipart.FileHeader) (string, error) {
+	if header != nil && header.Size > maxEventImageSize {
+		return "", errors.New("event image must be 8MB or smaller")
+	}
+
+	buf := make([]byte, 512)
+	n, err := io.ReadFull(file, buf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", fmt.Errorf("read uploaded event image: %w", err)
+	}
+	if n == 0 {
+		return "", errors.New("event image is empty")
+	}
+	contentType := http.DetectContentType(buf[:n])
+	ext, ok := eventImageExtension(contentType)
+	if !ok {
+		return "", errors.New("event image must be a JPEG, PNG or WebP file")
+	}
+
+	if err := os.MkdirAll(s.EventDir, 0o755); err != nil {
+		return "", fmt.Errorf("prepare event image directory %s: %w", s.EventDir, err)
+	}
+
+	filename, err := newEventImageFilename(ext)
+	if err != nil {
+		return "", err
+	}
+	targetPath := filepath.Join(s.EventDir, filename)
+
+	dst, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return "", fmt.Errorf("create uploaded event image %s: %w", targetPath, err)
+	}
+	complete := false
+	closed := false
+	defer func() {
+		if !closed {
+			_ = dst.Close()
+		}
+		if !complete {
+			_ = os.Remove(targetPath)
+		}
+	}()
+
+	if _, err := dst.Write(buf[:n]); err != nil {
+		return "", fmt.Errorf("write uploaded event image %s: %w", targetPath, err)
+	}
+	remaining := int64(maxEventImageSize - n)
+	copied, err := io.Copy(dst, io.LimitReader(file, remaining+1))
+	if err != nil {
+		return "", fmt.Errorf("copy uploaded event image %s: %w", targetPath, err)
+	}
+	if int64(n)+copied > maxEventImageSize {
+		return "", errors.New("event image must be 8MB or smaller")
+	}
+	if err := dst.Close(); err != nil {
+		closed = true
+		return "", fmt.Errorf("close uploaded event image %s: %w", targetPath, err)
+	}
+	closed = true
+	complete = true
+
+	return eventImagePublicPath(filename)
+}
+
+func newEventImageFilename(extension string) (string, error) {
+	if extension != ".jpg" && extension != ".png" && extension != ".webp" {
+		return "", errors.New("unsupported event image extension")
+	}
+	token, err := generateToken(18)
+	if err != nil {
+		return "", fmt.Errorf("generate event image filename: %w", err)
+	}
+	filename := "event-" + strings.ToLower(token) + extension
+	if !eventImagePattern.MatchString(filename) {
+		return "", errors.New("generated event image filename is invalid")
+	}
+	return filename, nil
+}
+
+func eventImagePublicPath(filename string) (string, error) {
+	if !eventImagePattern.MatchString(filename) || filepath.Base(filename) != filename {
+		return "", errors.New("invalid event image filename")
+	}
+	return "/uploads/events/" + filename, nil
+}
+
+func eventImageExtension(contentType string) (string, bool) {
+	switch contentType {
+	case "image/jpeg":
+		return ".jpg", true
+	case "image/png":
+		return ".png", true
+	case "image/webp":
+		return ".webp", true
+	default:
+		return "", false
+	}
+}
+
+func (s UploadStorage) deleteEventImage(imagePath string) error {
+	trimmed := strings.TrimSpace(imagePath)
+	if trimmed == "" {
+		return nil
+	}
+
+	filename := ""
+	for _, prefix := range []string{"/uploads/events/", "/event-images/"} {
+		if strings.HasPrefix(trimmed, prefix) {
+			filename = strings.TrimPrefix(trimmed, prefix)
+			break
+		}
+	}
+	if filename == "" {
+		return nil
+	}
+	if !storedEventPattern.MatchString(filename) || filepath.Base(filename) != filename {
+		return errors.New("invalid event image path")
+	}
+	localPath := filepath.Join(s.EventDir, filename)
+	if err := os.Remove(localPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("delete event image %s: %w", localPath, err)
+	}
+	return nil
+}
+
+func (a *App) removeUploadedEventImage(imagePath string) {
+	if err := a.uploads.deleteEventImage(imagePath); err != nil {
+		log.Printf("remove uploaded event image: %v", err)
+	}
+}
+
+func financeCategoryLabel(value string) string {
+	switch value {
+	case "admission_payment":
+		return "Admission payment"
+	case "student_monthly_payment":
+		return "Student monthly payment"
+	case "booking_payment":
+		return "Booking payment"
+	case "referral_commission_payment":
+		return "Referral commission"
+	case "manual_income":
+		return "Other income"
+	case "sponsorship_income":
+		return "Sponsorship income"
+	case "other_income":
+		return "Other income"
+	case "facility_expense":
+		return "Facility or court rental"
+	case "utilities_expense":
+		return "Utilities"
+	case "maintenance_expense":
+		return "Maintenance and repairs"
+	case "staff_expense":
+		return "Staff and wages"
+	case "equipment_expense":
+		return "Equipment"
+	case "sports_supplies_expense":
+		return "Sports supplies"
+	case "refreshments_expense":
+		return "Refreshments and drinks"
+	case "prizes_expense":
+		return "Prizes and awards"
+	case "marketing_expense":
+		return "Marketing"
+	case "transport_expense":
+		return "Transport"
+	case "event_expense":
+		return "Event expense"
+	case "bank_charges_expense":
+		return "Bank charges"
+	case "internal_transfer":
+		return "Internal transfer"
+	case "opening_balance":
+		return "Opening balance"
+	case "cash_adjustment":
+		return "Adjustment"
+	case "other_expense":
+		return "Other expense"
+	default:
+		return "Transaction"
+	}
+}
+
+func parsePaymentMonth(value string) (time.Time, error) {
+	if len(value) != 7 {
+		return time.Time{}, errors.New("a valid payment month is required")
+	}
+	parsed, err := time.Parse("2006-01", value)
+	if err != nil || parsed.Format("2006-01") != value {
+		return time.Time{}, errors.New("a valid payment month is required")
+	}
+	return parsed, nil
+}
+
+func paymentMonthLabel(value string) string {
+	parsed, err := parsePaymentMonth(value)
+	if err != nil {
+		return value
+	}
+	return parsed.Format("January 2006")
+}
+
+func validPaymentMethod(value string) bool {
+	switch value {
+	case "cash", "bank_transfer":
+		return true
+	default:
+		return false
+	}
+}
+
+func formatDateTime(value time.Time) string {
+	if value.IsZero() {
+		return "—"
+	}
+	return value.In(time.Local).Format("2006-01-02 15:04")
+}
+
+func formatCalendarDate(value string) string {
+	parsed, err := time.Parse("2006-01-02", strings.TrimSpace(value))
+	if err != nil {
+		return value
+	}
+	return parsed.Format("02 Jan 2006")
+}
+
+func formatClockTime(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "Time to be announced"
+	}
+	parsed, err := time.Parse("15:04", strings.TrimSpace(value))
+	if err != nil {
+		return value
+	}
+	return parsed.Format("3:04 PM")
+}
+
+func formatEventTiming(event Event) string {
+	switch {
+	case event.StartTime != "" && event.EndTime != "":
+		return formatClockTime(event.StartTime) + " to " + formatClockTime(event.EndTime)
+	case event.StartTime != "":
+		return "Starts at " + formatClockTime(event.StartTime)
+	default:
+		return "Date only"
+	}
+}
+
+func eventScheduleLabel(event Event) string {
+	base := formatCalendarDate(event.EventDate)
+	switch {
+	case event.StartTime != "" && event.EndTime != "":
+		return base + " • " + formatClockTime(event.StartTime) + " to " + formatClockTime(event.EndTime)
+	case event.StartTime != "":
+		return base + " • " + formatClockTime(event.StartTime)
+	default:
+		return base
+	}
+}
+
+func hasRegistrationDeadline(event Event) bool {
+	return strings.TrimSpace(event.RegistrationDeadline) != ""
+}
+
+func registrationDeadlineLabel(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return "Register before " + formatCalendarDate(value)
+}
+
+func isPastEventDate(value string) bool {
+	parsed, err := time.Parse("2006-01-02", strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return parsed.Before(today)
+}
+
+func upcomingEvents(events []Event, limit int) []Event {
+	var filtered []Event
+	for _, event := range events {
+		if !isPastEventDate(event.EventDate) {
+			filtered = append(filtered, event)
+		}
+	}
+	if limit > 0 && len(filtered) > limit {
+		return filtered[:limit]
+	}
+	return filtered
+}
+
+func hasTime(value time.Time) bool {
+	return !value.IsZero()
+}
+
+func admissionAge(dateOfBirth string) string {
+	dob, err := time.Parse("2006-01-02", strings.TrimSpace(dateOfBirth))
+	if err != nil {
+		return "—"
+	}
+
+	now := time.Now()
+	age := now.Year() - dob.Year()
+	if now.Month() < dob.Month() || (now.Month() == dob.Month() && now.Day() < dob.Day()) {
+		age--
+	}
+	if age < 0 {
+		return "—"
+	}
+
+	return strconv.Itoa(age)
+}
+
+func scheduleToneClasses(schedule SpaceSchedule) string {
+	switch schedule.Activity {
+	case "training":
+		return "border-amber-200 bg-amber-50 text-amber-900"
+	case "full_indoor_cricket":
+		return "border-emerald-200 bg-emerald-50 text-emerald-900"
+	case "futsal":
+		return "border-sky-200 bg-sky-50 text-sky-900"
+	case "badminton":
+		return "border-violet-200 bg-violet-50 text-violet-900"
+	case "table_tennis":
+		return "border-cyan-200 bg-cyan-50 text-cyan-900"
+	case "cricket_net":
+		return "border-lime-200 bg-lime-50 text-lime-900"
+	case "tennis":
+		return "border-emerald-200 bg-emerald-50 text-emerald-900"
+	default:
+		return "border-slate/10 bg-white text-slate"
+	}
+}
+
+func scheduleBadgeClasses(schedule SpaceSchedule) string {
+	switch schedule.Activity {
+	case "training":
+		return "bg-amber-100 text-amber-800"
+	case "full_indoor_cricket":
+		return "bg-emerald-100 text-emerald-800"
+	case "futsal":
+		return "bg-sky-100 text-sky-800"
+	case "badminton":
+		return "bg-violet-100 text-violet-800"
+	case "table_tennis":
+		return "bg-cyan-100 text-cyan-800"
+	case "cricket_net":
+		return "bg-lime-100 text-lime-800"
+	case "tennis":
+		return "bg-emerald-100 text-emerald-800"
+	default:
+		return "bg-slate-100 text-slate-800"
+	}
+}
+
+func schedulesForCalendarSlot(schedules []SpaceSchedule, slotDate, slotHour string) []SpaceSchedule {
+	var filtered []SpaceSchedule
+	for _, schedule := range schedules {
+		if schedule.SlotDate == slotDate && schedule.SlotHour == slotHour {
+			filtered = append(filtered, schedule)
+		}
+	}
+	return filtered
+}
+
+func schedulesForDate(schedules []SpaceSchedule, slotDate string) []SpaceSchedule {
+	var filtered []SpaceSchedule
+	for _, schedule := range schedules {
+		if schedule.SlotDate == slotDate {
+			filtered = append(filtered, schedule)
+		}
+	}
+	return filtered
+}
+
+func buildDailyBookingStats(schedules []SpaceSchedule, hours []string) []Stat {
+	occupiedHours := map[string]struct{}{}
+	trainingHours := map[string]struct{}{}
+	bookingEntries := 0
+	for _, schedule := range schedules {
+		occupiedHours[schedule.SlotHour] = struct{}{}
+		if schedule.EntryType == "training" {
+			trainingHours[schedule.SlotHour] = struct{}{}
+		}
+		if schedule.EntryType == "booking" {
+			bookingEntries++
+		}
+	}
+
+	return []Stat{
+		{Label: "Total slots used", Value: strconv.Itoa(len(occupiedHours))},
+		{Label: "Training hours", Value: strconv.Itoa(len(trainingHours))},
+		{Label: "Booking entries", Value: strconv.Itoa(bookingEntries)},
+		{Label: "Open hours", Value: strconv.Itoa(len(hours) - len(occupiedHours))},
+	}
+}
+
+func buildFinanceStats(transactions []FinanceTransaction) []Stat {
+	totalIncome := 0.0
+	admissionPayments := 0
+	studentPayments := 0
+	referralPayouts := 0.0
+
+	for _, transaction := range transactions {
+		if transaction.Voided {
+			continue
+		}
+		totalIncome += transaction.Amount
+		if transaction.Category == "admission_payment" {
+			admissionPayments++
+		}
+		if transaction.Category == "student_monthly_payment" {
+			studentPayments++
+		}
+		if transaction.Category == "referral_commission_payment" {
+			referralPayouts += -transaction.Amount
+		}
+	}
+
+	return []Stat{
+		{Label: "Net recorded cash", Value: money(totalIncome)},
+		{Label: "Admission payments", Value: strconv.Itoa(admissionPayments)},
+		{Label: "Student payments", Value: strconv.Itoa(studentPayments)},
+		{Label: "Referral commission paid", Value: money(referralPayouts)},
+	}
+}
+
+func buildFinanceSummary(accounts []FinanceAccount, transactions []FinanceTransaction, bookings []BookingFinancial, monthly []StudentPaymentRow, referrals []BookingReferral, reconciliations []CashReconciliation) FinanceSummary {
+	var summary FinanceSummary
+	summary.CashBalance = financeAccountDisplayBalance(accounts, transactions, financeAccountCashInHand)
+	summary.BankBalance = financeAccountDisplayBalance(accounts, transactions, financeAccountMainBank)
+	summary.TotalAvailableFunds = normalizeMoney(summary.CashBalance + summary.BankBalance)
+	for _, transaction := range transactions {
+		if transaction.Voided {
+			continue
+		}
+		switch transaction.TransactionType {
+		case financeTxnTypeOpeningBalance, financeTxnTypeAdjustment:
+			// Excluded from operating revenue and expense KPIs.
+		case financeTxnTypeTransferIn, financeTxnTypeTransferOut:
+			// Internal transfers move cash between accounts only.
+		default:
+			if transaction.Amount >= 0 {
+				summary.NetOperatingCashFlow += transaction.Amount
+			} else {
+				summary.NetOperatingCashFlow += transaction.Amount
+			}
+		}
+		if transaction.TransactionType == financeTxnTypeTransferIn || transaction.TransactionType == financeTxnTypeTransferOut {
+			continue
+		}
+		if transaction.TransactionType == financeTxnTypeOpeningBalance || transaction.TransactionType == financeTxnTypeAdjustment {
+			continue
+		}
+		if transaction.Amount >= 0 {
+			summary.GrossIncome += transaction.Amount
+		} else {
+			summary.TotalExpenses += -transaction.Amount
+		}
+	}
+	summary.NetCash = normalizeMoney(summary.GrossIncome - summary.TotalExpenses)
+	summary.NetOperatingCashFlow = normalizeMoney(summary.NetOperatingCashFlow)
+	for _, booking := range bookings {
+		if booking.OutstandingAmount > 0 {
+			summary.OutstandingBooking += booking.OutstandingAmount
+		}
+	}
+	for _, row := range monthly {
+		if row.Payment == nil {
+			summary.OutstandingMonthly += row.MonthlyFee
+		}
+	}
+	for _, referral := range referrals {
+		if referral.BookingStatus == "confirmed" && !referral.Paid {
+			summary.PayableReferrals += referral.CommissionAmount
+		}
+	}
+	summary.UnreconciledCashDelta, summary.LastCashReconciliationOn = latestUnreconciledCashDelta(accounts, reconciliations, transactions)
+	return summary
+}

@@ -1,0 +1,759 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+)
+
+func (a *App) findAdmissionByID(
+	admissionID int64,
+) (*Admission, error) {
+	row := a.db.QueryRow(`
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.training_program_id, 0),
+			COALESCE(
+				tp.name,
+				CASE
+					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
+					ELSE ''
+				END
+			),
+			a.address,
+			a.passport_number,
+			a.school,
+			a.guardian_name,
+			a.guardian_relationship,
+			a.guardian_contact_number,
+			a.guardian_alternative_contact_number,
+			a.medical_information,
+			COALESCE(a.free_admission, 0),
+			COALESCE(a.free_monthly_fee, 0),
+			COALESCE(a.payment_collected, 0),
+			a.payment_collected_at,
+			COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0),
+			COALESCE(a.payment_void_reason, ''),
+			COALESCE(a.payment_voided_by_user_id, 0),
+			COALESCE(vu.name, ''),
+			a.payment_voided_at,
+			a.created_at
+		FROM admissions a
+		LEFT JOIN users vu ON vu.id = a.payment_voided_by_user_id
+		LEFT JOIN training_programs tp
+			ON tp.id = a.training_program_id
+		WHERE a.id = ?
+	`, admissionID)
+
+	var admission Admission
+	var freeAdmission int
+	var freeMonthlyFee int
+	var paymentCollected int
+	var paymentCollectedAt sql.NullTime
+	var paymentVoidedAt sql.NullTime
+
+	if err := row.Scan(
+		&admission.ID,
+		&admission.StudentID,
+		&admission.FullName,
+		&admission.AdmissionDate,
+		&admission.DateOfBirth,
+		&admission.Gender,
+		&admission.PracticeType,
+		&admission.TrainingProgramID,
+		&admission.TrainingProgramName,
+		&admission.Address,
+		&admission.PassportNumber,
+		&admission.School,
+		&admission.GuardianName,
+		&admission.GuardianRelationship,
+		&admission.GuardianContactNumber,
+		&admission.GuardianAlternativePhone,
+		&admission.MedicalInformation,
+		&freeAdmission,
+		&freeMonthlyFee,
+		&paymentCollected,
+		&paymentCollectedAt,
+		&admission.AdmissionPaymentAmount,
+		&admission.FinanceTransactionID,
+		&admission.PaymentVoidReason,
+		&admission.PaymentVoidedByUserID,
+		&admission.PaymentVoidedByUserName,
+		&paymentVoidedAt,
+		&admission.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	admission.FreeAdmission = freeAdmission == 1
+	admission.FreeMonthlyFee = freeMonthlyFee == 1
+	admission.PaymentCollected = paymentCollected == 1
+
+	if paymentCollectedAt.Valid {
+		admission.PaymentCollectedAt = paymentCollectedAt.Time
+	}
+	if paymentVoidedAt.Valid {
+		admission.PaymentVoidedAt = paymentVoidedAt.Time
+	}
+
+	return &admission, nil
+}
+
+func (a *App) findAdmissionByIDTx(
+	tx *sql.Tx,
+	admissionID int64,
+) (*Admission, error) {
+	row := tx.QueryRow(`
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.training_program_id, 0),
+			COALESCE(
+				tp.name,
+				CASE
+					WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
+					ELSE ''
+				END
+			),
+			a.address,
+			a.passport_number,
+			a.school,
+			a.guardian_name,
+			a.guardian_relationship,
+			a.guardian_contact_number,
+			a.guardian_alternative_contact_number,
+			a.medical_information,
+			COALESCE(a.free_admission, 0),
+			COALESCE(a.free_monthly_fee, 0),
+			COALESCE(a.payment_collected, 0),
+			a.payment_collected_at,
+			COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0),
+			COALESCE(a.payment_void_reason, ''),
+			COALESCE(a.payment_voided_by_user_id, 0),
+			COALESCE(vu.name, ''),
+			a.payment_voided_at,
+			a.created_at
+		FROM admissions a
+		LEFT JOIN users vu ON vu.id = a.payment_voided_by_user_id
+		LEFT JOIN training_programs tp
+			ON tp.id = a.training_program_id
+		WHERE a.id = ?
+	`, admissionID)
+
+	var admission Admission
+	var freeAdmission int
+	var freeMonthlyFee int
+	var paymentCollected int
+	var paymentCollectedAt sql.NullTime
+	var paymentVoidedAt sql.NullTime
+
+	if err := row.Scan(
+		&admission.ID,
+		&admission.StudentID,
+		&admission.FullName,
+		&admission.AdmissionDate,
+		&admission.DateOfBirth,
+		&admission.Gender,
+		&admission.PracticeType,
+		&admission.TrainingProgramID,
+		&admission.TrainingProgramName,
+		&admission.Address,
+		&admission.PassportNumber,
+		&admission.School,
+		&admission.GuardianName,
+		&admission.GuardianRelationship,
+		&admission.GuardianContactNumber,
+		&admission.GuardianAlternativePhone,
+		&admission.MedicalInformation,
+		&freeAdmission,
+		&freeMonthlyFee,
+		&paymentCollected,
+		&paymentCollectedAt,
+		&admission.AdmissionPaymentAmount,
+		&admission.FinanceTransactionID,
+		&admission.PaymentVoidReason,
+		&admission.PaymentVoidedByUserID,
+		&admission.PaymentVoidedByUserName,
+		&paymentVoidedAt,
+		&admission.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	admission.FreeAdmission = freeAdmission == 1
+	admission.FreeMonthlyFee = freeMonthlyFee == 1
+	admission.PaymentCollected = paymentCollected == 1
+
+	if paymentCollectedAt.Valid {
+		admission.PaymentCollectedAt = paymentCollectedAt.Time
+	}
+	if paymentVoidedAt.Valid {
+		admission.PaymentVoidedAt = paymentVoidedAt.Time
+	}
+
+	return &admission, nil
+}
+
+func (a *App) findFinanceTransactionByID(transactionID int64) (*FinanceTransaction, error) {
+	return a.findFinanceTransactionByIDContext(context.Background(), transactionID)
+}
+
+func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transactionID int64) (*FinanceTransaction, error) {
+	row := a.db.QueryRowContext(ctx, `
+		SELECT ft.id,
+		       ft.receipt_number,
+		       COALESCE(ft.reference_number, ft.receipt_number),
+		       ft.category,
+		       COALESCE(ft.transaction_type, CASE WHEN ft.amount < 0 THEN 'expense' ELSE 'income' END),
+		       ft.reference_type,
+		       COALESCE(ft.reference_id, 0),
+		       COALESCE(ft.source_type, ''),
+		       COALESCE(ft.source_id, 0),
+		       COALESCE(ft.finance_account_id, 0),
+		       COALESCE(fa.name, ''),
+		       COALESCE(fa.account_type, ''),
+		       COALESCE(ft.transfer_group_id, ''),
+		       ft.person_name,
+		       ft.description,
+		       COALESCE(ft.notes, ''),
+		       ft.payment_method,
+		       ft.amount,
+		       COALESCE(ft.recorded_by_user_id, 0),
+		       COALESCE(u.name, ''),
+		       ft.recorded_at,
+		       ft.created_at,
+		       COALESCE(CAST(ft.updated_at AS TEXT), CAST(ft.created_at AS TEXT), ''),
+		       ft.voided_at,
+		       COALESCE(ft.voided_by_user_id, 0),
+		       COALESCE(ft.void_reason, '')
+		FROM finance_transactions ft
+		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
+		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
+		WHERE ft.id = ?
+	`, transactionID)
+
+	var transaction FinanceTransaction
+	var voidedAt sql.NullTime
+	var updatedAtRaw string
+	if err := row.Scan(
+		&transaction.ID,
+		&transaction.ReceiptNumber,
+		&transaction.ReferenceNumber,
+		&transaction.Category,
+		&transaction.TransactionType,
+		&transaction.ReferenceType,
+		&transaction.ReferenceID,
+		&transaction.SourceType,
+		&transaction.SourceID,
+		&transaction.FinanceAccountID,
+		&transaction.FinanceAccountName,
+		&transaction.FinanceAccountType,
+		&transaction.TransferGroupID,
+		&transaction.PersonName,
+		&transaction.Description,
+		&transaction.Notes,
+		&transaction.PaymentMethod,
+		&transaction.Amount,
+		&transaction.RecordedByUser,
+		&transaction.RecordedByUserName,
+		&transaction.RecordedAt,
+		&transaction.CreatedAt,
+		&updatedAtRaw,
+		&voidedAt,
+		&transaction.VoidedByUserID,
+		&transaction.VoidReason,
+	); err != nil {
+		return nil, err
+	}
+	if voidedAt.Valid {
+		transaction.Voided = true
+		transaction.VoidedAt = voidedAt.Time
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(updatedAtRaw)); err == nil {
+		transaction.UpdatedAt = parsed
+	} else if parsed, err := time.Parse("2006-01-02 15:04:05.999999999Z07:00", strings.TrimSpace(updatedAtRaw)); err == nil {
+		transaction.UpdatedAt = parsed
+	} else if parsed, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(updatedAtRaw)); err == nil {
+		transaction.UpdatedAt = parsed
+	} else {
+		transaction.UpdatedAt = transaction.CreatedAt
+	}
+	transaction.MoneyIn, transaction.MoneyOut = financeAmountParts(transaction.Amount)
+	transactions := []FinanceTransaction{transaction}
+	if err := populateFinanceTransactionVoidStates(ctx, a.db, transactions); err != nil {
+		return nil, err
+	}
+	return &transactions[0], nil
+}
+
+func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recordedByUserID int64) (int64, error) {
+	admissionFee, _, err := trainingProgramFeesForAdmissionTx(
+		tx,
+		admission,
+	)
+	if err != nil {
+		return 0, err
+	}
+	admissionFee = effectiveAdmissionFee(admission, admissionFee)
+
+	if admissionFee <= 0 {
+		return 0, ErrAdmissionFeeNotConfigured
+	}
+
+	now := time.Now().UTC()
+	receiptNumber := fmt.Sprintf("ADM-%s-%06d", now.Format("20060102150405"), admission.ID)
+	account, err := findFinanceAccountForPaymentMethodTx(tx, "cash")
+	if err != nil {
+		return 0, err
+	}
+	description := fmt.Sprintf("Admission payment for %s", admission.FullName)
+	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
+		ReceiptNumber:    receiptNumber,
+		ReferenceNumber:  receiptNumber,
+		Category:         "admission_payment",
+		TransactionType:  financeTxnTypeIncome,
+		ReferenceType:    "admission",
+		ReferenceID:      admission.ID,
+		SourceType:       "admission",
+		SourceID:         admission.ID,
+		FinanceAccountID: account.ID,
+		PersonName:       admission.FullName,
+		Description:      description,
+		PaymentMethod:    "cash",
+		Amount:           admissionFee,
+		RecordedByUserID: recordedByUserID,
+		RecordedAt:       now,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.Exec(`
+		UPDATE admissions
+		SET payment_collected = 1,
+		    payment_collected_at = ?,
+		    admission_payment_amount = ?,
+		    finance_transaction_id = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`,
+		now,
+		admissionFee,
+		transactionID,
+		now,
+		admission.ID,
+	); err != nil {
+		return 0, err
+	}
+
+	return transactionID, nil
+}
+
+func trainingProgramFeesForAdmissionTx(
+	tx *sql.Tx,
+	admission Admission,
+) (float64, float64, error) {
+	if admission.TrainingProgramID > 0 {
+		var admissionFee float64
+		var monthlyFee float64
+
+		err := tx.QueryRow(`
+			SELECT
+				COALESCE(admission_fee, 0),
+				COALESCE(monthly_fee, 0)
+			FROM training_programs
+			WHERE id = ?
+		`,
+			admission.TrainingProgramID,
+		).Scan(
+			&admissionFee,
+			&monthlyFee,
+		)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return 0, 0, errors.New(
+					"the training programme assigned to this student was not found",
+				)
+			}
+
+			return 0, 0, err
+		}
+
+		return admissionFee, monthlyFee, nil
+	}
+
+	// Temporary backward-compatibility path for admissions created
+	// before training_program_id was introduced.
+	pricing, err := admissionPricingByPracticeTypeTx(
+		tx,
+		admission.PracticeType,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return pricing.Price, pricing.MonthlyFee, nil
+}
+
+func effectiveAdmissionFee(admission Admission, admissionFee float64) float64 {
+	if admission.FreeAdmission {
+		return 0
+	}
+	return admissionFee
+}
+
+func effectiveMonthlyFee(admission Admission, monthlyFee float64) float64 {
+	if admission.FreeMonthlyFee {
+		return 0
+	}
+	return monthlyFee
+}
+
+func admissionPricingByPracticeTypeTx(
+	tx *sql.Tx,
+	practiceType string,
+) (*AdmissionPricing, error) {
+	row := tx.QueryRow(`
+		SELECT
+			id,
+			practice_type,
+			price,
+			COALESCE(monthly_fee, 0),
+			created_at,
+			updated_at
+		FROM admission_pricing
+		WHERE practice_type = ?
+		LIMIT 1
+	`,
+		practiceType,
+	)
+
+	var pricing AdmissionPricing
+
+	if err := row.Scan(
+		&pricing.ID,
+		&pricing.PracticeType,
+		&pricing.Price,
+		&pricing.MonthlyFee,
+		&pricing.CreatedAt,
+		&pricing.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New(
+				"legacy admission pricing is not configured for this student",
+			)
+		}
+
+		return nil, err
+	}
+
+	return &pricing, nil
+}
+
+func (a *App) collectStudentMonthlyPayment(admissionID int64, paymentMonth string, monthDate time.Time, paymentMethod string, recordedByUserID int64) (int64, error) {
+	if normalizePaymentMethod(paymentMethod) != "cash" {
+		return 0, errors.New("monthly student payments must be recorded in cash")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	admission, err := a.findAdmissionByIDTx(tx, admissionID)
+	if err != nil {
+		return 0, err
+	}
+	if admission.AdmissionDate > monthDate.AddDate(0, 1, -1).Format("2006-01-02") {
+		return 0, ErrStudentNotAdmittedForMonth
+	}
+
+	var existingID int64
+	err = tx.QueryRow(`
+		SELECT id
+		FROM student_monthly_payments
+		WHERE admission_id = ? AND payment_month = ?
+	`, admissionID, paymentMonth).Scan(&existingID)
+	if err == nil {
+		return 0, ErrStudentPaymentAlreadyCollected
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+
+	_, monthlyFee, err := trainingProgramFeesForAdmissionTx(
+		tx,
+		*admission,
+	)
+	if err != nil {
+		return 0, err
+	}
+	monthlyFee = effectiveMonthlyFee(*admission, monthlyFee)
+
+	if monthlyFee <= 0 {
+		return 0, ErrMonthlyFeeNotConfigured
+	}
+	now := time.Now().UTC()
+	account, err := findFinanceAccountForPaymentMethodTx(tx, "cash")
+	if err != nil {
+		return 0, err
+	}
+	receiptNumber := fmt.Sprintf("STU-%s-%06d-%s", strings.ReplaceAll(paymentMonth, "-", ""), admission.ID, now.Format("150405"))
+	description := fmt.Sprintf("%s monthly payment for %s", paymentMonthLabel(paymentMonth), admission.FullName)
+	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
+		ReceiptNumber:    receiptNumber,
+		ReferenceNumber:  receiptNumber,
+		Category:         "student_monthly_payment",
+		TransactionType:  financeTxnTypeIncome,
+		ReferenceType:    "admission",
+		ReferenceID:      admission.ID,
+		FinanceAccountID: account.ID,
+		PersonName:       admission.FullName,
+		Description:      description,
+		PaymentMethod:    "cash",
+		Amount:           monthlyFee,
+		RecordedByUserID: recordedByUserID,
+		RecordedAt:       now,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	result, err := tx.Exec(`
+		INSERT INTO student_monthly_payments (
+			admission_id, payment_month, amount, payment_method, finance_transaction_id,
+			collected_by_user_id, collected_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, admission.ID, paymentMonth, monthlyFee, paymentMethod, transactionID, recordedByUserID, now, now)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return 0, ErrStudentPaymentAlreadyCollected
+		}
+		return 0, err
+	}
+	paymentRowID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`
+		UPDATE finance_transactions
+		SET source_type = 'student_monthly_payment',
+		    source_id = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`, paymentRowID, now, transactionID); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return transactionID, nil
+}
+
+func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
+	row := a.db.QueryRow(`
+		SELECT id, name, code, description, created_at
+		FROM student_groups
+		WHERE id = ?
+	`, groupID)
+
+	var group StudentGroup
+	if err := row.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.CreatedAt); err != nil {
+		return nil, err
+	}
+	students, err := a.listStudentsForGroup(group.ID)
+	if err != nil {
+		return nil, err
+	}
+	group.Students = students
+	group.StudentCount = len(students)
+	return &group, nil
+}
+
+func (a *App) findSpaceScheduleByID(scheduleID int64) (*SpaceSchedule, error) {
+	return findSpaceScheduleByIDQuery(a.db, scheduleID)
+}
+
+type scheduleRowQueryer interface {
+	QueryRow(string, ...any) *sql.Row
+}
+
+func findSpaceScheduleByIDQuery(queryer scheduleRowQueryer, scheduleID int64) (*SpaceSchedule, error) {
+	row := queryer.QueryRow(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
+		       COALESCE(customer_message, ''),
+		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
+		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
+		       created_at, updated_at
+		FROM space_schedules
+		WHERE id = ?
+	`, scheduleID)
+
+	return scanSpaceSchedule(row)
+}
+
+type rowScanner interface {
+	Scan(...any) error
+}
+
+func scanSpaceSchedule(row rowScanner) (*SpaceSchedule, error) {
+	var schedule SpaceSchedule
+	var statusChangedAt sql.NullTime
+	if err := row.Scan(
+		&schedule.ID,
+		&schedule.SlotDate,
+		&schedule.SlotHour,
+		&schedule.EntryType,
+		&schedule.Activity,
+		&schedule.Quantity,
+		&schedule.Title,
+		&schedule.Notes,
+		&schedule.Status,
+		&schedule.RequesterName,
+		&schedule.RequesterEmail,
+		&schedule.RequesterPhone,
+		&schedule.RequestedByUser,
+		&schedule.ReviewNote,
+		&schedule.CustomerMessage,
+		&statusChangedAt,
+		&schedule.StatusChangedBy,
+		&schedule.StatusSource,
+		&schedule.CancellationReason,
+		&schedule.CancellationFinanceNote,
+		&schedule.CreatedAt,
+		&schedule.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if statusChangedAt.Valid {
+		schedule.StatusChangedAt = statusChangedAt.Time
+	}
+	return &schedule, nil
+}
+
+func (a *App) findPricingRuleByID(pricingID int64) (*PricingRule, error) {
+	row := a.db.QueryRow(`
+		SELECT id, activity, quantity, weekday_offpeak_price, weekday_peak_price,
+		       weekend_offpeak_price, weekend_peak_price, created_at, updated_at
+		FROM pricing_rules
+		WHERE id = ?
+	`, pricingID)
+
+	var rule PricingRule
+	if err := row.Scan(
+		&rule.ID,
+		&rule.Activity,
+		&rule.Quantity,
+		&rule.WeekdayOffPeak,
+		&rule.WeekdayPeak,
+		&rule.WeekendOffPeak,
+		&rule.WeekendPeak,
+		&rule.CreatedAt,
+		&rule.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &rule, nil
+}
+
+func (a *App) findEventByID(eventID int64) (*Event, error) {
+	row := a.db.QueryRow(`
+		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
+		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
+		       cta_label, cta_link, published, created_at, updated_at
+		FROM events
+		WHERE id = ?
+	`, eventID)
+
+	var event Event
+	var published int
+	if err := row.Scan(
+		&event.ID,
+		&event.Title,
+		&event.Category,
+		&event.EventDate,
+		&event.StartTime,
+		&event.EndTime,
+		&event.RegistrationDeadline,
+		&event.Venue,
+		&event.Summary,
+		&event.ImagePath,
+		&event.CTALabel,
+		&event.CTALink,
+		&published,
+		&event.CreatedAt,
+		&event.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	event.Published = published == 1
+	return &event, nil
+}
+
+func (a *App) deleteSessionByToken(token string) error {
+	hash := sha256.Sum256([]byte(token))
+	_, err := a.db.Exec(`DELETE FROM sessions WHERE token_hash = ?`, fmt.Sprintf("%x", hash[:]))
+	return err
+}
+
+func (a *App) setFlash(w http.ResponseWriter, message string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     flashCookieName,
+		Value:    base64.RawURLEncoding.EncodeToString([]byte(message)),
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   a.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   10,
+	})
+}
+
+func (a *App) consumeFlash(r *http.Request) string {
+	cookie, err := r.Cookie(flashCookieName)
+	if err != nil || cookie.Value == "" {
+		return ""
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(cookie.Value)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func (a *App) clearCookie(w http.ResponseWriter, name string) {
+	a.clearCookieWithOptions(w, name, true)
+}
+
+func (a *App) clearCookieWithOptions(w http.ResponseWriter, name string, httpOnly bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: httpOnly,
+		Secure:   a.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+	})
+}
