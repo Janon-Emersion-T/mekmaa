@@ -740,8 +740,9 @@ func (a *App) listPublishedEvents() ([]Event, error) {
 
 func (a *App) listStudentGroups() ([]StudentGroup, error) {
 	rows, err := a.db.Query(`
-		SELECT id, name, code, description, created_at
+		SELECT sg.id, sg.name, sg.code, sg.description, COALESCE(sg.training_program_id, 0), COALESCE(tp.name, ''), sg.created_at
 		FROM student_groups
+		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
 		ORDER BY created_at DESC, id DESC
 	`)
 	if err != nil {
@@ -752,7 +753,7 @@ func (a *App) listStudentGroups() ([]StudentGroup, error) {
 	var groups []StudentGroup
 	for rows.Next() {
 		var group StudentGroup
-		if err := rows.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.CreatedAt); err != nil {
+		if err := rows.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.TrainingProgramID, &group.TrainingProgramName, &group.CreatedAt); err != nil {
 			return nil, err
 		}
 		groups = append(groups, group)
@@ -774,11 +775,16 @@ func (a *App) listStudentGroups() ([]StudentGroup, error) {
 		if err != nil {
 			return nil, err
 		}
+		sessions, err := a.listStudentGroupSessions(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
 
 		groups[i].Students = students
 		groups[i].StudentCount = len(students)
 		groups[i].Coaches = coaches
 		groups[i].CoachCount = len(coaches)
+		groups[i].Sessions = sessions
 	}
 
 	return groups, nil
@@ -791,8 +797,11 @@ func (a *App) listStudentGroupsForCoach(userID int64) ([]StudentGroup, error) {
 			sg.name,
 			sg.code,
 			sg.description,
+			COALESCE(sg.training_program_id, 0),
+			COALESCE(tp.name, ''),
 			sg.created_at
 		FROM student_groups sg
+		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
 		JOIN student_group_coaches sgc
 			ON sgc.group_id = sg.id
 		WHERE sgc.user_id = ?
@@ -813,6 +822,8 @@ func (a *App) listStudentGroupsForCoach(userID int64) ([]StudentGroup, error) {
 			&group.Name,
 			&group.Code,
 			&group.Description,
+			&group.TrainingProgramID,
+			&group.TrainingProgramName,
 			&group.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -839,11 +850,16 @@ func (a *App) listStudentGroupsForCoach(userID int64) ([]StudentGroup, error) {
 		if err != nil {
 			return nil, err
 		}
+		sessions, err := a.listStudentGroupSessions(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
 
 		groups[i].Students = students
 		groups[i].StudentCount = len(students)
 		groups[i].Coaches = coaches
 		groups[i].CoachCount = len(coaches)
+		groups[i].Sessions = sessions
 	}
 
 	return groups, nil
@@ -870,13 +886,14 @@ func (a *App) coachAssignedToGroup(
 	return assigned == 1, nil
 }
 
-func (a *App) listAttendanceRecords(groupID int64, attendanceDate string) ([]AttendanceRecord, error) {
+func (a *App) listAttendanceRecords(groupID int64, sessionID int64, attendanceDate string) ([]AttendanceRecord, error) {
 	rows, err := a.db.Query(`
-		SELECT id, group_id, admission_id, attendance_date, status, note, recorded_at, updated_at
+		SELECT ar.id, ar.group_id, COALESCE(ar.session_id, 0), COALESCE(sgs.title, ''), ar.admission_id, ar.attendance_date, ar.status, ar.note, COALESCE(ar.recorded_by_user_id, 0), ar.recorded_at, ar.updated_at
 		FROM attendance_records
-		WHERE group_id = ? AND attendance_date = ?
+		LEFT JOIN student_group_sessions sgs ON sgs.id = ar.session_id
+		WHERE ar.group_id = ? AND COALESCE(ar.session_id, 0) = ? AND ar.attendance_date = ?
 		ORDER BY admission_id ASC, id ASC
-	`, groupID, attendanceDate)
+	`, groupID, sessionID, attendanceDate)
 	if err != nil {
 		return nil, err
 	}
@@ -888,10 +905,13 @@ func (a *App) listAttendanceRecords(groupID int64, attendanceDate string) ([]Att
 		if err := rows.Scan(
 			&record.ID,
 			&record.GroupID,
+			&record.SessionID,
+			&record.SessionTitle,
 			&record.AdmissionID,
 			&record.AttendanceDate,
 			&record.Status,
 			&record.Note,
+			&record.RecordedByUserID,
 			&record.RecordedAt,
 			&record.UpdatedAt,
 		); err != nil {
@@ -936,7 +956,7 @@ func (a *App) getAttendanceSummary(
 
 	err := a.db.QueryRow(`
 		SELECT
-			COUNT(DISTINCT attendance_date),
+			COUNT(DISTINCT attendance_date || ':' || COALESCE(CAST(session_id AS TEXT), '0')),
 			COALESCE(SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END), 0),
@@ -957,6 +977,105 @@ func (a *App) getAttendanceSummary(
 	}
 
 	return summary, nil
+}
+
+func (a *App) listAttendanceLimitWarnings(groupID int64, sessionID int64, attendanceDate string, limit int) ([]AttendanceLimitWarning, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	rows, err := a.db.Query(`
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(tp.name, ''),
+			monthly_sessions.session_count
+		FROM attendance_records ar
+		JOIN admissions a ON a.id = ar.admission_id
+		JOIN student_groups sg ON sg.id = ar.group_id
+		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
+		JOIN (
+			SELECT admission_id, COUNT(*) AS session_count
+			FROM attendance_records
+			WHERE SUBSTR(attendance_date, 1, 7) = SUBSTR(?, 1, 7)
+			  AND status IN ('present', 'late')
+			GROUP BY admission_id
+		) AS monthly_sessions ON monthly_sessions.admission_id = ar.admission_id
+		WHERE ar.group_id = ?
+		  AND COALESCE(ar.session_id, 0) = ?
+		  AND ar.attendance_date = ?
+		  AND ar.status IN ('present', 'late')
+		  AND monthly_sessions.session_count > ?
+		ORDER BY monthly_sessions.session_count DESC, a.full_name COLLATE NOCASE
+	`, attendanceDate, groupID, sessionID, attendanceDate, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var warnings []AttendanceLimitWarning
+	for rows.Next() {
+		var warning AttendanceLimitWarning
+		warning.Limit = limit
+		if err := rows.Scan(&warning.AdmissionID, &warning.StudentID, &warning.FullName, &warning.TrainingProgramName, &warning.SessionCount); err != nil {
+			return nil, err
+		}
+		warnings = append(warnings, warning)
+	}
+	return warnings, rows.Err()
+}
+
+func (a *App) listStudentGroupSessions(groupID int64) ([]StudentGroupSession, error) {
+	rows, err := a.db.Query(`
+		SELECT id, group_id, title, day_of_week, start_time, end_time, COALESCE(active, 1), created_at, updated_at
+		FROM student_group_sessions
+		WHERE group_id = ?
+		ORDER BY
+			CASE day_of_week
+				WHEN 'monday' THEN 1
+				WHEN 'tuesday' THEN 2
+				WHEN 'wednesday' THEN 3
+				WHEN 'thursday' THEN 4
+				WHEN 'friday' THEN 5
+				WHEN 'saturday' THEN 6
+				WHEN 'sunday' THEN 7
+				ELSE 8
+			END,
+			start_time,
+			id
+	`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []StudentGroupSession
+	for rows.Next() {
+		var session StudentGroupSession
+		var active int
+		if err := rows.Scan(&session.ID, &session.GroupID, &session.Title, &session.DayOfWeek, &session.StartTime, &session.EndTime, &active, &session.CreatedAt, &session.UpdatedAt); err != nil {
+			return nil, err
+		}
+		session.Active = active == 1
+		sessions = append(sessions, session)
+	}
+	return sessions, rows.Err()
+}
+
+func (a *App) findStudentGroupSessionByID(sessionID int64) (*StudentGroupSession, error) {
+	row := a.db.QueryRow(`
+		SELECT id, group_id, title, day_of_week, start_time, end_time, COALESCE(active, 1), created_at, updated_at
+		FROM student_group_sessions
+		WHERE id = ?
+	`, sessionID)
+
+	var session StudentGroupSession
+	var active int
+	if err := row.Scan(&session.ID, &session.GroupID, &session.Title, &session.DayOfWeek, &session.StartTime, &session.EndTime, &active, &session.CreatedAt, &session.UpdatedAt); err != nil {
+		return nil, err
+	}
+	session.Active = active == 1
+	return &session, nil
 }
 
 func (a *App) listCourts(includeInactive bool) ([]Court, error) {

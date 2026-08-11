@@ -516,6 +516,15 @@ func TestCoachOnlyLoadsAssignedStudentGroups(t *testing.T) {
 		assignedGroup,
 		nil,
 		[]int64{coach.ID},
+		[]StudentGroupSession{
+			{
+				Title:     "Morning Session",
+				DayOfWeek: "monday",
+				StartTime: "09:00",
+				EndTime:   "10:00",
+				Active:    true,
+			},
+		},
 	); err != nil {
 		t.Fatalf("create assigned group: %v", err)
 	}
@@ -530,6 +539,15 @@ func TestCoachOnlyLoadsAssignedStudentGroups(t *testing.T) {
 		unassignedGroup,
 		nil,
 		nil,
+		[]StudentGroupSession{
+			{
+				Title:     "Evening Session",
+				DayOfWeek: "tuesday",
+				StartTime: "16:00",
+				EndTime:   "17:00",
+				Active:    true,
+			},
+		},
 	); err != nil {
 		t.Fatalf("create unassigned group: %v", err)
 	}

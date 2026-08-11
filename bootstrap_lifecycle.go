@@ -114,8 +114,10 @@ func runMigrations(db *sql.DB) error {
 			name TEXT NOT NULL,
 			code TEXT NOT NULL UNIQUE,
 			description TEXT NOT NULL,
+			training_program_id INTEGER,
 			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (training_program_id) REFERENCES training_programs(id)
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS student_group_members (
@@ -132,6 +134,18 @@ func runMigrations(db *sql.DB) error {
 			PRIMARY KEY (group_id, user_id),
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS student_group_sessions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			day_of_week TEXT NOT NULL,
+			start_time TEXT NOT NULL,
+			end_time TEXT NOT NULL,
+			active INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS coach_profiles (
 			user_id INTEGER PRIMARY KEY,
@@ -162,6 +176,7 @@ func runMigrations(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS attendance_records (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			group_id INTEGER NOT NULL,
+			session_id INTEGER,
 			admission_id INTEGER NOT NULL,
 			attendance_date TEXT NOT NULL,
 			status TEXT NOT NULL,
@@ -170,6 +185,7 @@ func runMigrations(db *sql.DB) error {
 			recorded_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (session_id) REFERENCES student_group_sessions(id) ON DELETE CASCADE,
 			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
 			FOREIGN KEY (recorded_by_user_id) REFERENCES users(id)
 		)`,
@@ -493,14 +509,17 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_program_id ON student_enrollments(training_program_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_enrollments_active ON student_enrollments(active, admission_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_groups_created_at ON student_groups(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_groups_training_program_id ON student_groups(training_program_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_group_sessions_group_id ON student_group_sessions(group_id, active, day_of_week, start_time)`,
 		`CREATE INDEX IF NOT EXISTS idx_coach_profiles_active ON coach_profiles(active)`,
 		`CREATE INDEX IF NOT EXISTS idx_coach_profiles_parent ON coach_profiles(parent_coach_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_attendance_user_date ON coach_attendance_records(user_id, attendance_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_coach_attendance_date ON coach_attendance_records(attendance_date)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_group_student_date ON attendance_records(group_id, admission_id, attendance_date)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_group_session_student_date ON attendance_records(group_id, COALESCE(session_id, 0), admission_id, attendance_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_attendance_group_date ON attendance_records(group_id, attendance_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_attendance_admission_month ON attendance_records(admission_id, attendance_date, status)`,
 		`CREATE INDEX IF NOT EXISTS idx_courts_active_order
 		ON courts(active, sort_order, name)`,
 
@@ -646,6 +665,16 @@ ON court_closures(activity, active, closure_date)`,
 			stmt:   `ALTER TABLE student_monthly_payments ADD COLUMN enrollment_id INTEGER`,
 		},
 		{
+			table:  "student_groups",
+			column: "training_program_id",
+			stmt:   `ALTER TABLE student_groups ADD COLUMN training_program_id INTEGER`,
+		},
+		{
+			table:  "attendance_records",
+			column: "session_id",
+			stmt:   `ALTER TABLE attendance_records ADD COLUMN session_id INTEGER`,
+		},
+		{
 			table:  "space_schedules",
 			column: "customer_message",
 			stmt:   `ALTER TABLE space_schedules ADD COLUMN customer_message TEXT NOT NULL DEFAULT ''`,
@@ -785,6 +814,35 @@ ON court_closures(activity, active, closure_date)`,
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_enrollments_active ON student_enrollments(active, admission_id)`); err != nil {
 		return fmt.Errorf("create student enrollments active index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS student_group_sessions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		group_id INTEGER NOT NULL,
+		title TEXT NOT NULL,
+		day_of_week TEXT NOT NULL,
+		start_time TEXT NOT NULL,
+		end_time TEXT NOT NULL,
+		active INTEGER NOT NULL DEFAULT 1,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE
+	)`); err != nil {
+		return fmt.Errorf("create student group sessions table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_groups_training_program_id ON student_groups(training_program_id)`); err != nil {
+		return fmt.Errorf("create student groups training programme index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_group_sessions_group_id ON student_group_sessions(group_id, active, day_of_week, start_time)`); err != nil {
+		return fmt.Errorf("create student group sessions index: %w", err)
+	}
+	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_attendance_group_student_date`); err != nil {
+		return fmt.Errorf("drop legacy attendance uniqueness index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_group_session_student_date ON attendance_records(group_id, COALESCE(session_id, 0), admission_id, attendance_date)`); err != nil {
+		return fmt.Errorf("create attendance session uniqueness index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_attendance_admission_month ON attendance_records(admission_id, attendance_date, status)`); err != nil {
+		return fmt.Errorf("create attendance monthly index: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admissions_qr_code_value ON admissions(qr_code_value)`); err != nil {
 		return fmt.Errorf("create admissions qr code index: %w", err)

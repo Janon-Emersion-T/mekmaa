@@ -842,13 +842,14 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 
 func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
 	row := a.db.QueryRow(`
-		SELECT id, name, code, description, created_at
-		FROM student_groups
+		SELECT sg.id, sg.name, sg.code, sg.description, COALESCE(sg.training_program_id, 0), COALESCE(tp.name, ''), sg.created_at
+		FROM student_groups sg
+		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
 		WHERE id = ?
 	`, groupID)
 
 	var group StudentGroup
-	if err := row.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.CreatedAt); err != nil {
+	if err := row.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.TrainingProgramID, &group.TrainingProgramName, &group.CreatedAt); err != nil {
 		return nil, err
 	}
 	students, err := a.listStudentsForGroup(group.ID)
@@ -857,6 +858,17 @@ func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
 	}
 	group.Students = students
 	group.StudentCount = len(students)
+	sessions, err := a.listStudentGroupSessions(group.ID)
+	if err != nil {
+		return nil, err
+	}
+	group.Sessions = sessions
+	coaches, err := a.listCoachesForGroup(group.ID)
+	if err != nil {
+		return nil, err
+	}
+	group.Coaches = coaches
+	group.CoachCount = len(coaches)
 	return &group, nil
 }
 

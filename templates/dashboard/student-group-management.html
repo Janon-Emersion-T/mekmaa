@@ -23,7 +23,41 @@
       <div class="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
         <input type="text" name="name" placeholder="Group Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
         <input type="text" name="code" placeholder="Group Code" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
+        <select name="training_program_id" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+          <option value="">Training programme</option>
+          {{range .TrainingPrograms}}
+          <option value="{{.ID}}">{{.Name}}</option>
+          {{end}}
+        </select>
         <textarea name="description" placeholder="Description" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua"></textarea>
+      </div>
+
+      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5" data-group-sessions-root>
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Timetable sessions</h3>
+            <p class="mt-1 text-xs text-slate/55">Create the class/session slots used later in attendance.</p>
+          </div>
+          <button type="button" data-add-session class="rounded-2xl border border-slate/10 bg-white px-4 py-2 text-sm font-medium text-slate transition hover:bg-cloud">Add session</button>
+        </div>
+        <div class="mt-4 space-y-3" data-session-list>
+          <div class="grid gap-3 rounded-2xl border border-slate/10 bg-white p-4 md:grid-cols-[minmax(0,1.2fr)_12rem_9rem_9rem_auto]">
+            <input type="text" name="session_title" placeholder="Session title" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+            <select name="session_day" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+              <option value="">Day</option>
+              <option value="monday">Monday</option>
+              <option value="tuesday">Tuesday</option>
+              <option value="wednesday">Wednesday</option>
+              <option value="thursday">Thursday</option>
+              <option value="friday">Friday</option>
+              <option value="saturday">Saturday</option>
+              <option value="sunday">Sunday</option>
+            </select>
+            <input type="time" name="session_start_time" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+            <input type="time" name="session_end_time" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+            <button type="button" data-remove-session class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100">Remove</button>
+          </div>
+        </div>
       </div>
 
       <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
@@ -84,6 +118,8 @@
           <tr>
             <th class="px-5 py-4 font-medium sm:px-6">Group</th>
             <th class="px-5 py-4 font-medium">Code</th>
+            <th class="px-5 py-4 font-medium">Programme</th>
+            <th class="px-5 py-4 font-medium">Sessions</th>
             <th class="px-5 py-4 font-medium">Students</th>
             <th class="px-5 py-4 font-medium">Coaches</th>
             <th class="px-5 py-4 font-medium">Preview</th>
@@ -98,6 +134,8 @@
               <p class="mt-1 text-sm text-slate/60">{{.Description}}</p>
             </td>
             <td class="px-5 py-4 text-slate/75">{{.Code}}</td>
+            <td class="px-5 py-4 text-slate/75">{{if .TrainingProgramName}}{{.TrainingProgramName}}{{else}}—{{end}}</td>
+            <td class="px-5 py-4 text-slate/75">{{len .Sessions}}</td>
             <td class="px-5 py-4 text-slate/75">{{.StudentCount}}</td>
             <td class="px-5 py-4 text-slate/75">
               {{if .Coaches}}
@@ -129,7 +167,7 @@
           </tr>
           {{else}}
           <tr>
-            <td colspan="6" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No groups found.</td>
+            <td colspan="8" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No groups found.</td>
           </tr>
           {{end}}
         </tbody>
@@ -158,6 +196,10 @@
           <p class="mt-2 text-sm leading-7 text-obsidian">{{.SelectedGroup.Description}}</p>
         </div>
         <div class="rounded-2xl bg-cloud px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Training programme</p>
+          <p class="mt-2 text-sm font-medium text-obsidian">{{if .SelectedGroup.TrainingProgramName}}{{.SelectedGroup.TrainingProgramName}}{{else}}—{{end}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-4">
           <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Students</p>
           <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedGroup.StudentCount}}</p>
         </div>
@@ -167,6 +209,20 @@
         </div>
       </div>
       <div class="space-y-4">
+        <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Timetable sessions</h3>
+          <div class="mt-4 space-y-3">
+            {{range .SelectedGroup.Sessions}}
+            <div class="rounded-2xl bg-white px-4 py-3">
+              <p class="font-medium text-obsidian">{{.Title}}</p>
+              <p class="mt-1 text-sm capitalize text-slate/60">{{.DayOfWeek}} · {{.StartTime}} to {{.EndTime}}</p>
+            </div>
+            {{else}}
+            <p class="text-sm text-slate/60">No timetable sessions assigned.</p>
+            {{end}}
+          </div>
+        </div>
+
         <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
           <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assigned coaches</h3>
           <div class="mt-4 space-y-3">
@@ -212,7 +268,60 @@
       <div class="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
         <input type="text" name="name" value="{{.SelectedGroup.Name}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
         <input type="text" name="code" value="{{.SelectedGroup.Code}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
+        <select name="training_program_id" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+          <option value="">Training programme</option>
+          {{range .TrainingPrograms}}
+          <option value="{{.ID}}" {{if eq $.SelectedGroup.TrainingProgramID .ID}}selected{{end}}>{{.Name}}</option>
+          {{end}}
+        </select>
         <textarea name="description" required rows="3" class="md:col-span-2 xl:col-span-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{.SelectedGroup.Description}}</textarea>
+      </div>
+
+      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5" data-group-sessions-root>
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Timetable sessions</h3>
+            <p class="mt-1 text-xs text-slate/55">Edit the reusable class slots for this group.</p>
+          </div>
+          <button type="button" data-add-session class="rounded-2xl border border-slate/10 bg-white px-4 py-2 text-sm font-medium text-slate transition hover:bg-cloud">Add session</button>
+        </div>
+        <div class="mt-4 space-y-3" data-session-list>
+          {{range .SelectedGroup.Sessions}}
+          <div class="grid gap-3 rounded-2xl border border-slate/10 bg-white p-4 md:grid-cols-[minmax(0,1.2fr)_12rem_9rem_9rem_auto]">
+            <input type="text" name="session_title" value="{{.Title}}" placeholder="Session title" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+            <select name="session_day" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+              <option value="">Day</option>
+              <option value="monday" {{if eq .DayOfWeek "monday"}}selected{{end}}>Monday</option>
+              <option value="tuesday" {{if eq .DayOfWeek "tuesday"}}selected{{end}}>Tuesday</option>
+              <option value="wednesday" {{if eq .DayOfWeek "wednesday"}}selected{{end}}>Wednesday</option>
+              <option value="thursday" {{if eq .DayOfWeek "thursday"}}selected{{end}}>Thursday</option>
+              <option value="friday" {{if eq .DayOfWeek "friday"}}selected{{end}}>Friday</option>
+              <option value="saturday" {{if eq .DayOfWeek "saturday"}}selected{{end}}>Saturday</option>
+              <option value="sunday" {{if eq .DayOfWeek "sunday"}}selected{{end}}>Sunday</option>
+            </select>
+            <input type="time" name="session_start_time" value="{{.StartTime}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+            <input type="time" name="session_end_time" value="{{.EndTime}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+            <button type="button" data-remove-session class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100">Remove</button>
+          </div>
+          {{else}}
+          <div class="grid gap-3 rounded-2xl border border-slate/10 bg-white p-4 md:grid-cols-[minmax(0,1.2fr)_12rem_9rem_9rem_auto]">
+            <input type="text" name="session_title" placeholder="Session title" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+            <select name="session_day" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+              <option value="">Day</option>
+              <option value="monday">Monday</option>
+              <option value="tuesday">Tuesday</option>
+              <option value="wednesday">Wednesday</option>
+              <option value="thursday">Thursday</option>
+              <option value="friday">Friday</option>
+              <option value="saturday">Saturday</option>
+              <option value="sunday">Sunday</option>
+            </select>
+            <input type="time" name="session_start_time" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+            <input type="time" name="session_end_time" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+            <button type="button" data-remove-session class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100">Remove</button>
+          </div>
+          {{end}}
+        </div>
       </div>
 
       <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
@@ -272,4 +381,52 @@
   </div>
   {{end}}
 </section>
+<template id="student-group-session-template">
+  <div class="grid gap-3 rounded-2xl border border-slate/10 bg-white p-4 md:grid-cols-[minmax(0,1.2fr)_12rem_9rem_9rem_auto]">
+    <input type="text" name="session_title" placeholder="Session title" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+    <select name="session_day" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+      <option value="">Day</option>
+      <option value="monday">Monday</option>
+      <option value="tuesday">Tuesday</option>
+      <option value="wednesday">Wednesday</option>
+      <option value="thursday">Thursday</option>
+      <option value="friday">Friday</option>
+      <option value="saturday">Saturday</option>
+      <option value="sunday">Sunday</option>
+    </select>
+    <input type="time" name="session_start_time" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+    <input type="time" name="session_end_time" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+    <button type="button" data-remove-session class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100">Remove</button>
+  </div>
+</template>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const template = document.getElementById("student-group-session-template");
+    document.querySelectorAll("[data-group-sessions-root]").forEach(function (root) {
+      const list = root.querySelector("[data-session-list]");
+      const addButton = root.querySelector("[data-add-session]");
+      if (!list || !addButton || !template) {
+        return;
+      }
+
+      const bindRemoveButtons = function () {
+        list.querySelectorAll("[data-remove-session]").forEach(function (button) {
+          button.onclick = function () {
+            if (list.children.length <= 1) {
+              return;
+            }
+            button.closest("div").remove();
+          };
+        });
+      };
+
+      addButton.addEventListener("click", function () {
+        list.appendChild(template.content.firstElementChild.cloneNode(true));
+        bindRemoveButtons();
+      });
+
+      bindRemoveButtons();
+    });
+  });
+</script>
 {{end}}

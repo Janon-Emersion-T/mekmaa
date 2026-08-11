@@ -966,10 +966,32 @@ func replaceStudentGroupCoachesTx(
 	return nil
 }
 
+func replaceStudentGroupSessionsTx(
+	tx *sql.Tx,
+	groupID int64,
+	sessions []StudentGroupSession,
+) error {
+	if _, err := tx.Exec(`DELETE FROM student_group_sessions WHERE group_id = ?`, groupID); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, session := range sessions {
+		if _, err := tx.Exec(`
+			INSERT INTO student_group_sessions (
+				group_id, title, day_of_week, start_time, end_time, active, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, groupID, session.Title, session.DayOfWeek, session.StartTime, session.EndTime, boolToInt(session.Active), now, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (a *App) createStudentGroup(
 	group StudentGroup,
 	admissionIDs []int64,
 	coachIDs []int64,
+	sessions []StudentGroupSession,
 ) error {
 	tx, err := a.db.Begin()
 	if err != nil {
@@ -978,9 +1000,9 @@ func (a *App) createStudentGroup(
 	defer tx.Rollback()
 
 	result, err := tx.Exec(`
-		INSERT INTO student_groups (name, code, description, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, group.Name, group.Code, group.Description, time.Now().UTC(), time.Now().UTC())
+		INSERT INTO student_groups (name, code, description, training_program_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, group.Name, group.Code, group.Description, nullIfZero(group.TrainingProgramID), time.Now().UTC(), time.Now().UTC())
 	if err != nil {
 		return err
 	}
@@ -997,33 +1019,38 @@ func (a *App) createStudentGroup(
 	if err := replaceStudentGroupCoachesTx(tx, groupID, coachIDs); err != nil {
 		return err
 	}
+	if err := replaceStudentGroupSessionsTx(tx, groupID, sessions); err != nil {
+		return err
+	}
 
 	return tx.Commit()
 }
 
-func (a *App) replaceAttendanceRecords(groupID int64, attendanceDate string, records []AttendanceRecord) error {
+func (a *App) replaceAttendanceRecords(groupID int64, sessionID int64, attendanceDate string, records []AttendanceRecord) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DELETE FROM attendance_records WHERE group_id = ? AND attendance_date = ?`, groupID, attendanceDate); err != nil {
+	if _, err := tx.Exec(`DELETE FROM attendance_records WHERE group_id = ? AND COALESCE(session_id, 0) = ? AND attendance_date = ?`, groupID, sessionID, attendanceDate); err != nil {
 		return err
 	}
 
 	for _, record := range records {
 		if _, err := tx.Exec(`
 			INSERT INTO attendance_records (
-				group_id, admission_id, attendance_date, status, note, recorded_at, updated_at
+				group_id, session_id, admission_id, attendance_date, status, note, recorded_by_user_id, recorded_at, updated_at
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			record.GroupID,
+			nullIfZero(record.SessionID),
 			record.AdmissionID,
 			record.AttendanceDate,
 			record.Status,
 			record.Note,
+			nullIfZero(record.RecordedByUserID),
 			time.Now().UTC(),
 			time.Now().UTC(),
 		); err != nil {
@@ -2170,6 +2197,7 @@ func (a *App) updateStudentGroup(
 	group StudentGroup,
 	admissionIDs []int64,
 	coachIDs []int64,
+	sessions []StudentGroupSession,
 ) error {
 	tx, err := a.db.Begin()
 	if err != nil {
@@ -2179,9 +2207,9 @@ func (a *App) updateStudentGroup(
 
 	if _, err := tx.Exec(`
 		UPDATE student_groups
-		SET name = ?, code = ?, description = ?, updated_at = ?
+		SET name = ?, code = ?, description = ?, training_program_id = ?, updated_at = ?
 		WHERE id = ?
-	`, group.Name, group.Code, group.Description, time.Now().UTC(), group.ID); err != nil {
+	`, group.Name, group.Code, group.Description, nullIfZero(group.TrainingProgramID), time.Now().UTC(), group.ID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM student_group_members WHERE group_id = ?`, group.ID); err != nil {
@@ -2193,6 +2221,9 @@ func (a *App) updateStudentGroup(
 		}
 	}
 	if err := replaceStudentGroupCoachesTx(tx, group.ID, coachIDs); err != nil {
+		return err
+	}
+	if err := replaceStudentGroupSessionsTx(tx, group.ID, sessions); err != nil {
 		return err
 	}
 

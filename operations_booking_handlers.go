@@ -34,6 +34,12 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	trainingPrograms, err := a.listTrainingPrograms(false)
+	if err != nil {
+		log.Printf("list training programmes for student groups: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Student Groups"
@@ -41,6 +47,7 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 	data.StudentGroups = groups
 	data.Admissions = admissions
 	data.AvailableCoaches = coaches
+	data.TrainingPrograms = trainingPrograms
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -114,9 +121,26 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 
 		if selectedGroup != nil {
 			data.SelectedGroup = selectedGroup
+			if len(selectedGroup.Sessions) > 0 {
+				data.GroupSessions = selectedGroup.Sessions
+				sessionID := parseInt64Query(r.URL.Query().Get("session_id"))
+				if sessionID <= 0 {
+					sessionID = selectedGroup.Sessions[0].ID
+				}
+				for _, session := range selectedGroup.Sessions {
+					if session.ID == sessionID {
+						data.SelectedGroupSessionID = sessionID
+						break
+					}
+				}
+				if data.SelectedGroupSessionID == 0 {
+					data.SelectedGroupSessionID = selectedGroup.Sessions[0].ID
+				}
+			}
 
 			records, err := a.listAttendanceRecords(
 				groupID,
+				data.SelectedGroupSessionID,
 				data.AttendanceDate,
 			)
 			if err != nil {
@@ -130,6 +154,19 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 			}
 
 			data.AttendanceRecords = records
+			if data.SelectedGroupSessionID > 0 {
+				warnings, err := a.listAttendanceLimitWarnings(groupID, data.SelectedGroupSessionID, data.AttendanceDate, 8)
+				if err != nil {
+					log.Printf("list attendance warnings: %v", err)
+					http.Error(
+						w,
+						"internal server error",
+						http.StatusInternalServerError,
+					)
+					return
+				}
+				data.AttendanceLimitWarnings = warnings
+			}
 
 			recentDates, err := a.listRecentAttendanceDates(groupID, 8)
 			if err != nil {
@@ -3583,11 +3620,16 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	group := studentGroupFromRequest(r)
 	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
 	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
+	sessions := studentGroupSessionsFromRequest(r)
 	if err := validateStudentGroup(group); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.createStudentGroup(group, admissionIDs, coachIDs); err != nil {
+	if err := validateStudentGroupSessions(sessions); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.createStudentGroup(group, admissionIDs, coachIDs, sessions); err != nil {
 		if isUniqueConstraintError(err) {
 			http.Error(w, "group code already exists", http.StatusConflict)
 			return
@@ -3625,11 +3667,16 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	group.ID = groupID
 	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
 	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
+	sessions := studentGroupSessionsFromRequest(r)
 	if err := validateStudentGroup(group); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.updateStudentGroup(group, admissionIDs, coachIDs); err != nil {
+	if err := validateStudentGroupSessions(sessions); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateStudentGroup(group, admissionIDs, coachIDs, sessions); err != nil {
 		if isUniqueConstraintError(err) {
 			http.Error(w, "group code already exists", http.StatusConflict)
 			return
@@ -3709,6 +3756,11 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	attendanceDate := strings.TrimSpace(r.FormValue("attendance_date"))
+	sessionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("session_id")), 10, 64)
+	if err != nil || sessionID <= 0 {
+		http.Error(w, "select a valid session", http.StatusBadRequest)
+		return
+	}
 	parsedAttendanceDate, err := time.Parse("2006-01-02", attendanceDate)
 	if err != nil {
 		http.Error(w, "invalid attendance date", http.StatusBadRequest)
@@ -3725,28 +3777,46 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "group not found", http.StatusBadRequest)
 		return
 	}
+	session, err := a.findStudentGroupSessionByID(sessionID)
+	if err != nil || session.GroupID != groupID {
+		http.Error(w, "session not found", http.StatusBadRequest)
+		return
+	}
 
 	records := make([]AttendanceRecord, 0, len(group.Students))
 	for _, student := range group.Students {
 		status := normalizeAttendanceStatus(r.FormValue(fmt.Sprintf("status_%d", student.ID)))
 		note := strings.TrimSpace(r.FormValue(fmt.Sprintf("note_%d", student.ID)))
 		records = append(records, AttendanceRecord{
-			GroupID:        groupID,
-			AdmissionID:    student.ID,
-			AttendanceDate: attendanceDate,
-			Status:         status,
-			Note:           note,
+			GroupID:          groupID,
+			SessionID:        sessionID,
+			SessionTitle:     session.Title,
+			AdmissionID:      student.ID,
+			AttendanceDate:   attendanceDate,
+			Status:           status,
+			Note:             note,
+			RecordedByUserID: currentUser.ID,
 		})
 	}
 
-	if err := a.replaceAttendanceRecords(groupID, attendanceDate, records); err != nil {
+	if err := a.replaceAttendanceRecords(groupID, sessionID, attendanceDate, records); err != nil {
 		log.Printf("save attendance: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	a.setFlash(w, "Attendance saved.")
-	http.Redirect(w, r, "/admin/attendance?group_id="+strconv.FormatInt(groupID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
+	warnings, err := a.listAttendanceLimitWarnings(groupID, sessionID, attendanceDate, 8)
+	if err != nil {
+		log.Printf("list attendance warnings after save: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	message := "Attendance saved."
+	if len(warnings) > 0 {
+		message = fmt.Sprintf("Attendance saved. %d student(s) exceeded the 8-session monthly limit.", len(warnings))
+	}
+	a.setFlash(w, message)
+	http.Redirect(w, r, "/admin/attendance?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
 }
 
 func (a *App) saveCoachAttendanceHandler(w http.ResponseWriter, r *http.Request) {

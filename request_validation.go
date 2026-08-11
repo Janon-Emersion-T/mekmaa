@@ -244,10 +244,51 @@ func applyAdminBookingQueryDraft(r *http.Request, schedule *SpaceSchedule) {
 
 func studentGroupFromRequest(r *http.Request) StudentGroup {
 	return StudentGroup{
-		Name:        strings.TrimSpace(r.FormValue("name")),
-		Code:        strings.ToUpper(strings.TrimSpace(r.FormValue("code"))),
-		Description: strings.TrimSpace(r.FormValue("description")),
+		Name:              strings.TrimSpace(r.FormValue("name")),
+		Code:              strings.ToUpper(strings.TrimSpace(r.FormValue("code"))),
+		Description:       strings.TrimSpace(r.FormValue("description")),
+		TrainingProgramID: parseInt64Query(r.FormValue("training_program_id")),
 	}
+}
+
+func studentGroupSessionsFromRequest(r *http.Request) []StudentGroupSession {
+	titles := r.Form["session_title"]
+	days := r.Form["session_day"]
+	starts := r.Form["session_start_time"]
+	ends := r.Form["session_end_time"]
+	maxLen := len(titles)
+	if len(days) > maxLen {
+		maxLen = len(days)
+	}
+	if len(starts) > maxLen {
+		maxLen = len(starts)
+	}
+	if len(ends) > maxLen {
+		maxLen = len(ends)
+	}
+
+	sessions := make([]StudentGroupSession, 0, maxLen)
+	for i := 0; i < maxLen; i++ {
+		session := StudentGroupSession{
+			Title:     strings.TrimSpace(valueAt(titles, i)),
+			DayOfWeek: strings.ToLower(strings.TrimSpace(valueAt(days, i))),
+			StartTime: strings.TrimSpace(valueAt(starts, i)),
+			EndTime:   strings.TrimSpace(valueAt(ends, i)),
+			Active:    true,
+		}
+		if session.Title == "" && session.DayOfWeek == "" && session.StartTime == "" && session.EndTime == "" {
+			continue
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions
+}
+
+func valueAt(values []string, index int) string {
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return values[index]
 }
 
 func validateAdmission(admission Admission) error {
@@ -291,9 +332,39 @@ func validateStudentGroup(group StudentGroup) error {
 		return errors.New("group code is required")
 	case group.Description == "":
 		return errors.New("description is required")
+	case group.TrainingProgramID <= 0:
+		return errors.New("training programme is required")
 	default:
 		return nil
 	}
+}
+
+func validateStudentGroupSessions(sessions []StudentGroupSession) error {
+	if len(sessions) == 0 {
+		return errors.New("at least one timetable session is required")
+	}
+	for _, session := range sessions {
+		switch session.DayOfWeek {
+		case "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday":
+		default:
+			return errors.New("each session must have a valid weekday")
+		}
+		if strings.TrimSpace(session.Title) == "" {
+			return errors.New("each session must have a title")
+		}
+		start, err := time.Parse("15:04", session.StartTime)
+		if err != nil {
+			return errors.New("each session must have a valid start time")
+		}
+		end, err := time.Parse("15:04", session.EndTime)
+		if err != nil {
+			return errors.New("each session must have a valid end time")
+		}
+		if !start.Before(end) {
+			return errors.New("session end time must be after the start time")
+		}
+	}
+	return nil
 }
 
 func validatePricingRule(rule PricingRule) error {

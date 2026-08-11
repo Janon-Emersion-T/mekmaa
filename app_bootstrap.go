@@ -334,8 +334,8 @@ type App struct {
 }
 
 type UploadStorage struct {
-	Root     string
-	EventDir string
+	Root            string
+	EventDir        string
 	StudentPhotoDir string
 	StudentQRDir    string
 }
@@ -765,15 +765,31 @@ type StudentPaymentRow struct {
 }
 
 type StudentGroup struct {
-	ID           int64
-	Name         string
-	Code         string
-	Description  string
-	Students     []Admission
-	StudentCount int
-	Coaches      []User
-	CoachCount   int
-	CreatedAt    time.Time
+	ID                  int64
+	Name                string
+	Code                string
+	Description         string
+	TrainingProgramID   int64
+	TrainingProgram     *TrainingProgram
+	TrainingProgramName string
+	Sessions            []StudentGroupSession
+	Students            []Admission
+	StudentCount        int
+	Coaches             []User
+	CoachCount          int
+	CreatedAt           time.Time
+}
+
+type StudentGroupSession struct {
+	ID        int64
+	GroupID   int64
+	Title     string
+	DayOfWeek string
+	StartTime string
+	EndTime   string
+	Active    bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type CoachAttendanceRecord struct {
@@ -794,6 +810,15 @@ type AttendanceSummary struct {
 	LateCount    int
 	ExcusedCount int
 	TotalEntries int
+}
+
+type AttendanceLimitWarning struct {
+	AdmissionID         int64
+	StudentID           string
+	FullName            string
+	TrainingProgramName string
+	SessionCount        int
+	Limit               int
 }
 
 type Court struct {
@@ -1129,6 +1154,8 @@ type Event struct {
 type AttendanceRecord struct {
 	ID               int64
 	GroupID          int64
+	SessionID        int64
+	SessionTitle     string
 	AdmissionID      int64
 	AttendanceDate   string
 	Status           string
@@ -1260,6 +1287,8 @@ type TemplateData struct {
 	StudentGroups                   []StudentGroup
 	SelectedGroup                   *StudentGroup
 	GroupMode                       string
+	GroupSessions                   []StudentGroupSession
+	SelectedGroupSessionID          int64
 	AvailableCoaches                []User
 	Coaches                         []User
 	CoachAttendanceRecords          []CoachAttendanceRecord
@@ -1267,6 +1296,7 @@ type TemplateData struct {
 	AttendanceDate                  string
 	RecentDates                     []string
 	AttendanceSummary               AttendanceSummary
+	AttendanceLimitWarnings         []AttendanceLimitWarning
 	Courts                          []Court
 	SelectedCourt                   *Court
 	CourtMode                       string
