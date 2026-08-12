@@ -183,6 +183,17 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	data.Enrollments = enrollments
 	data.Admissions = admissions
 	data.TrainingPrograms = trainingPrograms
+
+	selectedAdmissionID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("admission_id")), 10, 64)
+	if selectedAdmissionID > 0 {
+		for i := range admissions {
+			if admissions[i].ID == selectedAdmissionID {
+				data.SelectedAdmission = &admissions[i]
+				break
+			}
+		}
+	}
+
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -194,6 +205,10 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 			selectedEnrollment, err := a.findStudentEnrollmentByID(enrollmentID)
 			if err == nil {
 				data.SelectedEnrollment = selectedEnrollment
+				if data.SelectedAdmission == nil {
+					selectedAdmission := selectedEnrollment.Student
+					data.SelectedAdmission = &selectedAdmission
+				}
 			}
 		}
 	}
@@ -219,6 +234,7 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "select a valid student", http.StatusBadRequest)
 		return
 	}
+	target := "/admin/enrollments?admission_id=" + strconv.FormatInt(admissionID, 10)
 	trainingProgramID, err := parsePositiveInt64(r.FormValue("training_program_id"))
 	if err != nil {
 		http.Error(w, "select a valid training programme", http.StatusBadRequest)
@@ -244,7 +260,7 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := validateEnrollment(enrollment); err != nil {
 		a.setFlash(w, err.Error())
-		http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 
@@ -258,12 +274,12 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
 			a.setFlash(w, err.Error())
-			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
 		if isUniqueConstraintError(err) {
 			a.setFlash(w, "This student is already enrolled in the selected training programme.")
-			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
 		log.Printf("create student enrollment: %v", err)
@@ -275,7 +291,7 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.setFlash(w, "Enrollment created.")
-	http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request) {
@@ -369,18 +385,19 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	target := "/admin/enrollments?admission_id=" + strconv.FormatInt(existing.AdmissionID, 10)
 
 	trainingProgramID, err := parsePositiveInt64(r.FormValue("training_program_id"))
 	if err != nil {
 		a.setFlash(w, "Select a valid training programme.")
-		http.Redirect(w, r, "/admin/enrollments?action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		http.Redirect(w, r, target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 		return
 	}
 	trainingProgram, err := a.findTrainingProgramByID(trainingProgramID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			a.setFlash(w, "Training programme not found.")
-			http.Redirect(w, r, "/admin/enrollments?action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+			http.Redirect(w, r, target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 			return
 		}
 		log.Printf("find training programme for enrollment update: %v", err)
@@ -398,7 +415,7 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := validateEnrollment(enrollment); err != nil {
 		a.setFlash(w, err.Error())
-		http.Redirect(w, r, "/admin/enrollments?action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		http.Redirect(w, r, target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 		return
 	}
 
@@ -410,7 +427,7 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if isUniqueConstraintError(err) {
 			a.setFlash(w, "This student is already enrolled in the selected training programme.")
-			http.Redirect(w, r, "/admin/enrollments?action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+			http.Redirect(w, r, target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 			return
 		}
 		log.Printf("update student enrollment: %v", err)
@@ -419,7 +436,7 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.setFlash(w, "Enrollment updated.")
-	http.Redirect(w, r, "/admin/enrollments?action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+	http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 }
 
 func (a *App) deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
@@ -442,20 +459,24 @@ func (a *App) deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
 		return
 	}
+	target := "/admin/enrollments"
+	if enrollment, findErr := a.findStudentEnrollmentByID(enrollmentID); findErr == nil {
+		target = "/admin/enrollments?admission_id=" + strconv.FormatInt(enrollment.AdmissionID, 10)
+	}
 
 	if err := a.deleteStudentEnrollment(enrollmentID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			a.setFlash(w, "Enrollment not found.")
-			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
 		a.setFlash(w, err.Error())
-		http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 
 	a.setFlash(w, "Enrollment deleted.")
-	http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (a *App) trainingProgramManagementHandler(

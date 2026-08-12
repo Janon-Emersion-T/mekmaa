@@ -4643,7 +4643,7 @@ func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected redirect for duplicate enrollment, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if location := rec.Header().Get("Location"); location != "/admin/enrollments" {
+	if location := rec.Header().Get("Location"); location != "/admin/enrollments?admission_id=1" {
 		t.Fatalf("expected redirect to enrollments, got %q", location)
 	}
 	foundFlash := false

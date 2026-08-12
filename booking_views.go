@@ -1228,6 +1228,26 @@ func attendanceCount(records []AttendanceRecord, status string) int {
 	return total
 }
 
+func enrollmentsForAdmission(enrollments []StudentEnrollment, admissionID int64) []StudentEnrollment {
+	filtered := make([]StudentEnrollment, 0)
+	for _, enrollment := range enrollments {
+		if enrollment.AdmissionID == admissionID {
+			filtered = append(filtered, enrollment)
+		}
+	}
+	return filtered
+}
+
+func enrollmentCountForAdmission(enrollments []StudentEnrollment, admissionID int64) int {
+	total := 0
+	for _, enrollment := range enrollments {
+		if enrollment.AdmissionID == admissionID {
+			total++
+		}
+	}
+	return total
+}
+
 func coachAttendanceRecordFor(records []CoachAttendanceRecord, userID int64) CoachAttendanceRecord {
 	for _, record := range records {
 		if record.UserID == userID {

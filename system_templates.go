@@ -149,6 +149,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"attendanceCount":                           attendanceCount,
 		"attendanceRecordFor":                       attendanceRecordFor,
 		"attendanceStatus":                          attendanceStatus,
+		"enrollmentsForAdmission":                   enrollmentsForAdmission,
+		"enrollmentCountForAdmission":               enrollmentCountForAdmission,
 		"coachAttendanceCount":                      coachAttendanceCount,
 		"coachAttendanceRecordFor":                  coachAttendanceRecordFor,
 		"activityLabel":                             activityLabel,
