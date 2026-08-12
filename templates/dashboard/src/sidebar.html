@@ -94,6 +94,12 @@
 </a>
 {{end}}
         {{if hasPermission .User "space_bookings.manage"}}
+        <a href="/admin/one-to-one" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>1 to 1</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Setup</span>
+        </a>
+        <a href="/admin/one-to-one-bookings" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-bookings"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>1 to 1 bookings</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Book</span>
+        </a>
         <a href="/admin/bookings" class="{{if isCurrentPath .CurrentPath "/admin/bookings"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Booking calendar</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Slots</span>
         </a>

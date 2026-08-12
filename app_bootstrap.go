@@ -968,6 +968,36 @@ type PricingSettings struct {
 	UpdatedAt                time.Time
 }
 
+type OneToOneOffering struct {
+	ID        int64
+	Name      string
+	Game      string
+	Audience  string
+	Price     float64
+	Active    bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type OneToOneBooking struct {
+	ID              int64
+	ScheduleID      int64
+	OfferingID      int64
+	OfferingName    string
+	Game            string
+	Audience        string
+	Price           float64
+	CustomerName    string
+	SlotDate        string
+	SlotHour        string
+	Status          string
+	Title           string
+	Notes           string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	FinancialStatus string
+}
+
 type ReferralPartner struct {
 	ID        int64
 	Name      string
@@ -1344,6 +1374,10 @@ type TemplateData struct {
 	SelectedEnrollment              *StudentEnrollment
 	EnrollmentMode                  string
 	PricingSettings                 *PricingSettings
+	OneToOneOfferings               []OneToOneOffering
+	SelectedOneToOneOffering        *OneToOneOffering
+	OneToOneMode                    string
+	OneToOneBookings                []OneToOneBooking
 	ReferralPartners                []ReferralPartner
 	ReferralPartnerRows             []ReferralPartnerSummary
 	BookingReferrals                []BookingReferral

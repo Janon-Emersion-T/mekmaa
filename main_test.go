@@ -4692,6 +4692,153 @@ func TestSessionMiddlewareRefreshesActiveSession(t *testing.T) {
 	}
 }
 
+func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:     "Private Badminton",
+		Game:     "badminton",
+		Audience: "local",
+		Price:    3500,
+		Active:   true,
+	})
+	if err != nil {
+		t.Fatalf("create 1 to 1 offering: %v", err)
+	}
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find 1 to 1 offering: %v", err)
+	}
+
+	slotDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
+	bookingID, scheduleID, err := app.createOneToOneBooking(*offering, "Test Customer", slotDate, "18:00", "High-priority session")
+	if err != nil {
+		t.Fatalf("create 1 to 1 booking: %v", err)
+	}
+	if bookingID <= 0 || scheduleID <= 0 {
+		t.Fatalf("expected persisted ids, got booking=%d schedule=%d", bookingID, scheduleID)
+	}
+
+	var schedule SpaceSchedule
+	if err := app.db.QueryRow(`
+		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status, requester_name
+		FROM space_schedules
+		WHERE id = ?
+	`, scheduleID).Scan(
+		&schedule.ID,
+		&schedule.SlotDate,
+		&schedule.SlotHour,
+		&schedule.EntryType,
+		&schedule.Activity,
+		&schedule.Quantity,
+		&schedule.Title,
+		&schedule.Notes,
+		&schedule.Status,
+		&schedule.RequesterName,
+	); err != nil {
+		t.Fatalf("load created schedule: %v", err)
+	}
+	if schedule.EntryType != "booking" || schedule.Activity != "badminton" || schedule.Quantity != 1 {
+		t.Fatalf("unexpected schedule core fields: %#v", schedule)
+	}
+	if schedule.RequesterName != "Test Customer" {
+		t.Fatalf("unexpected requester name: %q", schedule.RequesterName)
+	}
+	if !strings.Contains(schedule.Title, "Private Badminton") || !strings.Contains(schedule.Notes, "High-priority session") {
+		t.Fatalf("expected title/notes to include 1 to 1 details: title=%q notes=%q", schedule.Title, schedule.Notes)
+	}
+
+	var quotedAmount float64
+	if err := app.db.QueryRow(`SELECT quoted_amount FROM booking_financials WHERE schedule_id = ?`, scheduleID).Scan(&quotedAmount); err != nil {
+		t.Fatalf("load booking financial: %v", err)
+	}
+	if quotedAmount != 3500 {
+		t.Fatalf("unexpected quoted amount: %v", quotedAmount)
+	}
+}
+
+func TestOneToOneBookingRejectsConsumedCapacity(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:     "Private Badminton",
+		Game:     "badminton",
+		Audience: "foreign",
+		Price:    4500,
+		Active:   true,
+	})
+	if err != nil {
+		t.Fatalf("create 1 to 1 offering: %v", err)
+	}
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find 1 to 1 offering: %v", err)
+	}
+
+	slotDate := time.Now().AddDate(0, 0, 5).Format("2006-01-02")
+	createConfirmedBookingForTests(t, app, SpaceSchedule{
+		SlotDate:      slotDate,
+		SlotHour:      "18:00",
+		EntryType:     "booking",
+		Activity:      "badminton",
+		Quantity:      1,
+		Title:         "Existing Badminton Booking",
+		RequesterName: "Existing Customer",
+		QuotedPrice:   2500,
+	})
+
+	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "18:00", "")
+	if err == nil {
+		t.Fatal("expected 1 to 1 booking conflict error")
+	}
+	if !strings.Contains(err.Error(), "remaining capacity") {
+		t.Fatalf("unexpected conflict error: %v", err)
+	}
+}
+
+func TestOneToOneManagementHandlersRender(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	if _, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:     "Private Badminton",
+		Game:     "badminton",
+		Audience: "local",
+		Price:    3200,
+		Active:   true,
+	}); err != nil {
+		t.Fatalf("create 1 to 1 offering: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		path    string
+		handler func(http.ResponseWriter, *http.Request)
+		mustSee string
+	}{
+		{name: "catalogue", path: "/admin/one-to-one", handler: app.oneToOneManagementHandler, mustSee: "1 to 1 setup"},
+		{name: "bookings", path: "/admin/one-to-one-bookings", handler: app.oneToOneBookingManagementHandler, mustSee: "1 to 1 bookings"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			tt.handler(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tt.mustSee) {
+				t.Fatalf("expected %q in response body, got %s", tt.mustSee, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 

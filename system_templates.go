@@ -281,6 +281,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"student-group-management":    "templates/dashboard/student-group-management.html",
 		"attendance-management":       "templates/dashboard/attendance-management.html",
 		"court-management":            "templates/dashboard/court-management.html",
+		"one-to-one-management":       "templates/dashboard/one-to-one-management.html",
+		"one-to-one-bookings":         "templates/dashboard/one-to-one-bookings.html",
 		"booking-management":          "templates/dashboard/booking-management.html",
 		"booking-requests":            "templates/dashboard/booking-requests.html",
 		"pricing-management":          "templates/dashboard/pricing-management.html",

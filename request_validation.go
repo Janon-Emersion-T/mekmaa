@@ -116,6 +116,49 @@ func pricingRuleFromRequest(r *http.Request) (PricingRule, error) {
 	}, nil
 }
 
+func oneToOneOfferingFromRequest(r *http.Request) (OneToOneOffering, error) {
+	price, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("price")), 64)
+	if err != nil {
+		return OneToOneOffering{}, errors.New("valid price is required")
+	}
+	return OneToOneOffering{
+		Name:     strings.TrimSpace(r.FormValue("name")),
+		Game:     strings.ToLower(strings.TrimSpace(r.FormValue("game"))),
+		Audience: strings.ToLower(strings.TrimSpace(r.FormValue("audience"))),
+		Price:    price,
+		Active:   r.FormValue("active") == "1",
+	}, nil
+}
+
+func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActivity) error {
+	switch {
+	case strings.TrimSpace(offering.Name) == "":
+		return errors.New("name is required")
+	case strings.TrimSpace(offering.Game) == "":
+		return errors.New("game is required")
+	case offering.Game == "training":
+		return errors.New("training is reserved for internal schedules; choose a customer-bookable game")
+	case !bookingActivityExists(offering.Game, activities):
+		return errors.New("selected game is not active in court manager")
+	case offering.Audience != "local" && offering.Audience != "foreign":
+		return errors.New("who must be local or foreign")
+	case offering.Price < 0:
+		return errors.New("price must be zero or greater")
+	default:
+		return nil
+	}
+}
+
+func bookingActivityExists(activity string, activities []CourtActivity) bool {
+	activity = strings.TrimSpace(activity)
+	for _, candidate := range activities {
+		if candidate.Active && candidate.Activity == activity {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *App) eventFromRequest(r *http.Request) (Event, error) {
 	imagePath, err := a.uploadedEventImagePath(r)
 	if err != nil {

@@ -1,0 +1,101 @@
+{{define "one-to-one-bookings"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="relative overflow-hidden rounded-[2rem] bg-obsidian p-6 text-cloud shadow-[0_24px_80px_rgba(11,18,21,0.18)] sm:p-8">
+    <div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Scheduling</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">1 to 1 bookings</h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/65">Book single training sessions against real slot availability. Each booking creates a quoted finance record and blocks the selected game capacity in the main scheduling calendar.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/admin/one-to-one" class="inline-flex h-11 items-center rounded-2xl border border-white/10 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">Manage 1 to 1</a>
+        <a href="/admin/bookings" class="inline-flex h-11 items-center rounded-2xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Open calendar</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">New booking</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Book a single training session</h2>
+    </div>
+    <form action="/admin/one-to-one-bookings/create" method="post" class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <label class="xl:col-span-2">
+        <span class="mb-1.5 block text-xs font-semibold text-slate/55">Customer name</span>
+        <input type="text" name="customer_name" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      </label>
+      <label class="xl:col-span-2">
+        <span class="mb-1.5 block text-xs font-semibold text-slate/55">Select 1 to 1</span>
+        <select name="offering_id" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+          <option value="">Choose active setup</option>
+          {{range .OneToOneOfferings}}
+          {{if .Active}}
+          <option value="{{.ID}}">{{.Name}} · {{activityLabel .Game}} · {{if eq .Audience "foreign"}}Foreign{{else}}Local{{end}} · {{money .Price}}</option>
+          {{end}}
+          {{end}}
+        </select>
+      </label>
+      <label>
+        <span class="mb-1.5 block text-xs font-semibold text-slate/55">Date</span>
+        <input type="date" name="slot_date" min="{{.TodayDate}}" value="{{.TodayDate}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      </label>
+      <label>
+        <span class="mb-1.5 block text-xs font-semibold text-slate/55">Time</span>
+        <select name="slot_hour" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+          {{range .Hours}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+      </label>
+      <label class="md:col-span-2 xl:col-span-2">
+        <span class="mb-1.5 block text-xs font-semibold text-slate/55">Operations note</span>
+        <input type="text" name="notes" placeholder="Optional internal note" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      </label>
+      <div class="xl:col-span-4 flex justify-end">
+        <button class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-semibold text-cloud transition hover:bg-slate">Book session</button>
+      </div>
+    </form>
+    <p class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">If another booking already consumed the remaining capacity for that date and time, the system will stop the booking and show the conflict instead of double-booking the slot.</p>
+  </div>
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Booking log</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Scheduled 1 to 1 sessions</h2>
+      </div>
+      <p class="text-sm text-slate/55">{{len .OneToOneBookings}} total</p>
+    </div>
+    <div class="mt-5 grid gap-4">
+      {{range .OneToOneBookings}}
+      {{$financial := bookingFinancialForSchedule $.BookingFinancials .ScheduleID}}
+      <article class="rounded-[1.5rem] border border-slate/10 bg-cloud/25 p-5">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="text-lg font-semibold text-obsidian">{{.CustomerName}}</h3>
+              <span class="rounded-full px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider {{if eq .Status "confirmed"}}bg-emerald-100 text-emerald-800{{else if eq .Status "cancelled"}}bg-red-100 text-red-700{{else}}bg-slate-200 text-slate-700{{end}}">{{.Status}}</span>
+            </div>
+            <p class="mt-2 text-sm text-slate/65">{{.OfferingName}} · {{activityLabel .Game}} · {{if eq .Audience "foreign"}}Foreign{{else}}Local{{end}}</p>
+            <p class="mt-1 text-sm text-slate/65">{{formatCalendarDate .SlotDate}} · {{.SlotHour}}</p>
+            <p class="mt-1 text-sm text-slate/65">Quoted {{money .Price}}{{if $financial}} · Collected {{money $financial.TotalCollected}} · Outstanding {{money $financial.OutstandingAmount}}{{end}}</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <a href="/admin/bookings?action=view&id={{.ScheduleID}}&date={{.SlotDate}}#schedule-view" class="inline-flex items-center rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-bold text-slate">Open booking</a>
+            <a href="/admin/bookings?action=edit&id={{.ScheduleID}}&date={{.SlotDate}}#schedule-form" class="inline-flex items-center rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-bold text-slate">Reschedule</a>
+            <form action="/admin/one-to-one-bookings/delete" method="post" onsubmit="return confirm('Delete this 1 to 1 booking? Payments already collected will block deletion.');">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+              <input type="hidden" name="schedule_id" value="{{.ScheduleID}}" />
+              <button class="inline-flex items-center rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700">Delete</button>
+            </form>
+          </div>
+        </div>
+      </article>
+      {{else}}
+      <div class="rounded-[1.5rem] border border-dashed border-slate/15 bg-cloud/25 px-5 py-8 text-sm text-slate/55">No 1 to 1 bookings yet. Create the first session from the form above.</div>
+      {{end}}
+    </div>
+  </div>
+</section>
+{{end}}

@@ -993,6 +993,336 @@ func (a *App) countHeldSpaceSchedules() (int, error) {
 	return count, nil
 }
 
+func (a *App) listOneToOneOfferings(includeInactive bool) ([]OneToOneOffering, error) {
+	query := `
+		SELECT id, name, game, audience, price, active, created_at, updated_at
+		FROM one_to_one_offerings`
+	args := make([]any, 0, 1)
+	if !includeInactive {
+		query += ` WHERE active = 1`
+	}
+	query += ` ORDER BY active DESC, name, id`
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var offerings []OneToOneOffering
+	for rows.Next() {
+		var offering OneToOneOffering
+		if err := rows.Scan(
+			&offering.ID,
+			&offering.Name,
+			&offering.Game,
+			&offering.Audience,
+			&offering.Price,
+			&offering.Active,
+			&offering.CreatedAt,
+			&offering.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		offerings = append(offerings, offering)
+	}
+	return offerings, rows.Err()
+}
+
+func (a *App) findOneToOneOfferingByID(id int64) (*OneToOneOffering, error) {
+	var offering OneToOneOffering
+	if err := a.db.QueryRow(`
+		SELECT id, name, game, audience, price, active, created_at, updated_at
+		FROM one_to_one_offerings
+		WHERE id = ?
+	`, id).Scan(
+		&offering.ID,
+		&offering.Name,
+		&offering.Game,
+		&offering.Audience,
+		&offering.Price,
+		&offering.Active,
+		&offering.CreatedAt,
+		&offering.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &offering, nil
+}
+
+func (a *App) createOneToOneOffering(offering OneToOneOffering) (int64, error) {
+	result, err := a.db.Exec(`
+		INSERT INTO one_to_one_offerings (
+			name,
+			game,
+			audience,
+			price,
+			active,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		offering.Name,
+		offering.Game,
+		offering.Audience,
+		offering.Price,
+		boolToInt(offering.Active),
+		time.Now().UTC(),
+		time.Now().UTC(),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (a *App) updateOneToOneOffering(offering OneToOneOffering) error {
+	result, err := a.db.Exec(`
+		UPDATE one_to_one_offerings
+		SET name = ?, game = ?, audience = ?, price = ?, active = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		offering.Name,
+		offering.Game,
+		offering.Audience,
+		offering.Price,
+		boolToInt(offering.Active),
+		time.Now().UTC(),
+		offering.ID,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (a *App) deleteOneToOneOffering(id int64) error {
+	var bookings int
+	if err := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM one_to_one_bookings
+		WHERE offering_id = ?
+	`, id).Scan(&bookings); err != nil {
+		return err
+	}
+	if bookings > 0 {
+		return errors.New("this 1 to 1 setup already has bookings; set it inactive instead of deleting it")
+	}
+	result, err := a.db.Exec(`DELETE FROM one_to_one_offerings WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (a *App) listOneToOneBookings() ([]OneToOneBooking, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			ob.id,
+			ob.schedule_id,
+			ob.offering_id,
+			ob.customer_name,
+			ob.offering_name,
+			ob.game,
+			ob.audience,
+			ob.price,
+			s.slot_date,
+			s.slot_hour,
+			s.status,
+			s.title,
+			s.notes,
+			ob.created_at,
+			ob.updated_at
+		FROM one_to_one_bookings ob
+		JOIN space_schedules s
+			ON s.id = ob.schedule_id
+		ORDER BY s.slot_date DESC, s.slot_hour DESC, ob.id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bookings []OneToOneBooking
+	for rows.Next() {
+		var booking OneToOneBooking
+		if err := rows.Scan(
+			&booking.ID,
+			&booking.ScheduleID,
+			&booking.OfferingID,
+			&booking.CustomerName,
+			&booking.OfferingName,
+			&booking.Game,
+			&booking.Audience,
+			&booking.Price,
+			&booking.SlotDate,
+			&booking.SlotHour,
+			&booking.Status,
+			&booking.Title,
+			&booking.Notes,
+			&booking.CreatedAt,
+			&booking.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		bookings = append(bookings, booking)
+	}
+	return bookings, rows.Err()
+}
+
+func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slotDate, slotHour, notes string) (int64, int64, error) {
+	schedule := SpaceSchedule{
+		SlotDate:      slotDate,
+		SlotHour:      slotHour,
+		EntryType:     "booking",
+		Activity:      offering.Game,
+		Quantity:      1,
+		Title:         fmt.Sprintf("1 to 1 · %s · %s", offering.Name, customerName),
+		Notes:         buildOneToOneBookingNotes(offering, notes),
+		RequesterName: customerName,
+		QuotedPrice:   offering.Price,
+	}
+
+	courtActivities, courtLayouts, err := a.activeBookingConfiguration()
+	if err != nil {
+		return 0, 0, fmt.Errorf("load active court configuration: %w", err)
+	}
+	if err := validateConfiguredBookingOption(schedule, courtActivities, courtLayouts); err != nil {
+		return 0, 0, err
+	}
+	courtClosures, err := a.listActiveCourtClosures()
+	if err != nil {
+		return 0, 0, fmt.Errorf("load active court closures: %w", err)
+	}
+	if err := validateScheduleAgainstClosures(schedule, courtClosures); err != nil {
+		return 0, 0, err
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback()
+
+	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, 0)
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := validateSpaceScheduleSlotAgainstLayouts(existing, schedule, courtLayouts); err != nil {
+		return 0, 0, err
+	}
+
+	now := time.Now().UTC()
+	result, err := tx.Exec(`
+		INSERT INTO space_schedules (
+			slot_date,
+			slot_hour,
+			entry_type,
+			activity,
+			quantity,
+			title,
+			notes,
+			status,
+			requester_name,
+			requester_email,
+			requester_phone,
+			requested_by_user_id,
+			review_note,
+			customer_message,
+			status_changed_at,
+			status_changed_by_user_id,
+			status_change_source,
+			cancellation_reason,
+			cancellation_finance_note,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', NULL, '', '', NULL, NULL, '', '', '', ?, ?)
+	`,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		schedule.EntryType,
+		schedule.Activity,
+		schedule.Quantity,
+		schedule.Title,
+		schedule.Notes,
+		bookingStatusConfirmed,
+		schedule.RequesterName,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	scheduleID, err := result.LastInsertId()
+	if err != nil {
+		return 0, 0, err
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO booking_financials (
+			schedule_id,
+			quoted_amount,
+			paid,
+			payment_method,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, 0, '', ?, ?)
+	`, scheduleID, offering.Price, now, now); err != nil {
+		return 0, 0, err
+	}
+	result, err = tx.Exec(`
+		INSERT INTO one_to_one_bookings (
+			schedule_id,
+			offering_id,
+			customer_name,
+			offering_name,
+			game,
+			audience,
+			price,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, scheduleID, offering.ID, customerName, offering.Name, offering.Game, offering.Audience, offering.Price, now, now)
+	if err != nil {
+		return 0, 0, err
+	}
+	bookingID, err := result.LastInsertId()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	return bookingID, scheduleID, nil
+}
+
+func buildOneToOneBookingNotes(offering OneToOneOffering, notes string) string {
+	base := fmt.Sprintf("1 to 1 booking\nProgramme: %s\nGame: %s\nWho: %s\nPrice: %.2f", offering.Name, offering.Game, offering.Audience, normalizeMoney(offering.Price))
+	notes = strings.TrimSpace(notes)
+	if notes == "" {
+		return base
+	}
+	return base + "\nNotes: " + notes
+}
+
 func (a *App) countReschedulePendingSpaceSchedules() (int, error) {
 	row := a.db.QueryRow(`
 		SELECT COUNT(*)
@@ -3765,8 +4095,30 @@ func (a *App) deleteStudentGroup(groupID int64) error {
 }
 
 func (a *App) deleteSpaceSchedule(scheduleID int64) error {
-	_, err := a.db.Exec(`DELETE FROM space_schedules WHERE id = ?`, scheduleID)
-	return err
+	var activeCollections int
+	if err := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM booking_payment_collections
+		WHERE schedule_id = ?
+		  AND voided = 0
+	`, scheduleID).Scan(&activeCollections); err != nil {
+		return err
+	}
+	if activeCollections > 0 {
+		return errors.New("this booking already has collected payments and cannot be deleted")
+	}
+	result, err := a.db.Exec(`DELETE FROM space_schedules WHERE id = ?`, scheduleID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (a *App) deletePricingRule(pricingID int64) error {

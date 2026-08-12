@@ -1212,6 +1212,272 @@ func (a *App) bookingManagementHandler(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "booking-management", data, http.StatusOK)
 }
 
+func (a *App) buildOneToOneTemplateData(w http.ResponseWriter, r *http.Request, user *User) (TemplateData, error) {
+	offerings, err := a.listOneToOneOfferings(true)
+	if err != nil {
+		return TemplateData{}, err
+	}
+	bookings, err := a.listOneToOneBookings()
+	if err != nil {
+		return TemplateData{}, err
+	}
+	courtActivities, _, err := a.activeBookingConfiguration()
+	if err != nil {
+		return TemplateData{}, err
+	}
+	scheduleIDs := make([]int64, 0, len(bookings))
+	for _, booking := range bookings {
+		scheduleIDs = append(scheduleIDs, booking.ScheduleID)
+	}
+	financials, err := a.listBookingFinancialsForScheduleIDs(scheduleIDs)
+	if err != nil {
+		return TemplateData{}, err
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "1 to 1 Scheduling"
+	data.Description = "Manage 1 to 1 offerings and bookings."
+	data.OneToOneOfferings = offerings
+	data.OneToOneBookings = bookings
+	data.BookingFinancials = financials
+	data.CourtActivities = courtActivities
+	data.Hours = bookingHours()
+	data.TodayDate = time.Now().Format("2006-01-02")
+	return data, nil
+}
+
+func (a *App) oneToOneManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	data, err := a.buildOneToOneTemplateData(w, r, user)
+	if err != nil {
+		log.Printf("build 1 to 1 data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "edit":
+		data.OneToOneMode = mode
+	}
+	if data.OneToOneMode == "edit" {
+		offeringID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && offeringID > 0 {
+			selected, err := a.findOneToOneOfferingByID(offeringID)
+			if err == nil {
+				data.SelectedOneToOneOffering = selected
+			}
+		}
+		if data.SelectedOneToOneOffering == nil {
+			data.OneToOneMode = ""
+		}
+	}
+	a.render(w, "one-to-one-management", data, http.StatusOK)
+}
+
+func (a *App) createOneToOneOfferingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	offering, err := oneToOneOfferingFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	courtActivities, _, err := a.activeBookingConfiguration()
+	if err != nil {
+		log.Printf("load activities for 1 to 1 create: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := validateOneToOneOffering(offering, courtActivities); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, err := a.createOneToOneOffering(offering); err != nil {
+		log.Printf("create 1 to 1 offering: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "1 to 1 offering created.")
+	http.Redirect(w, r, "/admin/one-to-one", http.StatusSeeOther)
+}
+
+func (a *App) updateOneToOneOfferingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	offeringID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("offering_id")), 10, 64)
+	if err != nil || offeringID <= 0 {
+		http.Error(w, "invalid offering id", http.StatusBadRequest)
+		return
+	}
+	offering, err := oneToOneOfferingFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	offering.ID = offeringID
+	courtActivities, _, err := a.activeBookingConfiguration()
+	if err != nil {
+		log.Printf("load activities for 1 to 1 update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := validateOneToOneOffering(offering, courtActivities); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateOneToOneOffering(offering); err != nil {
+		log.Printf("update 1 to 1 offering: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	a.setFlash(w, "1 to 1 offering updated.")
+	http.Redirect(w, r, "/admin/one-to-one", http.StatusSeeOther)
+}
+
+func (a *App) deleteOneToOneOfferingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	offeringID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("offering_id")), 10, 64)
+	if err != nil || offeringID <= 0 {
+		http.Error(w, "invalid offering id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteOneToOneOffering(offeringID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	a.setFlash(w, "1 to 1 offering deleted.")
+	http.Redirect(w, r, "/admin/one-to-one", http.StatusSeeOther)
+}
+
+func (a *App) oneToOneBookingManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	data, err := a.buildOneToOneTemplateData(w, r, user)
+	if err != nil {
+		log.Printf("build 1 to 1 booking data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.Title = "1 to 1 Bookings"
+	data.Description = "Book and monitor 1 to 1 sessions."
+	a.render(w, "one-to-one-bookings", data, http.StatusOK)
+}
+
+func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	offeringID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("offering_id")), 10, 64)
+	if err != nil || offeringID <= 0 {
+		http.Error(w, "valid 1 to 1 selection is required", http.StatusBadRequest)
+		return
+	}
+	customerName := strings.TrimSpace(r.FormValue("customer_name"))
+	slotDate := strings.TrimSpace(r.FormValue("slot_date"))
+	slotHour := strings.TrimSpace(r.FormValue("slot_hour"))
+	notes := strings.TrimSpace(r.FormValue("notes"))
+	if customerName == "" {
+		http.Error(w, "customer name is required", http.StatusBadRequest)
+		return
+	}
+	offering, err := a.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		http.Error(w, "selected 1 to 1 setup was not found", http.StatusBadRequest)
+		return
+	}
+	if !offering.Active {
+		http.Error(w, "selected 1 to 1 setup is inactive", http.StatusBadRequest)
+		return
+	}
+	schedule := SpaceSchedule{
+		SlotDate:  slotDate,
+		SlotHour:  slotHour,
+		EntryType: "booking",
+		Activity:  offering.Game,
+		Quantity:  1,
+		Title:     customerName,
+	}
+	if err := validateSpaceScheduleInput(schedule); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, _, err := a.createOneToOneBooking(*offering, customerName, slotDate, slotHour, notes); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	a.setFlash(w, "1 to 1 booking created.")
+	http.Redirect(w, r, "/admin/one-to-one-bookings", http.StatusSeeOther)
+}
+
+func (a *App) deleteOneToOneBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
+	if err != nil || scheduleID <= 0 {
+		http.Error(w, "invalid booking id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteSpaceSchedule(scheduleID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	a.setFlash(w, "1 to 1 booking deleted.")
+	http.Redirect(w, r, "/admin/one-to-one-bookings", http.StatusSeeOther)
+}
+
 func (a *App) adminBookingOptionsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
