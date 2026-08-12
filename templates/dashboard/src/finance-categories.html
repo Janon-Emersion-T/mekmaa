@@ -1,0 +1,144 @@
+{{define "finance-categories-section"}}
+<section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Category control</p>
+      <h2 class="mt-2 text-2xl font-semibold text-obsidian">Income and expense categories</h2>
+      <p class="mt-2 max-w-2xl text-sm text-slate/55">Create finance categories for ledger entries and filters. Categories with linked finance records are locked to preserve historical reporting.</p>
+    </div>
+    <div class="rounded-2xl border border-slate/10 bg-cloud/45 px-4 py-3 text-sm text-slate/60">
+      {{len .FinanceCategories}} categories seeded and managed here.
+    </div>
+  </div>
+
+  <form action="/admin/finance/categories/create" method="post" class="mt-6 grid gap-3 rounded-[1.5rem] border border-aqua/20 bg-mint/30 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_12rem_10rem_auto] xl:items-end">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <label class="text-xs font-semibold text-slate/60">Category name
+      <input name="name" required maxlength="120" placeholder="Scholarship income" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+    </label>
+    <label class="text-xs font-semibold text-slate/60">Direction
+      <select name="direction" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+        <option value="expense">Expense</option>
+        <option value="income">Income</option>
+      </select>
+    </label>
+    <label class="flex h-11 items-center gap-3 rounded-xl border border-slate/10 bg-white px-3 text-sm font-semibold text-slate">
+      <input type="checkbox" name="active" value="1" checked class="h-4 w-4 rounded border-slate/30 text-aqua focus:ring-aqua">
+      Active
+    </label>
+    <button class="h-11 rounded-xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Add category</button>
+  </form>
+
+  <div class="mt-6 grid gap-4 xl:grid-cols-2">
+    <section class="rounded-[1.5rem] border border-slate/10 bg-cloud/20 p-4 sm:p-5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700/70">Income</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Income categories</h3>
+        </div>
+        <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate/60">{{len (financeCategoriesForDirection .FinanceCategories "income")}} items</span>
+      </div>
+      <div class="mt-4 grid gap-3">
+        {{range financeCategoriesForDirection .FinanceCategories "income"}}
+        {{$locked := gt .LinkedTransactionCount 0}}
+        <article class="rounded-[1.25rem] border {{if .Active}}border-slate/10 bg-white{{else}}border-slate/10 bg-slate/50{{end}} p-4">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h4 class="font-semibold text-obsidian">{{.Name}}</h4>
+                <span class="rounded-full {{if .Active}}bg-emerald-100 text-emerald-800{{else}}bg-slate/10 text-slate/60{{end}} px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider">{{if .Active}}Active{{else}}Inactive{{end}}</span>
+                {{if $locked}}<span class="rounded-full bg-amber-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-amber-900">Locked</span>{{end}}
+              </div>
+              <p class="mt-1 font-mono text-xs text-slate/45">{{.Code}}</p>
+              <p class="mt-2 text-xs text-slate/55">{{if $locked}}{{.LinkedTransactionCount}} linked finance record{{if ne .LinkedTransactionCount 1}}s{{end}}.{{else}}No linked finance records yet.{{end}}</p>
+            </div>
+          </div>
+          {{if $locked}}
+          <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">Locked categories cannot be edited or deleted once transactions exist.</p>
+          {{else}}
+          <form action="/admin/finance/categories/update" method="post" class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_8rem_auto] sm:items-end">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="category_id" value="{{.ID}}">
+            <label class="text-xs font-semibold text-slate/55">Name
+              <input name="name" value="{{.Name}}" required maxlength="120" class="mt-1.5 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm">
+            </label>
+            <label class="text-xs font-semibold text-slate/55">Direction
+              <select name="direction" class="mt-1.5 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm">
+                <option value="income" {{if eq .Direction "income"}}selected{{end}}>Income</option>
+                <option value="expense" {{if eq .Direction "expense"}}selected{{end}}>Expense</option>
+              </select>
+            </label>
+            <label class="flex h-10 items-center gap-2 rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate">
+              <input type="checkbox" name="active" value="1" {{if .Active}}checked{{end}} class="h-4 w-4 rounded border-slate/30 text-aqua focus:ring-aqua">
+              Active
+            </label>
+            <div class="flex gap-2">
+              <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-semibold text-cloud">Save</button>
+              <button formaction="/admin/finance/categories/delete" formmethod="post" onclick="return confirm('Delete this finance category?')" class="h-10 rounded-xl border border-rose-200 bg-white px-4 text-xs font-semibold text-rose-700">Delete</button>
+            </div>
+          </form>
+          {{end}}
+        </article>
+        {{else}}
+        <div class="rounded-[1.25rem] border border-dashed border-slate/20 bg-white/60 px-4 py-10 text-center text-sm text-slate/50">No income categories yet.</div>
+        {{end}}
+      </div>
+    </section>
+
+    <section class="rounded-[1.5rem] border border-slate/10 bg-cloud/20 p-4 sm:p-5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700/70">Expense</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Expense categories</h3>
+        </div>
+        <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate/60">{{len (financeCategoriesForDirection .FinanceCategories "expense")}} items</span>
+      </div>
+      <div class="mt-4 grid gap-3">
+        {{range financeCategoriesForDirection .FinanceCategories "expense"}}
+        {{$locked := gt .LinkedTransactionCount 0}}
+        <article class="rounded-[1.25rem] border {{if .Active}}border-slate/10 bg-white{{else}}border-slate/10 bg-slate/50{{end}} p-4">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h4 class="font-semibold text-obsidian">{{.Name}}</h4>
+                <span class="rounded-full {{if .Active}}bg-emerald-100 text-emerald-800{{else}}bg-slate/10 text-slate/60{{end}} px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider">{{if .Active}}Active{{else}}Inactive{{end}}</span>
+                {{if $locked}}<span class="rounded-full bg-amber-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-amber-900">Locked</span>{{end}}
+              </div>
+              <p class="mt-1 font-mono text-xs text-slate/45">{{.Code}}</p>
+              <p class="mt-2 text-xs text-slate/55">{{if $locked}}{{.LinkedTransactionCount}} linked finance record{{if ne .LinkedTransactionCount 1}}s{{end}}.{{else}}No linked finance records yet.{{end}}</p>
+            </div>
+          </div>
+          {{if $locked}}
+          <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">Locked categories cannot be edited or deleted once transactions exist.</p>
+          {{else}}
+          <form action="/admin/finance/categories/update" method="post" class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_8rem_auto] sm:items-end">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="category_id" value="{{.ID}}">
+            <label class="text-xs font-semibold text-slate/55">Name
+              <input name="name" value="{{.Name}}" required maxlength="120" class="mt-1.5 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm">
+            </label>
+            <label class="text-xs font-semibold text-slate/55">Direction
+              <select name="direction" class="mt-1.5 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm">
+                <option value="expense" {{if eq .Direction "expense"}}selected{{end}}>Expense</option>
+                <option value="income" {{if eq .Direction "income"}}selected{{end}}>Income</option>
+              </select>
+            </label>
+            <label class="flex h-10 items-center gap-2 rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate">
+              <input type="checkbox" name="active" value="1" {{if .Active}}checked{{end}} class="h-4 w-4 rounded border-slate/30 text-aqua focus:ring-aqua">
+              Active
+            </label>
+            <div class="flex gap-2">
+              <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-semibold text-cloud">Save</button>
+              <button formaction="/admin/finance/categories/delete" formmethod="post" onclick="return confirm('Delete this finance category?')" class="h-10 rounded-xl border border-rose-200 bg-white px-4 text-xs font-semibold text-rose-700">Delete</button>
+            </div>
+          </form>
+          {{end}}
+        </article>
+        {{else}}
+        <div class="rounded-[1.25rem] border border-dashed border-slate/20 bg-white/60 px-4 py-10 text-center text-sm text-slate/50">No expense categories yet.</div>
+        {{end}}
+      </div>
+    </section>
+  </div>
+</section>
+{{end}}

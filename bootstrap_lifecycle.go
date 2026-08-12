@@ -318,6 +318,15 @@ func runMigrations(db *sql.DB) error {
 			recorded_at DATETIME NOT NULL,
 			created_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS finance_categories (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			code TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			direction TEXT NOT NULL,
+			active INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS student_monthly_payments (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			admission_id INTEGER NOT NULL,

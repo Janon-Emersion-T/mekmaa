@@ -501,7 +501,7 @@ func financeCategoryLabel(value string) string {
 	case "other_expense":
 		return "Other expense"
 	default:
-		return "Transaction"
+		return financeCategoryLabelFallback(value)
 	}
 }
 

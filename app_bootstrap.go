@@ -534,6 +534,17 @@ type FinanceTransaction struct {
 	UpdatedAt          time.Time
 }
 
+type FinanceCategory struct {
+	ID                     int64
+	Code                   string
+	Name                   string
+	Direction              string
+	Active                 bool
+	LinkedTransactionCount int
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 type FinanceAccount struct {
 	ID              int64
 	Name            string
@@ -1411,6 +1422,7 @@ type TemplateData struct {
 	EventMode                       string
 	FinanceTransactions             []FinanceTransaction
 	FinanceTransactionsTotal        int
+	FinanceCategories               []FinanceCategory
 	FinanceAccounts                 []FinanceAccount
 	FinanceTransfers                []FinanceTransfer
 	CashReconciliations             []CashReconciliation

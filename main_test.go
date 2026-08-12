@@ -97,6 +97,9 @@ func newBookingWorkflowTestApp(t *testing.T) *App {
 	if err := runMigrations(db); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
+	if err := seedFinanceCategories(db); err != nil {
+		t.Fatalf("seed finance categories: %v", err)
+	}
 	seedBookingEngine(t, db)
 	if _, err := db.Exec(`
 		UPDATE pricing_rules
@@ -485,6 +488,9 @@ func newAuthorizationTestApp(t *testing.T) *App {
 	t.Cleanup(func() { db.Close() })
 	if err := runMigrations(db); err != nil {
 		t.Fatalf("run migrations: %v", err)
+	}
+	if err := seedFinanceCategories(db); err != nil {
+		t.Fatalf("seed finance categories: %v", err)
 	}
 	if err := seedRoles(db); err != nil {
 		t.Fatalf("seed roles: %v", err)

@@ -120,6 +120,9 @@ func main() {
 	if err := seedTrainingPrograms(db); err != nil {
 		log.Fatalf("seed training programmes: %v", err)
 	}
+	if err := seedFinanceCategories(db); err != nil {
+		log.Fatalf("seed finance categories: %v", err)
+	}
 	if err := bootstrapSuperadmin(db); err != nil {
 		log.Fatalf("bootstrap superadmin: %v", err)
 	}
@@ -425,8 +428,12 @@ func main() {
 	mux.Handle("/admin/finance/transfers", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeTransfersHandler), "finance.manage")))
 	mux.Handle("/admin/finance/reconciliations", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReconciliationsHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountsHandler), "finance.manage")))
+	mux.Handle("/admin/finance/categories", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeCategoriesHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transactions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransactionHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transactions/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransactionHandler), "finance.manage")))
+	mux.Handle("/admin/finance/categories/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceCategoryHandler), "finance.manage")))
+	mux.Handle("/admin/finance/categories/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateFinanceCategoryHandler), "finance.manage")))
+	mux.Handle("/admin/finance/categories/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteFinanceCategoryHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transfers/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransferHandler), "finance.manage")))
 	mux.Handle("/admin/finance/transfers/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransferHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAccountHandler), "finance.manage")))

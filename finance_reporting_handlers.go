@@ -36,6 +36,10 @@ func (a *App) financeAccountsHandler(w http.ResponseWriter, r *http.Request) {
 	a.financeSectionHandler(w, r, "accounts")
 }
 
+func (a *App) financeCategoriesHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "categories")
+}
+
 func (a *App) financeCustomersHandler(w http.ResponseWriter, r *http.Request) {
 	a.financeSectionHandler(w, r, "customers")
 }
@@ -67,6 +71,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	needMonthlyRows := page == "receivables"
 	needTransfers := page == "transfers"
 	needReconciliations := page == "reconciliations"
+	needCategories := page == "ledger" || page == "categories"
 
 	var allTransactions []FinanceTransaction
 	var allMonthlyRows []StudentPaymentRow
@@ -79,6 +84,15 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 			return data, err
 		}
 		data.FinanceAccounts = accounts
+	}
+
+	if needCategories {
+		categories, err := a.listFinanceCategories(false)
+		if err != nil {
+			log.Printf("finance %s load failed: op=list finance categories duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.FinanceCategories = categories
 	}
 
 	if needAllTransactions {
@@ -200,7 +214,16 @@ func (a *App) createFinanceTransactionHandler(w http.ResponseWriter, r *http.Req
 	}
 	direction := strings.ToLower(strings.TrimSpace(r.FormValue("direction")))
 	category := strings.ToLower(strings.TrimSpace(r.FormValue("category")))
-	if !validManualFinanceCategory(direction, category) {
+	if !validFinanceCategoryDirection(direction) {
+		http.Error(w, "invalid finance direction", http.StatusBadRequest)
+		return
+	}
+	exists, err := a.financeCategoryExists(direction, category, true)
+	if err != nil {
+		http.Error(w, "could not validate finance category", http.StatusInternalServerError)
+		return
+	}
+	if !exists {
 		http.Error(w, "invalid finance category", http.StatusBadRequest)
 		return
 	}
@@ -239,6 +262,91 @@ func (a *App) createFinanceTransactionHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) createFinanceCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	if err := a.createFinanceCategory(
+		r.FormValue("name"),
+		r.FormValue("direction"),
+		r.FormValue("active") == "1",
+	); err != nil {
+		a.setFlash(w, "Finance category could not be created: "+err.Error())
+		http.Redirect(w, r, "/admin/finance/categories", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Finance category created.")
+	http.Redirect(w, r, "/admin/finance/categories", http.StatusSeeOther)
+}
+
+func (a *App) updateFinanceCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	err := a.updateFinanceCategory(
+		parseInt64Query(r.FormValue("category_id")),
+		r.FormValue("name"),
+		r.FormValue("direction"),
+		r.FormValue("active") == "1",
+	)
+	if err != nil {
+		if errors.Is(err, errFinanceCategoryLocked) {
+			a.setFlash(w, "This category already has linked finance records and cannot be edited.")
+		} else {
+			a.setFlash(w, "Finance category could not be updated: "+err.Error())
+		}
+		http.Redirect(w, r, "/admin/finance/categories", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Finance category updated.")
+	http.Redirect(w, r, "/admin/finance/categories", http.StatusSeeOther)
+}
+
+func (a *App) deleteFinanceCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	err := a.deleteFinanceCategory(parseInt64Query(r.FormValue("category_id")))
+	if err != nil {
+		if errors.Is(err, errFinanceCategoryLocked) {
+			a.setFlash(w, "This category already has linked finance records and cannot be deleted.")
+		} else {
+			a.setFlash(w, "Finance category could not be deleted: "+err.Error())
+		}
+		http.Redirect(w, r, "/admin/finance/categories", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Finance category deleted.")
+	http.Redirect(w, r, "/admin/finance/categories", http.StatusSeeOther)
 }
 
 func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Request) {

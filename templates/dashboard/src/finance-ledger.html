@@ -23,27 +23,12 @@
       </label>
       <label class="text-xs font-medium text-slate/60">Category
         <select name="category" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-          <option value="other_expense">Other expense</option>
-          <option value="loan_repayment_expense">Loan Repayment</option>
-          <option value="staff_salary_expense">Staff Salary</option>
-          <option value="utilities_expense">Utilities</option>
-          <option value="electricity_bills_expense">Utility Bills - Electricity Bills</option>
-          <option value="telephone_bills_expense">Utility Bills - Telephone Bills</option>
-          <option value="maintenance_expense">Maintenance and repairs</option>
-          <option value="staff_expense">Staff and wages</option>
-          <option value="donation_expense">Donation</option>
-          <option value="stationery_expense">Stationery</option>
-          <option value="equipment_expense">Equipment</option>
-          <option value="sports_supplies_expense">Sports supplies</option>
-          <option value="refreshments_expense">Refreshments and drinks</option>
-          <option value="prizes_expense">Prizes and awards</option>
-          <option value="marketing_expense">Marketing</option>
-          <option value="transport_expense">Transport</option>
-          <option value="event_expense">Event expense</option>
-          <option value="bank_charges_expense">Bank charges</option>
-          <option value="manual_income">Other income</option>
-          <option value="sponsorship_income">Sponsorship income</option>
-          <option value="other_income">Other income (general)</option>
+          {{range financeActiveCategoriesForDirection .FinanceCategories "expense"}}
+          <option value="{{.Code}}">{{.Name}}</option>
+          {{end}}
+          {{range financeActiveCategoriesForDirection .FinanceCategories "income"}}
+          <option value="{{.Code}}">{{.Name}}</option>
+          {{end}}
         </select>
       </label>
       <label class="text-xs font-medium text-slate/60">Paid to / received from
@@ -118,21 +103,9 @@
           <option value="student_monthly_payment" {{if eq .FinanceFilter.Category "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
           <option value="booking_payment" {{if eq .FinanceFilter.Category "booking_payment"}}selected{{end}}>Booking payment</option>
           <option value="referral_commission_payment" {{if eq .FinanceFilter.Category "referral_commission_payment"}}selected{{end}}>Referral payment</option>
-          <option value="manual_income" {{if eq .FinanceFilter.Category "manual_income"}}selected{{end}}>Manual income</option>
-          <option value="other_income" {{if eq .FinanceFilter.Category "other_income"}}selected{{end}}>Other income</option>
-          <option value="other_expense" {{if eq .FinanceFilter.Category "other_expense"}}selected{{end}}>Other expense</option>
-          <option value="loan_repayment_expense" {{if eq .FinanceFilter.Category "loan_repayment_expense"}}selected{{end}}>Loan repayment</option>
-          <option value="staff_salary_expense" {{if eq .FinanceFilter.Category "staff_salary_expense"}}selected{{end}}>Staff salary</option>
-          <option value="staff_expense" {{if eq .FinanceFilter.Category "staff_expense"}}selected{{end}}>Staff expense</option>
-          <option value="utilities_expense" {{if eq .FinanceFilter.Category "utilities_expense"}}selected{{end}}>Utilities</option>
-          <option value="electricity_bills_expense" {{if eq .FinanceFilter.Category "electricity_bills_expense"}}selected{{end}}>Utility bills - Electricity bills</option>
-          <option value="telephone_bills_expense" {{if eq .FinanceFilter.Category "telephone_bills_expense"}}selected{{end}}>Utility bills - Telephone bills</option>
-          <option value="maintenance_expense" {{if eq .FinanceFilter.Category "maintenance_expense"}}selected{{end}}>Maintenance</option>
-          <option value="donation_expense" {{if eq .FinanceFilter.Category "donation_expense"}}selected{{end}}>Donation</option>
-          <option value="stationery_expense" {{if eq .FinanceFilter.Category "stationery_expense"}}selected{{end}}>Stationery</option>
-          <option value="marketing_expense" {{if eq .FinanceFilter.Category "marketing_expense"}}selected{{end}}>Marketing</option>
-          <option value="transport_expense" {{if eq .FinanceFilter.Category "transport_expense"}}selected{{end}}>Transport</option>
-          <option value="event_expense" {{if eq .FinanceFilter.Category "event_expense"}}selected{{end}}>Event expense</option>
+          {{range .FinanceCategories}}
+          <option value="{{.Code}}" {{if eq $.FinanceFilter.Category .Code}}selected{{end}}>{{.Name}}</option>
+          {{end}}
           <option value="cash_adjustment" {{if eq .FinanceFilter.Category "cash_adjustment"}}selected{{end}}>Adjustment</option>
           <option value="opening_balance" {{if eq .FinanceFilter.Category "opening_balance"}}selected{{end}}>Opening balance</option>
         </select>

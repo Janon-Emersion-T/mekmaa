@@ -35,5 +35,9 @@
   {{if eq .FinancePage "accounts"}}
   {{template "finance-accounts-section" .}}
   {{end}}
+
+  {{if eq .FinancePage "categories"}}
+  {{template "finance-categories-section" .}}
+  {{end}}
 </section>
 {{end}}

@@ -192,6 +192,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"financeVoidWorkflowMessage":                financeVoidWorkflowMessage,
 		"financeAccountTone":                        financeAccountTone,
 		"financeCategoryLabel":                      financeCategoryLabel,
+		"financeActiveCategoriesForDirection":       financeActiveCategoriesForDirection,
+		"financeCategoriesForDirection":             financeCategoriesForDirection,
 		"admissionsPageURL":                         admissionsPageURL,
 		"paymentMonthLabel":                         paymentMonthLabel,
 		"formatDateTime":                            formatDateTime,
@@ -305,6 +307,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"templates/dashboard/src/finance-customers.html",
 		"templates/dashboard/src/finance-ledger.html",
 		"templates/dashboard/src/finance-operations.html",
+		"templates/dashboard/src/finance-categories.html",
 	}
 	templates := make(map[string]*template.Template, len(pages))
 	for page, path := range pages {
