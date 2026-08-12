@@ -4696,11 +4696,13 @@ func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 
 	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
-		Name:     "Private Badminton",
-		Game:     "badminton",
-		Audience: "local",
-		Price:    3500,
-		Active:   true,
+		Name:         "Private Badminton",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 6,
+		Price:        3500,
+		Active:       true,
 	})
 	if err != nil {
 		t.Fatalf("create 1 to 1 offering: %v", err)
@@ -4711,7 +4713,7 @@ func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
 	}
 
 	slotDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
-	bookingID, scheduleID, err := app.createOneToOneBooking(*offering, "Test Customer", slotDate, "18:00", "High-priority session")
+	bookingID, scheduleID, err := app.createOneToOneBooking(*offering, "Test Customer", slotDate, "18:00", 4, 3000, 800, "High-priority session")
 	if err != nil {
 		t.Fatalf("create 1 to 1 booking: %v", err)
 	}
@@ -4752,7 +4754,7 @@ func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
 	if err := app.db.QueryRow(`SELECT quoted_amount FROM booking_financials WHERE schedule_id = ?`, scheduleID).Scan(&quotedAmount); err != nil {
 		t.Fatalf("load booking financial: %v", err)
 	}
-	if quotedAmount != 3500 {
+	if quotedAmount != 3000 {
 		t.Fatalf("unexpected quoted amount: %v", quotedAmount)
 	}
 }
@@ -4761,11 +4763,13 @@ func TestOneToOneBookingRejectsConsumedCapacity(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 
 	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
-		Name:     "Private Badminton",
-		Game:     "badminton",
-		Audience: "foreign",
-		Price:    4500,
-		Active:   true,
+		Name:         "Private Badminton",
+		Game:         "badminton",
+		Audience:     "foreign",
+		Occurrence:   "per_month",
+		SessionCount: 8,
+		Price:        4500,
+		Active:       true,
 	})
 	if err != nil {
 		t.Fatalf("create 1 to 1 offering: %v", err)
@@ -4787,12 +4791,42 @@ func TestOneToOneBookingRejectsConsumedCapacity(t *testing.T) {
 		QuotedPrice:   2500,
 	})
 
-	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "18:00", "")
+	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "18:00", 3, 4200, 900, "")
 	if err == nil {
 		t.Fatal("expected 1 to 1 booking conflict error")
 	}
 	if !strings.Contains(err.Error(), "remaining capacity") {
 		t.Fatalf("unexpected conflict error: %v", err)
+	}
+}
+
+func TestOneToOneBookingRejectsSessionsAboveConfiguredLimit(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Private Cricket",
+		Game:         "cricket_net",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 3,
+		Price:        6000,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create 1 to 1 offering: %v", err)
+	}
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find 1 to 1 offering: %v", err)
+	}
+
+	slotDate := time.Now().AddDate(0, 0, 6).Format("2006-01-02")
+	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "19:00", 4, 5500, 1200, "")
+	if err == nil {
+		t.Fatal("expected sessions limit error")
+	}
+	if !strings.Contains(err.Error(), "configured limit of 3") {
+		t.Fatalf("unexpected sessions limit error: %v", err)
 	}
 }
 
@@ -4805,11 +4839,13 @@ func TestOneToOneManagementHandlersRender(t *testing.T) {
 	app.templates = templates
 
 	if _, err := app.createOneToOneOffering(OneToOneOffering{
-		Name:     "Private Badminton",
-		Game:     "badminton",
-		Audience: "local",
-		Price:    3200,
-		Active:   true,
+		Name:         "Private Badminton",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 4,
+		Price:        3200,
+		Active:       true,
 	}); err != nil {
 		t.Fatalf("create 1 to 1 offering: %v", err)
 	}

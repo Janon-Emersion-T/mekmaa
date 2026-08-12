@@ -121,12 +121,18 @@ func oneToOneOfferingFromRequest(r *http.Request) (OneToOneOffering, error) {
 	if err != nil {
 		return OneToOneOffering{}, errors.New("valid price is required")
 	}
+	sessionCount, err := strconv.Atoi(strings.TrimSpace(r.FormValue("session_count")))
+	if err != nil || sessionCount <= 0 {
+		sessionCount = 1
+	}
 	return OneToOneOffering{
-		Name:     strings.TrimSpace(r.FormValue("name")),
-		Game:     strings.ToLower(strings.TrimSpace(r.FormValue("game"))),
-		Audience: strings.ToLower(strings.TrimSpace(r.FormValue("audience"))),
-		Price:    price,
-		Active:   r.FormValue("active") == "1",
+		Name:         strings.TrimSpace(r.FormValue("name")),
+		Game:         strings.ToLower(strings.TrimSpace(r.FormValue("game"))),
+		Audience:     strings.ToLower(strings.TrimSpace(r.FormValue("audience"))),
+		Occurrence:   strings.ToLower(strings.TrimSpace(r.FormValue("occurrence"))),
+		SessionCount: sessionCount,
+		Price:        price,
+		Active:       r.FormValue("active") == "1",
 	}, nil
 }
 
@@ -142,11 +148,45 @@ func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActiv
 		return errors.New("selected game is not active in court manager")
 	case offering.Audience != "local" && offering.Audience != "foreign":
 		return errors.New("who must be local or foreign")
+	case offering.Occurrence != "per_day" && offering.Occurrence != "per_week" && offering.Occurrence != "per_month":
+		return errors.New("occurrence must be per day, per week, or per month")
+	case offering.Occurrence == "per_day" && offering.SessionCount != 1:
+		return errors.New("per day setups must use exactly 1 session")
+	case offering.Occurrence != "per_day" && offering.SessionCount <= 0:
+		return errors.New("session count must be at least 1")
 	case offering.Price < 0:
 		return errors.New("price must be zero or greater")
 	default:
 		return nil
 	}
+}
+
+func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, int, float64, float64, string, error) {
+	offeringID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("offering_id")), 10, 64)
+	if err != nil || offeringID <= 0 {
+		return 0, "", "", "", 0, 0, 0, "", errors.New("valid 1 to 1 selection is required")
+	}
+	sessions, err := strconv.Atoi(strings.TrimSpace(r.FormValue("sessions")))
+	if err != nil || sessions <= 0 {
+		return 0, "", "", "", 0, 0, 0, "", errors.New("valid sessions count is required")
+	}
+	discountedPrice, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("discounted_price")), 64)
+	if err != nil {
+		return 0, "", "", "", 0, 0, 0, "", errors.New("valid discounted price is required")
+	}
+	coachFee, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("coach_fee")), 64)
+	if err != nil {
+		return 0, "", "", "", 0, 0, 0, "", errors.New("valid coach fee is required")
+	}
+	return offeringID,
+		strings.TrimSpace(r.FormValue("customer_name")),
+		strings.TrimSpace(r.FormValue("slot_date")),
+		strings.TrimSpace(r.FormValue("slot_hour")),
+		sessions,
+		discountedPrice,
+		coachFee,
+		strings.TrimSpace(r.FormValue("notes")),
+		nil
 }
 
 func bookingActivityExists(activity string, activities []CourtActivity) bool {

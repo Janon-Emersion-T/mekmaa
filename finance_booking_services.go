@@ -995,7 +995,7 @@ func (a *App) countHeldSpaceSchedules() (int, error) {
 
 func (a *App) listOneToOneOfferings(includeInactive bool) ([]OneToOneOffering, error) {
 	query := `
-		SELECT id, name, game, audience, price, active, created_at, updated_at
+		SELECT id, name, game, audience, COALESCE(occurrence, 'per_day'), COALESCE(session_count, 1), price, active, created_at, updated_at
 		FROM one_to_one_offerings`
 	args := make([]any, 0, 1)
 	if !includeInactive {
@@ -1016,6 +1016,8 @@ func (a *App) listOneToOneOfferings(includeInactive bool) ([]OneToOneOffering, e
 			&offering.Name,
 			&offering.Game,
 			&offering.Audience,
+			&offering.Occurrence,
+			&offering.SessionCount,
 			&offering.Price,
 			&offering.Active,
 			&offering.CreatedAt,
@@ -1031,7 +1033,7 @@ func (a *App) listOneToOneOfferings(includeInactive bool) ([]OneToOneOffering, e
 func (a *App) findOneToOneOfferingByID(id int64) (*OneToOneOffering, error) {
 	var offering OneToOneOffering
 	if err := a.db.QueryRow(`
-		SELECT id, name, game, audience, price, active, created_at, updated_at
+		SELECT id, name, game, audience, COALESCE(occurrence, 'per_day'), COALESCE(session_count, 1), price, active, created_at, updated_at
 		FROM one_to_one_offerings
 		WHERE id = ?
 	`, id).Scan(
@@ -1039,6 +1041,8 @@ func (a *App) findOneToOneOfferingByID(id int64) (*OneToOneOffering, error) {
 		&offering.Name,
 		&offering.Game,
 		&offering.Audience,
+		&offering.Occurrence,
+		&offering.SessionCount,
 		&offering.Price,
 		&offering.Active,
 		&offering.CreatedAt,
@@ -1050,21 +1054,31 @@ func (a *App) findOneToOneOfferingByID(id int64) (*OneToOneOffering, error) {
 }
 
 func (a *App) createOneToOneOffering(offering OneToOneOffering) (int64, error) {
+	if strings.TrimSpace(offering.Occurrence) == "" {
+		offering.Occurrence = "per_day"
+	}
+	if offering.Occurrence == "per_day" || offering.SessionCount <= 0 {
+		offering.SessionCount = 1
+	}
 	result, err := a.db.Exec(`
 		INSERT INTO one_to_one_offerings (
 			name,
 			game,
 			audience,
+			occurrence,
+			session_count,
 			price,
 			active,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		offering.Name,
 		offering.Game,
 		offering.Audience,
+		offering.Occurrence,
+		offering.SessionCount,
 		offering.Price,
 		boolToInt(offering.Active),
 		time.Now().UTC(),
@@ -1077,14 +1091,22 @@ func (a *App) createOneToOneOffering(offering OneToOneOffering) (int64, error) {
 }
 
 func (a *App) updateOneToOneOffering(offering OneToOneOffering) error {
+	if strings.TrimSpace(offering.Occurrence) == "" {
+		offering.Occurrence = "per_day"
+	}
+	if offering.Occurrence == "per_day" || offering.SessionCount <= 0 {
+		offering.SessionCount = 1
+	}
 	result, err := a.db.Exec(`
 		UPDATE one_to_one_offerings
-		SET name = ?, game = ?, audience = ?, price = ?, active = ?, updated_at = ?
+		SET name = ?, game = ?, audience = ?, occurrence = ?, session_count = ?, price = ?, active = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		offering.Name,
 		offering.Game,
 		offering.Audience,
+		offering.Occurrence,
+		offering.SessionCount,
 		offering.Price,
 		boolToInt(offering.Active),
 		time.Now().UTC(),
@@ -1139,7 +1161,12 @@ func (a *App) listOneToOneBookings() ([]OneToOneBooking, error) {
 			ob.offering_name,
 			ob.game,
 			ob.audience,
+			COALESCE(ob.occurrence, 'per_day'),
+			COALESCE(ob.max_sessions, 1),
 			ob.price,
+			CASE WHEN COALESCE(ob.discounted_price, -1) < 0 THEN ob.price ELSE ob.discounted_price END,
+			COALESCE(ob.coach_fee, 0),
+			COALESCE(ob.sessions, 1),
 			s.slot_date,
 			s.slot_hour,
 			s.status,
@@ -1168,7 +1195,12 @@ func (a *App) listOneToOneBookings() ([]OneToOneBooking, error) {
 			&booking.OfferingName,
 			&booking.Game,
 			&booking.Audience,
+			&booking.Occurrence,
+			&booking.MaxSessions,
 			&booking.Price,
+			&booking.DiscountedPrice,
+			&booking.CoachFee,
+			&booking.Sessions,
 			&booking.SlotDate,
 			&booking.SlotHour,
 			&booking.Status,
@@ -1184,7 +1216,28 @@ func (a *App) listOneToOneBookings() ([]OneToOneBooking, error) {
 	return bookings, rows.Err()
 }
 
-func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slotDate, slotHour, notes string) (int64, int64, error) {
+func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slotDate, slotHour string, sessions int, discountedPrice float64, coachFee float64, notes string) (int64, int64, error) {
+	if sessions <= 0 {
+		sessions = 1
+	}
+	if offering.Occurrence == "per_day" {
+		sessions = 1
+	}
+	if offering.SessionCount <= 0 {
+		offering.SessionCount = 1
+	}
+	if sessions > offering.SessionCount {
+		return 0, 0, fmt.Errorf("sessions cannot exceed the configured limit of %d", offering.SessionCount)
+	}
+	if discountedPrice < 0 {
+		return 0, 0, errors.New("discounted price must be zero or greater")
+	}
+	if discountedPrice > offering.Price {
+		return 0, 0, errors.New("discounted price cannot exceed the standard price")
+	}
+	if coachFee < 0 {
+		return 0, 0, errors.New("coach fee must be zero or greater")
+	}
 	schedule := SpaceSchedule{
 		SlotDate:      slotDate,
 		SlotHour:      slotHour,
@@ -1192,9 +1245,9 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 		Activity:      offering.Game,
 		Quantity:      1,
 		Title:         fmt.Sprintf("1 to 1 · %s · %s", offering.Name, customerName),
-		Notes:         buildOneToOneBookingNotes(offering, notes),
+		Notes:         buildOneToOneBookingNotes(offering, sessions, discountedPrice, coachFee, notes),
 		RequesterName: customerName,
-		QuotedPrice:   offering.Price,
+		QuotedPrice:   discountedPrice,
 	}
 
 	courtActivities, courtLayouts, err := a.activeBookingConfiguration()
@@ -1283,7 +1336,7 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 			updated_at
 		)
 		VALUES (?, ?, 0, '', ?, ?)
-	`, scheduleID, offering.Price, now, now); err != nil {
+	`, scheduleID, discountedPrice, now, now); err != nil {
 		return 0, 0, err
 	}
 	result, err = tx.Exec(`
@@ -1295,11 +1348,16 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 			game,
 			audience,
 			price,
+			discounted_price,
+			coach_fee,
+			sessions,
+			occurrence,
+			max_sessions,
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, scheduleID, offering.ID, customerName, offering.Name, offering.Game, offering.Audience, offering.Price, now, now)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, scheduleID, offering.ID, customerName, offering.Name, offering.Game, offering.Audience, offering.Price, discountedPrice, coachFee, sessions, offering.Occurrence, offering.SessionCount, now, now)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -1314,8 +1372,8 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 	return bookingID, scheduleID, nil
 }
 
-func buildOneToOneBookingNotes(offering OneToOneOffering, notes string) string {
-	base := fmt.Sprintf("1 to 1 booking\nProgramme: %s\nGame: %s\nWho: %s\nPrice: %.2f", offering.Name, offering.Game, offering.Audience, normalizeMoney(offering.Price))
+func buildOneToOneBookingNotes(offering OneToOneOffering, sessions int, discountedPrice float64, coachFee float64, notes string) string {
+	base := fmt.Sprintf("1 to 1 booking\nProgramme: %s\nGame: %s\nWho: %s\nOccurrence: %s\nAllowed sessions: %d\nBooked sessions: %d\nStandard price: %.2f\nDiscounted price: %.2f\nCoach fee: %.2f", offering.Name, offering.Game, offering.Audience, offering.Occurrence, offering.SessionCount, sessions, normalizeMoney(offering.Price), normalizeMoney(discountedPrice), normalizeMoney(coachFee))
 	notes = strings.TrimSpace(notes)
 	if notes == "" {
 		return base

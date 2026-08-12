@@ -969,14 +969,16 @@ type PricingSettings struct {
 }
 
 type OneToOneOffering struct {
-	ID        int64
-	Name      string
-	Game      string
-	Audience  string
-	Price     float64
-	Active    bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           int64
+	Name         string
+	Game         string
+	Audience     string
+	Occurrence   string
+	SessionCount int
+	Price        float64
+	Active       bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type OneToOneBooking struct {
@@ -986,7 +988,12 @@ type OneToOneBooking struct {
 	OfferingName    string
 	Game            string
 	Audience        string
+	Occurrence      string
+	MaxSessions     int
 	Price           float64
+	DiscountedPrice float64
+	CoachFee        float64
+	Sessions        int
 	CustomerName    string
 	SlotDate        string
 	SlotHour        string

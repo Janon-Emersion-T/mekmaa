@@ -1406,15 +1406,11 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
-	offeringID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("offering_id")), 10, 64)
-	if err != nil || offeringID <= 0 {
-		http.Error(w, "valid 1 to 1 selection is required", http.StatusBadRequest)
+	offeringID, customerName, slotDate, slotHour, sessions, discountedPrice, coachFee, notes, err := oneToOneBookingFormValues(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	customerName := strings.TrimSpace(r.FormValue("customer_name"))
-	slotDate := strings.TrimSpace(r.FormValue("slot_date"))
-	slotHour := strings.TrimSpace(r.FormValue("slot_hour"))
-	notes := strings.TrimSpace(r.FormValue("notes"))
 	if customerName == "" {
 		http.Error(w, "customer name is required", http.StatusBadRequest)
 		return
@@ -1426,6 +1422,13 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 	}
 	if !offering.Active {
 		http.Error(w, "selected 1 to 1 setup is inactive", http.StatusBadRequest)
+		return
+	}
+	if offering.Occurrence == "per_day" {
+		sessions = 1
+	}
+	if sessions > offering.SessionCount {
+		http.Error(w, fmt.Sprintf("sessions cannot exceed the configured limit of %d", offering.SessionCount), http.StatusBadRequest)
 		return
 	}
 	schedule := SpaceSchedule{
@@ -1444,7 +1447,7 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, _, err := a.createOneToOneBooking(*offering, customerName, slotDate, slotHour, notes); err != nil {
+	if _, _, err := a.createOneToOneBooking(*offering, customerName, slotDate, slotHour, sessions, discountedPrice, coachFee, notes); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
