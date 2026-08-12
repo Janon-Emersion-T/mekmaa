@@ -536,7 +536,7 @@ func formatDateTime(value time.Time) string {
 	if value.IsZero() {
 		return "—"
 	}
-	return value.In(time.Local).Format("2006-01-02 15:04")
+	return value.In(time.Local).Format(displayDateTimeLayout)
 }
 
 func formatCalendarDate(value string) string {
@@ -544,7 +544,7 @@ func formatCalendarDate(value string) string {
 	if err != nil {
 		return value
 	}
-	return parsed.Format("02 Jan 2006")
+	return parsed.In(time.Local).Format(displayDateLayout)
 }
 
 func formatClockTime(value string) string {

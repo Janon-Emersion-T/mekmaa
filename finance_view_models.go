@@ -3,14 +3,10 @@ package main
 func pendingStudentPaymentRows(rows []StudentPaymentRow) []StudentPaymentRow {
 	filtered := make([]StudentPaymentRow, 0, len(rows))
 	for _, row := range rows {
-		collectedAmount := 0.0
-		if row.Payment != nil {
-			collectedAmount = row.Payment.Amount
-		}
 		if row.MonthlyFee <= 0 {
 			continue
 		}
-		if collectedAmount+0.004 >= row.MonthlyFee {
+		if row.CollectedAmount+0.004 >= row.MonthlyFee {
 			continue
 		}
 		filtered = append(filtered, row)

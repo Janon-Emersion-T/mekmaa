@@ -371,13 +371,6 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			payment_rows.training_program_name,
 			payment_rows.free_monthly_fee,
 			payment_rows.original_monthly_fee,
-			payment_rows.payment_id,
-			payment_rows.payment_amount,
-			payment_rows.payment_method,
-			payment_rows.finance_transaction_id,
-			payment_rows.collected_by_user_id,
-			payment_rows.collected_at,
-			payment_rows.payment_created_at,
 			payment_rows.enrollment_created_at
 		FROM (
 			SELECT
@@ -395,13 +388,6 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 				tp.name AS training_program_name,
 				COALESCE(se.free_monthly_fee, 0) AS free_monthly_fee,
 				COALESCE(tp.monthly_fee, 0) AS original_monthly_fee,
-				smp.id AS payment_id,
-				smp.amount AS payment_amount,
-				smp.payment_method AS payment_method,
-				smp.finance_transaction_id AS finance_transaction_id,
-				COALESCE(smp.collected_by_user_id, 0) AS collected_by_user_id,
-				smp.collected_at AS collected_at,
-				smp.created_at AS payment_created_at,
 				COALESCE(CAST(se.created_at AS TEXT), '') AS enrollment_created_at,
 				COALESCE(tp.sort_order, 0) AS program_sort_order
 			FROM student_enrollments se
@@ -409,8 +395,6 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 				ON a.id = se.admission_id
 			JOIN training_programs tp
 				ON tp.id = se.training_program_id
-			LEFT JOIN student_monthly_payments smp
-				ON smp.enrollment_id = se.id AND smp.payment_month = ? AND COALESCE(smp.voided, 0) = 0
 			WHERE a.admission_date <= ?
 			  AND COALESCE(se.active, 1) = 1
 
@@ -437,13 +421,6 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 				) AS training_program_name,
 				COALESCE(a.free_monthly_fee, 0) AS free_monthly_fee,
 				COALESCE(tp.monthly_fee, ap.monthly_fee, 0) AS original_monthly_fee,
-				smp.id AS payment_id,
-				smp.amount AS payment_amount,
-				smp.payment_method AS payment_method,
-				smp.finance_transaction_id AS finance_transaction_id,
-				COALESCE(smp.collected_by_user_id, 0) AS collected_by_user_id,
-				smp.collected_at AS collected_at,
-				smp.created_at AS payment_created_at,
 				'' AS enrollment_created_at,
 				COALESCE(tp.sort_order, 0) AS program_sort_order
 			FROM admissions a
@@ -451,11 +428,6 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 				ON tp.id = a.training_program_id
 			LEFT JOIN admission_pricing ap
 				ON ap.practice_type = a.practice_type
-			LEFT JOIN student_monthly_payments smp
-				ON smp.admission_id = a.id
-				AND (smp.enrollment_id IS NULL OR smp.enrollment_id = 0)
-				AND smp.payment_month = ?
-				AND COALESCE(smp.voided, 0) = 0
 			WHERE a.admission_date <= ?
 			  AND NOT EXISTS (
 				SELECT 1
@@ -465,13 +437,12 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			  )
 		) AS payment_rows
 		ORDER BY
-			CASE WHEN payment_rows.payment_id IS NULL THEN 0 ELSE 1 END,
 			payment_rows.full_name COLLATE NOCASE,
 			payment_rows.program_sort_order ASC,
 			payment_rows.training_program_name ASC,
 			payment_rows.enrollment_id,
 			payment_rows.admission_id
-	`, paymentMonth, monthEnd, paymentMonth, monthEnd)
+	`, monthEnd, monthEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -484,13 +455,6 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			row                 StudentPaymentRow
 			enrollmentID        int64
 			freeMonthlyFee      int
-			paymentID           sql.NullInt64
-			paymentAmount       sql.NullFloat64
-			paymentMethod       sql.NullString
-			transactionID       sql.NullInt64
-			collectedByUserID   sql.NullInt64
-			collectedAt         sql.NullTime
-			paymentCreatedAt    sql.NullTime
 			enrollmentCreatedAt string
 		)
 		if err := rows.Scan(
@@ -503,8 +467,7 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			&row.Admission.QRCodeValue,
 			&row.Enrollment.TrainingProgramID,
 			&row.Enrollment.TrainingProgramName,
-			&freeMonthlyFee, &row.OriginalMonthlyFee, &paymentID, &paymentAmount, &paymentMethod,
-			&transactionID, &collectedByUserID, &collectedAt, &paymentCreatedAt, &enrollmentCreatedAt,
+			&freeMonthlyFee, &row.OriginalMonthlyFee, &enrollmentCreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -537,25 +500,21 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 		}
 		row.Admission.TrainingProgramName = row.Enrollment.TrainingProgramName
 		row.Admission.TrainingProgramNames = row.Enrollment.TrainingProgramName
-		if paymentID.Valid {
-			row.Payment = &StudentMonthlyPayment{
-				ID:                   paymentID.Int64,
-				AdmissionID:          row.Admission.ID,
-				EnrollmentID:         row.Enrollment.ID,
-				PaymentMonth:         paymentMonth,
-				Amount:               paymentAmount.Float64,
-				PaymentMethod:        paymentMethod.String,
-				FinanceTransactionID: transactionID.Int64,
-				CollectedByUserID:    collectedByUserID.Int64,
-				CollectedAt:          collectedAt.Time,
-				CreatedAt:            paymentCreatedAt.Time,
-			}
-		}
 		paymentRows = append(paymentRows, row)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
+	payments, err := a.listActiveStudentMonthlyPaymentsForMonth(paymentMonth)
+	if err != nil {
+		return nil, err
+	}
+	paymentMap := make(map[string][]StudentMonthlyPayment)
+	for _, payment := range payments {
+		paymentMap[studentMonthlyPaymentKey(payment.AdmissionID, payment.EnrollmentID)] = append(paymentMap[studentMonthlyPaymentKey(payment.AdmissionID, payment.EnrollmentID)], payment)
+	}
+
 	leaveMap, err := a.listStudentEnrollmentLeavesByEnrollmentIDs(enrollmentIDs)
 	if err != nil {
 		return nil, err
@@ -573,23 +532,33 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			}
 			paymentRows[i].MonthlyFee, paymentRows[i].EnrollmentProrationAmount = applyFirstMonthEnrollmentDiscount(paymentRows[i].MonthlyFee, billingStart, paymentMonth, paymentRows[i].MonthDays)
 		}
-		if paymentRows[i].Enrollment.ID <= 0 {
-			continue
+		if paymentRows[i].Enrollment.ID > 0 {
+			paymentRows[i].Leaves = leaveMap[paymentRows[i].Enrollment.ID]
+			if !paymentRows[i].Enrollment.FreeMonthlyFee && paymentRows[i].OriginalMonthlyFee > 0 {
+				leaveDays, err := overlappingLeaveDaysForMonth(paymentRows[i].Leaves, monthDate)
+				if err != nil {
+					return nil, err
+				}
+				paymentRows[i].LeaveDays = leaveDays
+				paymentRows[i].BillableDays = paymentRows[i].MonthDays - leaveDays
+				if paymentRows[i].BillableDays < 0 {
+					paymentRows[i].BillableDays = 0
+				}
+				paymentRows[i].MonthlyFee, paymentRows[i].LeaveAmount = proratedMonthlyFee(paymentRows[i].MonthlyFee, leaveDays, paymentRows[i].MonthDays)
+			}
 		}
-		paymentRows[i].Leaves = leaveMap[paymentRows[i].Enrollment.ID]
-		if paymentRows[i].Enrollment.FreeMonthlyFee || paymentRows[i].OriginalMonthlyFee <= 0 {
-			continue
+		paymentRows[i].Payments = paymentMap[studentMonthlyPaymentKey(paymentRows[i].Admission.ID, paymentRows[i].Enrollment.ID)]
+		for _, payment := range paymentRows[i].Payments {
+			paymentRows[i].CollectedAmount = normalizeMoney(paymentRows[i].CollectedAmount + payment.Amount)
+			if paymentRows[i].Payment == nil || payment.CollectedAt.After(paymentRows[i].Payment.CollectedAt) || (payment.CollectedAt.Equal(paymentRows[i].Payment.CollectedAt) && payment.ID > paymentRows[i].Payment.ID) {
+				latest := payment
+				paymentRows[i].Payment = &latest
+			}
 		}
-		leaveDays, err := overlappingLeaveDaysForMonth(paymentRows[i].Leaves, monthDate)
-		if err != nil {
-			return nil, err
+		paymentRows[i].OutstandingAmount = normalizeMoney(paymentRows[i].MonthlyFee - paymentRows[i].CollectedAmount)
+		if paymentRows[i].OutstandingAmount < 0 {
+			paymentRows[i].OutstandingAmount = 0
 		}
-		paymentRows[i].LeaveDays = leaveDays
-		paymentRows[i].BillableDays = paymentRows[i].MonthDays - leaveDays
-		if paymentRows[i].BillableDays < 0 {
-			paymentRows[i].BillableDays = 0
-		}
-		paymentRows[i].MonthlyFee, paymentRows[i].LeaveAmount = proratedMonthlyFee(paymentRows[i].MonthlyFee, leaveDays, paymentRows[i].MonthDays)
 	}
 	return paymentRows, nil
 }
@@ -795,6 +764,55 @@ func (a *App) listBookingFinancials() ([]BookingFinancial, error) {
 
 func (a *App) listBookingFinancialsForScheduleIDs(scheduleIDs []int64) ([]BookingFinancial, error) {
 	return listBookingFinancialsForScheduleIDsQuery(a.db, scheduleIDs)
+}
+
+func studentMonthlyPaymentKey(admissionID, enrollmentID int64) string {
+	return fmt.Sprintf("%d:%d", admissionID, enrollmentID)
+}
+
+func (a *App) listActiveStudentMonthlyPaymentsForMonth(paymentMonth string) ([]StudentMonthlyPayment, error) {
+	rows, err := a.db.Query(`
+		SELECT
+			id,
+			admission_id,
+			COALESCE(enrollment_id, 0),
+			payment_month,
+			amount,
+			payment_method,
+			finance_transaction_id,
+			COALESCE(collected_by_user_id, 0),
+			collected_at,
+			created_at
+		FROM student_monthly_payments
+		WHERE payment_month = ?
+		  AND COALESCE(voided, 0) = 0
+		ORDER BY collected_at ASC, id ASC
+	`, paymentMonth)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var payments []StudentMonthlyPayment
+	for rows.Next() {
+		var payment StudentMonthlyPayment
+		if err := rows.Scan(
+			&payment.ID,
+			&payment.AdmissionID,
+			&payment.EnrollmentID,
+			&payment.PaymentMonth,
+			&payment.Amount,
+			&payment.PaymentMethod,
+			&payment.FinanceTransactionID,
+			&payment.CollectedByUserID,
+			&payment.CollectedAt,
+			&payment.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		payments = append(payments, payment)
+	}
+	return payments, rows.Err()
 }
 
 func aggregateBookingCustomerBalances(financials []BookingFinancial, search string) []BookingCustomerBalance {
@@ -1281,7 +1299,7 @@ func (a *App) listOneToOneBookings() ([]OneToOneBooking, error) {
 	return bookings, rows.Err()
 }
 
-func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slotDate, slotHour string, sessions int, discountedPrice float64, coachFee float64, notes string) (int64, int64, error) {
+func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slotDate, slotHour string, sessions int, discountedPrice float64, coachFee float64, notes string, referralCode string) (int64, int64, error) {
 	if sessions <= 0 {
 		sessions = 1
 	}
@@ -1312,6 +1330,7 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 		Title:         fmt.Sprintf("1 to 1 · %s · %s", offering.Name, customerName),
 		Notes:         buildOneToOneBookingNotes(offering, sessions, discountedPrice, coachFee, notes),
 		RequesterName: customerName,
+		ReferralCode:  strings.ToUpper(strings.TrimSpace(referralCode)),
 		QuotedPrice:   discountedPrice,
 	}
 
@@ -1402,6 +1421,9 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 		)
 		VALUES (?, ?, 0, '', ?, ?)
 	`, scheduleID, discountedPrice, now, now); err != nil {
+		return 0, 0, err
+	}
+	if err := a.createBookingReferralTx(tx, scheduleID, schedule.ReferralCode, now); err != nil {
 		return 0, 0, err
 	}
 	result, err = tx.Exec(`

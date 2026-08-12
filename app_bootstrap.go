@@ -794,7 +794,10 @@ type StudentPaymentRow struct {
 	MonthDays                 int
 	LeaveAmount               float64
 	Leaves                    []StudentEnrollmentLeave
+	CollectedAmount           float64
+	OutstandingAmount         float64
 	Payment                   *StudentMonthlyPayment
+	Payments                  []StudentMonthlyPayment
 }
 
 type StudentGroup struct {

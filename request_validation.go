@@ -203,22 +203,22 @@ func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActiv
 	}
 }
 
-func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, int, float64, float64, string, error) {
+func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, int, float64, float64, string, string, error) {
 	offeringID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("offering_id")), 10, 64)
 	if err != nil || offeringID <= 0 {
-		return 0, "", "", "", 0, 0, 0, "", errors.New("valid 1 to 1 selection is required")
+		return 0, "", "", "", 0, 0, 0, "", "", errors.New("valid 1 to 1 selection is required")
 	}
 	sessions, err := strconv.Atoi(strings.TrimSpace(r.FormValue("sessions")))
 	if err != nil || sessions <= 0 {
-		return 0, "", "", "", 0, 0, 0, "", errors.New("valid sessions count is required")
+		return 0, "", "", "", 0, 0, 0, "", "", errors.New("valid sessions count is required")
 	}
 	discountedPrice, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("discounted_price")), 64)
 	if err != nil {
-		return 0, "", "", "", 0, 0, 0, "", errors.New("valid discounted price is required")
+		return 0, "", "", "", 0, 0, 0, "", "", errors.New("valid discounted price is required")
 	}
 	coachFee, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("coach_fee")), 64)
 	if err != nil {
-		return 0, "", "", "", 0, 0, 0, "", errors.New("valid coach fee is required")
+		return 0, "", "", "", 0, 0, 0, "", "", errors.New("valid coach fee is required")
 	}
 	return offeringID,
 		strings.TrimSpace(r.FormValue("customer_name")),
@@ -228,6 +228,7 @@ func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, 
 		discountedPrice,
 		coachFee,
 		strings.TrimSpace(r.FormValue("notes")),
+		strings.ToUpper(strings.TrimSpace(r.FormValue("referral_code"))),
 		nil
 }
 

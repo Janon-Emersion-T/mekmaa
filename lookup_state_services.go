@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -699,6 +700,10 @@ func admissionPricingByPracticeTypeTx(
 }
 
 func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, recordedByUserID int64) (int64, error) {
+	return a.collectStudentMonthlyPaymentAmount(enrollmentID, paymentMonth, monthDate, paymentMethod, 0, recordedByUserID)
+}
+
+func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, amount float64, recordedByUserID int64) (int64, error) {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -729,24 +734,21 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 		return 0, ErrStudentNotAdmittedForMonth
 	}
 
-	var existingID int64
+	totalCollected := 0.0
 	if enrollment != nil {
 		err = tx.QueryRow(`
-			SELECT id
+			SELECT COALESCE(SUM(amount), 0)
 			FROM student_monthly_payments
 			WHERE enrollment_id = ? AND payment_month = ? AND COALESCE(voided, 0) = 0
-		`, enrollment.ID, paymentMonth).Scan(&existingID)
+		`, enrollment.ID, paymentMonth).Scan(&totalCollected)
 	} else {
 		err = tx.QueryRow(`
-			SELECT id
+			SELECT COALESCE(SUM(amount), 0)
 			FROM student_monthly_payments
 			WHERE admission_id = ? AND (enrollment_id IS NULL OR enrollment_id = 0) AND payment_month = ? AND COALESCE(voided, 0) = 0
-		`, admission.ID, paymentMonth).Scan(&existingID)
+		`, admission.ID, paymentMonth).Scan(&totalCollected)
 	}
-	if err == nil {
-		return 0, ErrStudentPaymentAlreadyCollected
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if err != nil {
 		return 0, err
 	}
 	paymentMethod = normalizePaymentMethod(paymentMethod)
@@ -796,6 +798,20 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 			return 0, ErrStudentLeaveCoversMonth
 		}
 	}
+	outstanding := normalizeMoney(monthlyFee - totalCollected)
+	if outstanding <= 0.004 {
+		return 0, ErrStudentPaymentAlreadyCollected
+	}
+	if math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return 0, errors.New("payment amount is invalid")
+	}
+	amount = normalizeMoney(amount)
+	if amount <= 0 {
+		amount = outstanding
+	}
+	if amount > outstanding+0.004 {
+		return 0, errors.New("payment amount exceeds the outstanding balance")
+	}
 	now := time.Now().UTC()
 	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
 	if err != nil {
@@ -819,7 +835,7 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 		PersonName:       admission.FullName,
 		Description:      description,
 		PaymentMethod:    paymentMethod,
-		Amount:           monthlyFee,
+		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
 		RecordedAt:       now,
 	})
@@ -837,7 +853,7 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 			return enrollment.ID
 		}
 		return 0
-	}()), paymentMonth, monthlyFee, paymentMethod, transactionID, recordedByUserID, now, now)
+	}()), paymentMonth, amount, paymentMethod, transactionID, recordedByUserID, now, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return 0, ErrStudentPaymentAlreadyCollected

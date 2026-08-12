@@ -48,7 +48,7 @@
             <span class="rounded-full bg-white px-3 py-1 text-[0.68rem] font-semibold text-slate/70">{{enrollmentCountForAdmission $.Enrollments .ID}} enrollments</span>
           </div>
           <p class="mt-3 text-sm text-slate/62">{{if .School}}{{.School}}{{else}}School not recorded{{end}}</p>
-          <p class="mt-2 text-xs text-slate/55">Admitted {{.AdmissionDate}}</p>
+          <p class="mt-2 text-xs text-slate/55">Admitted {{formatCalendarDate .AdmissionDate}}</p>
         </a>
         {{end}}
       </div>
@@ -68,7 +68,7 @@
               <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Student workspace</p>
               <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{.SelectedAdmission.FullName}}</h2>
               <p class="mt-2 text-sm text-slate/60">{{.SelectedAdmission.StudentID}} {{if .SelectedAdmission.School}}· {{.SelectedAdmission.School}}{{end}}</p>
-              <p class="mt-2 text-sm text-slate/55">Admission date: {{.SelectedAdmission.AdmissionDate}}</p>
+              <p class="mt-2 text-sm text-slate/55">Admission date: {{formatCalendarDate .SelectedAdmission.AdmissionDate}}</p>
             </div>
           </div>
           <div class="flex flex-wrap gap-2">

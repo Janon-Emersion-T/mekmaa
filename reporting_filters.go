@@ -39,9 +39,9 @@ func reportPeriodFromRequest(r *http.Request) ReportPeriod {
 		previous = anchor.AddDate(0, 0, -1)
 		next = anchor.AddDate(0, 0, 1)
 	}
-	label := start.Format("Monday, 02 January 2006")
+	label := start.Format("Monday, " + displayDateLayout)
 	if kind == "week" {
-		label = start.Format("02 Jan") + " - " + end.Format("02 Jan 2006")
+		label = start.Format(displayDateLayout) + " - " + end.Format(displayDateLayout)
 	}
 	if kind == "month" {
 		label = start.Format("January 2006")

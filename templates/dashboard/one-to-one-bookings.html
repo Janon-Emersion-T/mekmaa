@@ -39,6 +39,17 @@
         </select>
       </label>
       <label>
+        <span class="mb-1.5 block text-xs font-semibold text-slate/55">Referrer</span>
+        <select name="referral_code" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+          <option value="">No referrer</option>
+          {{range .ReferralPartners}}
+          {{if .Active}}
+          <option value="{{.Code}}">{{.Name}} · {{.Code}}</option>
+          {{end}}
+          {{end}}
+        </select>
+      </label>
+      <label>
         <span class="mb-1.5 block text-xs font-semibold text-slate/55">Sessions</span>
         <input type="number" name="sessions" min="1" step="1" value="1" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
       </label>
@@ -82,17 +93,20 @@
     <div class="mt-5 grid gap-4">
       {{range .OneToOneBookings}}
       {{$financial := bookingFinancialForSchedule $.BookingFinancials .ScheduleID}}
+      {{$referral := bookingReferralFor $.BookingReferrals .ScheduleID}}
       <article class="rounded-[1.5rem] border border-slate/10 bg-cloud/25 p-5">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <h3 class="text-lg font-semibold text-obsidian">{{.CustomerName}}</h3>
               <span class="rounded-full px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider {{if eq .Status "confirmed"}}bg-emerald-100 text-emerald-800{{else if eq .Status "cancelled"}}bg-red-100 text-red-700{{else}}bg-slate-200 text-slate-700{{end}}">{{.Status}}</span>
+              {{if $referral}}<span class="rounded-full bg-aqua/20 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800">Referral · {{$referral.PartnerCode}}</span>{{end}}
             </div>
             <p class="mt-2 text-sm text-slate/65">{{.OfferingName}} · {{activityLabel .Game}} · {{if eq .Audience "foreign"}}Foreign{{else}}Local{{end}}</p>
             <p class="mt-1 text-sm text-slate/50">{{if eq .Occurrence "per_week"}}Per week{{else if eq .Occurrence "per_month"}}Per month{{else}}Per day{{end}} · {{.Sessions}} of {{.MaxSessions}} session{{if ne .MaxSessions 1}}s{{end}}</p>
             <p class="mt-1 text-sm text-slate/65">{{formatCalendarDate .SlotDate}} · {{.SlotHour}}</p>
             <p class="mt-1 text-sm text-slate/65">Standard {{money .Price}} · Final {{money .DiscountedPrice}} · Coach fee {{money .CoachFee}}{{if $financial}} · Collected {{money $financial.TotalCollected}} · Outstanding {{money $financial.OutstandingAmount}}{{end}}</p>
+            {{if $referral}}<p class="mt-1 text-sm text-emerald-800">Referrer {{$referral.PartnerName}} · Commission {{money $referral.CommissionAmount}}</p>{{end}}
           </div>
           <div class="flex flex-wrap gap-2">
             <a href="/admin/bookings?action=view&id={{.ScheduleID}}&date={{.SlotDate}}#schedule-view" class="inline-flex items-center rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-bold text-slate">Open booking</a>

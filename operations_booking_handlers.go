@@ -1217,6 +1217,10 @@ func (a *App) buildOneToOneTemplateData(w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		return TemplateData{}, err
 	}
+	referralPartners, err := a.listReferralPartners(true)
+	if err != nil {
+		return TemplateData{}, err
+	}
 	bookings, err := a.listOneToOneBookings()
 	if err != nil {
 		return TemplateData{}, err
@@ -1239,7 +1243,9 @@ func (a *App) buildOneToOneTemplateData(w http.ResponseWriter, r *http.Request, 
 	data.Description = "Manage 1 to 1 offerings and bookings."
 	data.OneToOneOfferings = offerings
 	data.OneToOneBookings = bookings
+	data.ReferralPartners = referralPartners
 	data.BookingFinancials = financials
+	data.BookingReferrals, _ = a.listBookingReferralsForScheduleIDs(scheduleIDs)
 	data.CourtActivities = courtActivities
 	data.Hours = bookingHours()
 	data.TodayDate = time.Now().Format("2006-01-02")
@@ -1406,7 +1412,7 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
-	offeringID, customerName, slotDate, slotHour, sessions, discountedPrice, coachFee, notes, err := oneToOneBookingFormValues(r)
+	offeringID, customerName, slotDate, slotHour, sessions, discountedPrice, coachFee, notes, referralCode, err := oneToOneBookingFormValues(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1447,7 +1453,7 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, _, err := a.createOneToOneBooking(*offering, customerName, slotDate, slotHour, sessions, discountedPrice, coachFee, notes); err != nil {
+	if _, _, err := a.createOneToOneBooking(*offering, customerName, slotDate, slotHour, sessions, discountedPrice, coachFee, notes, referralCode); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -3878,6 +3884,12 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
+	amount, amountErr := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
+	if amountErr != nil {
+		a.setFlash(w, "Enter a valid payment amount.")
+		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+		return
+	}
 	if !validPaymentMethod(paymentMethod) {
 		a.setFlash(w, "Select a valid payment method.")
 		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
@@ -3889,7 +3901,7 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
 	}
-	transactionID, err := a.collectStudentMonthlyPayment(enrollmentID, paymentMonth, monthDate, paymentMethod, recordedByUserID)
+	transactionID, err := a.collectStudentMonthlyPaymentAmount(enrollmentID, paymentMonth, monthDate, paymentMethod, amount, recordedByUserID)
 	if err != nil {
 		if errors.Is(err, ErrStudentPaymentAlreadyCollected) {
 			a.setFlash(w, "That enrollment payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")

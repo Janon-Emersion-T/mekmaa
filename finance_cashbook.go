@@ -60,7 +60,7 @@ func validFinanceTransactionType(value string) bool {
 
 func validFinancePaymentMethod(value string) bool {
 	switch value {
-	case "cash", "bank_transfer":
+	case "cash", "bank_transfer", "qr_pay":
 		return true
 	default:
 		return false
@@ -2505,7 +2505,7 @@ func (a *App) financeAccountStatementHandler(w http.ResponseWriter, r *http.Requ
 				w,
 				"%q,%q,%q,%q,%q,%q,%q,%q,%q,%.2f,%.2f,%q,%q,%q\n",
 				row.ReferenceNumber,
-				row.RecordedAt.Format("2006-01-02 15:04"),
+				formatDateTime(row.RecordedAt),
 				account.Name,
 				financeTransactionTypeLabel(row.TransactionType),
 				financeCategoryLabel(row.Category),

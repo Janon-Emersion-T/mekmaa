@@ -61,11 +61,11 @@
         <div class="mt-4 grid grid-cols-2 gap-3">
           <div>
             <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">DOB</p>
-            <p class="mt-1 text-sm font-semibold text-obsidian">{{.SelectedAdmission.DateOfBirth}}</p>
+            <p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.DateOfBirth}}</p>
           </div>
           <div>
             <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">Admission</p>
-            <p class="mt-1 text-sm font-semibold text-obsidian">{{.SelectedAdmission.AdmissionDate}}</p>
+            <p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.AdmissionDate}}</p>
           </div>
         </div>
       </div>

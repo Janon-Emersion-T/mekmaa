@@ -668,13 +668,13 @@
 
             <td class="whitespace-nowrap px-5 py-5 text-slate/70">
               <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-2.5 py-1 text-xs font-medium text-slate/70">
-                {{.AdmissionDate}}
+                {{formatCalendarDate .AdmissionDate}}
               </span>
             </td>
 
             <td class="whitespace-nowrap px-5 py-5 text-slate/70">
               <div class="space-y-1">
-                <p>{{.DateOfBirth}}</p>
+                <p>{{formatCalendarDate .DateOfBirth}}</p>
                 <p class="text-xs font-medium text-slate/50">Age {{admissionAge .DateOfBirth}}</p>
                 <p class="text-xs font-medium text-slate/50">Gender {{.Gender}}</p>
               </div>
@@ -864,7 +864,7 @@
               </dt>
 
               <dd class="mt-1 font-medium text-obsidian">
-                {{.AdmissionDate}}
+                {{formatCalendarDate .AdmissionDate}}
               </dd>
             </div>
 
@@ -874,7 +874,7 @@
               </dt>
 
               <dd class="mt-1 font-medium text-obsidian">
-                {{.DateOfBirth}}
+                {{formatCalendarDate .DateOfBirth}}
               </dd>
 
               <dd class="mt-1 text-xs font-medium text-slate/50">
@@ -1180,7 +1180,7 @@
               </dt>
 
               <dd class="mt-2 text-sm font-medium text-obsidian">
-                {{.SelectedAdmission.AdmissionDate}}
+                {{formatCalendarDate .SelectedAdmission.AdmissionDate}}
               </dd>
             </div>
 
@@ -1190,7 +1190,7 @@
               </dt>
 
               <dd class="mt-2 text-sm font-medium text-obsidian">
-                {{.SelectedAdmission.DateOfBirth}}
+                {{formatCalendarDate .SelectedAdmission.DateOfBirth}}
               </dd>
             </div>
 

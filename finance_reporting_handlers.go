@@ -340,7 +340,7 @@ func (a *App) financeExportHandler(w http.ResponseWriter, r *http.Request) {
 			direction = "Expense"
 		}
 		_ = writer.Write([]string{
-			csvSafeCell(transaction.ReceiptNumber), transaction.RecordedAt.Format("2006-01-02 15:04"), direction,
+			csvSafeCell(transaction.ReceiptNumber), formatDateTime(transaction.RecordedAt), direction,
 			financeCategoryLabel(transaction.Category), csvSafeCell(transaction.PersonName), csvSafeCell(transaction.Description),
 			csvSafeCell(transaction.PaymentMethod), strconv.FormatFloat(transaction.Amount, 'f', 2, 64),
 		})
@@ -421,7 +421,7 @@ func (a *App) reportsExportHandler(w http.ResponseWriter, r *http.Request) {
 			direction = "Expense"
 		}
 		_ = writer.Write([]string{
-			"", csvSafeCell(transaction.ReceiptNumber), transaction.RecordedAt.Format("2006-01-02 15:04"),
+			"", csvSafeCell(transaction.ReceiptNumber), formatDateTime(transaction.RecordedAt),
 			direction, financeCategoryLabel(transaction.Category), csvSafeCell(transaction.PersonName),
 			csvSafeCell(transaction.Description), csvSafeCell(transaction.PaymentMethod), formatReportNumber(transaction.Amount),
 		})
@@ -490,11 +490,8 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		if row.MonthlyFee > 0 {
 			data.PaymentTotalDue += row.MonthlyFee
 		}
-		collectedAmount := 0.0
-		if row.Payment != nil {
-			collectedAmount = row.Payment.Amount
-			data.PaymentCollected += collectedAmount
-		}
+		collectedAmount := row.CollectedAmount
+		data.PaymentCollected += collectedAmount
 		if row.MonthlyFee <= 0 {
 			continue
 		}

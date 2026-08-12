@@ -4713,7 +4713,7 @@ func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
 	}
 
 	slotDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
-	bookingID, scheduleID, err := app.createOneToOneBooking(*offering, "Test Customer", slotDate, "18:00", 4, 3000, 800, "High-priority session")
+	bookingID, scheduleID, err := app.createOneToOneBooking(*offering, "Test Customer", slotDate, "18:00", 4, 3000, 800, "High-priority session", "")
 	if err != nil {
 		t.Fatalf("create 1 to 1 booking: %v", err)
 	}
@@ -4759,6 +4759,59 @@ func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
 	}
 }
 
+func TestOneToOneBookingCreatesReferralCommissionWhenReferrerSelected(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if err := app.updateReferralCommissionAmount(600); err != nil {
+		t.Fatalf("configure referral commission: %v", err)
+	}
+	if err := app.createReferralPartner(ReferralPartner{
+		Name:   "1 to 1 Partner",
+		Code:   "OTO-REF-01",
+		Email:  "oto@example.com",
+		Phone:  "0700000999",
+		Active: true,
+	}); err != nil {
+		t.Fatalf("create referral partner: %v", err)
+	}
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Private Tennis",
+		Game:         "tennis",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 4,
+		Price:        4000,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create 1 to 1 offering: %v", err)
+	}
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find 1 to 1 offering: %v", err)
+	}
+
+	slotDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
+	_, scheduleID, err := app.createOneToOneBooking(*offering, "Referral Customer", slotDate, "18:15", 2, 3600, 700, "", "OTO-REF-01")
+	if err != nil {
+		t.Fatalf("create referred 1 to 1 booking: %v", err)
+	}
+
+	referrals, err := app.listBookingReferrals()
+	if err != nil {
+		t.Fatalf("list booking referrals: %v", err)
+	}
+	if len(referrals) != 1 {
+		t.Fatalf("expected one booking referral, got %d", len(referrals))
+	}
+	if referrals[0].ScheduleID != scheduleID || referrals[0].PartnerCode != "OTO-REF-01" {
+		t.Fatalf("unexpected 1 to 1 referral linkage: %#v", referrals[0])
+	}
+	if referrals[0].CommissionAmount != 600 {
+		t.Fatalf("unexpected 1 to 1 referral commission: %#v", referrals[0])
+	}
+}
+
 func TestOneToOneBookingRejectsConsumedCapacity(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 
@@ -4791,7 +4844,7 @@ func TestOneToOneBookingRejectsConsumedCapacity(t *testing.T) {
 		QuotedPrice:   2500,
 	})
 
-	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "18:00", 3, 4200, 900, "")
+	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "18:00", 3, 4200, 900, "", "")
 	if err == nil {
 		t.Fatal("expected 1 to 1 booking conflict error")
 	}
@@ -4821,7 +4874,7 @@ func TestOneToOneBookingRejectsSessionsAboveConfiguredLimit(t *testing.T) {
 	}
 
 	slotDate := time.Now().AddDate(0, 0, 6).Format("2006-01-02")
-	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "19:00", 4, 5500, 1200, "")
+	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "19:00", 4, 5500, 1200, "", "")
 	if err == nil {
 		t.Fatal("expected sessions limit error")
 	}
