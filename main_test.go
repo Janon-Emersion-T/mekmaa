@@ -2009,6 +2009,20 @@ func TestFinanceBookingAndManualTransactionLifecycle(t *testing.T) {
 	if len(expenses) != 1 || expenses[0].ID != expenseID {
 		t.Fatalf("unexpected filtered ledger: %#v", expenses)
 	}
+	multiFiltered, err := app.listFinanceTransactionsFiltered(FinanceFilter{
+		Categories:       []string{"booking_payment", "utilities_expense"},
+		SourceTypes:      []string{"booking_payment_collection", "manual"},
+		PaymentMethods:   []string{"cash", "bank_transfer"},
+		TransactionTypes: []string{"income", "expense"},
+		ReferenceTypes:   []string{"space_schedule", "manual"},
+		Search:           "finance",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(multiFiltered) != 1 || multiFiltered[0].ID != transactionID {
+		t.Fatalf("unexpected multi-filtered ledger result: %#v", multiFiltered)
+	}
 
 	templates, err := buildTemplates()
 	if err != nil {

@@ -648,10 +648,18 @@ type FinanceFilter struct {
 	To              string
 	Direction       string
 	Category        string
+	Categories      []string
 	AccountID       int64
+	AccountIDs      []int64
 	TransactionType string
+	TransactionTypes []string
 	SourceType      string
+	SourceTypes     []string
+	ReferenceType   string
+	ReferenceTypes  []string
 	PaymentMethod   string
+	PaymentMethods  []string
+	ApprovalStatuses []string
 	RecordedUserID  int64
 	Status          string
 	Reference       string

@@ -195,6 +195,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"financeSourceTypeLabel":                    financeSourceTypeLabel,
 		"financeActiveCategoriesForDirection":       financeActiveCategoriesForDirection,
 		"financeCategoriesForDirection":             financeCategoriesForDirection,
+		"financeFilterExportURL":                    financeFilterExportURL,
 		"admissionsPageURL":                         admissionsPageURL,
 		"paymentMonthLabel":                         paymentMonthLabel,
 		"formatDateTime":                            formatDateTime,

@@ -150,8 +150,14 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
 		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
 		LEFT JOIN users au ON au.id = ft.approved_by_user_id
+		LEFT JOIN space_schedules ss ON ft.reference_type = 'space_schedule' AND ss.id = ft.reference_id
+		LEFT JOIN one_to_one_bookings o2ob ON o2ob.schedule_id = ss.id
+		LEFT JOIN one_to_one_offerings o2oo ON o2oo.id = o2ob.offering_id
+		LEFT JOIN student_enrollments se ON ft.reference_type = 'student_enrollment' AND se.id = ft.reference_id
+		LEFT JOIN admissions sea ON sea.id = se.admission_id
+		LEFT JOIN training_programs tp ON tp.id = se.training_program_id
 		WHERE 1 = 1`
-	args := make([]any, 0, 12)
+	args := make([]any, 0, 24)
 	if filter.From != "" {
 		query += ` AND SUBSTR(TRIM(CAST(ft.recorded_at AS TEXT)), 1, 10) >= ?`
 		args = append(args, filter.From)
@@ -166,25 +172,65 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 	case "expense":
 		query += ` AND ft.amount < 0`
 	}
-	if filter.Category != "" {
+	if len(filter.Categories) > 0 {
+		query += ` AND ` + financeStringInClause("ft.category", len(filter.Categories))
+		for _, value := range filter.Categories {
+			args = append(args, value)
+		}
+	} else if filter.Category != "" {
 		query += ` AND ft.category = ?`
 		args = append(args, filter.Category)
 	}
-	if filter.AccountID > 0 {
+	if len(filter.AccountIDs) > 0 {
+		query += ` AND ` + financeInt64InClause("ft.finance_account_id", len(filter.AccountIDs))
+		for _, value := range filter.AccountIDs {
+			args = append(args, value)
+		}
+	} else if filter.AccountID > 0 {
 		query += ` AND ft.finance_account_id = ?`
 		args = append(args, filter.AccountID)
 	}
-	if filter.TransactionType != "" {
+	if len(filter.TransactionTypes) > 0 {
+		query += ` AND ` + financeStringInClause("ft.transaction_type", len(filter.TransactionTypes))
+		for _, value := range filter.TransactionTypes {
+			args = append(args, value)
+		}
+	} else if filter.TransactionType != "" {
 		query += ` AND ft.transaction_type = ?`
 		args = append(args, filter.TransactionType)
 	}
-	if filter.SourceType != "" {
+	if len(filter.SourceTypes) > 0 {
+		query += ` AND ` + financeStringInClause("ft.source_type", len(filter.SourceTypes))
+		for _, value := range filter.SourceTypes {
+			args = append(args, value)
+		}
+	} else if filter.SourceType != "" {
 		query += ` AND ft.source_type = ?`
 		args = append(args, filter.SourceType)
 	}
-	if filter.PaymentMethod != "" {
+	if len(filter.ReferenceTypes) > 0 {
+		query += ` AND ` + financeStringInClause("ft.reference_type", len(filter.ReferenceTypes))
+		for _, value := range filter.ReferenceTypes {
+			args = append(args, value)
+		}
+	} else if filter.ReferenceType != "" {
+		query += ` AND ft.reference_type = ?`
+		args = append(args, filter.ReferenceType)
+	}
+	if len(filter.PaymentMethods) > 0 {
+		query += ` AND ` + financeStringInClause("ft.payment_method", len(filter.PaymentMethods))
+		for _, value := range filter.PaymentMethods {
+			args = append(args, value)
+		}
+	} else if filter.PaymentMethod != "" {
 		query += ` AND ft.payment_method = ?`
 		args = append(args, filter.PaymentMethod)
+	}
+	if len(filter.ApprovalStatuses) > 0 {
+		query += ` AND ` + financeStringInClause("COALESCE(ft.approval_status, 'approved')", len(filter.ApprovalStatuses))
+		for _, value := range filter.ApprovalStatuses {
+			args = append(args, value)
+		}
 	}
 	if filter.RecordedUserID > 0 {
 		query += ` AND ft.recorded_by_user_id = ?`
@@ -209,11 +255,29 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 			OR LOWER(COALESCE(ft.description, '')) LIKE ?
 			OR LOWER(COALESCE(ft.notes, '')) LIKE ?
 			OR LOWER(COALESCE(fa.name, '')) LIKE ?
+			OR LOWER(COALESCE(ft.reference_type, '')) LIKE ?
+			OR LOWER(COALESCE(ss.title, '')) LIKE ?
+			OR LOWER(COALESCE(ss.activity, '')) LIKE ?
+			OR LOWER(COALESCE(o2oo.name, '')) LIKE ?
+			OR LOWER(COALESCE(sea.full_name, '')) LIKE ?
+			OR LOWER(COALESCE(tp.name, '')) LIKE ?
 		)`
 		term := "%" + strings.ToLower(filter.Search) + "%"
-		args = append(args, term, term, term, term, term, term)
+		args = append(args, term, term, term, term, term, term, term, term, term, term, term, term)
 	}
 	return query, args
+}
+
+func financeStringInClause(column string, size int) string {
+	placeholders := make([]string, size)
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	return column + " IN (" + strings.Join(placeholders, ", ") + ")"
+}
+
+func financeInt64InClause(column string, size int) string {
+	return financeStringInClause(column, size)
 }
 
 func (a *App) countFinanceTransactions(ctx context.Context, filter FinanceFilter) (int, error) {

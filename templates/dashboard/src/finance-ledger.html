@@ -81,8 +81,8 @@
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Ledger</p>
         <h2 class="mt-2 text-xl font-semibold text-obsidian">Account-linked transaction history</h2>
       </div>
-      <form method="get" action="/admin/finance/ledger" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
-        <input name="search" value="{{.FinanceFilter.Search}}" placeholder="Reference, party, note" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua xl:col-span-2">
+      <form method="get" action="/admin/finance/ledger" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-8">
+        <input name="search" value="{{.FinanceFilter.Search}}" placeholder="Reference, party, booking, student, programme" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua xl:col-span-2">
         <input name="reference" value="{{.FinanceFilter.Reference}}" placeholder="Voucher or receipt" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
         <input name="from" type="date" value="{{.FinanceFilter.From}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
         <input name="to" type="date" value="{{.FinanceFilter.To}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
@@ -96,46 +96,55 @@
           <option value="active" {{if eq .FinanceFilter.Status "active"}}selected{{end}}>Active</option>
           <option value="voided" {{if eq .FinanceFilter.Status "voided"}}selected{{end}}>Voided</option>
         </select>
-        <select name="account_id" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
-          <option value="">All accounts</option>
-          {{range .FinanceAccounts}}<option value="{{.ID}}" {{if eq $.FinanceFilter.AccountID .ID}}selected{{end}}>{{.Name}}</option>{{end}}
+        <select name="account_id" multiple size="4" class="min-h-[7rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua xl:col-span-2">
+          {{range .FinanceAccounts}}<option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.AccountIDs .ID}}selected{{end}}>{{.AccountCode}} · {{.Name}}</option>{{end}}
         </select>
-        <select name="category" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
-          <option value="">All categories</option>
-          <option value="admission_payment" {{if eq .FinanceFilter.Category "admission_payment"}}selected{{end}}>Admission payment</option>
-          <option value="student_monthly_payment" {{if eq .FinanceFilter.Category "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
-          <option value="booking_payment" {{if eq .FinanceFilter.Category "booking_payment"}}selected{{end}}>Booking payment</option>
-          <option value="referral_commission_payment" {{if eq .FinanceFilter.Category "referral_commission_payment"}}selected{{end}}>Referral payment</option>
+        <select name="category" multiple size="6" class="min-h-[9rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua xl:col-span-2">
+          <option value="admission_payment" {{if contains $.FinanceFilter.Categories "admission_payment"}}selected{{end}}>Admission payment</option>
+          <option value="student_monthly_payment" {{if contains $.FinanceFilter.Categories "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
+          <option value="booking_payment" {{if contains $.FinanceFilter.Categories "booking_payment"}}selected{{end}}>Booking payment</option>
+          <option value="referral_commission_payment" {{if contains $.FinanceFilter.Categories "referral_commission_payment"}}selected{{end}}>Referral payment</option>
           {{range .FinanceCategories}}
-          <option value="{{.Code}}" {{if eq $.FinanceFilter.Category .Code}}selected{{end}}>{{.Name}}</option>
+          <option value="{{.Code}}" {{if contains $.FinanceFilter.Categories .Code}}selected{{end}}>{{.Name}}</option>
           {{end}}
-          <option value="cash_adjustment" {{if eq .FinanceFilter.Category "cash_adjustment"}}selected{{end}}>Adjustment</option>
-          <option value="opening_balance" {{if eq .FinanceFilter.Category "opening_balance"}}selected{{end}}>Opening balance</option>
+          <option value="cash_adjustment" {{if contains $.FinanceFilter.Categories "cash_adjustment"}}selected{{end}}>Adjustment</option>
+          <option value="opening_balance" {{if contains $.FinanceFilter.Categories "opening_balance"}}selected{{end}}>Opening balance</option>
         </select>
-        <select name="transaction_type" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
-          <option value="">All transaction types</option>
-          <option value="income" {{if eq .FinanceFilter.TransactionType "income"}}selected{{end}}>Income</option>
-          <option value="expense" {{if eq .FinanceFilter.TransactionType "expense"}}selected{{end}}>Expense</option>
-          <option value="transfer_in" {{if eq .FinanceFilter.TransactionType "transfer_in"}}selected{{end}}>Transfer in</option>
-          <option value="transfer_out" {{if eq .FinanceFilter.TransactionType "transfer_out"}}selected{{end}}>Transfer out</option>
-          <option value="opening_balance" {{if eq .FinanceFilter.TransactionType "opening_balance"}}selected{{end}}>Opening balance</option>
-          <option value="adjustment" {{if eq .FinanceFilter.TransactionType "adjustment"}}selected{{end}}>Adjustment</option>
+        <select name="transaction_type" multiple size="4" class="min-h-[7rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+          <option value="income" {{if contains $.FinanceFilter.TransactionTypes "income"}}selected{{end}}>Income</option>
+          <option value="expense" {{if contains $.FinanceFilter.TransactionTypes "expense"}}selected{{end}}>Expense</option>
+          <option value="transfer_in" {{if contains $.FinanceFilter.TransactionTypes "transfer_in"}}selected{{end}}>Transfer in</option>
+          <option value="transfer_out" {{if contains $.FinanceFilter.TransactionTypes "transfer_out"}}selected{{end}}>Transfer out</option>
+          <option value="opening_balance" {{if contains $.FinanceFilter.TransactionTypes "opening_balance"}}selected{{end}}>Opening balance</option>
+          <option value="adjustment" {{if contains $.FinanceFilter.TransactionTypes "adjustment"}}selected{{end}}>Adjustment</option>
         </select>
-        <select name="source_type" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
-          <option value="">All sources</option>
-          <option value="manual" {{if eq .FinanceFilter.SourceType "manual"}}selected{{end}}>Manual</option>
-          <option value="admission" {{if eq .FinanceFilter.SourceType "admission"}}selected{{end}}>Admission</option>
-          <option value="student_monthly_payment" {{if eq .FinanceFilter.SourceType "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
-          <option value="booking_payment_collection" {{if eq .FinanceFilter.SourceType "booking_payment_collection"}}selected{{end}}>Booking collection</option>
-          <option value="booking_referral_payment" {{if eq .FinanceFilter.SourceType "booking_referral_payment"}}selected{{end}}>Referral payout</option>
-          <option value="finance_adjustment" {{if eq .FinanceFilter.SourceType "finance_adjustment"}}selected{{end}}>Adjustment</option>
-          <option value="finance_account_opening_balance" {{if eq .FinanceFilter.SourceType "finance_account_opening_balance"}}selected{{end}}>Opening balance</option>
+        <select name="source_type" multiple size="5" class="min-h-[8rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+          <option value="manual" {{if contains $.FinanceFilter.SourceTypes "manual"}}selected{{end}}>Manual</option>
+          <option value="admission" {{if contains $.FinanceFilter.SourceTypes "admission"}}selected{{end}}>Admission</option>
+          <option value="student_enrollment" {{if contains $.FinanceFilter.SourceTypes "student_enrollment"}}selected{{end}}>Enrollment</option>
+          <option value="student_monthly_payment" {{if contains $.FinanceFilter.SourceTypes "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
+          <option value="booking_payment_collection" {{if contains $.FinanceFilter.SourceTypes "booking_payment_collection"}}selected{{end}}>Court / facility booking collection</option>
+          <option value="booking_referral_payment" {{if contains $.FinanceFilter.SourceTypes "booking_referral_payment"}}selected{{end}}>Referral payout</option>
+          <option value="finance_transfer" {{if contains $.FinanceFilter.SourceTypes "finance_transfer"}}selected{{end}}>Transfer</option>
+          <option value="finance_adjustment" {{if contains $.FinanceFilter.SourceTypes "finance_adjustment"}}selected{{end}}>Adjustment</option>
+          <option value="finance_account_opening_balance" {{if contains $.FinanceFilter.SourceTypes "finance_account_opening_balance"}}selected{{end}}>Opening balance</option>
         </select>
-        <select name="payment_method" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
-          <option value="">All payment methods</option>
-          <option value="cash" {{if eq .FinanceFilter.PaymentMethod "cash"}}selected{{end}}>Cash</option>
-          <option value="bank_transfer" {{if eq .FinanceFilter.PaymentMethod "bank_transfer"}}selected{{end}}>Bank transfer</option>
-          <option value="qr_pay" {{if eq .FinanceFilter.PaymentMethod "qr_pay"}}selected{{end}}>QR pay</option>
+        <select name="reference_type" multiple size="4" class="min-h-[7rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+          <option value="admission" {{if contains $.FinanceFilter.ReferenceTypes "admission"}}selected{{end}}>Admission record</option>
+          <option value="student_enrollment" {{if contains $.FinanceFilter.ReferenceTypes "student_enrollment"}}selected{{end}}>Enrollment record</option>
+          <option value="space_schedule" {{if contains $.FinanceFilter.ReferenceTypes "space_schedule"}}selected{{end}}>Court / booking schedule</option>
+          <option value="manual" {{if contains $.FinanceFilter.ReferenceTypes "manual"}}selected{{end}}>Manual</option>
+          <option value="finance_account" {{if contains $.FinanceFilter.ReferenceTypes "finance_account"}}selected{{end}}>Finance account</option>
+          <option value="finance_transfer" {{if contains $.FinanceFilter.ReferenceTypes "finance_transfer"}}selected{{end}}>Transfer group</option>
+        </select>
+        <select name="payment_method" multiple size="3" class="min-h-[6rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+          <option value="cash" {{if contains $.FinanceFilter.PaymentMethods "cash"}}selected{{end}}>Cash</option>
+          <option value="bank_transfer" {{if contains $.FinanceFilter.PaymentMethods "bank_transfer"}}selected{{end}}>Bank transfer</option>
+          <option value="qr_pay" {{if contains $.FinanceFilter.PaymentMethods "qr_pay"}}selected{{end}}>QR pay</option>
+        </select>
+        <select name="approval_status" multiple size="2" class="min-h-[5rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+          <option value="approved" {{if contains $.FinanceFilter.ApprovalStatuses "approved"}}selected{{end}}>Approved</option>
+          <option value="pending" {{if contains $.FinanceFilter.ApprovalStatuses "pending"}}selected{{end}}>Pending approval</option>
         </select>
         <select name="limit" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
           <option value="25" {{if eq .FinanceFilter.Limit 25}}selected{{end}}>25 rows</option>
@@ -146,6 +155,7 @@
         <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-semibold text-cloud transition hover:bg-slate">Apply</button>
         <a href="/admin/finance/ledger#ledger" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Clear</a>
       </form>
+      <p class="text-xs text-slate/50">Use Ctrl or Cmd while clicking to select more than one account, category, source, payment method, or reference type.</p>
     </div>
   </div>
 
@@ -209,7 +219,7 @@
         {{if .SelectedFinanceAccount}}
         <a href="/admin/finance/accounts/statement?account_id={{.SelectedFinanceAccount.ID}}&from={{urlquery .FinanceFilter.From}}&to={{urlquery .FinanceFilter.To}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Open statement</a>
         {{end}}
-        <a href="/admin/finance/export?from={{urlquery .FinanceFilter.From}}&to={{urlquery .FinanceFilter.To}}&direction={{urlquery .FinanceFilter.Direction}}&category={{urlquery .FinanceFilter.Category}}&account_id={{.FinanceFilter.AccountID}}&status={{urlquery .FinanceFilter.Status}}&search={{urlquery .FinanceFilter.Search}}&reference={{urlquery .FinanceFilter.Reference}}&transaction_type={{urlquery .FinanceFilter.TransactionType}}&source_type={{urlquery .FinanceFilter.SourceType}}&payment_method={{urlquery .FinanceFilter.PaymentMethod}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Export CSV</a>
+        <a href="{{financeFilterExportURL .FinanceFilter}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Export CSV</a>
       </div>
     </div>
   </div>
