@@ -196,7 +196,7 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
-	case "new", "view", "edit":
+	case "new", "view", "edit", "student":
 		data.EnrollmentMode = mode
 	}
 	if data.EnrollmentMode == "view" || data.EnrollmentMode == "edit" {
@@ -325,6 +325,7 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	target = "/admin/enrollments?admission_id=" + strconv.FormatInt(enrollment.AdmissionID, 10)
 	currentUser, _ := a.currentUser(r.Context())
 	recordedByUserID := int64(0)
 	if currentUser != nil {
@@ -386,6 +387,11 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := "/admin/enrollments?admission_id=" + strconv.FormatInt(existing.AdmissionID, 10)
+	if !existing.Active {
+		a.setFlash(w, "Archived enrollments cannot be edited.")
+		http.Redirect(w, r, target+"&action=student", http.StatusSeeOther)
+		return
+	}
 
 	trainingProgramID, err := parsePositiveInt64(r.FormValue("training_program_id"))
 	if err != nil {
@@ -464,7 +470,8 @@ func (a *App) deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		target = "/admin/enrollments?admission_id=" + strconv.FormatInt(enrollment.AdmissionID, 10)
 	}
 
-	if err := a.deleteStudentEnrollment(enrollmentID); err != nil {
+	archived, err := a.deleteStudentEnrollment(enrollmentID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			a.setFlash(w, "Enrollment not found.")
 			http.Redirect(w, r, target, http.StatusSeeOther)
@@ -475,6 +482,11 @@ func (a *App) deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if archived {
+		a.setFlash(w, "Enrollment archived because finance history exists.")
+		http.Redirect(w, r, target+"&action=student", http.StatusSeeOther)
+		return
+	}
 	a.setFlash(w, "Enrollment deleted.")
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }

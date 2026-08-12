@@ -2266,16 +2266,16 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 	return tx.Commit()
 }
 
-func (a *App) deleteStudentEnrollment(enrollmentID int64) error {
+func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 	tx, err := a.db.Begin()
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
 
 	enrollment, err := findStudentEnrollmentByIDTx(tx, enrollmentID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	var admissionPaymentCount int
@@ -2285,10 +2285,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) error {
 		WHERE reference_type = 'student_enrollment'
 		  AND reference_id = ?
 	`, enrollmentID).Scan(&admissionPaymentCount); err != nil {
-		return err
-	}
-	if admissionPaymentCount > 0 {
-		return errors.New("this enrollment has admission payment history and cannot be deleted")
+		return false, err
 	}
 
 	var monthlyPaymentCount int
@@ -2298,22 +2295,39 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) error {
 		WHERE enrollment_id = ?
 		  AND COALESCE(voided, 0) = 0
 	`, enrollmentID).Scan(&monthlyPaymentCount); err != nil {
-		return err
+		return false, err
 	}
-	if monthlyPaymentCount > 0 {
-		return errors.New("this enrollment has monthly payment history and cannot be deleted")
+
+	if admissionPaymentCount > 0 || monthlyPaymentCount > 0 {
+		result, err := tx.Exec(`
+			UPDATE student_enrollments
+			SET active = 0,
+			    updated_at = ?
+			WHERE id = ?
+		`, time.Now().UTC(), enrollmentID)
+		if err != nil {
+			return false, err
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		if rowsAffected == 0 {
+			return false, sql.ErrNoRows
+		}
+		return true, tx.Commit()
 	}
 
 	result, err := tx.Exec(`DELETE FROM student_enrollments WHERE id = ?`, enrollmentID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return false, sql.ErrNoRows
 	}
 
 	if _, err := tx.Exec(`
@@ -2321,10 +2335,10 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) error {
 		WHERE admission_id = ?
 		  AND training_program_id = ?
 	`, enrollment.AdmissionID, enrollment.TrainingProgramID); err != nil {
-		return err
+		return false, err
 	}
 
-	return tx.Commit()
+	return false, tx.Commit()
 }
 
 func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment StudentEnrollment, recordedByUserID int64) (int64, error) {

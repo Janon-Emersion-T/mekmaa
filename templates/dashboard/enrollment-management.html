@@ -57,7 +57,7 @@
     <div class="space-y-6">
       {{if .SelectedAdmission}}
       <section class="rounded-[2rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:p-6">
-        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div id="student-enrollment-view" class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div class="flex items-start gap-4">
             {{if .SelectedAdmission.PhotoPath}}
             <img src="{{.SelectedAdmission.PhotoPath}}" alt="{{.SelectedAdmission.FullName}}" class="h-16 w-16 rounded-3xl object-cover ring-1 ring-slate/10" />
@@ -72,7 +72,7 @@
             </div>
           </div>
           <div class="flex flex-wrap gap-2">
-            <a href="/admin/admissions?action=view&id={{.SelectedAdmission.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Open student</a>
+            <a href="/admin/enrollments?admission_id={{.SelectedAdmission.ID}}&action=student#student-enrollment-view" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Open enrollment view</a>
             <a href="/admin/student-leaves?admission_id={{.SelectedAdmission.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800 transition hover:bg-sky-50">Manage leave</a>
           </div>
         </div>
@@ -240,7 +240,7 @@
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Student enrollments</p>
             <h3 class="mt-2 text-xl font-semibold text-obsidian">All programme enrollments</h3>
-            <p class="mt-2 text-sm text-slate/60">Delete remains blocked when payment history exists, and programme changes are locked after admission-fee collection.</p>
+            <p class="mt-2 text-sm text-slate/60">Delete removes safe records fully. Finance-linked records are archived instead so receipts and monthly payments remain consistent.</p>
           </div>
           <p class="text-sm text-slate/55">{{enrollmentCountForAdmission .Enrollments .SelectedAdmission.ID}} enrollments</p>
         </div>
@@ -253,6 +253,9 @@
               <div>
                 <div class="flex flex-wrap items-center gap-2">
                   <h4 class="text-base font-semibold text-obsidian">{{.TrainingProgramName}}</h4>
+                  {{if not .Active}}
+                  <span class="rounded-full bg-slate/10 px-3 py-1 text-[0.68rem] font-semibold text-slate">Archived</span>
+                  {{end}}
                   {{if .AdmissionPaymentPaid}}
                   <span class="rounded-full bg-emerald-100 px-3 py-1 text-[0.68rem] font-semibold text-emerald-900">Admission paid</span>
                   {{else if .FreeAdmission}}
@@ -262,7 +265,7 @@
                   {{end}}
                 </div>
                 <p class="mt-2 text-sm text-slate/62">Created {{formatDateTime .CreatedAt}}</p>
-                <p class="mt-1 text-xs text-slate/55">{{if .FreeMonthlyFee}}Monthly fee waived{{else}}Monthly fee active{{end}}</p>
+                <p class="mt-1 text-xs text-slate/55">{{if not .Active}}Archived from active billing{{else if .FreeMonthlyFee}}Monthly fee waived{{else}}Monthly fee active{{end}}</p>
               </div>
 
               <div>
@@ -272,23 +275,27 @@
 
               <div class="flex flex-wrap justify-end gap-2">
                 <a href="/admin/enrollments?admission_id={{$.SelectedAdmission.ID}}&action=view&id={{.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                {{if .Active}}
                 <a href="/admin/enrollments?admission_id={{$.SelectedAdmission.ID}}&action=edit&id={{.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+                {{end}}
                 {{if .AdmissionPaymentPaid}}
                 <a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">View receipt</a>
                 {{else if .FreeAdmission}}
                 <div class="inline-flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800">No fee required</div>
-                {{else}}
+                {{else if .Active}}
                 <form action="/admin/enrollments/collect-admission" method="post" onsubmit="return confirm('Collect the admission fee for {{$.SelectedAdmission.FullName}} - {{.TrainingProgramName}}?')">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="enrollment_id" value="{{.ID}}" />
                   <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Collect admission fee</button>
                 </form>
                 {{end}}
+                {{if .Active}}
                 <form action="/admin/enrollments/delete" method="post" onsubmit="return confirm('Delete this enrollment for {{$.SelectedAdmission.FullName}} - {{.TrainingProgramName}}? This only works when no payment history exists.')">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="enrollment_id" value="{{.ID}}" />
-                  <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50">Delete</button>
+                  <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50">{{if or .AdmissionPaymentPaid .FinanceTransactionID}}Archive{{else}}Delete{{end}}</button>
                 </form>
+                {{end}}
               </div>
             </div>
           </article>
