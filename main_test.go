@@ -4643,6 +4643,55 @@ func TestAttendanceManagementHandlerLoadsSheet(t *testing.T) {
 	}
 }
 
+func TestSessionMiddlewareRefreshesActiveSession(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	user, err := app.createManagedUser("Session User", "session-user@example.com", "password-123", []string{"admin"}, true)
+	if err != nil {
+		t.Fatalf("create managed user: %v", err)
+	}
+
+	loginRec := httptest.NewRecorder()
+	if err := app.createSession(loginRec, user.ID); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	var sessionCookie *http.Cookie
+	for _, cookie := range loginRec.Result().Cookies() {
+		if cookie.Name == sessionCookieName {
+			sessionCookie = cookie
+			break
+		}
+	}
+	if sessionCookie == nil || sessionCookie.Value == "" {
+		t.Fatal("expected session cookie")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	req.AddCookie(sessionCookie)
+	rec := httptest.NewRecorder()
+	nextCalled := false
+
+	app.sessionMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rec, req)
+
+	if !nextCalled {
+		t.Fatalf("expected next handler to be called, got status %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	refreshed := false
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == sessionCookieName && cookie.Value == sessionCookie.Value {
+			refreshed = true
+			break
+		}
+	}
+	if !refreshed {
+		t.Fatal("expected session cookie to be refreshed")
+	}
+}
+
 func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 

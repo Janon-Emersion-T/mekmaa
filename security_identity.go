@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+var ErrSessionNotFound = errors.New("session not found")
+
 func (a *App) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Frame-Options", "DENY")
@@ -36,10 +38,15 @@ func (a *App) sessionMiddleware(next http.Handler) http.Handler {
 
 		user, err := a.userFromSessionToken(cookie.Value)
 		if err != nil {
-			a.clearCookie(w, sessionCookieName)
-			a.clearCookieWithOptions(w, csrfCookieName, false)
-			a.setFlash(w, "Your session has expired. Sign in again.")
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			if errors.Is(err, ErrSessionNotFound) {
+				a.clearCookie(w, sessionCookieName)
+				a.clearCookieWithOptions(w, csrfCookieName, false)
+				a.setFlash(w, "Your session has expired. Sign in again.")
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+			log.Printf("session lookup failed: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 		if !user.Verified {
@@ -48,6 +55,9 @@ func (a *App) sessionMiddleware(next http.Handler) http.Handler {
 			a.setFlash(w, "Verify your email to continue.")
 			http.Redirect(w, r, "/verify-email?email="+url.QueryEscape(user.Email), http.StatusSeeOther)
 			return
+		}
+		if err := a.refreshSession(w, cookie.Value); err != nil {
+			log.Printf("refresh session: %v", err)
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, user)
@@ -141,6 +151,9 @@ func (a *App) optionalUser(r *http.Request) *User {
 	}
 	user, err := a.userFromSessionToken(cookie.Value)
 	if err != nil {
+		if !errors.Is(err, ErrSessionNotFound) {
+			log.Printf("optional session lookup failed: %v", err)
+		}
 		return nil
 	}
 	return user
@@ -273,6 +286,38 @@ func (a *App) createSession(w http.ResponseWriter, userID int64) error {
 	return nil
 }
 
+func (a *App) refreshSession(w http.ResponseWriter, rawToken string) error {
+	hash := sha256.Sum256([]byte(rawToken))
+	expiresAt := time.Now().UTC().Add(sessionTTL)
+	result, err := a.db.Exec(`
+		UPDATE sessions
+		SET expires_at = ?
+		WHERE token_hash = ?
+	`, expiresAt, fmt.Sprintf("%x", hash[:]))
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrSessionNotFound
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    rawToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   a.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  expiresAt,
+		MaxAge:   int(sessionTTL.Seconds()),
+	})
+	return nil
+}
+
 func (a *App) userFromSessionToken(token string) (*User, error) {
 	hash := sha256.Sum256([]byte(token))
 	row := a.db.QueryRow(`
@@ -285,6 +330,9 @@ func (a *App) userFromSessionToken(token string) (*User, error) {
 	var user User
 	var verifiedAt sql.NullTime
 	if err := row.Scan(&user.ID, &user.Email, &user.Name, &verifiedAt, &user.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrSessionNotFound
+		}
 		return nil, err
 	}
 	user.Verified = verifiedAt.Valid
