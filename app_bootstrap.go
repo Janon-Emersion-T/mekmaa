@@ -773,16 +773,17 @@ type StudentEnrollmentLeave struct {
 }
 
 type StudentPaymentRow struct {
-	Admission          Admission
-	Enrollment         StudentEnrollment
-	MonthlyFee         float64
-	OriginalMonthlyFee float64
-	LeaveDays          int
-	BillableDays       int
-	MonthDays          int
-	LeaveAmount        float64
-	Leaves             []StudentEnrollmentLeave
-	Payment            *StudentMonthlyPayment
+	Admission                 Admission
+	Enrollment                StudentEnrollment
+	MonthlyFee                float64
+	OriginalMonthlyFee        float64
+	EnrollmentProrationAmount float64
+	LeaveDays                 int
+	BillableDays              int
+	MonthDays                 int
+	LeaveAmount               float64
+	Leaves                    []StudentEnrollmentLeave
+	Payment                   *StudentMonthlyPayment
 }
 
 type StudentGroup struct {
@@ -1393,6 +1394,8 @@ type TemplateData struct {
 	EnrollmentLeaves                []StudentEnrollmentLeave
 	PaymentMonth                    string
 	PaymentMonthLabel               string
+	PaymentCollectionOpen           bool
+	PaymentCollectionNotice         string
 	PaymentTotalDue                 float64
 	PaymentCollected                float64
 	PaymentOutstanding              float64
@@ -1438,12 +1441,13 @@ type Feature struct {
 }
 
 var (
-	ErrEmailTaken                = errors.New("email already exists")
-	ErrInvalidOTP                = errors.New("invalid verification code")
-	ErrMonthlyFeeNotConfigured   = errors.New("monthly fee is not configured for this training programme")
-	ErrStudentLeaveOverlap       = errors.New("this leave overlaps an existing leave period for the selected enrollment")
-	ErrStudentLeaveCoversMonth   = errors.New("student is fully on leave for the selected month")
-	ErrAdmissionFeeNotConfigured = errors.New(
+	ErrEmailTaken                        = errors.New("email already exists")
+	ErrInvalidOTP                        = errors.New("invalid verification code")
+	ErrMonthlyFeeNotConfigured           = errors.New("monthly fee is not configured for this training programme")
+	ErrStudentLeaveOverlap               = errors.New("this leave overlaps an existing leave period for the selected enrollment")
+	ErrStudentLeaveCoversMonth           = errors.New("student is fully on leave for the selected month")
+	ErrStudentPaymentMonthNotCollectible = errors.New("monthly payments can only be collected after the month ends or on the final day of that month")
+	ErrAdmissionFeeNotConfigured         = errors.New(
 		"admission fee is not configured for the selected training programme",
 	)
 	ErrStudentPaymentAlreadyCollected     = errors.New("student payment already collected")

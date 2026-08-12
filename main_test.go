@@ -3158,6 +3158,80 @@ func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
 	t.Fatalf("expected payment row for enrollment %d", enrollmentID)
 }
 
+func TestListStudentPaymentRowsDiscountsSecondHalfEnrollmentMonth(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Second Half Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     5000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-HALF-001",
+		FullName:              "Second Half Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000002",
+	}, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+	}, false, 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+	enrollments, err := app.listStudentEnrollments()
+	if err != nil {
+		t.Fatalf("list enrollments: %v", err)
+	}
+	var enrollmentID int64
+	for _, enrollment := range enrollments {
+		if enrollment.AdmissionID == admissionID && enrollment.TrainingProgramID == programID {
+			enrollmentID = enrollment.ID
+			break
+		}
+	}
+	if enrollmentID == 0 {
+		t.Fatal("expected enrollment to exist")
+	}
+	if _, err := app.db.Exec(`UPDATE student_enrollments SET created_at = ?, updated_at = ? WHERE id = ?`, "2026-07-20 09:00:00", "2026-07-20 09:00:00", enrollmentID); err != nil {
+		t.Fatalf("update enrollment created_at: %v", err)
+	}
+
+	rows, err := app.listStudentPaymentRows("2026-07")
+	if err != nil {
+		t.Fatalf("list student payment rows: %v", err)
+	}
+	for _, row := range rows {
+		if row.Enrollment.ID != enrollmentID {
+			continue
+		}
+		if row.OriginalMonthlyFee != 5000 {
+			t.Fatalf("original monthly fee = %.2f, want 5000.00", row.OriginalMonthlyFee)
+		}
+		if row.MonthlyFee != 2500 {
+			t.Fatalf("monthly fee = %.2f, want 2500.00", row.MonthlyFee)
+		}
+		if row.EnrollmentProrationAmount != 2500 {
+			t.Fatalf("enrollment proration amount = %.2f, want 2500.00", row.EnrollmentProrationAmount)
+		}
+		return
+	}
+	t.Fatalf("expected payment row for enrollment %d", enrollmentID)
+}
+
 func TestCollectStudentMonthlyPaymentRejectsFullMonthLeave(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	programID, err := app.createTrainingProgram(TrainingProgram{
@@ -3212,6 +3286,94 @@ func TestCollectStudentMonthlyPaymentRejectsFullMonthLeave(t *testing.T) {
 	monthDate, _ := parsePaymentMonth("2026-08")
 	if _, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-08", monthDate, "cash", 0); !errors.Is(err, ErrStudentLeaveCoversMonth) {
 		t.Fatalf("expected full-month leave error, got %v", err)
+	}
+}
+
+func TestCollectStudentPaymentHandlerRejectsCurrentMonthBeforeMonthEnd(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Collection Timing Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     4000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-TIMING-001",
+		FullName:              "Timing Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000003",
+	}, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+	}, false, 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+	enrollments, err := app.listStudentEnrollments()
+	if err != nil {
+		t.Fatalf("list enrollments: %v", err)
+	}
+	var enrollmentID int64
+	for _, enrollment := range enrollments {
+		if enrollment.AdmissionID == admissionID && enrollment.TrainingProgramID == programID {
+			enrollmentID = enrollment.ID
+			break
+		}
+	}
+	if enrollmentID == 0 {
+		t.Fatal("expected enrollment to exist")
+	}
+
+	form := url.Values{
+		"csrf_token":     {"token"},
+		"enrollment_id":  {strconv.FormatInt(enrollmentID, 10)},
+		"payment_month":  {"2026-08"},
+		"payment_method": {"cash"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/student-payments/collect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+
+	app.collectStudentPaymentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("student payment collect status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	if got := rec.Header().Get("Location"); got != "/admin/student-payments?month=2026-08" {
+		t.Fatalf("student payment collect redirect = %q", got)
+	}
+	flashFound := false
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == flashCookieName && cookie.Value != "" {
+			flashFound = true
+			break
+		}
+	}
+	if !flashFound {
+		t.Fatal("expected flash cookie for non-collectible current month")
+	}
+	var count int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM student_monthly_payments WHERE enrollment_id = ? AND payment_month = '2026-08' AND COALESCE(voided, 0) = 0`, enrollmentID).Scan(&count); err != nil {
+		t.Fatalf("count blocked monthly payments: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected no monthly payment row to be created, got %d", count)
 	}
 }
 

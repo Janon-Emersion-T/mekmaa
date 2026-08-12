@@ -114,7 +114,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if needMonthlyRows {
-		paymentMonth := time.Now().Format("2006-01")
+		paymentMonth := latestCollectiblePaymentMonth(time.Now())
 		monthlyRows, err := a.listStudentPaymentRows(paymentMonth)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list monthly receivables duration=%s err=%v", page, time.Since(started), err)
@@ -123,6 +123,8 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		allMonthlyRows = monthlyRows
 		data.PaymentMonth = paymentMonth
 		data.PaymentMonthLabel = paymentMonthLabel(paymentMonth)
+		data.PaymentCollectionOpen = paymentMonthCollectible(paymentMonth, time.Now())
+		data.PaymentCollectionNotice = monthlyPaymentCollectionNotice(paymentMonth, time.Now())
 		data.StudentPaymentRows = pendingStudentPaymentRows(monthlyRows)
 	}
 
@@ -454,8 +456,9 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
 	paymentMonth := strings.TrimSpace(r.URL.Query().Get("month"))
 	currentMonth := time.Now().Format("2006-01")
+	latestMonth := latestCollectiblePaymentMonth(time.Now())
 	if _, err := parsePaymentMonth(paymentMonth); err != nil || paymentMonth > currentMonth {
-		paymentMonth = time.Now().Format("2006-01")
+		paymentMonth = latestMonth
 	}
 
 	rows, err := a.listStudentPaymentRows(paymentMonth)
@@ -471,6 +474,8 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	data.StudentPaymentRows = rows
 	data.PaymentMonth = paymentMonth
 	data.PaymentMonthLabel = paymentMonthLabel(paymentMonth)
+	data.PaymentCollectionOpen = paymentMonthCollectible(paymentMonth, time.Now())
+	data.PaymentCollectionNotice = monthlyPaymentCollectionNotice(paymentMonth, time.Now())
 	data.TodayDate = time.Now().Format("2006-01")
 	for _, row := range rows {
 		if row.MonthlyFee > 0 {

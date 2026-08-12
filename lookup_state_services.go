@@ -772,6 +772,11 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 	if monthlyFee <= 0 {
 		return 0, ErrMonthlyFeeNotConfigured
 	}
+	billingStart, err := paymentBillingStartDate(enrollment, admission)
+	if err != nil {
+		return 0, err
+	}
+	monthlyFee, _ = applyFirstMonthEnrollmentDiscount(monthlyFee, billingStart, paymentMonth, monthDate.AddDate(0, 1, -1).Day())
 	if enrollment != nil {
 		leaves, err := listStudentEnrollmentLeavesTx(tx, enrollment.ID)
 		if err != nil {

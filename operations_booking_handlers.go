@@ -3489,6 +3489,11 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
 		return
 	}
+	if !paymentMonthCollectible(paymentMonth, time.Now()) {
+		a.setFlash(w, monthlyPaymentCollectionNotice(paymentMonth, time.Now()))
+		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+		return
+	}
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
 	if !validPaymentMethod(paymentMethod) {
 		a.setFlash(w, "Select a valid payment method.")

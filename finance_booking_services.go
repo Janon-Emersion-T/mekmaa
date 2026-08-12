@@ -289,6 +289,64 @@ func proratedMonthlyFee(baseAmount float64, leaveDays int, monthDays int) (float
 	return dueAmount, leaveAmount
 }
 
+func paymentMonthCollectible(paymentMonth string, now time.Time) bool {
+	currentMonth := now.Format("2006-01")
+	if paymentMonth < currentMonth {
+		return true
+	}
+	if paymentMonth > currentMonth {
+		return false
+	}
+	lastDay := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
+	return now.Day() >= lastDay
+}
+
+func latestCollectiblePaymentMonth(now time.Time) string {
+	currentMonth := now.Format("2006-01")
+	if paymentMonthCollectible(currentMonth, now) {
+		return currentMonth
+	}
+	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, -1, 0).Format("2006-01")
+}
+
+func monthlyPaymentCollectionNotice(paymentMonth string, now time.Time) string {
+	if paymentMonthCollectible(paymentMonth, now) {
+		return ""
+	}
+	lastCollectibleDay := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location())
+	return "Monthly payments for " + paymentMonthLabel(paymentMonth) + " can only be collected on " + lastCollectibleDay.Format("January 2, 2006") + " or later."
+}
+
+func paymentBillingStartDate(enrollment *StudentEnrollment, admission *Admission) (time.Time, error) {
+	if enrollment != nil && !enrollment.CreatedAt.IsZero() {
+		start := enrollment.CreatedAt.In(time.Local)
+		return time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.Local), nil
+	}
+	if admission == nil || strings.TrimSpace(admission.AdmissionDate) == "" {
+		return time.Time{}, errors.New("student admission date is required for monthly billing")
+	}
+	start, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(admission.AdmissionDate), time.Local)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return start, nil
+}
+
+func applyFirstMonthEnrollmentDiscount(baseAmount float64, billingStart time.Time, paymentMonth string, monthDays int) (float64, float64) {
+	if baseAmount <= 0 || billingStart.IsZero() || monthDays <= 0 {
+		return baseAmount, 0
+	}
+	if billingStart.Format("2006-01") != paymentMonth {
+		return baseAmount, 0
+	}
+	secondHalfStartDay := (monthDays / 2) + 1
+	if billingStart.Day() < secondHalfStartDay {
+		return baseAmount, 0
+	}
+	discounted := math.Round((baseAmount*0.5)*100) / 100
+	return discounted, math.Round((baseAmount-discounted)*100) / 100
+}
+
 func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, error) {
 	monthDate, err := parsePaymentMonth(paymentMonth)
 	if err != nil {
@@ -318,7 +376,8 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			payment_rows.finance_transaction_id,
 			payment_rows.collected_by_user_id,
 			payment_rows.collected_at,
-			payment_rows.payment_created_at
+			payment_rows.payment_created_at,
+			payment_rows.enrollment_created_at
 		FROM (
 			SELECT
 				se.id AS enrollment_id,
@@ -342,6 +401,7 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 				COALESCE(smp.collected_by_user_id, 0) AS collected_by_user_id,
 				smp.collected_at AS collected_at,
 				smp.created_at AS payment_created_at,
+				COALESCE(CAST(se.created_at AS TEXT), '') AS enrollment_created_at,
 				COALESCE(tp.sort_order, 0) AS program_sort_order
 			FROM student_enrollments se
 			JOIN admissions a
@@ -383,6 +443,7 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 				COALESCE(smp.collected_by_user_id, 0) AS collected_by_user_id,
 				smp.collected_at AS collected_at,
 				smp.created_at AS payment_created_at,
+				'' AS enrollment_created_at,
 				COALESCE(tp.sort_order, 0) AS program_sort_order
 			FROM admissions a
 			LEFT JOIN training_programs tp
@@ -419,16 +480,17 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 	enrollmentIDs := make([]int64, 0)
 	for rows.Next() {
 		var (
-			row               StudentPaymentRow
-			enrollmentID      int64
-			freeMonthlyFee    int
-			paymentID         sql.NullInt64
-			paymentAmount     sql.NullFloat64
-			paymentMethod     sql.NullString
-			transactionID     sql.NullInt64
-			collectedByUserID sql.NullInt64
-			collectedAt       sql.NullTime
-			paymentCreatedAt  sql.NullTime
+			row                 StudentPaymentRow
+			enrollmentID        int64
+			freeMonthlyFee      int
+			paymentID           sql.NullInt64
+			paymentAmount       sql.NullFloat64
+			paymentMethod       sql.NullString
+			transactionID       sql.NullInt64
+			collectedByUserID   sql.NullInt64
+			collectedAt         sql.NullTime
+			paymentCreatedAt    sql.NullTime
+			enrollmentCreatedAt string
 		)
 		if err := rows.Scan(
 			&enrollmentID,
@@ -441,7 +503,7 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			&row.Enrollment.TrainingProgramID,
 			&row.Enrollment.TrainingProgramName,
 			&freeMonthlyFee, &row.OriginalMonthlyFee, &paymentID, &paymentAmount, &paymentMethod,
-			&transactionID, &collectedByUserID, &collectedAt, &paymentCreatedAt,
+			&transactionID, &collectedByUserID, &collectedAt, &paymentCreatedAt, &enrollmentCreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -449,6 +511,19 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 		row.Enrollment.AdmissionID = row.Admission.ID
 		row.Enrollment.Student = row.Admission
 		row.Enrollment.FreeMonthlyFee = freeMonthlyFee == 1
+		if strings.TrimSpace(enrollmentCreatedAt) != "" {
+			createdAt, err := time.Parse("2006-01-02 15:04:05", enrollmentCreatedAt)
+			if err != nil {
+				createdAt, err = time.Parse(time.RFC3339Nano, enrollmentCreatedAt)
+			}
+			if err != nil {
+				createdAt, err = time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", enrollmentCreatedAt)
+			}
+			if err != nil {
+				return nil, err
+			}
+			row.Enrollment.CreatedAt = createdAt
+		}
 		row.MonthDays = monthDays
 		row.BillableDays = monthDays
 		row.MonthlyFee = effectiveMonthlyFee(row.Admission, row.OriginalMonthlyFee)
@@ -485,6 +560,18 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 		return nil, err
 	}
 	for i := range paymentRows {
+		if paymentRows[i].MonthlyFee > 0 {
+			billingStart, err := paymentBillingStartDate(func() *StudentEnrollment {
+				if paymentRows[i].Enrollment.ID > 0 {
+					return &paymentRows[i].Enrollment
+				}
+				return nil
+			}(), &paymentRows[i].Admission)
+			if err != nil {
+				return nil, err
+			}
+			paymentRows[i].MonthlyFee, paymentRows[i].EnrollmentProrationAmount = applyFirstMonthEnrollmentDiscount(paymentRows[i].MonthlyFee, billingStart, paymentMonth, paymentRows[i].MonthDays)
+		}
 		if paymentRows[i].Enrollment.ID <= 0 {
 			continue
 		}
