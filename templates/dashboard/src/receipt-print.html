@@ -21,6 +21,23 @@
     border-top: 1px dashed #0f172a;
   }
 
+  .receipt-inline-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.45rem;
+    row-gap: 0.1rem;
+  }
+
+  .receipt-inline-row dt {
+    flex: 0 0 auto;
+  }
+
+  .receipt-inline-row dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
   @media print {
     @page {
       size: 80mm auto;
@@ -79,10 +96,10 @@
     }
 
     .receipt-printable {
-      width: 74mm !important;
-      max-width: 74mm !important;
+      width: 77mm !important;
+      max-width: 77mm !important;
       margin: 0 auto !important;
-      padding: 3mm 2mm 5mm !important;
+      padding: 3mm 1mm 5mm !important;
       border: 0 !important;
       border-radius: 0 !important;
       box-shadow: none !important;
