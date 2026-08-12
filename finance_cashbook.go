@@ -105,6 +105,8 @@ func normalizePaymentMethod(value string) string {
 	switch value {
 	case "bank", "bank_transfer":
 		return "bank_transfer"
+	case "qr", "qr_pay", "qrcode", "qr_code":
+		return "qr_pay"
 	default:
 		return "cash"
 	}
@@ -696,7 +698,7 @@ func findFinanceAccountByNameTx(tx *sql.Tx, name string) (*FinanceAccount, error
 
 func findFinanceAccountForPaymentMethodTx(tx *sql.Tx, paymentMethod string) (*FinanceAccount, error) {
 	switch normalizePaymentMethod(paymentMethod) {
-	case "bank_transfer":
+	case "bank_transfer", "qr_pay":
 		return findFinanceAccountByNameTx(tx, financeAccountMainBank)
 	default:
 		return findFinanceAccountByNameTx(tx, financeAccountCashInHand)

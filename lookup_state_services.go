@@ -339,7 +339,7 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 	return &transactions[0], nil
 }
 
-func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recordedByUserID int64) (int64, error) {
+func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, paymentMethod string, recordedByUserID int64) (int64, error) {
 	admissionFee, _, err := trainingProgramFeesForAdmissionTx(
 		tx,
 		admission,
@@ -355,7 +355,11 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recorde
 
 	now := time.Now().UTC()
 	receiptNumber := fmt.Sprintf("ADM-%s-%06d", now.Format("20060102150405"), admission.ID)
-	account, err := findFinanceAccountForPaymentMethodTx(tx, "cash")
+	paymentMethod = normalizePaymentMethod(paymentMethod)
+	if !validPaymentMethod(paymentMethod) {
+		return 0, errors.New("invalid payment method")
+	}
+	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
@@ -372,7 +376,7 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, recorde
 		FinanceAccountID: account.ID,
 		PersonName:       admission.FullName,
 		Description:      description,
-		PaymentMethod:    "cash",
+		PaymentMethod:    paymentMethod,
 		Amount:           admissionFee,
 		RecordedByUserID: recordedByUserID,
 		RecordedAt:       now,
@@ -745,8 +749,9 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
-	if normalizePaymentMethod(paymentMethod) != "cash" {
-		return 0, errors.New("monthly student payments must be recorded in cash")
+	paymentMethod = normalizePaymentMethod(paymentMethod)
+	if !validPaymentMethod(paymentMethod) {
+		return 0, errors.New("invalid payment method")
 	}
 
 	var monthlyFee float64
@@ -792,7 +797,7 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 		}
 	}
 	now := time.Now().UTC()
-	account, err := findFinanceAccountForPaymentMethodTx(tx, "cash")
+	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
@@ -813,7 +818,7 @@ func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth stri
 		FinanceAccountID: account.ID,
 		PersonName:       admission.FullName,
 		Description:      description,
-		PaymentMethod:    "cash",
+		PaymentMethod:    paymentMethod,
 		Amount:           monthlyFee,
 		RecordedByUserID: recordedByUserID,
 		RecordedAt:       now,

@@ -198,6 +198,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"relativeTime":                              relativeTime,
 		"formatCalendarDate":                        formatCalendarDate,
 		"formatClockTime":                           formatClockTime,
+		"paymentMethodLabel":                        paymentMethodLabel,
 		"formatEventTiming":                         formatEventTiming,
 		"eventScheduleLabel":                        eventScheduleLabel,
 		"hasTime":                                   hasTime,
@@ -301,6 +302,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"templates/dashboard/src/receipt-print.html",
 		"templates/dashboard/src/finance-shell.html",
 		"templates/dashboard/src/finance-receivables.html",
+		"templates/dashboard/src/finance-customers.html",
 		"templates/dashboard/src/finance-ledger.html",
 		"templates/dashboard/src/finance-operations.html",
 	}

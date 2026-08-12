@@ -1,0 +1,85 @@
+{{define "finance-customers-section"}}
+<section class="space-y-6">
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Customer manager</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Booking customer balances</h2>
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">Search booking customers, review what they have already paid, and open the right booking or receivables screen to continue collection.</p>
+      </div>
+      <form action="/admin/finance/customers" method="get" class="flex w-full max-w-xl flex-col gap-2 sm:flex-row">
+        <input type="search" name="search" value="{{.FinanceCustomerSearch}}" placeholder="Search customer name or email" class="h-12 min-w-0 flex-1 rounded-2xl border border-slate/10 bg-cloud/35 px-4 text-sm outline-none focus:border-aqua">
+        <button class="h-12 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Search</button>
+        <a href="/admin/finance/customers" class="inline-flex h-12 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud">Clear</a>
+      </form>
+    </div>
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Customers</p>
+      <p class="mt-3 text-2xl font-semibold text-obsidian">{{len .BookingCustomerBalances}}</p>
+    </article>
+    <article class="rounded-[1.5rem] border border-amber-200/70 bg-amber-50/80 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700/75">Outstanding bookings</p>
+      <p class="mt-3 text-2xl font-semibold text-amber-950">{{len .BookingFinancials}}</p>
+    </article>
+    <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Outstanding value</p>
+      <p class="mt-3 text-2xl font-semibold text-obsidian">{{money .FinanceSummary.OutstandingBooking}}</p>
+    </article>
+    <article class="rounded-[1.5rem] border border-emerald-200/70 bg-emerald-50/80 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700/75">Collected value</p>
+      <p class="mt-3 text-2xl font-semibold text-emerald-950">{{money .FinanceSummary.CollectedBooking}}</p>
+    </article>
+  </div>
+
+  <div class="grid gap-4">
+    {{range .BookingCustomerBalances}}
+    <article class="rounded-[1.7rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+      <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h3 class="text-xl font-semibold text-obsidian">{{.CustomerName}}</h3>
+            <span class="rounded-full bg-cloud px-3 py-1 text-[0.68rem] font-bold uppercase tracking-wider text-slate">{{.OutstandingCount}} due</span>
+            <span class="rounded-full bg-cloud px-3 py-1 text-[0.68rem] font-bold uppercase tracking-wider text-slate">{{.BookingCount}} bookings</span>
+          </div>
+          {{if .CustomerEmail}}<p class="mt-2 text-sm text-slate/60">{{.CustomerEmail}}</p>{{end}}
+        </div>
+        <div class="grid gap-3 sm:grid-cols-3 xl:min-w-[32rem]">
+          <div class="rounded-2xl bg-cloud/45 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Quoted</p><p class="mt-2 text-lg font-semibold text-obsidian">{{money .QuotedAmount}}</p></div>
+          <div class="rounded-2xl bg-emerald-50 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-700/75">Collected</p><p class="mt-2 text-lg font-semibold text-emerald-950">{{money .CollectedAmount}}</p></div>
+          <div class="rounded-2xl bg-amber-50 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-amber-700/75">Outstanding</p><p class="mt-2 text-lg font-semibold text-amber-950">{{money .OutstandingAmount}}</p></div>
+        </div>
+      </div>
+
+      <div class="mt-5 grid gap-3">
+        {{range .Bookings}}
+        <div class="rounded-[1.25rem] border border-slate/10 bg-cloud/30 p-4">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="font-mono text-[0.72rem] font-bold text-obsidian">{{bookingReference .ScheduleID}}</p>
+                <span class="rounded-full px-2.5 py-1 text-[0.62rem] font-bold {{bookingPaymentStatusTone .PaymentStatus}}">{{bookingPaymentStatusBadge .PaymentStatus}}</span>
+              </div>
+              <p class="mt-2 text-sm font-semibold text-obsidian">{{.Activity}} · {{.SlotDate}} · {{.SlotHour}}</p>
+              <p class="mt-1 text-xs text-slate/55">Quoted {{money .QuotedAmount}} · Collected {{money .TotalCollected}} · Outstanding {{money .OutstandingAmount}}</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <a href="/admin/bookings?action=view&id={{.ScheduleID}}&date={{.SlotDate}}#schedule-view" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Open booking</a>
+              <a href="/admin/finance/receivables" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Open receivables</a>
+            </div>
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </article>
+    {{else}}
+    <div class="rounded-[1.7rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-14 text-center">
+      <p class="text-base font-semibold text-obsidian">No customers match the current search.</p>
+      <p class="mt-2 text-sm text-slate/55">Try another name or email, or clear the search to view every booking customer with an outstanding balance.</p>
+    </div>
+    {{end}}
+  </div>
+</section>
+{{end}}

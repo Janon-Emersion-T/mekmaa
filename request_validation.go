@@ -9,12 +9,54 @@ import (
 	"time"
 )
 
+const (
+	bookingSlotStartHour = 6
+	bookingSlotEndHour   = 22
+)
+
+var (
+	bookingSlotIncrement = 15 * time.Minute
+	bookingSlotDuration  = time.Hour
+)
+
 func bookingHours() []string {
 	var hours []string
-	for hour := 6; hour <= 23; hour++ {
-		hours = append(hours, fmt.Sprintf("%02d:00", hour))
+	for hour := bookingSlotStartHour; hour <= bookingSlotEndHour; hour++ {
+		for minute := 0; minute < 60; minute += 15 {
+			hours = append(hours, fmt.Sprintf("%02d:%02d", hour, minute))
+		}
 	}
 	return hours
+}
+
+func bookingSlotStartTime(slotDate string, slotHour string) (time.Time, error) {
+	return time.ParseInLocation("2006-01-02 15:04", strings.TrimSpace(slotDate)+" "+strings.TrimSpace(slotHour), time.Local)
+}
+
+func bookingSlotEndTime(slotDate string, slotHour string) (time.Time, error) {
+	start, err := bookingSlotStartTime(slotDate, slotHour)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return start.Add(bookingSlotDuration), nil
+}
+
+func bookingSlotsOverlap(leftDate, leftHour, rightDate, rightHour string) bool {
+	leftStart, err := bookingSlotStartTime(leftDate, leftHour)
+	if err != nil {
+		return false
+	}
+	leftEnd := leftStart.Add(bookingSlotDuration)
+	rightStart, err := bookingSlotStartTime(rightDate, rightHour)
+	if err != nil {
+		return false
+	}
+	rightEnd := rightStart.Add(bookingSlotDuration)
+	return leftStart.Before(rightEnd) && rightStart.Before(leftEnd)
+}
+
+func scheduleOverlapsSlot(schedule SpaceSchedule, slotDate string, slotHour string) bool {
+	return bookingSlotsOverlap(schedule.SlotDate, schedule.SlotHour, slotDate, slotHour)
 }
 
 func admissionFromRequest(r *http.Request) Admission {
@@ -670,10 +712,22 @@ func courtClosureCoversSlot(
 		return false
 	}
 
-	slotHour = strings.TrimSpace(slotHour)
-
-	return slotHour >= closure.StartHour &&
-		slotHour < closure.EndHour
+	slotStart, err := bookingSlotStartTime(slotDate, slotHour)
+	if err != nil {
+		return false
+	}
+	slotEnd := slotStart.Add(bookingSlotDuration)
+	closureStart, err := bookingSlotStartTime(closure.ClosureDate, closure.StartHour)
+	if err != nil {
+		slotHour = strings.TrimSpace(slotHour)
+		return slotHour >= closure.StartHour && slotHour < closure.EndHour
+	}
+	closureEnd, err := bookingSlotStartTime(closure.ClosureDate, closure.EndHour)
+	if err != nil {
+		slotHour = strings.TrimSpace(slotHour)
+		return slotHour >= closure.StartHour && slotHour < closure.EndHour
+	}
+	return slotStart.Before(closureEnd) && closureStart.Before(slotEnd)
 }
 
 func closureBlocksActivity(

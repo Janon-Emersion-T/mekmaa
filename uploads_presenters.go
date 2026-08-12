@@ -73,8 +73,8 @@ func prepareUploadStorage(configuredRoot string) (UploadStorage, error) {
 	}
 
 	storage := UploadStorage{
-		Root:           resolvedRoot,
-		EventDir:       filepath.Join(resolvedRoot, "events"),
+		Root:            resolvedRoot,
+		EventDir:        filepath.Join(resolvedRoot, "events"),
 		StudentPhotoDir: filepath.Join(resolvedRoot, "students", "photos"),
 		StudentQRDir:    filepath.Join(resolvedRoot, "students", "qr"),
 	}
@@ -514,10 +514,21 @@ func paymentMonthLabel(value string) string {
 
 func validPaymentMethod(value string) bool {
 	switch value {
-	case "cash", "bank_transfer":
+	case "cash", "bank_transfer", "qr_pay":
 		return true
 	default:
 		return false
+	}
+}
+
+func paymentMethodLabel(value string) string {
+	switch normalizePaymentMethod(value) {
+	case "bank_transfer":
+		return "Bank transfer"
+	case "qr_pay":
+		return "QR pay"
+	default:
+		return "Cash"
 	}
 }
 
@@ -672,6 +683,16 @@ func schedulesForCalendarSlot(schedules []SpaceSchedule, slotDate, slotHour stri
 	var filtered []SpaceSchedule
 	for _, schedule := range schedules {
 		if schedule.SlotDate == slotDate && schedule.SlotHour == slotHour {
+			filtered = append(filtered, schedule)
+		}
+	}
+	return filtered
+}
+
+func overlappingSchedulesForCalendarSlot(schedules []SpaceSchedule, slotDate, slotHour string) []SpaceSchedule {
+	var filtered []SpaceSchedule
+	for _, schedule := range schedules {
+		if scheduleOverlapsSlot(schedule, slotDate, slotHour) {
 			filtered = append(filtered, schedule)
 		}
 	}

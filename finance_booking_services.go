@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 )
@@ -796,6 +797,70 @@ func (a *App) listBookingFinancialsForScheduleIDs(scheduleIDs []int64) ([]Bookin
 	return listBookingFinancialsForScheduleIDsQuery(a.db, scheduleIDs)
 }
 
+func aggregateBookingCustomerBalances(financials []BookingFinancial, search string) []BookingCustomerBalance {
+	search = strings.ToLower(strings.TrimSpace(search))
+	type bucket struct {
+		name  string
+		email string
+		items []BookingFinancial
+	}
+	byCustomer := make(map[string]*bucket)
+	for _, financial := range financials {
+		name := strings.TrimSpace(financial.RequesterName)
+		email := strings.TrimSpace(financial.RequesterEmail)
+		if name == "" && email == "" {
+			name = "Booking customer"
+		}
+		haystack := strings.ToLower(strings.TrimSpace(name + " " + email))
+		if search != "" && !strings.Contains(haystack, search) {
+			continue
+		}
+		key := strings.ToLower(name) + "|" + strings.ToLower(email)
+		entry, ok := byCustomer[key]
+		if !ok {
+			entry = &bucket{name: name, email: email}
+			byCustomer[key] = entry
+		}
+		entry.items = append(entry.items, financial)
+	}
+
+	balances := make([]BookingCustomerBalance, 0, len(byCustomer))
+	for _, entry := range byCustomer {
+		balance := BookingCustomerBalance{
+			CustomerName:  entry.name,
+			CustomerEmail: entry.email,
+			Bookings:      entry.items,
+		}
+		for _, booking := range entry.items {
+			balance.BookingCount++
+			balance.QuotedAmount = normalizeMoney(balance.QuotedAmount + booking.QuotedAmount)
+			balance.CollectedAmount = normalizeMoney(balance.CollectedAmount + booking.TotalCollected)
+			balance.OutstandingAmount = normalizeMoney(balance.OutstandingAmount + booking.OutstandingAmount)
+			if booking.OutstandingAmount > 0.004 {
+				balance.OutstandingCount++
+			}
+		}
+		sort.Slice(balance.Bookings, func(i, j int) bool {
+			if balance.Bookings[i].OutstandingAmount == balance.Bookings[j].OutstandingAmount {
+				if balance.Bookings[i].SlotDate == balance.Bookings[j].SlotDate {
+					return balance.Bookings[i].SlotHour < balance.Bookings[j].SlotHour
+				}
+				return balance.Bookings[i].SlotDate < balance.Bookings[j].SlotDate
+			}
+			return balance.Bookings[i].OutstandingAmount > balance.Bookings[j].OutstandingAmount
+		})
+		balances = append(balances, balance)
+	}
+
+	sort.Slice(balances, func(i, j int) bool {
+		if balances[i].OutstandingAmount == balances[j].OutstandingAmount {
+			return balances[i].CustomerName < balances[j].CustomerName
+		}
+		return balances[i].OutstandingAmount > balances[j].OutstandingAmount
+	})
+	return balances
+}
+
 func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
 	rows, err := a.db.Query(`
 		SELECT
@@ -1411,9 +1476,9 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 		       COALESCE(cancellation_reason, ''), COALESCE(cancellation_finance_note, ''),
 		       created_at, updated_at
 		FROM space_schedules
-		WHERE slot_date = ? AND slot_hour = ? AND id != ? AND status IN ('pending', 'held', 'confirmed', 'reschedule_pending')
+		WHERE slot_date = ? AND id != ? AND status IN ('pending', 'held', 'confirmed', 'reschedule_pending')
 		ORDER BY id ASC
-	`, slotDate, slotHour, excludeID)
+	`, slotDate, excludeID)
 	if err != nil {
 		return nil, err
 	}
@@ -1452,7 +1517,9 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 		if statusChangedAt.Valid {
 			schedule.StatusChangedAt = statusChangedAt.Time
 		}
-		schedules = append(schedules, schedule)
+		if scheduleOverlapsSlot(schedule, slotDate, slotHour) {
+			schedules = append(schedules, schedule)
+		}
 	}
 	return schedules, rows.Err()
 }
@@ -1548,7 +1615,7 @@ func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
 }
 
 func (a *App) createAdmission(admission Admission) error {
-	_, _, err := a.createAdmissionWithOptionalPayment(admission, false, 0)
+	_, _, err := a.createAdmissionWithOptionalPayment(admission, false, "cash", 0)
 	return err
 }
 func replaceStudentGroupCoachesTx(
@@ -2594,7 +2661,7 @@ func syncAdmissionTrainingProgramsTx(tx *sql.Tx, admissionID int64, programIDs [
 	return nil
 }
 
-func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrollment, collectPayment bool, recordedByUserID int64) (int64, int64, error) {
+func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrollment, collectPayment bool, paymentMethod string, recordedByUserID int64) (int64, int64, error) {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -2652,7 +2719,7 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 
 	var financeTransactionID int64
 	if collectPayment && !enrollment.FreeAdmission {
-		financeTransactionID, err = a.collectEnrollmentAdmissionPaymentTx(tx, enrollment, recordedByUserID)
+		financeTransactionID, err = a.collectEnrollmentAdmissionPaymentTx(tx, enrollment, paymentMethod, recordedByUserID)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -2821,7 +2888,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 	return false, tx.Commit()
 }
 
-func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment StudentEnrollment, recordedByUserID int64) (int64, error) {
+func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment StudentEnrollment, paymentMethod string, recordedByUserID int64) (int64, error) {
 	var studentName string
 	if err := tx.QueryRow(`SELECT full_name FROM admissions WHERE id = ?`, enrollment.AdmissionID).Scan(&studentName); err != nil {
 		return 0, err
@@ -2841,7 +2908,11 @@ func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment Student
 	}
 	now := time.Now().UTC()
 	receiptNumber := fmt.Sprintf("ENR-%s-%06d", now.Format("20060102150405"), enrollment.ID)
-	account, err := findFinanceAccountForPaymentMethodTx(tx, "cash")
+	paymentMethod = normalizePaymentMethod(paymentMethod)
+	if !validPaymentMethod(paymentMethod) {
+		return 0, errors.New("invalid payment method")
+	}
+	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
@@ -2858,7 +2929,7 @@ func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment Student
 		FinanceAccountID: account.ID,
 		PersonName:       studentName,
 		Description:      description,
-		PaymentMethod:    "cash",
+		PaymentMethod:    paymentMethod,
 		Amount:           admissionFee,
 		RecordedByUserID: recordedByUserID,
 		RecordedAt:       now,
@@ -2883,6 +2954,7 @@ func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment Student
 func (a *App) createAdmissionWithOptionalPayment(
 	admission Admission,
 	collectPayment bool,
+	paymentMethod string,
 	recordedByUserID int64,
 ) (int64, int64, error) {
 	tx, err := a.db.Begin()
@@ -2974,6 +3046,7 @@ func (a *App) createAdmissionWithOptionalPayment(
 		financeTransactionID, err = a.collectAdmissionPaymentTx(
 			tx,
 			admission,
+			paymentMethod,
 			recordedByUserID,
 		)
 		if err != nil {
@@ -3065,6 +3138,7 @@ func (a *App) updateAdmissionWithOptionalPayment(
 		financeTransactionID, err = a.collectAdmissionPaymentTx(
 			tx,
 			admission,
+			"cash",
 			recordedByUserID,
 		)
 		if err != nil {
@@ -3566,8 +3640,9 @@ func nullableExistingUserIDTx(tx *sql.Tx, userID int64) any {
 }
 
 func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amount float64, paymentNote string, recordedByUserID int64, allowOverpayment bool) (int64, error) {
-	if paymentMethod != "cash" {
-		return 0, errors.New("booking payments must be recorded in cash")
+	paymentMethod = normalizePaymentMethod(paymentMethod)
+	if !validPaymentMethod(paymentMethod) {
+		return 0, errors.New("booking payment method is invalid")
 	}
 	if math.IsNaN(amount) || math.IsInf(amount, 0) {
 		return 0, errors.New("booking payment amount is invalid")
@@ -3637,7 +3712,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 	if err != nil {
 		return 0, err
 	}
-	description := fmt.Sprintf("%s cash collection for %s", bookingProductLabel(financial.Activity, financial.Quantity), bookingReference(scheduleID))
+	description := fmt.Sprintf("%s payment for %s", bookingProductLabel(financial.Activity, financial.Quantity), bookingReference(scheduleID))
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    receiptNumber,
 		ReferenceNumber:  receiptNumber,

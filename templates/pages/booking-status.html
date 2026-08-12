@@ -71,7 +71,7 @@
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="flex flex-wrap items-center gap-2">
                   <p class="font-mono text-sm font-semibold text-obsidian">{{.ReceiptNumber}}</p>
-                  <span class="rounded-full bg-white px-2.5 py-1 text-[0.6rem] font-bold uppercase tracking-wider text-slate">Cash payment</span>
+                  <span class="rounded-full bg-white px-2.5 py-1 text-[0.6rem] font-bold uppercase tracking-wider text-slate">{{paymentMethodLabel .PaymentMethod}}</span>
                   {{if .Voided}}<span class="rounded-full border border-slate/10 bg-white px-2.5 py-1 text-[0.6rem] font-bold uppercase tracking-wider text-slate">Corrected</span>{{else}}<span class="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[0.6rem] font-bold uppercase tracking-wider text-emerald-700">Active</span>{{end}}
                 </div>
                 <p class="text-sm font-semibold {{if .Voided}}text-slate/60{{else}}text-emerald-800{{end}}">{{money .Amount}}</p>
@@ -82,7 +82,7 @@
               {{end}}
             </div>
             {{else}}
-            <p class="rounded-[1.2rem] border border-dashed border-slate/15 bg-cloud/25 px-4 py-4 text-sm text-slate/55">No cash payment has been recorded on this booking yet.</p>
+            <p class="rounded-[1.2rem] border border-dashed border-slate/15 bg-cloud/25 px-4 py-4 text-sm text-slate/55">No payment has been recorded on this booking yet.</p>
             {{end}}
           </div>
         </div>

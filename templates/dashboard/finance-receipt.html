@@ -99,7 +99,7 @@
     <div class="receipt-divider"></div>
     <div class="py-4 text-[0.78rem] leading-5">
       <p class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-red-700">Void information</p>
-      <p class="mt-2 font-semibold text-red-900">This cash collection was voided on {{formatDateTime .ReceiptBookingPayment.VoidedAt}}{{if .ReceiptBookingPayment.VoidedByUserName}} by {{.ReceiptBookingPayment.VoidedByUserName}}{{end}}.</p>
+      <p class="mt-2 font-semibold text-red-900">This payment collection was voided on {{formatDateTime .ReceiptBookingPayment.VoidedAt}}{{if .ReceiptBookingPayment.VoidedByUserName}} by {{.ReceiptBookingPayment.VoidedByUserName}}{{end}}.</p>
       {{if .ReceiptBookingPayment.VoidReason}}<p class="mt-2 text-slate/70">{{.ReceiptBookingPayment.VoidReason}}</p>{{end}}
     </div>
     {{end}}

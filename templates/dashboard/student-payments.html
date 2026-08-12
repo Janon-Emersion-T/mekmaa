@@ -159,8 +159,11 @@
               <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
               <input type="hidden" name="enrollment_id" value="{{.Enrollment.ID}}" />
               <input type="hidden" name="payment_month" value="{{$.PaymentMonth}}" />
-              <input type="hidden" name="payment_method" value="cash" />
-              <div class="flex h-11 min-w-0 flex-1 items-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">Cash in Hand</div>
+              <select name="payment_method" class="h-11 min-w-0 flex-1 rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua">
+                <option value="cash">Cash in hand</option>
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="qr_pay">QR pay</option>
+              </select>
               <button type="submit" {{if or (eq .MonthlyFee 0.0) (not $.PaymentCollectionOpen)}}disabled{{end}} {{if eq .MonthlyFee 0.0}}title="Configure this monthly fee in Training Manager first"{{else if not $.PaymentCollectionOpen}}title="{{$.PaymentCollectionNotice}}"{{end}} class="h-11 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate disabled:cursor-not-allowed disabled:opacity-35">Collect payment</button>
             </form>
             {{if gt .Enrollment.ID 0}}

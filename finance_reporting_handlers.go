@@ -36,6 +36,10 @@ func (a *App) financeAccountsHandler(w http.ResponseWriter, r *http.Request) {
 	a.financeSectionHandler(w, r, "accounts")
 }
 
+func (a *App) financeCustomersHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "customers")
+}
+
 func (a *App) financeSectionHandler(w http.ResponseWriter, r *http.Request, page string) {
 	user, _ := a.currentUser(r.Context())
 	started := time.Now()
@@ -59,7 +63,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	needOperationalSummary := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts"
 	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts"
 	needAllTransactions := page == "ledger" || page == "accounts" || page == "transfers" || page == "reconciliations"
-	needBookingFinancials := page == "receivables"
+	needBookingFinancials := page == "receivables" || page == "customers"
 	needMonthlyRows := page == "receivables"
 	needTransfers := page == "transfers"
 	needReconciliations := page == "reconciliations"
@@ -111,6 +115,11 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		}
 		data.BookingFinancials = bookingFinancials
 		data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
+	}
+
+	if page == "customers" {
+		data.FinanceCustomerSearch = strings.TrimSpace(r.URL.Query().Get("search"))
+		data.BookingCustomerBalances = aggregateBookingCustomerBalances(data.BookingFinancials, data.FinanceCustomerSearch)
 	}
 
 	if needMonthlyRows {
@@ -251,8 +260,8 @@ func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Reques
 	paymentNote := strings.TrimSpace(r.FormValue("payment_note"))
 	allowOverpayment := r.FormValue("allow_overpayment") == "1" || r.FormValue("allow_overpayment") == "on"
 	returnTo := strings.TrimSpace(r.FormValue("return_to"))
-	if err != nil || amountErr != nil || scheduleID <= 0 || paymentMethod != "cash" {
-		http.Error(w, "booking payments are recorded in cash only", http.StatusBadRequest)
+	if err != nil || amountErr != nil || scheduleID <= 0 || !validPaymentMethod(paymentMethod) {
+		http.Error(w, "select a valid booking payment method", http.StatusBadRequest)
 		return
 	}
 	if returnTo == "" {

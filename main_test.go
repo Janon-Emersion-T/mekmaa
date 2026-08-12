@@ -1247,8 +1247,8 @@ func TestBookingRequestPaymentUIByStatusAndPermission(t *testing.T) {
 	if !strings.Contains(confirmedHTML, `action="/admin/bookings/payments/collect"`) {
 		t.Fatal("confirmed booking request did not render booking payment form")
 	}
-	if !strings.Contains(confirmedHTML, `name="payment_method" value="cash"`) {
-		t.Fatal("confirmed booking request did not post cash only")
+	if !strings.Contains(confirmedHTML, `name="payment_method"`) || !strings.Contains(confirmedHTML, `value="bank_transfer"`) || !strings.Contains(confirmedHTML, `value="qr_pay"`) {
+		t.Fatal("confirmed booking request did not render the full payment-method selector")
 	}
 	if !strings.Contains(confirmedHTML, "MKM-BKG-2026-000501") || !strings.Contains(confirmedHTML, "MKM-BKG-2026-000502") {
 		t.Fatal("confirmed booking request did not render multiple payment collections")
@@ -1269,7 +1269,7 @@ func TestBookingRequestPaymentUIByStatusAndPermission(t *testing.T) {
 	if strings.Contains(pendingHTML, `action="/admin/bookings/payments/collect"`) {
 		t.Fatal("pending booking request should not render active payment form")
 	}
-	if !strings.Contains(pendingHTML, "Cash collection becomes available after the booking is confirmed.") {
+	if !strings.Contains(pendingHTML, "Payment collection becomes available after the booking is confirmed.") {
 		t.Fatal("pending booking request should explain that collection is unavailable")
 	}
 
@@ -1331,8 +1331,8 @@ func TestBookingManagementPaymentHistoryAcrossLifecycleStatuses(t *testing.T) {
 		if !strings.Contains(html, "MKM-BKG-2026-000601") || !strings.Contains(html, "MKM-BKG-2026-000602") {
 			t.Fatalf("%s booking detail did not retain visible payment history", status)
 		}
-		if !strings.Contains(html, "Cash was previously collected") && status == bookingStatusCancelled {
-			t.Fatal("cancelled booking should warn when cash was previously collected")
+		if !strings.Contains(html, "Payment was previously collected") && status == bookingStatusCancelled {
+			t.Fatal("cancelled booking should warn when payment was previously collected")
 		}
 	}
 }
@@ -2124,7 +2124,7 @@ func TestAdmissionPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000000",
 	}
-	if _, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, 0); err != nil {
+	if _, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", 0); err != nil {
 		t.Fatalf("create admission with payment: %v", err)
 	} else if transactionID <= 0 {
 		t.Fatal("expected admission payment ledger transaction")
@@ -2158,7 +2158,7 @@ func TestStudentMonthlyPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000001",
 	}
-	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, 0)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
@@ -2551,7 +2551,7 @@ func TestGeneralFinanceVoidAllowsOrphanedAdmissionTransactionRepair(t *testing.T
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000002",
 	}
-	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, user.ID)
+	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", user.ID)
 	if err != nil {
 		t.Fatalf("create admission with payment: %v", err)
 	}
@@ -2599,7 +2599,7 @@ func TestGeneralFinanceVoidAllowsBrokenAdmissionLinkageRepair(t *testing.T) {
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000002",
 	}
-	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, user.ID)
+	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", user.ID)
 	if err != nil {
 		t.Fatalf("create admission with payment: %v", err)
 	}
@@ -2661,7 +2661,7 @@ func TestFinanceTransactionVoidStateKeepsValidMonthlyPaymentLinked(t *testing.T)
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000010",
 	}
-	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, 0)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
@@ -2697,7 +2697,7 @@ func TestGeneralFinanceVoidAllowsBrokenMonthlyPaymentLinkageRepair(t *testing.T)
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000011",
 	}
-	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, user.ID)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, "cash", user.ID)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
@@ -2819,7 +2819,7 @@ func TestSourceLevelVoidWorkflowsSynchronizeLedger(t *testing.T) {
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000002",
 	}
-	admissionID, admissionTxnID, err := app.createAdmissionWithOptionalPayment(admission, true, userID)
+	admissionID, admissionTxnID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", userID)
 	if err != nil {
 		t.Fatalf("create admission with payment: %v", err)
 	}
@@ -2886,7 +2886,7 @@ func TestDeleteAdmissionAllowsAdmissionPaymentOnlyAndLeavesLedgerVoidable(t *tes
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000002",
 	}
-	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, 0)
+	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission with payment: %v", err)
 	}
@@ -2925,7 +2925,7 @@ func TestDeleteAdmissionRejectsActiveMonthlyPaymentHistory(t *testing.T) {
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000002",
 	}
-	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, true, 0)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission with payment: %v", err)
 	}
@@ -2955,7 +2955,7 @@ func TestDeleteAdmissionHandlerRedirectsInsteadOfReturningInternalServerError(t 
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000002",
 	}
-	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, true, 0)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission with payment: %v", err)
 	}
@@ -3012,7 +3012,7 @@ func TestCreateAdmissionWithFreeAdmissionSkipsFinanceCollection(t *testing.T) {
 		GuardianContactNumber: "0770000002",
 		FreeAdmission:         true,
 	}
-	admissionID, financeTransactionID, err := app.createAdmissionWithOptionalPayment(admission, true, 0)
+	admissionID, financeTransactionID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission with free admission: %v", err)
 	}
@@ -3052,7 +3052,7 @@ func TestListStudentPaymentRowsTreatsFreeMonthlyFeeAsNonPayable(t *testing.T) {
 		GuardianContactNumber: "0770000002",
 		FreeMonthlyFee:        true,
 	}
-	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, 0)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission with free monthly fee: %v", err)
 	}
@@ -3105,14 +3105,14 @@ func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
 		GuardianName:          "Guardian",
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0771000000",
-	}, false, 0)
+	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
 	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
 		AdmissionID:       admissionID,
 		TrainingProgramID: programID,
-	}, false, 0); err != nil {
+	}, false, "cash", 0); err != nil {
 		t.Fatalf("create enrollment: %v", err)
 	}
 	enrollments, err := app.listStudentEnrollments()
@@ -3182,14 +3182,14 @@ func TestListStudentPaymentRowsDiscountsSecondHalfEnrollmentMonth(t *testing.T) 
 		GuardianName:          "Guardian",
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0771000002",
-	}, false, 0)
+	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
 	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
 		AdmissionID:       admissionID,
 		TrainingProgramID: programID,
-	}, false, 0); err != nil {
+	}, false, "cash", 0); err != nil {
 		t.Fatalf("create enrollment: %v", err)
 	}
 	enrollments, err := app.listStudentEnrollments()
@@ -3256,14 +3256,14 @@ func TestCollectStudentMonthlyPaymentRejectsFullMonthLeave(t *testing.T) {
 		GuardianName:          "Guardian",
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0771000001",
-	}, false, 0)
+	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
 	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
 		AdmissionID:       admissionID,
 		TrainingProgramID: programID,
-	}, false, 0); err != nil {
+	}, false, "cash", 0); err != nil {
 		t.Fatalf("create enrollment: %v", err)
 	}
 	enrollments, err := app.listStudentEnrollments()
@@ -3313,14 +3313,14 @@ func TestCollectStudentPaymentHandlerRejectsCurrentMonthBeforeMonthEnd(t *testin
 		GuardianName:          "Guardian",
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0771000003",
-	}, false, 0)
+	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
 	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
 		AdmissionID:       admissionID,
 		TrainingProgramID: programID,
-	}, false, 0); err != nil {
+	}, false, "cash", 0); err != nil {
 		t.Fatalf("create enrollment: %v", err)
 	}
 	enrollments, err := app.listStudentEnrollments()
@@ -3412,7 +3412,7 @@ func TestAttendanceLimitWarningsScopeToTrainingProgramme(t *testing.T) {
 		GuardianName:          "Parent",
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0771231234",
-	}, false, 0)
+	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
@@ -3494,7 +3494,7 @@ func TestSaveAttendanceHandlerRejectsMismatchedSessionDate(t *testing.T) {
 		GuardianName:          "Parent",
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0775550000",
-	}, false, 0)
+	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
@@ -4537,7 +4537,7 @@ func TestAdmissionAndEnrollmentManagementHandlersRender(t *testing.T) {
 		QRCodeValue:              "STD-ENR-001",
 		QRCodePath:               "/uploads/students/qr/std-enr-001.png",
 	}
-	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, 0)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
@@ -4556,7 +4556,7 @@ func TestAdmissionAndEnrollmentManagementHandlersRender(t *testing.T) {
 	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
 		AdmissionID:       admissionID,
 		TrainingProgramID: trainingProgramID,
-	}, false, 0); err != nil {
+	}, false, "cash", 0); err != nil {
 		t.Fatalf("create enrollment: %v", err)
 	}
 
@@ -4602,7 +4602,7 @@ func TestAttendanceManagementHandlerLoadsSheet(t *testing.T) {
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0771002000",
 		QRCodeValue:           "STD-ATT-LOAD-001",
-	}, false, 0)
+	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
@@ -4875,6 +4875,63 @@ func TestOneToOneManagementHandlersRender(t *testing.T) {
 	}
 }
 
+func TestBookingHoursUseFifteenMinuteIncrements(t *testing.T) {
+	hours := bookingHours()
+	if len(hours) == 0 {
+		t.Fatal("expected booking hours")
+	}
+	expectedPrefix := []string{"06:00", "06:15", "06:30", "06:45", "07:00"}
+	for i, value := range expectedPrefix {
+		if hours[i] != value {
+			t.Fatalf("expected hours[%d] = %s, got %s", i, value, hours[i])
+		}
+	}
+	last := hours[len(hours)-1]
+	if last != "22:45" {
+		t.Fatalf("expected last slot to be 22:45, got %s", last)
+	}
+}
+
+func TestQuarterHourBookingConflictsWithOverlappingHour(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	slotDate := time.Now().AddDate(0, 0, 7).Format("2006-01-02")
+
+	createConfirmedBookingForTests(t, app, SpaceSchedule{
+		SlotDate:      slotDate,
+		SlotHour:      "18:00",
+		EntryType:     "booking",
+		Activity:      "badminton",
+		Quantity:      1,
+		Title:         "Base Booking",
+		RequesterName: "Existing Customer",
+		QuotedPrice:   2500,
+	})
+
+	existing, err := app.schedulesForSlot(slotDate, "18:15", 0)
+	if err != nil {
+		t.Fatalf("load overlapping slot schedules: %v", err)
+	}
+	if len(existing) != 1 || existing[0].SlotHour != "18:00" {
+		t.Fatalf("expected 18:00 booking to overlap 18:15 slot, got %#v", existing)
+	}
+
+	layouts, err := app.listActiveCourtLayouts()
+	if err != nil {
+		t.Fatalf("list active layouts: %v", err)
+	}
+	err = validateSpaceScheduleSlotAgainstLayouts(existing, SpaceSchedule{
+		SlotDate:  slotDate,
+		SlotHour:  "18:15",
+		EntryType: "booking",
+		Activity:  "badminton",
+		Quantity:  1,
+		Status:    bookingStatusPending,
+	}, layouts)
+	if err == nil {
+		t.Fatal("expected overlapping quarter-hour booking to be rejected")
+	}
+}
+
 func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 
@@ -4895,7 +4952,7 @@ func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
 		MedicalInformation:       "None",
 		QRCodeValue:              "STD-DUP-001",
 		QRCodePath:               "/uploads/students/qr/student-qr-dup.png",
-	}, false, 0)
+	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
@@ -4916,7 +4973,7 @@ func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
 	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
 		AdmissionID:       admissionID,
 		TrainingProgramID: trainingProgramID,
-	}, false, 0); err != nil {
+	}, false, "cash", 0); err != nil {
 		t.Fatalf("seed first enrollment: %v", err)
 	}
 

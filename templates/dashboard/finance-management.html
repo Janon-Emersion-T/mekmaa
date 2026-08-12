@@ -12,6 +12,10 @@
   {{template "finance-receivables-section" .}}
   {{end}}
 
+  {{if eq .FinancePage "customers"}}
+  {{template "finance-customers-section" .}}
+  {{end}}
+
   {{if eq .FinancePage "ledger"}}
   {{template "finance-ledger-section" .}}
   {{end}}

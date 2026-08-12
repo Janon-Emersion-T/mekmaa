@@ -3723,7 +3723,7 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 		recordedByUserID = currentUser.ID
 	}
 
-	_, _, err = a.createAdmissionWithOptionalPayment(admission, false, recordedByUserID)
+	_, _, err = a.createAdmissionWithOptionalPayment(admission, false, "cash", recordedByUserID)
 	if err != nil {
 		if admission.PhotoPath != "" {
 			a.removeUploadedStudentPhoto(admission.PhotoPath)

@@ -228,8 +228,16 @@
             <input type="checkbox" name="payment_collected" value="true" class="mt-1 h-4 w-4 rounded border-emerald-300 text-emerald-900 focus:ring-aqua" />
             <span>
               <span class="block text-sm font-semibold text-emerald-950">Collect admission fee now</span>
-              <span class="mt-1 block text-xs leading-5 text-emerald-900/65">Creates the enrollment and immediately records the programme admission fee receipt in cash.</span>
+              <span class="mt-1 block text-xs leading-5 text-emerald-900/65">Creates the enrollment and immediately records the programme admission fee receipt.</span>
             </span>
+          </label>
+          <label class="block">
+            <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Payment method</span>
+            <select name="payment_method" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua">
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank transfer</option>
+              <option value="qr_pay">QR pay</option>
+            </select>
           </label>
           <button type="submit" class="inline-flex h-12 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Create enrollment</button>
         </form>
@@ -286,6 +294,11 @@
                 <form action="/admin/enrollments/collect-admission" method="post" onsubmit="return confirm('Collect the admission fee for {{$.SelectedAdmission.FullName}} - {{.TrainingProgramName}}?')">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="enrollment_id" value="{{.ID}}" />
+                  <select name="payment_method" class="h-11 rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua">
+                    <option value="cash">Cash</option>
+                    <option value="bank_transfer">Bank transfer</option>
+                    <option value="qr_pay">QR pay</option>
+                  </select>
                   <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Collect admission fee</button>
                 </form>
                 {{end}}

@@ -63,10 +63,16 @@
           <form action="/admin/bookings/payments/collect" method="post" class="rounded-[1.25rem] border border-amber-200/70 bg-amber-50/60 p-4">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <input type="hidden" name="schedule_id" value="{{.ScheduleID}}">
-            <input type="hidden" name="payment_method" value="cash">
             <input type="hidden" name="return_to" value="/admin/finance/receivables">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Collect booking balance</p>
             <div class="mt-3 grid gap-3">
+              <label class="text-xs font-medium text-slate/60">Payment method
+                <select name="payment_method" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="qr_pay">QR pay</option>
+                </select>
+              </label>
               <label class="text-xs font-medium text-slate/60">Amount
                 <input name="amount" type="number" min="0.01" step="0.01" value="{{printf "%.2f" .OutstandingAmount}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
               </label>

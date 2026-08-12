@@ -397,15 +397,15 @@ func bookingCanVoidPayment(user *User) bool {
 
 func bookingPaymentInactiveMessage(schedule *SpaceSchedule) string {
 	if schedule == nil {
-		return "Cash collection is unavailable for this booking."
+		return "Payment collection is unavailable for this booking."
 	}
 	switch schedule.Status {
 	case bookingStatusPending, bookingStatusHeld, bookingStatusReschedulePending:
-		return "Cash collection becomes available after the booking is confirmed."
+		return "Payment collection becomes available after the booking is confirmed."
 	case bookingStatusRejected, bookingStatusExpired:
-		return "Cash collection is unavailable because this request was not confirmed."
+		return "Payment collection is unavailable because this request was not confirmed."
 	default:
-		return "Cash collection is unavailable for this booking."
+		return "Payment collection is unavailable for this booking."
 	}
 }
 

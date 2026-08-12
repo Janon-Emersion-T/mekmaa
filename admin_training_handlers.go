@@ -266,11 +266,17 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	currentUser, _ := a.currentUser(r.Context())
 	collectPayment := r.FormValue("payment_collected") == "true" && !enrollment.FreeAdmission
+	paymentMethod := normalizePaymentMethod(r.FormValue("payment_method"))
+	if collectPayment && !validPaymentMethod(paymentMethod) {
+		a.setFlash(w, "Select a valid payment method.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
 	recordedByUserID := int64(0)
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
 	}
-	_, financeTransactionID, err := a.createStudentEnrollmentWithOptionalPayment(enrollment, collectPayment, recordedByUserID)
+	_, financeTransactionID, err := a.createStudentEnrollmentWithOptionalPayment(enrollment, collectPayment, paymentMethod, recordedByUserID)
 	if err != nil {
 		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
 			a.setFlash(w, err.Error())
@@ -331,13 +337,19 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
 	}
+	paymentMethod := normalizePaymentMethod(r.FormValue("payment_method"))
+	if !validPaymentMethod(paymentMethod) {
+		a.setFlash(w, "Select a valid payment method.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	defer tx.Rollback()
-	transactionID, err := a.collectEnrollmentAdmissionPaymentTx(tx, *enrollment, recordedByUserID)
+	transactionID, err := a.collectEnrollmentAdmissionPaymentTx(tx, *enrollment, paymentMethod, recordedByUserID)
 	if err != nil {
 		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
 			a.setFlash(w, err.Error())

@@ -690,6 +690,17 @@ type BookingFinancial struct {
 	VoidedPaymentCount    int
 }
 
+type BookingCustomerBalance struct {
+	CustomerName      string
+	CustomerEmail     string
+	BookingCount      int
+	OutstandingCount  int
+	QuotedAmount      float64
+	CollectedAmount   float64
+	OutstandingAmount float64
+	Bookings          []BookingFinancial
+}
+
 type ReportPeriod struct {
 	Kind         string
 	Anchor       string
@@ -1409,12 +1420,14 @@ type TemplateData struct {
 	FinanceLedgerPreviousPageURL    string
 	FinanceLedgerNextPageURL        string
 	FinanceSummary                  FinanceSummary
+	FinanceCustomerSearch           string
 	StatementOpeningBalance         float64
 	StatementClosingBalance         float64
 	StatementMoneyIn                float64
 	StatementMoneyOut               float64
 	StatementNetMovement            float64
 	BookingFinancials               []BookingFinancial
+	BookingCustomerBalances         []BookingCustomerBalance
 	BookingPaymentCollections       []BookingPaymentCollection
 	BookingCommunications           []BookingCommunication
 	BookingAccessTokens             []BookingAccessToken

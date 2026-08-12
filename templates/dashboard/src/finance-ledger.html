@@ -147,6 +147,7 @@
           <option value="">All payment methods</option>
           <option value="cash" {{if eq .FinanceFilter.PaymentMethod "cash"}}selected{{end}}>Cash</option>
           <option value="bank_transfer" {{if eq .FinanceFilter.PaymentMethod "bank_transfer"}}selected{{end}}>Bank transfer</option>
+          <option value="qr_pay" {{if eq .FinanceFilter.PaymentMethod "qr_pay"}}selected{{end}}>QR pay</option>
         </select>
         <select name="limit" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
           <option value="25" {{if eq .FinanceFilter.Limit 25}}selected{{end}}>25 rows</option>

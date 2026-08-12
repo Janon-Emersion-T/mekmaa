@@ -251,7 +251,7 @@ func buildBookingSlotAvailability(
 	)
 
 	for _, hour := range hours {
-		existing := schedulesForCalendarSlot(
+		existing := overlappingSchedulesForCalendarSlot(
 			schedules,
 			slotDate,
 			hour,
@@ -456,8 +456,7 @@ func buildAdminBookingOptions(
 		if existing.ID == excludeID {
 			continue
 		}
-		if existing.SlotDate == schedule.SlotDate &&
-			existing.SlotHour == schedule.SlotHour &&
+		if scheduleOverlapsSlot(existing, schedule.SlotDate, schedule.SlotHour) &&
 			scheduleConsumesCourtCapacity(existing) {
 			slotSchedules = append(slotSchedules, existing)
 		}
@@ -548,7 +547,7 @@ func buildAdminBookingOptions(
 			RemainingCapacity: remainingCapacity,
 		}
 		if remainingCapacity > 0 {
-			adminOption.RemainingCapacityLabel = fmt.Sprintf("%d more can still fit in this hour", remainingCapacity)
+			adminOption.RemainingCapacityLabel = fmt.Sprintf("%d more can still fit in this timeslot", remainingCapacity)
 		}
 
 		adminOptions = append(adminOptions, adminOption)
@@ -584,7 +583,7 @@ func buildAdminCalendarHours(
 	hoursView := make([]AdminCalendarHour, 0, len(hours))
 	for _, hour := range hours {
 		slotSchedules := schedulesForCalendarSlot(daySchedules, slotDate, hour)
-		activeSlotSchedules := activeSchedulesOnly(slotSchedules)
+		activeSlotSchedules := activeSchedulesOnly(overlappingSchedulesForCalendarSlot(daySchedules, slotDate, hour))
 		slotClosures := closuresForSlot(closures, slotDate, hour)
 
 		bookingDraft := &SpaceSchedule{
