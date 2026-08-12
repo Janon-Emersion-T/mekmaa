@@ -4582,6 +4582,67 @@ func TestAdmissionAndEnrollmentManagementHandlersRender(t *testing.T) {
 	}
 }
 
+func TestAttendanceManagementHandlerLoadsSheet(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-ATT-LOAD-001",
+		FullName:              "Attendance Load Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2012-03-11",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771002000",
+		QRCodeValue:           "STD-ATT-LOAD-001",
+	}, false, 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+
+	if err := app.createStudentGroup(StudentGroup{
+		Name: "Attendance Load Group",
+		Code: "ATT-LOAD",
+	}, []int64{admissionID}, nil, []StudentGroupSession{{
+		Title:     "Wednesday Session",
+		DayOfWeek: "wednesday",
+		StartTime: "09:00",
+		EndTime:   "10:00",
+		Active:    true,
+	}}); err != nil {
+		t.Fatalf("create attendance group: %v", err)
+	}
+
+	groups, err := app.listStudentGroups()
+	if err != nil {
+		t.Fatalf("list student groups: %v", err)
+	}
+	var group StudentGroup
+	for _, item := range groups {
+		if item.Code == "ATT-LOAD" {
+			group = item
+			break
+		}
+	}
+	if group.ID == 0 || len(group.Sessions) == 0 {
+		t.Fatalf("expected attendance group with session, got %#v", group)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/admin/attendance?group_id="+strconv.FormatInt(group.ID, 10)+"&session_id="+strconv.FormatInt(group.Sessions[0].ID, 10)+"&date=2026-08-12", nil)
+	app.attendanceManagementHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("attendance load status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 

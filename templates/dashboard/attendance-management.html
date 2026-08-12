@@ -255,6 +255,13 @@
                 <option value="excused">Mark scanned student as Excused</option>
                 <option value="absent">Mark scanned student as Absent</option>
               </select>
+              <div class="mb-3 flex flex-wrap gap-2">
+                <button type="button" id="qr-camera-start" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Use camera scanner</button>
+                <button type="button" id="qr-camera-stop" class="hidden inline-flex h-11 items-center justify-center rounded-2xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50">Stop camera</button>
+              </div>
+              <div id="qr-camera-panel" class="hidden overflow-hidden rounded-2xl border border-slate/10 bg-obsidian">
+                <video id="qr-camera-video" class="aspect-video w-full bg-black object-cover" autoplay muted playsinline></video>
+              </div>
               <label for="qr-scan-input" class="sr-only">Scan student QR</label>
               <input id="qr-scan-input" type="text" autocomplete="off" spellcheck="false" placeholder="Scan or type student ID / QR payload" class="h-12 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm text-obsidian outline-none focus:border-aqua" />
               <p class="mt-2 text-xs text-slate/55" data-qr-feedback>Waiting for scan.</p>
@@ -346,9 +353,17 @@
     const qrInput = root.querySelector("#qr-scan-input");
     const qrScanStatus = root.querySelector("#qr-scan-status");
     const qrFeedback = root.querySelector("[data-qr-feedback]");
+    const qrCameraStart = root.querySelector("#qr-camera-start");
+    const qrCameraStop = root.querySelector("#qr-camera-stop");
+    const qrCameraPanel = root.querySelector("#qr-camera-panel");
+    const qrCameraVideo = root.querySelector("#qr-camera-video");
     const filterForm = root.querySelector("[data-attendance-filter-form]");
     const groupSelect = root.querySelector("[data-group-select]");
     const sessionSelect = root.querySelector("[data-session-select]");
+    let qrCameraStream = null;
+    let qrDetector = null;
+    let qrFrameRequest = 0;
+    let qrScanning = false;
     const statusMeta = {
       present: {
         label: "Present",
@@ -486,6 +501,128 @@
       qrFeedback.classList.add(isError ? "text-rose-700" : "text-emerald-700");
     }
 
+    function markScannedStudent(normalized) {
+      const card = findCardForScan(normalized);
+      if (!card) {
+        setQrFeedback('No student matched "' + normalized + '".', true);
+        if (qrInput) {
+          qrInput.select();
+        }
+        return false;
+      }
+      const select = card.querySelector("[data-attendance-status]");
+      if (!select) {
+        setQrFeedback("Matched student could not be updated.", true);
+        return false;
+      }
+      const nextStatus = qrScanStatus ? qrScanStatus.value : "present";
+      select.value = nextStatus;
+      applyCardState(select);
+      refreshCounts();
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      const selectedLabel = statusMeta[nextStatus] ? statusMeta[nextStatus].label : "Present";
+      setQrFeedback((card.getAttribute("data-student-id") || normalized) + " marked " + selectedLabel.toLowerCase() + ".", false);
+      if (qrInput) {
+        qrInput.value = "";
+        qrInput.focus();
+      }
+      return true;
+    }
+
+    function stopQrCamera() {
+      qrScanning = false;
+      if (qrFrameRequest) {
+        window.cancelAnimationFrame(qrFrameRequest);
+        qrFrameRequest = 0;
+      }
+      if (qrCameraStream) {
+        qrCameraStream.getTracks().forEach(function (track) {
+          track.stop();
+        });
+        qrCameraStream = null;
+      }
+      if (qrCameraVideo) {
+        qrCameraVideo.srcObject = null;
+      }
+      if (qrCameraPanel) {
+        qrCameraPanel.classList.add("hidden");
+      }
+      if (qrCameraStart) {
+        qrCameraStart.classList.remove("hidden");
+      }
+      if (qrCameraStop) {
+        qrCameraStop.classList.add("hidden");
+      }
+    }
+
+    function scanQrCameraFrame() {
+      if (!qrScanning || !qrDetector || !qrCameraVideo) {
+        return;
+      }
+      qrDetector.detect(qrCameraVideo).then(function (barcodes) {
+        if (!qrScanning) {
+          return;
+        }
+        if (Array.isArray(barcodes) && barcodes.length > 0) {
+          const rawValue = (barcodes[0].rawValue || "").trim();
+          const normalized = normalizeScanValue(rawValue);
+          if (normalized && markScannedStudent(normalized)) {
+            stopQrCamera();
+            return;
+          }
+        }
+        qrFrameRequest = window.requestAnimationFrame(scanQrCameraFrame);
+      }).catch(function () {
+        if (!qrScanning) {
+          return;
+        }
+        qrFrameRequest = window.requestAnimationFrame(scanQrCameraFrame);
+      });
+    }
+
+    function startQrCamera() {
+      if (!qrCameraVideo || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setQrFeedback("Camera scanning is not supported in this browser.", true);
+        return;
+      }
+      if (!("BarcodeDetector" in window)) {
+        setQrFeedback("Camera QR scanning is not available in this browser. Use a scanner that types into the field instead.", true);
+        return;
+      }
+
+      const barcodeFormats = ["qr_code"];
+      qrDetector = new window.BarcodeDetector({ formats: barcodeFormats });
+      navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" }
+        },
+        audio: false
+      }).then(function (stream) {
+        qrCameraStream = stream;
+        qrScanning = true;
+        qrCameraVideo.srcObject = stream;
+        if (qrCameraPanel) {
+          qrCameraPanel.classList.remove("hidden");
+        }
+        if (qrCameraStart) {
+          qrCameraStart.classList.add("hidden");
+        }
+        if (qrCameraStop) {
+          qrCameraStop.classList.remove("hidden");
+        }
+        setQrFeedback("Camera scanner active. Hold the QR code in view.", false);
+        qrCameraVideo.play().then(function () {
+          qrFrameRequest = window.requestAnimationFrame(scanQrCameraFrame);
+        }).catch(function () {
+          setQrFeedback("Unable to start camera preview.", true);
+          stopQrCamera();
+        });
+      }).catch(function () {
+        setQrFeedback("Camera access was blocked or unavailable.", true);
+        stopQrCamera();
+      });
+    }
+
     function normalizeScanValue(value) {
       const raw = (value || "").trim();
       if (!raw) {
@@ -556,28 +693,17 @@
           setQrFeedback("Scan a valid student QR or student ID.", true);
           return;
         }
-        const card = findCardForScan(normalized);
-        if (!card) {
-          setQrFeedback('No student matched "' + normalized + '".', true);
-          qrInput.select();
-          return;
-        }
-        const select = card.querySelector("[data-attendance-status]");
-        if (!select) {
-          setQrFeedback("Matched student could not be updated.", true);
-          return;
-        }
-        const nextStatus = qrScanStatus ? qrScanStatus.value : "present";
-        select.value = nextStatus;
-        applyCardState(select);
-        refreshCounts();
-        card.scrollIntoView({ behavior: "smooth", block: "center" });
-        const selectedLabel = statusMeta[nextStatus] ? statusMeta[nextStatus].label : "Present";
-        setQrFeedback((card.getAttribute("data-student-id") || normalized) + " marked " + selectedLabel.toLowerCase() + ".", false);
-        qrInput.value = "";
-        qrInput.focus();
+        markScannedStudent(normalized);
       });
     }
+
+    if (qrCameraStart) {
+      qrCameraStart.addEventListener("click", startQrCamera);
+    }
+    if (qrCameraStop) {
+      qrCameraStop.addEventListener("click", stopQrCamera);
+    }
+    window.addEventListener("beforeunload", stopQrCamera);
 
     if (groupSelect) {
       groupSelect.addEventListener("change", syncSessionOptions);

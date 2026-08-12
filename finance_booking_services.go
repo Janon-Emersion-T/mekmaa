@@ -1282,28 +1282,59 @@ func (a *App) replaceAttendanceRecords(groupID int64, sessionID int64, attendanc
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DELETE FROM attendance_records WHERE group_id = ? AND COALESCE(session_id, 0) = ? AND attendance_date = ?`, groupID, sessionID, attendanceDate); err != nil {
+	sessionColumnExists, err := tableHasColumn(a.db, "attendance_records", "session_id")
+	if err != nil {
 		return err
 	}
 
-	for _, record := range records {
-		if _, err := tx.Exec(`
-			INSERT INTO attendance_records (
-				group_id, session_id, admission_id, attendance_date, status, note, recorded_by_user_id, recorded_at, updated_at
-			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`,
-			record.GroupID,
-			nullIfZero(record.SessionID),
-			record.AdmissionID,
-			record.AttendanceDate,
-			record.Status,
-			record.Note,
-			nullIfZero(record.RecordedByUserID),
-			time.Now().UTC(),
-			time.Now().UTC(),
-		); err != nil {
+	if sessionColumnExists {
+		if _, err := tx.Exec(`DELETE FROM attendance_records WHERE group_id = ? AND COALESCE(session_id, 0) = ? AND attendance_date = ?`, groupID, sessionID, attendanceDate); err != nil {
 			return err
+		}
+	} else {
+		if _, err := tx.Exec(`DELETE FROM attendance_records WHERE group_id = ? AND attendance_date = ?`, groupID, attendanceDate); err != nil {
+			return err
+		}
+	}
+
+	for _, record := range records {
+		if sessionColumnExists {
+			if _, err := tx.Exec(`
+				INSERT INTO attendance_records (
+					group_id, session_id, admission_id, attendance_date, status, note, recorded_by_user_id, recorded_at, updated_at
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`,
+				record.GroupID,
+				nullIfZero(record.SessionID),
+				record.AdmissionID,
+				record.AttendanceDate,
+				record.Status,
+				record.Note,
+				nullIfZero(record.RecordedByUserID),
+				time.Now().UTC(),
+				time.Now().UTC(),
+			); err != nil {
+				return err
+			}
+		} else {
+			if _, err := tx.Exec(`
+				INSERT INTO attendance_records (
+					group_id, admission_id, attendance_date, status, note, recorded_by_user_id, recorded_at, updated_at
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`,
+				record.GroupID,
+				record.AdmissionID,
+				record.AttendanceDate,
+				record.Status,
+				record.Note,
+				nullIfZero(record.RecordedByUserID),
+				time.Now().UTC(),
+				time.Now().UTC(),
+			); err != nil {
+				return err
+			}
 		}
 	}
 
