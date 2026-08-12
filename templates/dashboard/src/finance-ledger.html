@@ -146,13 +146,49 @@
     </div>
   </div>
 
+  <div class="border-b border-slate/10 bg-cloud/35 px-5 py-5 sm:px-6">
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {{range .Stats}}
+      <article class="rounded-[1.25rem] border border-white/80 bg-white/85 p-4 shadow-sm">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">{{.Label}}</p>
+        <p class="mt-2 text-xl font-semibold text-obsidian">{{.Value}}</p>
+      </article>
+      {{end}}
+    </div>
+
+    {{if .SelectedFinanceAccount}}
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <article class="rounded-[1.25rem] border border-sky-200/70 bg-sky-50/80 p-4 shadow-sm">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-sky-700/70">Selected account</p>
+        <p class="mt-2 text-lg font-semibold text-sky-950">{{.SelectedFinanceAccount.Name}}</p>
+        <p class="mt-1 text-xs text-sky-800/65">{{financeAccountTypeLabel .SelectedFinanceAccount.AccountType}}</p>
+      </article>
+      <article class="rounded-[1.25rem] border border-white/80 bg-white/85 p-4 shadow-sm">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Opening balance</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{money .StatementOpeningBalance}}</p>
+      </article>
+      <article class="rounded-[1.25rem] border border-white/80 bg-white/85 p-4 shadow-sm">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Closing balance</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{money .StatementClosingBalance}}</p>
+      </article>
+      <article class="rounded-[1.25rem] border {{if lt .StatementNetMovement 0.0}}border-rose-200/70 bg-rose-50/80{{else}}border-emerald-200/70 bg-emerald-50/80{{end}} p-4 shadow-sm">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] {{if lt .StatementNetMovement 0.0}}text-rose-700/70{{else}}text-emerald-700/70{{end}}">Filtered movement</p>
+        <p class="mt-2 text-lg font-semibold {{if lt .StatementNetMovement 0.0}}text-rose-950{{else}}text-emerald-950{{end}}">{{money .StatementNetMovement}}</p>
+      </article>
+    </div>
+    {{end}}
+  </div>
+
   <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <p class="text-xs text-slate/50">{{len .FinanceTransactions}} shown of {{.FinanceTransactionsTotal}} matching transactions</p>
       <div class="flex flex-wrap items-center gap-2">
         {{if .FinanceLedgerHasPreviousPage}}<a href="{{.FinanceLedgerPreviousPageURL}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Previous</a>{{end}}
         {{if .FinanceLedgerHasNextPage}}<a href="{{.FinanceLedgerNextPageURL}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Next</a>{{end}}
-        <a href="/admin/finance/export?from={{urlquery .FinanceFilter.From}}&to={{urlquery .FinanceFilter.To}}&direction={{urlquery .FinanceFilter.Direction}}&category={{urlquery .FinanceFilter.Category}}&account_id={{.FinanceFilter.AccountID}}&status={{urlquery .FinanceFilter.Status}}&search={{urlquery .FinanceFilter.Search}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Export CSV</a>
+        {{if .SelectedFinanceAccount}}
+        <a href="/admin/finance/accounts/statement?account_id={{.SelectedFinanceAccount.ID}}&from={{urlquery .FinanceFilter.From}}&to={{urlquery .FinanceFilter.To}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Open statement</a>
+        {{end}}
+        <a href="/admin/finance/export?from={{urlquery .FinanceFilter.From}}&to={{urlquery .FinanceFilter.To}}&direction={{urlquery .FinanceFilter.Direction}}&category={{urlquery .FinanceFilter.Category}}&account_id={{.FinanceFilter.AccountID}}&status={{urlquery .FinanceFilter.Status}}&search={{urlquery .FinanceFilter.Search}}&reference={{urlquery .FinanceFilter.Reference}}&transaction_type={{urlquery .FinanceFilter.TransactionType}}&source_type={{urlquery .FinanceFilter.SourceType}}&payment_method={{urlquery .FinanceFilter.PaymentMethod}}" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate hover:bg-cloud">Export CSV</a>
       </div>
     </div>
   </div>
@@ -164,11 +200,13 @@
           <th class="px-5 py-4 font-medium sm:px-6">Reference</th>
           <th class="px-5 py-4 font-medium">Date</th>
           <th class="px-5 py-4 font-medium">Account</th>
-          <th class="px-5 py-4 font-medium">Type</th>
+          <th class="px-5 py-4 font-medium">Source</th>
           <th class="px-5 py-4 font-medium">Category</th>
           <th class="px-5 py-4 font-medium">Party</th>
+          <th class="px-5 py-4 font-medium">Method</th>
           <th class="px-5 py-4 font-medium">Money in</th>
           <th class="px-5 py-4 font-medium">Money out</th>
+          {{if .SelectedFinanceAccount}}<th class="px-5 py-4 font-medium">Balance</th>{{end}}
           <th class="px-5 py-4 font-medium">Status</th>
           <th class="px-5 py-4 font-medium text-right sm:px-6">Voucher</th>
         </tr>
@@ -179,17 +217,28 @@
           <td class="px-5 py-4 sm:px-6">
             <p class="font-mono text-xs font-bold text-obsidian">{{if .ReferenceNumber}}{{.ReferenceNumber}}{{else}}{{.ReceiptNumber}}{{end}}</p>
             <p class="mt-1 text-xs text-slate/55">{{.Description}}</p>
+            {{if .Notes}}<p class="mt-1 text-[0.72rem] leading-5 text-slate/45">Note: {{.Notes}}</p>{{end}}
           </td>
           <td class="px-5 py-4 text-slate/70">{{formatDateTime .RecordedAt}}</td>
-          <td class="px-5 py-4 text-slate/70">{{.FinanceAccountName}}</td>
-          <td class="px-5 py-4 text-slate/70">{{financeTransactionTypeLabel .TransactionType}}</td>
+          <td class="px-5 py-4 text-slate/70">
+            <p>{{.FinanceAccountName}}</p>
+            <p class="mt-1 text-xs text-slate/45">{{financeAccountTypeLabel .FinanceAccountType}}</p>
+          </td>
+          <td class="px-5 py-4 text-slate/70">
+            <p>{{financeSourceTypeLabel .SourceType}}</p>
+            <p class="mt-1 text-xs text-slate/45">{{financeTransactionTypeLabel .TransactionType}}</p>
+          </td>
           <td class="px-5 py-4 text-slate/70">{{financeCategoryLabel .Category}}</td>
           <td class="px-5 py-4 text-slate/70">{{.PersonName}}</td>
+          <td class="px-5 py-4 text-slate/70">{{paymentMethodLabel .PaymentMethod}}</td>
           <td class="px-5 py-4 font-semibold text-emerald-800">{{if gt .MoneyIn 0.0}}{{money .MoneyIn}}{{else}}—{{end}}</td>
           <td class="px-5 py-4 font-semibold text-rose-800">{{if gt .MoneyOut 0.0}}{{money .MoneyOut}}{{else}}—{{end}}</td>
+          {{if $.SelectedFinanceAccount}}<td class="px-5 py-4 font-semibold text-obsidian">{{money .RunningBalance}}</td>{{end}}
           <td class="px-5 py-4">
             <div class="flex flex-col gap-2">
               <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{if .Voided}}bg-rose-100 text-rose-800{{else}}bg-emerald-100 text-emerald-800{{end}}">{{financeTransactionStatusLabel .}}</span>
+              <p class="text-[0.68rem] text-slate/45">{{if .RecordedByUserName}}By {{.RecordedByUserName}}{{else}}System posted{{end}}</p>
+              {{if .VoidedAt.IsZero}}{{else}}<p class="text-[0.68rem] leading-5 text-rose-700">Voided {{formatDateTime .VoidedAt}}{{if .VoidReason}} · {{.VoidReason}}{{end}}</p>{{end}}
               {{if and (hasRole $.User "superadmin") (not .Voided) .GeneralVoidAllowed}}
               <form method="post" action="/admin/finance/transactions/void" class="grid gap-2" onsubmit="return confirm('Void this posted finance record?');">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
@@ -207,7 +256,7 @@
           <td class="px-5 py-4 text-right sm:px-6"><a href="/admin/finance/receipt?transaction_id={{.ID}}" class="text-xs font-semibold text-slate hover:text-obsidian">View</a></td>
         </tr>
         {{else}}
-        <tr><td colspan="10" class="px-6 py-10 text-center text-sm text-slate/60">No ledger entries match the selected filters.</td></tr>
+        <tr><td colspan="{{if .SelectedFinanceAccount}}11{{else}}10{{end}}" class="px-6 py-10 text-center text-sm text-slate/60">No ledger entries match the selected filters.</td></tr>
         {{end}}
       </tbody>
     </table>
@@ -220,18 +269,23 @@
         <div>
           <p class="font-mono text-xs font-bold text-obsidian">{{if .ReferenceNumber}}{{.ReferenceNumber}}{{else}}{{.ReceiptNumber}}{{end}}</p>
           <p class="mt-1 text-sm font-semibold text-obsidian">{{financeCategoryLabel .Category}}</p>
-          <p class="mt-1 text-xs text-slate/55">{{.FinanceAccountName}} · {{financeTransactionTypeLabel .TransactionType}}</p>
+          <p class="mt-1 text-xs text-slate/55">{{.FinanceAccountName}} · {{financeSourceTypeLabel .SourceType}}</p>
+          {{if .Notes}}<p class="mt-1 text-[0.72rem] leading-5 text-slate/45">Note: {{.Notes}}</p>{{end}}
         </div>
         <span class="rounded-full px-2.5 py-1 text-[0.68rem] font-semibold {{if .Voided}}bg-rose-100 text-rose-800{{else}}bg-emerald-100 text-emerald-800{{end}}">{{financeTransactionStatusLabel .}}</span>
       </div>
       <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
         <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Money in</p><p class="mt-1 font-semibold text-emerald-800">{{if gt .MoneyIn 0.0}}{{money .MoneyIn}}{{else}}—{{end}}</p></div>
         <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Money out</p><p class="mt-1 font-semibold text-rose-800">{{if gt .MoneyOut 0.0}}{{money .MoneyOut}}{{else}}—{{end}}</p></div>
+        <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Method</p><p class="mt-1 font-semibold text-obsidian">{{paymentMethodLabel .PaymentMethod}}</p></div>
+        <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Recorded by</p><p class="mt-1 font-semibold text-obsidian">{{if .RecordedByUserName}}{{.RecordedByUserName}}{{else}}System{{end}}</p></div>
       </div>
       <div class="mt-3 flex items-center justify-between text-xs text-slate/50">
         <span>{{formatDateTime .RecordedAt}}</span>
         <a href="/admin/finance/receipt?transaction_id={{.ID}}" class="font-semibold text-slate">Voucher</a>
       </div>
+      {{if $.SelectedFinanceAccount}}<p class="mt-3 text-sm font-semibold text-obsidian">Balance {{money .RunningBalance}}</p>{{end}}
+      {{if .VoidedAt.IsZero}}{{else}}<p class="mt-3 text-[0.72rem] leading-5 text-rose-700">Voided {{formatDateTime .VoidedAt}}{{if .VoidReason}} · {{.VoidReason}}{{end}}</p>{{end}}
       {{if and (hasRole $.User "superadmin") (not .Voided) .GeneralVoidAllowed}}
       <form method="post" action="/admin/finance/transactions/void" class="mt-3 grid gap-2" onsubmit="return confirm('Void this posted finance record?');">
         <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">

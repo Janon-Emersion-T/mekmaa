@@ -192,6 +192,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"financeVoidWorkflowMessage":                financeVoidWorkflowMessage,
 		"financeAccountTone":                        financeAccountTone,
 		"financeCategoryLabel":                      financeCategoryLabel,
+		"financeSourceTypeLabel":                    financeSourceTypeLabel,
 		"financeActiveCategoriesForDirection":       financeActiveCategoriesForDirection,
 		"financeCategoriesForDirection":             financeCategoriesForDirection,
 		"admissionsPageURL":                         admissionsPageURL,

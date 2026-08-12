@@ -773,6 +773,57 @@ func buildFinanceStats(transactions []FinanceTransaction) []Stat {
 	}
 }
 
+func buildLedgerStats(transactions []FinanceTransaction) []Stat {
+	totalIn := 0.0
+	totalOut := 0.0
+	activeCount := 0
+	voidedCount := 0
+
+	for _, transaction := range transactions {
+		if transaction.Voided {
+			voidedCount++
+			continue
+		}
+		activeCount++
+		totalIn += transaction.MoneyIn
+		totalOut += transaction.MoneyOut
+	}
+
+	net := normalizeMoney(totalIn - totalOut)
+	return []Stat{
+		{Label: "Active entries", Value: strconv.Itoa(activeCount)},
+		{Label: "Voided entries", Value: strconv.Itoa(voidedCount)},
+		{Label: "Money in", Value: money(totalIn)},
+		{Label: "Money out", Value: money(totalOut)},
+		{Label: "Net movement", Value: money(net)},
+	}
+}
+
+func financeSourceTypeLabel(value string) string {
+	switch strings.TrimSpace(value) {
+	case "manual":
+		return "Manual entry"
+	case "admission":
+		return "Admission"
+	case "student_monthly_payment":
+		return "Student monthly payment"
+	case "student_enrollment":
+		return "Enrollment"
+	case "booking_payment_collection":
+		return "Booking collection"
+	case "booking_referral_payment":
+		return "Referral payout"
+	case "finance_transfer":
+		return "Transfer"
+	case "finance_adjustment":
+		return "Adjustment"
+	case "finance_account_opening_balance":
+		return "Opening balance"
+	default:
+		return financeCategoryLabelFallback(value)
+	}
+}
+
 func buildFinanceSummary(accounts []FinanceAccount, transactions []FinanceTransaction, bookings []BookingFinancial, monthly []StudentPaymentRow, referrals []BookingReferral, reconciliations []CashReconciliation) FinanceSummary {
 	var summary FinanceSummary
 	summary.CashBalance = financeAccountDisplayBalance(accounts, transactions, financeAccountCashInHand)

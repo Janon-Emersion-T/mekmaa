@@ -119,6 +119,45 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		data.FinanceLedgerHasNextPage = filter.Page*filter.Limit < totalTransactions
 		data.FinanceLedgerPreviousPageURL = financeFilterPageURL(r, filter, filter.Page-1)
 		data.FinanceLedgerNextPageURL = financeFilterPageURL(r, filter, filter.Page+1)
+
+		filteredTransactions, err := a.listFinanceTransactionsFiltered(filter)
+		if err != nil {
+			log.Printf("finance ledger load failed: op=list filtered finance transactions duration=%s err=%v", time.Since(started), err)
+			return data, err
+		}
+		data.Stats = buildLedgerStats(filteredTransactions)
+		for _, row := range filteredTransactions {
+			if row.Voided {
+				continue
+			}
+			data.StatementMoneyIn += row.MoneyIn
+			data.StatementMoneyOut += row.MoneyOut
+		}
+		data.StatementNetMovement = normalizeMoney(data.StatementMoneyIn - data.StatementMoneyOut)
+		if filter.AccountID > 0 {
+			account, err := a.findFinanceAccountByID(filter.AccountID)
+			if err != nil {
+				log.Printf("finance ledger load failed: op=find finance account duration=%s account_id=%d err=%v", time.Since(started), filter.AccountID, err)
+				return data, err
+			}
+			data.SelectedFinanceAccount = account
+			statement, err := a.buildFinanceStatement(filter.AccountID, filter.From, filter.To)
+			if err != nil {
+				log.Printf("finance ledger load failed: op=build finance statement duration=%s account_id=%d err=%v", time.Since(started), filter.AccountID, err)
+				return data, err
+			}
+			data.StatementOpeningBalance = statement.OpeningBalance
+			data.StatementClosingBalance = statement.ClosingBalance
+			runningByID := make(map[int64]float64, len(statement.Rows))
+			for _, row := range statement.Rows {
+				runningByID[row.ID] = row.RunningBalance
+			}
+			for i := range data.FinanceTransactions {
+				if running, ok := runningByID[data.FinanceTransactions[i].ID]; ok {
+					data.FinanceTransactions[i].RunningBalance = running
+				}
+			}
+		}
 	}
 
 	if needBookingFinancials {
