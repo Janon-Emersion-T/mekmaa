@@ -65,9 +65,15 @@
           <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign students</h3>
           <p class="text-xs text-slate/55">{{len .Admissions}} available</p>
         </div>
-        <div class="mt-4 grid max-h-[24rem] gap-3 overflow-y-auto md:grid-cols-2 xl:grid-cols-3">
+        <div class="mt-4 space-y-4" data-student-search-root>
+          <div class="space-y-2">
+            <label for="new-group-student-search" class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/55">Search students</label>
+            <input id="new-group-student-search" type="search" placeholder="Search by name, student ID, or school" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-aqua" data-student-search-input />
+          </div>
+          <p class="hidden rounded-2xl border border-dashed border-slate/15 bg-white/80 px-4 py-3 text-sm text-slate/60" data-student-search-empty>No students match this search.</p>
+          <div class="grid max-h-[24rem] gap-3 overflow-y-auto md:grid-cols-2 xl:grid-cols-3">
           {{range .Admissions}}
-          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
+          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm" data-student-search-item data-student-search-text="{{.FullName}} {{.StudentID}} {{.School}}">
             <input type="checkbox" name="admission_ids" value="{{.ID}}" class="mt-1" />
             <span class="min-w-0">
               <span class="block font-medium text-obsidian">{{.FullName}}</span>
@@ -78,6 +84,7 @@
           {{else}}
           <p class="text-sm text-slate/60">No students available.</p>
           {{end}}
+          </div>
         </div>
       </div>
 
@@ -329,9 +336,15 @@
           <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign students</h3>
           <p class="text-xs text-slate/55">{{len .Admissions}} available</p>
         </div>
-        <div class="mt-4 grid max-h-[24rem] gap-3 overflow-y-auto md:grid-cols-2 xl:grid-cols-3">
+        <div class="mt-4 space-y-4" data-student-search-root>
+          <div class="space-y-2">
+            <label for="edit-group-student-search" class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/55">Search students</label>
+            <input id="edit-group-student-search" type="search" placeholder="Search by name, student ID, or school" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-aqua" data-student-search-input />
+          </div>
+          <p class="hidden rounded-2xl border border-dashed border-slate/15 bg-white/80 px-4 py-3 text-sm text-slate/60" data-student-search-empty>No students match this search.</p>
+          <div class="grid max-h-[24rem] gap-3 overflow-y-auto md:grid-cols-2 xl:grid-cols-3">
           {{range .Admissions}}
-          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
+          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm" data-student-search-item data-student-search-text="{{.FullName}} {{.StudentID}} {{.School}}">
             <input type="checkbox" name="admission_ids" value="{{.ID}}" {{if admissionSelected $.SelectedGroup.Students .ID}}checked{{end}} class="mt-1" />
             <span class="min-w-0">
               <span class="block font-medium text-obsidian">{{.FullName}}</span>
@@ -342,6 +355,7 @@
           {{else}}
           <p class="text-sm text-slate/60">No students available.</p>
           {{end}}
+          </div>
         </div>
       </div>
 
@@ -402,6 +416,36 @@
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     const template = document.getElementById("student-group-session-template");
+
+    document.querySelectorAll("[data-student-search-root]").forEach(function (root) {
+      const input = root.querySelector("[data-student-search-input]");
+      const emptyState = root.querySelector("[data-student-search-empty]");
+      const items = Array.from(root.querySelectorAll("[data-student-search-item]"));
+      if (!input || items.length === 0) {
+        return;
+      }
+
+      const filterItems = function () {
+        const query = input.value.trim().toLowerCase();
+        let visibleCount = 0;
+
+        items.forEach(function (item) {
+          const searchText = (item.getAttribute("data-student-search-text") || "").toLowerCase();
+          const matches = query === "" || searchText.indexOf(query) !== -1;
+          item.classList.toggle("hidden", !matches);
+          if (matches) {
+            visibleCount += 1;
+          }
+        });
+
+        if (emptyState) {
+          emptyState.classList.toggle("hidden", visibleCount !== 0);
+        }
+      };
+
+      input.addEventListener("input", filterItems);
+    });
+
     document.querySelectorAll("[data-group-sessions-root]").forEach(function (root) {
       const list = root.querySelector("[data-session-list]");
       const addButton = root.querySelector("[data-add-session]");
