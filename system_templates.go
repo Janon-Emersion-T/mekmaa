@@ -228,6 +228,9 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"sub": func(a, b int) int {
 			return a - b
 		},
+		"subFloat": func(a, b float64) float64 {
+			return normalizeMoney(a - b)
+		},
 		"isSystemRole": isSystemRole,
 	}
 
@@ -307,6 +310,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"templates/dashboard/src/finance-receivables.html",
 		"templates/dashboard/src/finance-customers.html",
 		"templates/dashboard/src/finance-ledger.html",
+		"templates/dashboard/src/finance-statements.html",
 		"templates/dashboard/src/finance-operations.html",
 		"templates/dashboard/src/finance-categories.html",
 	}

@@ -2437,6 +2437,68 @@ func TestFinanceStatementRunningBalance(t *testing.T) {
 	}
 }
 
+func TestBuildFinanceProfitAndLossAndBalanceSheet(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	bankID := financeAccountIDByName(t, app, financeAccountMainBank)
+
+	if _, err := app.createFinanceOpeningBalance(cashID, 1000, time.Date(2026, 8, 1, 9, 0, 0, 0, time.Local), "opening", 0); err != nil {
+		t.Fatalf("opening balance: %v", err)
+	}
+	if _, err := app.createManualFinanceTransactionForAccount("manual_income", "Sponsor", "Sponsorship received", "", cashID, 500, time.Date(2026, 8, 5, 10, 0, 0, 0, time.Local), 0); err != nil {
+		t.Fatalf("manual income: %v", err)
+	}
+	if _, err := app.createManualFinanceTransactionForAccount("utilities_expense", "Utility Board", "Electricity bill", "", cashID, -200, time.Date(2026, 8, 6, 11, 0, 0, 0, time.Local), 0); err != nil {
+		t.Fatalf("manual expense: %v", err)
+	}
+	if _, err := app.createFinanceAdjustment(cashID, -50, time.Date(2026, 8, 7, 12, 0, 0, 0, time.Local), "cash variance", 0); err != nil {
+		t.Fatalf("adjustment: %v", err)
+	}
+	if _, err := app.createFinanceTransfer(cashID, bankID, 300, time.Date(2026, 8, 8, 13, 0, 0, 0, time.Local), "TRF-001", "deposit", "", 0); err != nil {
+		t.Fatalf("transfer: %v", err)
+	}
+
+	profitAndLoss, err := app.buildFinanceProfitAndLoss("2026-08-01", "2026-08-31")
+	if err != nil {
+		t.Fatalf("build profit and loss: %v", err)
+	}
+	if !moneyEquals(profitAndLoss.TotalRevenue, 500) {
+		t.Fatalf("profit and loss revenue = %.2f, want 500.00", profitAndLoss.TotalRevenue)
+	}
+	if !moneyEquals(profitAndLoss.TotalExpenses, 200) {
+		t.Fatalf("profit and loss expenses = %.2f, want 200.00", profitAndLoss.TotalExpenses)
+	}
+	if !moneyEquals(profitAndLoss.OperatingProfit, 300) {
+		t.Fatalf("profit and loss operating profit = %.2f, want 300.00", profitAndLoss.OperatingProfit)
+	}
+	if !moneyEquals(profitAndLoss.OtherNet, -50) {
+		t.Fatalf("profit and loss other net = %.2f, want -50.00", profitAndLoss.OtherNet)
+	}
+	if !moneyEquals(profitAndLoss.NetProfit, 250) {
+		t.Fatalf("profit and loss net profit = %.2f, want 250.00", profitAndLoss.NetProfit)
+	}
+
+	balanceSheet, err := app.buildFinanceBalanceSheet("2026-08-31")
+	if err != nil {
+		t.Fatalf("build balance sheet: %v", err)
+	}
+	if !moneyEquals(balanceSheet.TotalAssets, 1250) {
+		t.Fatalf("balance sheet total assets = %.2f, want 1250.00", balanceSheet.TotalAssets)
+	}
+	if !moneyEquals(balanceSheet.TotalLiabilities, 0) {
+		t.Fatalf("balance sheet total liabilities = %.2f, want 0.00", balanceSheet.TotalLiabilities)
+	}
+	if !moneyEquals(balanceSheet.TotalEquity, 1250) {
+		t.Fatalf("balance sheet total equity = %.2f, want 1250.00", balanceSheet.TotalEquity)
+	}
+	if !moneyEquals(balanceSheet.BalancingDifference, 0) {
+		t.Fatalf("balance sheet balancing difference = %.2f, want 0.00", balanceSheet.BalancingDifference)
+	}
+	if len(balanceSheet.AssetItems) != 2 {
+		t.Fatalf("balance sheet asset items = %d, want 2", len(balanceSheet.AssetItems))
+	}
+}
+
 func TestFinanceRoutesRequirePermissionAndCSRFAuth(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	templates, err := buildTemplates()

@@ -1,0 +1,372 @@
+{{define "finance-profit-loss-section"}}
+{{$report := .FinanceProfitAndLoss}}
+<section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+  <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Period performance</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Profit and loss statement</h2>
+      <p class="mt-1 text-sm text-slate/55">Current period {{formatCalendarDate $report.From}} to {{formatCalendarDate $report.To}} compared with {{formatCalendarDate $report.PreviousFrom}} to {{formatCalendarDate $report.PreviousTo}}.</p>
+    </div>
+    <form method="get" action="/admin/finance/profit-and-loss" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <input name="from" type="date" value="{{$report.From}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+      <input name="to" type="date" value="{{$report.To}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+      <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-semibold text-cloud transition hover:bg-slate">Apply</button>
+      <a href="/admin/finance/profit-and-loss" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Reset</a>
+    </form>
+  </div>
+
+  <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <article class="rounded-[1.25rem] border border-emerald-200/70 bg-emerald-50/80 p-4 shadow-sm">
+      <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-emerald-700/70">Revenue</p>
+      <p class="mt-2 text-2xl font-semibold text-emerald-950">{{money $report.TotalRevenue}}</p>
+      <p class="mt-1 text-xs text-emerald-800/65">Previous {{money $report.ComparisonRevenue}}</p>
+    </article>
+    <article class="rounded-[1.25rem] border border-rose-200/70 bg-rose-50/80 p-4 shadow-sm">
+      <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-rose-700/70">Expenses</p>
+      <p class="mt-2 text-2xl font-semibold text-rose-950">{{money $report.TotalExpenses}}</p>
+      <p class="mt-1 text-xs text-rose-800/65">Previous {{money $report.ComparisonExpenses}}</p>
+    </article>
+    <article class="rounded-[1.25rem] border {{if lt $report.OperatingProfit 0.0}}border-rose-200/70 bg-rose-50/80{{else}}border-sky-200/70 bg-sky-50/80{{end}} p-4 shadow-sm">
+      <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] {{if lt $report.OperatingProfit 0.0}}text-rose-700/70{{else}}text-sky-700/70{{end}}">Operating profit</p>
+      <p class="mt-2 text-2xl font-semibold {{if lt $report.OperatingProfit 0.0}}text-rose-950{{else}}text-sky-950{{end}}">{{money $report.OperatingProfit}}</p>
+      <p class="mt-1 text-xs {{if lt $report.ComparisonOperating 0.0}}text-rose-800/65{{else}}text-sky-800/65{{end}}">Previous {{money $report.ComparisonOperating}}</p>
+    </article>
+    <article class="rounded-[1.25rem] border {{if lt $report.NetProfit 0.0}}border-rose-200/70 bg-rose-50/80{{else}}border-white/80 bg-white/85{{end}} p-4 shadow-sm">
+      <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] {{if lt $report.NetProfit 0.0}}text-rose-700/70{{else}}text-slate/45{{end}}">Net profit / loss</p>
+      <p class="mt-2 text-2xl font-semibold {{if lt $report.NetProfit 0.0}}text-rose-950{{else}}text-obsidian{{end}}">{{money $report.NetProfit}}</p>
+      <p class="mt-1 text-xs {{if lt $report.ComparisonNetProfit 0.0}}text-rose-800/65{{else}}text-slate/55{{end}}">Previous {{money $report.ComparisonNetProfit}}</p>
+    </article>
+  </div>
+</section>
+
+<div class="grid gap-6 xl:grid-cols-[1fr_1fr_0.9fr]">
+  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+    <div class="border-b border-slate/10 p-5 sm:p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Revenue</p>
+      <h3 class="mt-2 text-lg font-semibold text-obsidian">Income lines</h3>
+    </div>
+    <div class="hidden lg:block">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-5 py-4 font-medium sm:px-6">Line item</th>
+            <th class="px-5 py-4 font-medium">Current</th>
+            <th class="px-5 py-4 font-medium">Previous</th>
+            <th class="px-5 py-4 font-medium text-right sm:px-6">Movement</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range $report.RevenueItems}}
+          <tr class="bg-white/70">
+            <td class="px-5 py-4 sm:px-6 text-slate/70">{{.Label}}</td>
+            <td class="px-5 py-4 font-semibold text-emerald-900">{{money .Amount}}</td>
+            <td class="px-5 py-4 text-slate/70">{{money .ComparisonAmount}}</td>
+            <td class="px-5 py-4 text-right font-semibold sm:px-6 {{if lt .Delta 0.0}}text-rose-800{{else}}text-emerald-800{{end}}">{{money .Delta}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="4" class="px-6 py-10 text-center text-sm text-slate/60">No revenue was posted in the selected period.</td></tr>
+          {{end}}
+        </tbody>
+        <tfoot class="border-t border-slate/10 bg-cloud/35">
+          <tr>
+            <td class="px-5 py-4 font-semibold sm:px-6">Total revenue</td>
+            <td class="px-5 py-4 font-semibold text-emerald-900">{{money $report.TotalRevenue}}</td>
+            <td class="px-5 py-4 font-semibold text-slate/70">{{money $report.ComparisonRevenue}}</td>
+            <td class="px-5 py-4 text-right font-semibold sm:px-6 {{if lt (subFloat $report.TotalRevenue $report.ComparisonRevenue) 0.0}}text-rose-800{{else}}text-emerald-800{{end}}">{{money (subFloat $report.TotalRevenue $report.ComparisonRevenue)}}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="grid gap-3 p-4 lg:hidden">
+      {{range $report.RevenueItems}}
+      <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
+        <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
+        <div class="mt-3 grid grid-cols-3 gap-3 text-sm">
+          <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Current</p><p class="mt-1 font-semibold text-emerald-900">{{money .Amount}}</p></div>
+          <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Previous</p><p class="mt-1 font-semibold text-obsidian">{{money .ComparisonAmount}}</p></div>
+          <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Movement</p><p class="mt-1 font-semibold {{if lt .Delta 0.0}}text-rose-800{{else}}text-emerald-800{{end}}">{{money .Delta}}</p></div>
+        </div>
+      </article>
+      {{else}}
+      <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No revenue was posted in the selected period.</div>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+    <div class="border-b border-slate/10 p-5 sm:p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Expenses</p>
+      <h3 class="mt-2 text-lg font-semibold text-obsidian">Operating expenses</h3>
+    </div>
+    <div class="hidden lg:block">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-5 py-4 font-medium sm:px-6">Line item</th>
+            <th class="px-5 py-4 font-medium">Current</th>
+            <th class="px-5 py-4 font-medium">Previous</th>
+            <th class="px-5 py-4 font-medium text-right sm:px-6">Movement</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range $report.ExpenseItems}}
+          <tr class="bg-white/70">
+            <td class="px-5 py-4 sm:px-6 text-slate/70">{{.Label}}</td>
+            <td class="px-5 py-4 font-semibold text-rose-900">{{money .Amount}}</td>
+            <td class="px-5 py-4 text-slate/70">{{money .ComparisonAmount}}</td>
+            <td class="px-5 py-4 text-right font-semibold sm:px-6 {{if gt .Delta 0.0}}text-rose-800{{else}}text-emerald-800{{end}}">{{money .Delta}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="4" class="px-6 py-10 text-center text-sm text-slate/60">No expenses were posted in the selected period.</td></tr>
+          {{end}}
+        </tbody>
+        <tfoot class="border-t border-slate/10 bg-cloud/35">
+          <tr>
+            <td class="px-5 py-4 font-semibold sm:px-6">Total expenses</td>
+            <td class="px-5 py-4 font-semibold text-rose-900">{{money $report.TotalExpenses}}</td>
+            <td class="px-5 py-4 font-semibold text-slate/70">{{money $report.ComparisonExpenses}}</td>
+            <td class="px-5 py-4 text-right font-semibold sm:px-6 {{if gt (subFloat $report.TotalExpenses $report.ComparisonExpenses) 0.0}}text-rose-800{{else}}text-emerald-800{{end}}">{{money (subFloat $report.TotalExpenses $report.ComparisonExpenses)}}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="grid gap-3 p-4 lg:hidden">
+      {{range $report.ExpenseItems}}
+      <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
+        <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
+        <div class="mt-3 grid grid-cols-3 gap-3 text-sm">
+          <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Current</p><p class="mt-1 font-semibold text-rose-900">{{money .Amount}}</p></div>
+          <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Previous</p><p class="mt-1 font-semibold text-obsidian">{{money .ComparisonAmount}}</p></div>
+          <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Movement</p><p class="mt-1 font-semibold {{if gt .Delta 0.0}}text-rose-800{{else}}text-emerald-800{{end}}">{{money .Delta}}</p></div>
+        </div>
+      </article>
+      {{else}}
+      <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No expenses were posted in the selected period.</div>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Statement result</p>
+    <h3 class="mt-2 text-lg font-semibold text-obsidian">Profit bridge</h3>
+    <div class="mt-5 grid gap-3">
+      <article class="rounded-[1.25rem] border border-emerald-200/70 bg-emerald-50/80 p-4">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-emerald-700/70">Revenue</p>
+        <p class="mt-2 text-xl font-semibold text-emerald-950">{{money $report.TotalRevenue}}</p>
+      </article>
+      <article class="rounded-[1.25rem] border border-rose-200/70 bg-rose-50/80 p-4">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-rose-700/70">Expenses</p>
+        <p class="mt-2 text-xl font-semibold text-rose-950">({{money $report.TotalExpenses}})</p>
+      </article>
+      <article class="rounded-[1.25rem] border {{if lt $report.OperatingProfit 0.0}}border-rose-200/70 bg-rose-50/80{{else}}border-sky-200/70 bg-sky-50/80{{end}} p-4">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] {{if lt $report.OperatingProfit 0.0}}text-rose-700/70{{else}}text-sky-700/70{{end}}">Operating profit</p>
+        <p class="mt-2 text-xl font-semibold {{if lt $report.OperatingProfit 0.0}}text-rose-950{{else}}text-sky-950{{end}}">{{money $report.OperatingProfit}}</p>
+      </article>
+      {{if $report.OtherItems}}
+      <article class="rounded-[1.25rem] border {{if lt $report.OtherNet 0.0}}border-amber-200/70 bg-amber-50/80{{else}}border-white/80 bg-white/85{{end}} p-4">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] {{if lt $report.OtherNet 0.0}}text-amber-700/70{{else}}text-slate/45{{end}}">Other items</p>
+        <p class="mt-2 text-xl font-semibold {{if lt $report.OtherNet 0.0}}text-amber-950{{else}}text-obsidian{{end}}">{{money $report.OtherNet}}</p>
+        <div class="mt-3 grid gap-2">
+          {{range $report.OtherItems}}
+          <div class="flex items-center justify-between gap-3 text-sm">
+            <span class="text-slate/65">{{.Label}}</span>
+            <span class="font-semibold {{if lt .Amount 0.0}}text-amber-900{{else}}text-obsidian{{end}}">{{money .Amount}}</span>
+          </div>
+          {{end}}
+        </div>
+      </article>
+      {{end}}
+      <article class="rounded-[1.25rem] border {{if lt $report.NetProfit 0.0}}border-rose-200/70 bg-rose-50/80{{else}}border-emerald-200/70 bg-emerald-50/80{{end}} p-4">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] {{if lt $report.NetProfit 0.0}}text-rose-700/70{{else}}text-emerald-700/70{{end}}">Net profit / loss</p>
+        <p class="mt-2 text-2xl font-semibold {{if lt $report.NetProfit 0.0}}text-rose-950{{else}}text-emerald-950{{end}}">{{money $report.NetProfit}}</p>
+        <p class="mt-1 text-xs {{if lt $report.ComparisonNetProfit 0.0}}text-rose-800/65{{else}}text-emerald-800/65{{end}}">Previous {{money $report.ComparisonNetProfit}}</p>
+      </article>
+    </div>
+  </section>
+</div>
+{{end}}
+
+{{define "finance-balance-sheet-section"}}
+{{$sheet := .FinanceBalanceSheet}}
+<section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+  <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Financial position</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Balance sheet</h2>
+      <p class="mt-1 text-sm text-slate/55">Prepared as of {{formatCalendarDate $sheet.AsOf}} using posted account balances and finance history.</p>
+    </div>
+    <form method="get" action="/admin/finance/balance-sheet" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <input name="as_of" type="date" value="{{$sheet.AsOf}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+      <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-semibold text-cloud transition hover:bg-slate">Apply</button>
+      <a href="/admin/finance/balance-sheet" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Reset</a>
+    </form>
+  </div>
+
+  <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <article class="rounded-[1.25rem] border border-sky-200/70 bg-sky-50/80 p-4 shadow-sm">
+      <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-sky-700/70">Total assets</p>
+      <p class="mt-2 text-2xl font-semibold text-sky-950">{{money $sheet.TotalAssets}}</p>
+    </article>
+    <article class="rounded-[1.25rem] border border-amber-200/70 bg-amber-50/80 p-4 shadow-sm">
+      <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-amber-700/70">Total liabilities</p>
+      <p class="mt-2 text-2xl font-semibold text-amber-950">{{money $sheet.TotalLiabilities}}</p>
+    </article>
+    <article class="rounded-[1.25rem] border border-emerald-200/70 bg-emerald-50/80 p-4 shadow-sm">
+      <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-emerald-700/70">Total equity</p>
+      <p class="mt-2 text-2xl font-semibold text-emerald-950">{{money $sheet.TotalEquity}}</p>
+    </article>
+    <article class="rounded-[1.25rem] border border-white/80 bg-white/85 p-4 shadow-sm">
+      <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Working capital</p>
+      <p class="mt-2 text-2xl font-semibold text-obsidian">{{money $sheet.WorkingCapital}}</p>
+    </article>
+    <article class="rounded-[1.25rem] border {{if eq $sheet.BalancingDifference 0.0}}border-white/80 bg-white/85{{else}}border-rose-200/70 bg-rose-50/80{{end}} p-4 shadow-sm">
+      <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] {{if eq $sheet.BalancingDifference 0.0}}text-slate/45{{else}}text-rose-700/70{{end}}">Balance check</p>
+      <p class="mt-2 text-2xl font-semibold {{if eq $sheet.BalancingDifference 0.0}}text-obsidian{{else}}text-rose-950{{end}}">{{money $sheet.BalancingDifference}}</p>
+      <p class="mt-1 text-xs {{if eq $sheet.BalancingDifference 0.0}}text-slate/55{{else}}text-rose-800/65{{end}}">Assets minus liabilities and equity</p>
+    </article>
+  </div>
+</section>
+
+<div class="grid gap-6 xl:grid-cols-[1fr_1fr_0.9fr]">
+  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+    <div class="border-b border-slate/10 p-5 sm:p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Assets</p>
+      <h3 class="mt-2 text-lg font-semibold text-obsidian">Cash and bank resources</h3>
+    </div>
+    <div class="hidden lg:block">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-5 py-4 font-medium sm:px-6">Line item</th>
+            <th class="px-5 py-4 font-medium text-right sm:px-6">Amount</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range $sheet.AssetItems}}
+          <tr class="bg-white/70">
+            <td class="px-5 py-4 sm:px-6 text-slate/70">{{.Label}}</td>
+            <td class="px-5 py-4 text-right font-semibold text-sky-950 sm:px-6">{{money .Amount}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="2" class="px-6 py-10 text-center text-sm text-slate/60">No positive asset balances exist for the selected date.</td></tr>
+          {{end}}
+        </tbody>
+        <tfoot class="border-t border-slate/10 bg-cloud/35">
+          <tr>
+            <td class="px-5 py-4 font-semibold sm:px-6">Total assets</td>
+            <td class="px-5 py-4 text-right font-semibold text-sky-950 sm:px-6">{{money $sheet.TotalAssets}}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="grid gap-3 p-4 lg:hidden">
+      {{range $sheet.AssetItems}}
+      <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
+        <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
+        <p class="mt-2 text-lg font-semibold text-sky-950">{{money .Amount}}</p>
+      </article>
+      {{else}}
+      <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No positive asset balances exist for the selected date.</div>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+    <div class="border-b border-slate/10 p-5 sm:p-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Capital structure</p>
+      <h3 class="mt-2 text-lg font-semibold text-obsidian">Liabilities and equity</h3>
+    </div>
+    <div class="hidden lg:block">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-5 py-4 font-medium sm:px-6">Line item</th>
+            <th class="px-5 py-4 font-medium">Section</th>
+            <th class="px-5 py-4 font-medium text-right sm:px-6">Amount</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range $sheet.LiabilityItems}}
+          <tr class="bg-white/70">
+            <td class="px-5 py-4 sm:px-6 text-slate/70">{{.Label}}</td>
+            <td class="px-5 py-4 text-slate/60">Liability</td>
+            <td class="px-5 py-4 text-right font-semibold text-amber-950 sm:px-6">{{money .Amount}}</td>
+          </tr>
+          {{end}}
+          {{range $sheet.EquityItems}}
+          <tr class="bg-white/70">
+            <td class="px-5 py-4 sm:px-6 text-slate/70">{{.Label}}</td>
+            <td class="px-5 py-4 text-slate/60">Equity</td>
+            <td class="px-5 py-4 text-right font-semibold {{if lt .Amount 0.0}}text-rose-900{{else}}text-emerald-950{{end}} sm:px-6">{{money .Amount}}</td>
+          </tr>
+          {{end}}
+          {{if and (eq (len $sheet.LiabilityItems) 0) (eq (len $sheet.EquityItems) 0)}}
+          <tr><td colspan="3" class="px-6 py-10 text-center text-sm text-slate/60">No liabilities or equity lines exist for the selected date.</td></tr>
+          {{end}}
+        </tbody>
+        <tfoot class="border-t border-slate/10 bg-cloud/35">
+          <tr>
+            <td class="px-5 py-4 font-semibold sm:px-6">Total liabilities</td>
+            <td class="px-5 py-4"></td>
+            <td class="px-5 py-4 text-right font-semibold text-amber-950 sm:px-6">{{money $sheet.TotalLiabilities}}</td>
+          </tr>
+          <tr>
+            <td class="px-5 py-4 font-semibold sm:px-6">Total equity</td>
+            <td class="px-5 py-4"></td>
+            <td class="px-5 py-4 text-right font-semibold text-emerald-950 sm:px-6">{{money $sheet.TotalEquity}}</td>
+          </tr>
+          <tr>
+            <td class="px-5 py-4 font-semibold sm:px-6">Liabilities and equity</td>
+            <td class="px-5 py-4"></td>
+            <td class="px-5 py-4 text-right font-semibold text-obsidian sm:px-6">{{money $sheet.TotalLiabilitiesAndEquity}}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="grid gap-3 p-4 lg:hidden">
+      {{if and (eq (len $sheet.LiabilityItems) 0) (eq (len $sheet.EquityItems) 0)}}
+      <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No liabilities or equity lines exist for the selected date.</div>
+      {{else}}
+        {{range $sheet.LiabilityItems}}
+        <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
+          <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
+          <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate/45">Liability</p>
+          <p class="mt-2 text-lg font-semibold text-amber-950">{{money .Amount}}</p>
+        </article>
+        {{end}}
+        {{range $sheet.EquityItems}}
+        <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
+          <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
+          <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate/45">Equity</p>
+          <p class="mt-2 text-lg font-semibold {{if lt .Amount 0.0}}text-rose-900{{else}}text-emerald-950{{end}}">{{money .Amount}}</p>
+        </article>
+        {{end}}
+      {{end}}
+    </div>
+  </section>
+
+  <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Operational memo</p>
+    <h3 class="mt-2 text-lg font-semibold text-obsidian">Off-balance follow-up items</h3>
+    <p class="mt-2 text-sm text-slate/55">These memo balances support cash collection and payout follow-up, but they do not affect the balance-sheet totals until they are posted through the ledger.</p>
+    <div class="mt-5 grid gap-3">
+      <article class="rounded-[1.25rem] border border-sky-200/70 bg-sky-50/80 p-4">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-sky-700/70">Open booking receivables</p>
+        <p class="mt-2 text-xl font-semibold text-sky-950">{{money $sheet.MemoOutstandingBookingReceivables}}</p>
+      </article>
+      <article class="rounded-[1.25rem] border border-violet-200/70 bg-violet-50/80 p-4">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-violet-700/70">Current month student dues</p>
+        <p class="mt-2 text-xl font-semibold text-violet-950">{{money $sheet.MemoCurrentMonthStudentDues}}</p>
+      </article>
+      <article class="rounded-[1.25rem] border border-amber-200/70 bg-amber-50/80 p-4">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-amber-700/70">Unpaid referral commissions</p>
+        <p class="mt-2 text-xl font-semibold text-amber-950">{{money $sheet.MemoUnpaidReferralCommissions}}</p>
+      </article>
+      <article class="rounded-[1.25rem] border border-white/80 bg-white/85 p-4">
+        <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Current ratio</p>
+        <p class="mt-2 text-xl font-semibold text-obsidian">{{if gt $sheet.CurrentRatio 0.0}}{{printf "%.2f" $sheet.CurrentRatio}}x{{else}}—{{end}}</p>
+      </article>
+    </div>
+  </section>
+</div>
+{{end}}

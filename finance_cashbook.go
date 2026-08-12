@@ -230,7 +230,6 @@ func migrateFinanceCashbook(db *sql.DB) error {
 			updated_by_user_id INTEGER
 		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_name_ci ON finance_accounts(LOWER(name))`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_code_ci ON finance_accounts(UPPER(account_code)) WHERE TRIM(COALESCE(account_code, '')) <> ''`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_accounts_type_active ON finance_accounts(account_type, is_active)`,
 		`CREATE TABLE IF NOT EXISTS cash_reconciliations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -324,6 +323,9 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	}
 	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_cash_reconciliations_account_date`); err != nil {
 		return err
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_code_ci ON finance_accounts(UPPER(account_code)) WHERE TRIM(COALESCE(account_code, '')) <> ''`); err != nil {
+		return fmt.Errorf("create finance account code index: %w", err)
 	}
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_reconciliations_account_date_active ON cash_reconciliations(finance_account_id, reconciliation_date) WHERE voided_at IS NULL`); err != nil {
 		return fmt.Errorf("create active cash reconciliation unique index: %w", err)

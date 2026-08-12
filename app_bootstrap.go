@@ -690,6 +690,51 @@ type FinanceSummary struct {
 	LastCashReconciliationOn string
 }
 
+type FinanceStatementItem struct {
+	Code             string
+	Label            string
+	Amount           float64
+	ComparisonAmount float64
+	Delta            float64
+}
+
+type FinanceProfitAndLoss struct {
+	From                string
+	To                  string
+	PreviousFrom        string
+	PreviousTo          string
+	RevenueItems        []FinanceStatementItem
+	ExpenseItems        []FinanceStatementItem
+	OtherItems          []FinanceStatementItem
+	TotalRevenue        float64
+	TotalExpenses       float64
+	OperatingProfit     float64
+	OtherNet            float64
+	NetProfit           float64
+	ComparisonRevenue   float64
+	ComparisonExpenses  float64
+	ComparisonOperating float64
+	ComparisonOtherNet  float64
+	ComparisonNetProfit float64
+}
+
+type FinanceBalanceSheet struct {
+	AsOf                              string
+	AssetItems                        []FinanceStatementItem
+	LiabilityItems                    []FinanceStatementItem
+	EquityItems                       []FinanceStatementItem
+	TotalAssets                       float64
+	TotalLiabilities                  float64
+	TotalEquity                       float64
+	TotalLiabilitiesAndEquity         float64
+	BalancingDifference               float64
+	WorkingCapital                    float64
+	CurrentRatio                      float64
+	MemoOutstandingBookingReceivables float64
+	MemoCurrentMonthStudentDues       float64
+	MemoUnpaidReferralCommissions     float64
+}
+
 type BookingFinancial struct {
 	ID                    int64
 	ScheduleID            int64
@@ -1451,6 +1496,8 @@ type TemplateData struct {
 	FinanceLedgerPreviousPageURL    string
 	FinanceLedgerNextPageURL        string
 	FinanceSummary                  FinanceSummary
+	FinanceProfitAndLoss            *FinanceProfitAndLoss
+	FinanceBalanceSheet             *FinanceBalanceSheet
 	FinanceCustomerSearch           string
 	StatementOpeningBalance         float64
 	StatementClosingBalance         float64

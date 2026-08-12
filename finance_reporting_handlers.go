@@ -44,6 +44,14 @@ func (a *App) financeCustomersHandler(w http.ResponseWriter, r *http.Request) {
 	a.financeSectionHandler(w, r, "customers")
 }
 
+func (a *App) financeProfitAndLossHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "profit-loss")
+}
+
+func (a *App) financeBalanceSheetHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "balance-sheet")
+}
+
 func (a *App) financeSectionHandler(w http.ResponseWriter, r *http.Request, page string) {
 	user, _ := a.currentUser(r.Context())
 	started := time.Now()
@@ -65,20 +73,20 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	data.TodayDate = time.Now().Format("2006-01-02")
 	data.FinancePeriodLock, _ = a.currentFinancePeriodLock()
 
-	needOperationalSummary := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts"
-	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts"
-	needAllTransactions := page == "ledger" || page == "accounts" || page == "transfers" || page == "reconciliations"
+	needOperationalSummary := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "profit-loss" || page == "balance-sheet"
+	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "balance-sheet"
+	needAllTransactions := page == "ledger" || page == "accounts" || page == "transfers" || page == "reconciliations" || page == "profit-loss" || page == "balance-sheet"
 	needBookingFinancials := page == "receivables" || page == "customers"
 	needMonthlyRows := page == "receivables"
 	needTransfers := page == "transfers"
 	needReconciliations := page == "reconciliations"
-	needCategories := page == "ledger" || page == "categories"
+	needCategories := page == "ledger" || page == "categories" || page == "profit-loss"
 
 	var allTransactions []FinanceTransaction
 	var allMonthlyRows []StudentPaymentRow
 
 	if needAccounts {
-		activeOnly := page != "accounts"
+		activeOnly := page != "accounts" && page != "balance-sheet"
 		accounts, err := a.listFinanceAccounts(activeOnly)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list finance accounts duration=%s err=%v", page, time.Since(started), err)
@@ -174,6 +182,24 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	if page == "customers" {
 		data.FinanceCustomerSearch = strings.TrimSpace(r.URL.Query().Get("search"))
 		data.BookingCustomerBalances = aggregateBookingCustomerBalances(data.BookingFinancials, data.FinanceCustomerSearch)
+	}
+
+	if page == "profit-loss" {
+		report, err := a.buildFinanceProfitAndLoss(strings.TrimSpace(r.URL.Query().Get("from")), strings.TrimSpace(r.URL.Query().Get("to")))
+		if err != nil {
+			log.Printf("finance %s load failed: op=build profit and loss duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.FinanceProfitAndLoss = report
+	}
+
+	if page == "balance-sheet" {
+		report, err := a.buildFinanceBalanceSheet(strings.TrimSpace(r.URL.Query().Get("as_of")))
+		if err != nil {
+			log.Printf("finance %s load failed: op=build balance sheet duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.FinanceBalanceSheet = report
 	}
 
 	if needMonthlyRows {
