@@ -10,11 +10,13 @@
         <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Enrollment Manager</h1>
         <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/68">Admissions now create only the student profile. Use enrollments to assign training programmes and collect admission fees separately for each programme.</p>
       </div>
+      <a href="/admin/enrollments?action=new#enrollment-form" class="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-obsidian transition hover:bg-cloud">Create enrollment</a>
     </div>
   </div>
 
+  {{if or (eq .EnrollmentMode "") (eq .EnrollmentMode "new")}}
   <div class="grid gap-6 xl:grid-cols-[24rem_minmax(0,1fr)]">
-    <section class="rounded-[2rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:p-6">
+    <section id="enrollment-form" class="rounded-[2rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:p-6">
       <div>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Create enrollment</p>
         <h2 class="mt-2 text-xl font-semibold text-obsidian">Assign a programme</h2>
@@ -75,60 +77,194 @@
       </div>
 
       <div class="mt-6 grid gap-4">
-        {{range .Enrollments}}
-        <article class="rounded-[1.5rem] border {{if .AdmissionPaymentPaid}}border-emerald-200/70 bg-emerald-50/45{{else if .FreeAdmission}}border-sky-200/80 bg-sky-50/50{{else}}border-slate/10 bg-cloud/45{{end}} p-4 sm:p-5">
-          <div class="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,.8fr)_minmax(15rem,1fr)] xl:items-center">
-            <div class="flex items-start gap-4">
-              {{if .Student.PhotoPath}}
-              <img src="{{.Student.PhotoPath}}" alt="{{.Student.FullName}}" class="h-14 w-14 rounded-2xl object-cover ring-1 ring-slate/10" />
-              {{else}}
-              <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-obsidian text-sm font-semibold text-cloud">{{printf "%.1s" .Student.FullName}}</div>
-              {{end}}
-              <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h3 class="truncate text-base font-semibold text-obsidian">{{.Student.FullName}}</h3>
-                  <span class="rounded-full bg-white px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate/65">{{.Student.StudentID}}</span>
-                </div>
-                <p class="mt-1 text-sm font-medium text-slate/70">{{.TrainingProgramName}}</p>
-                <p class="mt-1 text-xs text-slate/55">Admitted {{.Student.AdmissionDate}}</p>
-              </div>
-            </div>
-
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">Admission fee</p>
-              <p class="mt-2 text-2xl font-semibold text-obsidian">{{if .AdmissionPaymentPaid}}{{money .AdmissionPaymentAmount}}{{else if .FreeAdmission}}Free{{else}}Pending{{end}}</p>
-              <p class="mt-1 text-xs text-slate/55">{{if .FreeMonthlyFee}}Monthly fee waived{{else}}Monthly fee active{{end}}</p>
-            </div>
-
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div class="text-xs text-slate/55">
-                {{if .Student.QRCodePath}}
-                <a href="{{.Student.QRCodePath}}" target="_blank" rel="noopener" class="font-semibold text-obsidian underline decoration-aqua decoration-2 underline-offset-4">Open QR code</a>
-                <p class="mt-1 font-mono">{{.Student.QRCodeValue}}</p>
-                {{end}}
-              </div>
-              {{if .AdmissionPaymentPaid}}
-              <a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">View receipt</a>
-              {{else if .FreeAdmission}}
-              <div class="inline-flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800">No fee required</div>
-              {{else}}
-              <form action="/admin/enrollments/collect-admission" method="post" onsubmit="return confirm('Collect the admission fee for {{.Student.FullName}} - {{.TrainingProgramName}}?')">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                <input type="hidden" name="enrollment_id" value="{{.ID}}" />
-                <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Collect admission fee</button>
-              </form>
-              {{end}}
-            </div>
-          </div>
-        </article>
-        {{else}}
-        <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-14 text-center">
-          <p class="text-base font-semibold text-obsidian">No enrollments yet.</p>
-          <p class="mt-2 text-sm text-slate/55">Create a student admission first, then assign the student to a training programme here.</p>
-        </div>
-        {{end}}
+        {{template "enrollment-cards" .}}
       </div>
     </section>
   </div>
+  {{else}}
+  {{if and (eq .EnrollmentMode "view") .SelectedEnrollment}}
+  <section id="enrollment-view" class="rounded-[2rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Enrollment details</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">{{.SelectedEnrollment.Student.FullName}}</h2>
+        <p class="mt-2 text-sm text-slate/60">{{.SelectedEnrollment.Student.StudentID}} · {{.SelectedEnrollment.TrainingProgramName}}</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/admin/enrollments?action=edit&id={{.SelectedEnrollment.ID}}#enrollment-edit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+        <a href="/admin/enrollments" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Close</a>
+      </div>
+    </div>
+    <div class="mt-6 grid gap-4 lg:grid-cols-3">
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Student</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedEnrollment.Student.FullName}}</p>
+        <p class="mt-1 text-xs uppercase tracking-[0.18em] text-slate/55">{{.SelectedEnrollment.Student.StudentID}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Programme</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedEnrollment.TrainingProgramName}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Admission fee</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{if .SelectedEnrollment.AdmissionPaymentPaid}}{{money .SelectedEnrollment.AdmissionPaymentAmount}}{{else if .SelectedEnrollment.FreeAdmission}}Free{{else}}Pending{{end}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Monthly fee</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{if .SelectedEnrollment.FreeMonthlyFee}}Waived{{else}}Active{{end}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Created</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{formatDateTime .SelectedEnrollment.CreatedAt}}</p>
+      </div>
+      <div class="rounded-2xl bg-cloud px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Updated</p>
+        <p class="mt-2 text-sm font-medium text-obsidian">{{formatDateTime .SelectedEnrollment.UpdatedAt}}</p>
+      </div>
+    </div>
+  </section>
+  {{end}}
+
+  {{if and (eq .EnrollmentMode "edit") .SelectedEnrollment}}
+  <section id="enrollment-edit" class="rounded-[2rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Edit enrollment</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">{{.SelectedEnrollment.Student.FullName}}</h2>
+        <p class="mt-2 text-sm text-slate/60">Update programme billing settings for this enrollment.</p>
+      </div>
+      <a href="/admin/enrollments" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Close</a>
+    </div>
+    <form action="/admin/enrollments/update" method="post" class="mt-6 space-y-4">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="hidden" name="enrollment_id" value="{{.SelectedEnrollment.ID}}" />
+      <div class="grid gap-4 lg:grid-cols-2">
+        <div class="space-y-2">
+          <label class="block text-sm font-semibold text-obsidian">Student</label>
+          <div class="flex h-12 items-center rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm text-slate/75">{{.SelectedEnrollment.Student.StudentID}} · {{.SelectedEnrollment.Student.FullName}}</div>
+        </div>
+        <div class="space-y-2">
+          <label for="edit-enrollment-programme" class="block text-sm font-semibold text-obsidian">Training programme</label>
+          <select id="edit-enrollment-programme" name="training_program_id" required {{if .SelectedEnrollment.AdmissionPaymentPaid}}disabled{{end}} class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15 disabled:cursor-not-allowed disabled:bg-cloud/60 disabled:text-slate/55">
+            {{range .TrainingPrograms}}
+            <option value="{{.ID}}" {{if eq $.SelectedEnrollment.TrainingProgramID .ID}}selected{{end}}>{{.Name}} · Admission {{money .AdmissionFee}} · Monthly {{money .MonthlyFee}}</option>
+            {{end}}
+          </select>
+          {{if .SelectedEnrollment.AdmissionPaymentPaid}}
+          <input type="hidden" name="training_program_id" value="{{.SelectedEnrollment.TrainingProgramID}}" />
+          <p class="text-xs text-slate/55">Programme cannot be changed after the admission fee has been collected.</p>
+          {{end}}
+        </div>
+      </div>
+      <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-cloud/45 p-4">
+        <input type="checkbox" name="free_admission" value="true" {{if .SelectedEnrollment.FreeAdmission}}checked{{end}} {{if .SelectedEnrollment.AdmissionPaymentPaid}}disabled{{end}} class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua disabled:cursor-not-allowed" />
+        <span>
+          <span class="block text-sm font-semibold text-obsidian">Free admission fee</span>
+          <span class="mt-1 block text-xs leading-5 text-slate/55">{{if .SelectedEnrollment.AdmissionPaymentPaid}}Locked because the admission fee receipt already exists.{{else}}No admission-fee receipt will be required for this programme enrollment.{{end}}</span>
+        </span>
+      </label>
+      {{if .SelectedEnrollment.AdmissionPaymentPaid}}
+      <input type="hidden" name="free_admission" value="{{if .SelectedEnrollment.FreeAdmission}}true{{else}}false{{end}}" />
+      {{end}}
+      <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-cloud/45 p-4">
+        <input type="checkbox" name="free_monthly_fee" value="true" {{if .SelectedEnrollment.FreeMonthlyFee}}checked{{end}} class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua" />
+        <span>
+          <span class="block text-sm font-semibold text-obsidian">Free monthly fee</span>
+          <span class="mt-1 block text-xs leading-5 text-slate/55">This programme enrollment will be excluded from monthly fee collection.</span>
+        </span>
+      </label>
+      <div class="flex justify-end gap-2">
+        <a href="/admin/enrollments?action=view&id={{.SelectedEnrollment.ID}}#enrollment-view" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+        <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Save changes</button>
+      </div>
+    </form>
+    <div class="mt-6 flex justify-start">
+      <form action="/admin/enrollments/delete" method="post" onsubmit="return confirm('Delete this enrollment for {{.SelectedEnrollment.Student.FullName}} - {{.SelectedEnrollment.TrainingProgramName}}? This only works when no payment history exists.')">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="enrollment_id" value="{{.SelectedEnrollment.ID}}" />
+        <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50">Delete enrollment</button>
+      </form>
+    </div>
+  </section>
+  {{end}}
+
+  <section class="rounded-[2rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:p-6">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Active enrollments</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">Programme assignments</h2>
+      </div>
+      <p class="text-sm text-slate/55">{{len .Enrollments}} enrollments</p>
+    </div>
+
+    <div class="mt-6 grid gap-4">
+      {{template "enrollment-cards" .}}
+    </div>
+  </section>
+  {{end}}
 </section>
+{{end}}
+
+{{define "enrollment-cards"}}
+{{range .Enrollments}}
+<article class="rounded-[1.5rem] border {{if .AdmissionPaymentPaid}}border-emerald-200/70 bg-emerald-50/45{{else if .FreeAdmission}}border-sky-200/80 bg-sky-50/50{{else}}border-slate/10 bg-cloud/45{{end}} p-4 sm:p-5">
+  <div class="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,.8fr)_minmax(15rem,1fr)] xl:items-center">
+    <div class="flex items-start gap-4">
+      {{if .Student.PhotoPath}}
+      <img src="{{.Student.PhotoPath}}" alt="{{.Student.FullName}}" class="h-14 w-14 rounded-2xl object-cover ring-1 ring-slate/10" />
+      {{else}}
+      <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-obsidian text-sm font-semibold text-cloud">{{printf "%.1s" .Student.FullName}}</div>
+      {{end}}
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h3 class="truncate text-base font-semibold text-obsidian">{{.Student.FullName}}</h3>
+          <span class="rounded-full bg-white px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate/65">{{.Student.StudentID}}</span>
+        </div>
+        <p class="mt-1 text-sm font-medium text-slate/70">{{.TrainingProgramName}}</p>
+        <p class="mt-1 text-xs text-slate/55">Admitted {{.Student.AdmissionDate}}</p>
+      </div>
+    </div>
+
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">Admission fee</p>
+      <p class="mt-2 text-2xl font-semibold text-obsidian">{{if .AdmissionPaymentPaid}}{{money .AdmissionPaymentAmount}}{{else if .FreeAdmission}}Free{{else}}Pending{{end}}</p>
+      <p class="mt-1 text-xs text-slate/55">{{if .FreeMonthlyFee}}Monthly fee waived{{else}}Monthly fee active{{end}}</p>
+    </div>
+
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="text-xs text-slate/55">
+        {{if .Student.QRCodePath}}
+        <a href="{{.Student.QRCodePath}}" target="_blank" rel="noopener" class="font-semibold text-obsidian underline decoration-aqua decoration-2 underline-offset-4">Open QR code</a>
+        <p class="mt-1 font-mono">{{.Student.QRCodeValue}}</p>
+        {{end}}
+      </div>
+      <div class="flex flex-wrap justify-end gap-2">
+        <a href="/admin/enrollments?action=view&id={{.ID}}#enrollment-view" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+        <a href="/admin/enrollments?action=edit&id={{.ID}}#enrollment-edit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+        {{if .AdmissionPaymentPaid}}
+        <a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">View receipt</a>
+        {{else if .FreeAdmission}}
+        <div class="inline-flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800">No fee required</div>
+        {{else}}
+        <form action="/admin/enrollments/collect-admission" method="post" onsubmit="return confirm('Collect the admission fee for {{.Student.FullName}} - {{.TrainingProgramName}}?')">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+          <input type="hidden" name="enrollment_id" value="{{.ID}}" />
+          <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Collect admission fee</button>
+        </form>
+        {{end}}
+        <form action="/admin/enrollments/delete" method="post" onsubmit="return confirm('Delete this enrollment for {{.Student.FullName}} - {{.TrainingProgramName}}? This only works when no payment history exists.')">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+          <input type="hidden" name="enrollment_id" value="{{.ID}}" />
+          <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</article>
+{{else}}
+<div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-14 text-center">
+  <p class="text-base font-semibold text-obsidian">No enrollments yet.</p>
+  <p class="mt-2 text-sm text-slate/55">Create a student admission first, then assign the student to a training programme here.</p>
+</div>
+{{end}}
 {{end}}

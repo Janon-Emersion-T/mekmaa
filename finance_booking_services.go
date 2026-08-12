@@ -2184,6 +2184,149 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 	return enrollmentID, financeTransactionID, nil
 }
 
+func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	existing, err := findStudentEnrollmentByIDTx(tx, enrollment.ID)
+	if err != nil {
+		return err
+	}
+
+	var monthlyPaymentCount int
+	if err := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM student_monthly_payments
+		WHERE enrollment_id = ?
+		  AND COALESCE(voided, 0) = 0
+	`, enrollment.ID).Scan(&monthlyPaymentCount); err != nil {
+		return err
+	}
+
+	if existing.AdmissionPaymentPaid {
+		enrollment.TrainingProgramID = existing.TrainingProgramID
+		enrollment.TrainingProgramName = existing.TrainingProgramName
+		enrollment.FreeAdmission = existing.FreeAdmission
+	}
+	if monthlyPaymentCount > 0 {
+		enrollment.TrainingProgramID = existing.TrainingProgramID
+		enrollment.TrainingProgramName = existing.TrainingProgramName
+	}
+
+	result, err := tx.Exec(`
+		UPDATE student_enrollments
+		SET
+			training_program_id = ?,
+			free_admission = ?,
+			free_monthly_fee = ?,
+			updated_at = ?
+		WHERE id = ?
+	`, enrollment.TrainingProgramID, boolToInt(enrollment.FreeAdmission), boolToInt(enrollment.FreeMonthlyFee), time.Now().UTC(), enrollment.ID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	if enrollment.TrainingProgramID != existing.TrainingProgramID {
+		if _, err := tx.Exec(`
+			DELETE FROM admission_training_programs
+			WHERE admission_id = ?
+			  AND training_program_id = ?
+		`, existing.AdmissionID, existing.TrainingProgramID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO admission_training_programs (
+				admission_id,
+				training_program_id,
+				created_at
+			)
+			SELECT ?, ?, ?
+			WHERE NOT EXISTS (
+				SELECT 1
+				FROM admission_training_programs
+				WHERE admission_id = ?
+				  AND training_program_id = ?
+			)
+		`, existing.AdmissionID, enrollment.TrainingProgramID, time.Now().UTC(), existing.AdmissionID, enrollment.TrainingProgramID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) deleteStudentEnrollment(enrollmentID int64) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	enrollment, err := findStudentEnrollmentByIDTx(tx, enrollmentID)
+	if err != nil {
+		return err
+	}
+
+	var admissionPaymentCount int
+	if err := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM finance_transactions
+		WHERE reference_type = 'student_enrollment'
+		  AND reference_id = ?
+	`, enrollmentID).Scan(&admissionPaymentCount); err != nil {
+		return err
+	}
+	if admissionPaymentCount > 0 {
+		return errors.New("this enrollment has admission payment history and cannot be deleted")
+	}
+
+	var monthlyPaymentCount int
+	if err := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM student_monthly_payments
+		WHERE enrollment_id = ?
+		  AND COALESCE(voided, 0) = 0
+	`, enrollmentID).Scan(&monthlyPaymentCount); err != nil {
+		return err
+	}
+	if monthlyPaymentCount > 0 {
+		return errors.New("this enrollment has monthly payment history and cannot be deleted")
+	}
+
+	result, err := tx.Exec(`DELETE FROM student_enrollments WHERE id = ?`, enrollmentID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	if _, err := tx.Exec(`
+		DELETE FROM admission_training_programs
+		WHERE admission_id = ?
+		  AND training_program_id = ?
+	`, enrollment.AdmissionID, enrollment.TrainingProgramID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment StudentEnrollment, recordedByUserID int64) (int64, error) {
 	var studentName string
 	if err := tx.QueryRow(`SELECT full_name FROM admissions WHERE id = ?`, enrollment.AdmissionID).Scan(&studentName); err != nil {

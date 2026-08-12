@@ -183,6 +183,20 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	data.Enrollments = enrollments
 	data.Admissions = admissions
 	data.TrainingPrograms = trainingPrograms
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "view", "edit":
+		data.EnrollmentMode = mode
+	}
+	if data.EnrollmentMode == "view" || data.EnrollmentMode == "edit" {
+		enrollmentID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && enrollmentID > 0 {
+			selectedEnrollment, err := a.findStudentEnrollmentByID(enrollmentID)
+			if err == nil {
+				data.SelectedEnrollment = selectedEnrollment
+			}
+		}
+	}
 	a.render(w, "enrollment-management", data, http.StatusOK)
 }
 
@@ -322,6 +336,126 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 		return
 	}
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	enrollmentID, err := parsePositiveInt64(r.FormValue("enrollment_id"))
+	if err != nil {
+		a.setFlash(w, "Select a valid enrollment.")
+		http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+		return
+	}
+	existing, err := a.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Enrollment not found.")
+			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+			return
+		}
+		log.Printf("find enrollment for update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	trainingProgramID, err := parsePositiveInt64(r.FormValue("training_program_id"))
+	if err != nil {
+		a.setFlash(w, "Select a valid training programme.")
+		http.Redirect(w, r, "/admin/enrollments?action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		return
+	}
+	trainingProgram, err := a.findTrainingProgramByID(trainingProgramID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Training programme not found.")
+			http.Redirect(w, r, "/admin/enrollments?action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+			return
+		}
+		log.Printf("find training programme for enrollment update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	enrollment := StudentEnrollment{
+		ID:                  enrollmentID,
+		AdmissionID:         existing.AdmissionID,
+		TrainingProgramID:   trainingProgramID,
+		TrainingProgramName: trainingProgram.Name,
+		FreeAdmission:       r.FormValue("free_admission") == "true",
+		FreeMonthlyFee:      r.FormValue("free_monthly_fee") == "true",
+	}
+	if err := validateEnrollment(enrollment); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, "/admin/enrollments?action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		return
+	}
+
+	if err := a.updateStudentEnrollment(enrollment); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Enrollment not found.")
+			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+			return
+		}
+		if isUniqueConstraintError(err) {
+			a.setFlash(w, "This student is already enrolled in the selected training programme.")
+			http.Redirect(w, r, "/admin/enrollments?action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+			return
+		}
+		log.Printf("update student enrollment: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Enrollment updated.")
+	http.Redirect(w, r, "/admin/enrollments?action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+}
+
+func (a *App) deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	enrollmentID, err := parsePositiveInt64(r.FormValue("enrollment_id"))
+	if err != nil {
+		a.setFlash(w, "Select a valid enrollment.")
+		http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+		return
+	}
+
+	if err := a.deleteStudentEnrollment(enrollmentID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Enrollment not found.")
+			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+			return
+		}
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, "Enrollment deleted.")
+	http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
 }
 
 func (a *App) trainingProgramManagementHandler(
