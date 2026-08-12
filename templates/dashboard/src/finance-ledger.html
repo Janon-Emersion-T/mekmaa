@@ -146,6 +146,10 @@
           <option value="approved" {{if contains $.FinanceFilter.ApprovalStatuses "approved"}}selected{{end}}>Approved</option>
           <option value="pending" {{if contains $.FinanceFilter.ApprovalStatuses "pending"}}selected{{end}}>Pending approval</option>
         </select>
+        <select name="detail_mode" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+          <option value="summary" {{if eq .FinanceFilter.DetailMode "summary"}}selected{{end}}>Summary view</option>
+          <option value="detailed" {{if eq .FinanceFilter.DetailMode "detailed"}}selected{{end}}>Detailed view</option>
+        </select>
         <select name="limit" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
           <option value="25" {{if eq .FinanceFilter.Limit 25}}selected{{end}}>25 rows</option>
           <option value="50" {{if eq .FinanceFilter.Limit 50}}selected{{end}}>50 rows</option>
@@ -238,6 +242,7 @@
           <th class="px-5 py-4 font-medium">Money in</th>
           <th class="px-5 py-4 font-medium">Money out</th>
           {{if .SelectedFinanceAccount}}<th class="px-5 py-4 font-medium">Balance</th>{{end}}
+          {{if eq .FinanceFilter.DetailMode "detailed"}}<th class="px-5 py-4 font-medium">Linked record</th>{{end}}
           <th class="px-5 py-4 font-medium">Status</th>
           <th class="px-5 py-4 font-medium text-right sm:px-6">Voucher</th>
         </tr>
@@ -249,11 +254,21 @@
             <p class="font-mono text-xs font-bold text-obsidian">{{if .ReferenceNumber}}{{.ReferenceNumber}}{{else}}{{.ReceiptNumber}}{{end}}</p>
             <p class="mt-1 text-xs text-slate/55">{{.Description}}</p>
             {{if .Notes}}<p class="mt-1 text-[0.72rem] leading-5 text-slate/45">Note: {{.Notes}}</p>{{end}}
+            {{if eq $.FinanceFilter.DetailMode "detailed"}}
+            <div class="mt-2 space-y-1 text-[0.68rem] leading-5 text-slate/45">
+              <p>Receipt: {{.ReceiptNumber}}</p>
+              <p>Reference type: {{.ReferenceType}}{{if gt .ReferenceID 0}} · ID {{.ReferenceID}}{{end}}</p>
+              <p>Source type: {{.SourceType}}{{if gt .SourceID 0}} · ID {{.SourceID}}{{end}}</p>
+              {{if .StudentName}}<p>Student: {{.StudentName}}</p>{{end}}
+              {{if .TrainingProgramName}}<p>Training programme: {{.TrainingProgramName}}</p>{{end}}
+              {{if .TransferGroupID}}<p>Transfer group: {{.TransferGroupID}}</p>{{end}}
+            </div>
+            {{end}}
           </td>
           <td class="px-5 py-4 text-slate/70">{{formatDateTime .RecordedAt}}</td>
           <td class="px-5 py-4 text-slate/70">
             <p>{{.FinanceAccountName}}</p>
-            <p class="mt-1 text-xs text-slate/45">{{financeAccountTypeLabel .FinanceAccountType}}</p>
+            <p class="mt-1 text-xs text-slate/45">{{.FinanceAccountCode}} · {{financeAccountTypeLabel .FinanceAccountType}}</p>
           </td>
           <td class="px-5 py-4 text-slate/70">
             <p>{{financeSourceTypeLabel .SourceType}}</p>
@@ -265,10 +280,21 @@
           <td class="px-5 py-4 font-semibold text-emerald-800">{{if gt .MoneyIn 0.0}}{{money .MoneyIn}}{{else}}—{{end}}</td>
           <td class="px-5 py-4 font-semibold text-rose-800">{{if gt .MoneyOut 0.0}}{{money .MoneyOut}}{{else}}—{{end}}</td>
           {{if $.SelectedFinanceAccount}}<td class="px-5 py-4 font-semibold text-obsidian">{{money .RunningBalance}}</td>{{end}}
+          {{if eq $.FinanceFilter.DetailMode "detailed"}}
+          <td class="px-5 py-4 text-[0.72rem] leading-5 text-slate/55">
+            <p>{{.ReferenceType}}{{if gt .ReferenceID 0}} #{{.ReferenceID}}{{end}}</p>
+            <p class="mt-1">{{.SourceType}}{{if gt .SourceID 0}} #{{.SourceID}}{{end}}</p>
+            {{if .TrainingProgramName}}<p class="mt-1">{{.TrainingProgramName}}</p>{{end}}
+          </td>
+          {{end}}
           <td class="px-5 py-4">
             <div class="flex flex-col gap-2">
               <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{if .Voided}}bg-rose-100 text-rose-800{{else}}bg-emerald-100 text-emerald-800{{end}}">{{financeTransactionStatusLabel .}}</span>
               <p class="text-[0.68rem] text-slate/45">{{if .RecordedByUserName}}By {{.RecordedByUserName}}{{else}}System posted{{end}}</p>
+              {{if eq $.FinanceFilter.DetailMode "detailed"}}
+              <p class="text-[0.68rem] text-slate/45">{{if .ApprovedByUserName}}Approved by {{.ApprovedByUserName}}{{else if eq .ApprovalStatus "approved"}}Auto approved{{else}}Awaiting approval{{end}}</p>
+              <p class="text-[0.68rem] text-slate/45">Created {{formatDateTime .CreatedAt}}{{if .UpdatedAt.IsZero}}{{else}} · Updated {{formatDateTime .UpdatedAt}}{{end}}</p>
+              {{end}}
               {{if and (hasRole $.User "superadmin") (eq .ApprovalStatus "pending") (not .Voided)}}
               <form method="post" action="/admin/finance/transactions/approve" class="grid gap-2">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
@@ -294,7 +320,7 @@
           <td class="px-5 py-4 text-right sm:px-6"><a href="/admin/finance/receipt?transaction_id={{.ID}}" class="text-xs font-semibold text-slate hover:text-obsidian">View</a></td>
         </tr>
         {{else}}
-        <tr><td colspan="{{if .SelectedFinanceAccount}}11{{else}}10{{end}}" class="px-6 py-10 text-center text-sm text-slate/60">No ledger entries match the selected filters.</td></tr>
+        <tr><td colspan="{{if and .SelectedFinanceAccount (eq .FinanceFilter.DetailMode "detailed")}}13{{else if or .SelectedFinanceAccount (eq .FinanceFilter.DetailMode "detailed")}}12{{else}}11{{end}}" class="px-6 py-10 text-center text-sm text-slate/60">No ledger entries match the selected filters.</td></tr>
         {{end}}
       </tbody>
     </table>
@@ -309,6 +335,16 @@
           <p class="mt-1 text-sm font-semibold text-obsidian">{{financeCategoryLabel .Category}}</p>
           <p class="mt-1 text-xs text-slate/55">{{.FinanceAccountName}} · {{financeSourceTypeLabel .SourceType}}</p>
           {{if .Notes}}<p class="mt-1 text-[0.72rem] leading-5 text-slate/45">Note: {{.Notes}}</p>{{end}}
+          {{if eq $.FinanceFilter.DetailMode "detailed"}}
+          <div class="mt-2 space-y-1 text-[0.72rem] leading-5 text-slate/45">
+            <p>Account code: {{.FinanceAccountCode}}</p>
+            <p>Reference: {{.ReferenceType}}{{if gt .ReferenceID 0}} #{{.ReferenceID}}{{end}}</p>
+            <p>Source: {{.SourceType}}{{if gt .SourceID 0}} #{{.SourceID}}{{end}}</p>
+            {{if .StudentName}}<p>Student: {{.StudentName}}</p>{{end}}
+            {{if .TrainingProgramName}}<p>Training programme: {{.TrainingProgramName}}</p>{{end}}
+            <p>{{if .RecordedByUserName}}Recorded by {{.RecordedByUserName}}{{else}}Recorded by system{{end}}{{if .ApprovedByUserName}} · Approved by {{.ApprovedByUserName}}{{end}}</p>
+          </div>
+          {{end}}
         </div>
         <span class="rounded-full px-2.5 py-1 text-[0.68rem] font-semibold {{if .Voided}}bg-rose-100 text-rose-800{{else}}bg-emerald-100 text-emerald-800{{end}}">{{financeTransactionStatusLabel .}}</span>
       </div>

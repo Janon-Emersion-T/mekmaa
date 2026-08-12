@@ -269,6 +269,18 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 		       COALESCE(fa.name, ''),
 		       COALESCE(fa.account_type, ''),
 		       COALESCE(ft.transfer_group_id, ''),
+		       COALESCE(CASE
+		       	WHEN ft.reference_type = 'admission' THEN adm.full_name
+		       	WHEN ft.reference_type = 'student_enrollment' THEN sea.full_name
+		       	WHEN ft.source_type = 'student_monthly_payment' THEN COALESCE(smp_adm.full_name, sea.full_name, adm.full_name)
+		       	ELSE ''
+		       END, ''),
+		       COALESCE(CASE
+		       	WHEN ft.reference_type = 'student_enrollment' THEN tp.name
+		       	WHEN ft.reference_type = 'admission' THEN adm_tp.name
+		       	WHEN ft.source_type = 'student_monthly_payment' THEN COALESCE(smp_tp.name, tp.name, adm_tp.name)
+		       	ELSE ''
+		       END, ''),
 		       ft.person_name,
 		       ft.description,
 		       COALESCE(ft.notes, ''),
@@ -289,6 +301,15 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
 		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
 		LEFT JOIN users au ON au.id = ft.approved_by_user_id
+		LEFT JOIN student_enrollments se ON ft.reference_type = 'student_enrollment' AND se.id = ft.reference_id
+		LEFT JOIN admissions sea ON sea.id = se.admission_id
+		LEFT JOIN training_programs tp ON tp.id = se.training_program_id
+		LEFT JOIN admissions adm ON ft.reference_type = 'admission' AND adm.id = ft.reference_id
+		LEFT JOIN training_programs adm_tp ON adm_tp.id = adm.training_program_id
+		LEFT JOIN student_monthly_payments smp ON ft.source_type = 'student_monthly_payment' AND smp.id = ft.source_id
+		LEFT JOIN student_enrollments smp_se ON smp_se.id = smp.enrollment_id
+		LEFT JOIN training_programs smp_tp ON smp_tp.id = smp_se.training_program_id
+		LEFT JOIN admissions smp_adm ON smp_adm.id = smp.admission_id
 		WHERE ft.id = ?
 	`, transactionID)
 
@@ -311,6 +332,8 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 		&transaction.FinanceAccountName,
 		&transaction.FinanceAccountType,
 		&transaction.TransferGroupID,
+		&transaction.StudentName,
+		&transaction.TrainingProgramName,
 		&transaction.PersonName,
 		&transaction.Description,
 		&transaction.Notes,

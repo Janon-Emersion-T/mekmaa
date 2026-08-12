@@ -288,6 +288,7 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 		ReferenceTypes:    normalizeStringFilterValues(query["reference_type"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
 		PaymentMethods:    normalizeStringFilterValues(query["payment_method"], normalizePaymentMethod),
 		ApprovalStatuses:  normalizeStringFilterValues(query["approval_status"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
+		DetailMode:        strings.ToLower(strings.TrimSpace(query.Get("detail_mode"))),
 		RecordedUserID:    parseInt64Query(query.Get("recorded_user_id")),
 		Status:            strings.ToLower(strings.TrimSpace(query.Get("status"))),
 		Reference:         strings.TrimSpace(query.Get("reference")),
@@ -325,6 +326,9 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 	}
 	if filter.Status != "active" && filter.Status != "voided" {
 		filter.Status = ""
+	}
+	if filter.DetailMode != "detailed" {
+		filter.DetailMode = "summary"
 	}
 	filter.PaymentMethods = normalizeStringFilterValues(filter.PaymentMethods, func(value string) string {
 		if validFinancePaymentMethod(value) {
@@ -473,6 +477,9 @@ func financeFilterExportURL(filter FinanceFilter) string {
 	}
 	for _, value := range filter.ApprovalStatuses {
 		query.Add("approval_status", value)
+	}
+	if filter.DetailMode != "" {
+		query.Set("detail_mode", filter.DetailMode)
 	}
 	if filter.RecordedUserID > 0 {
 		query.Set("recorded_user_id", strconv.FormatInt(filter.RecordedUserID, 10))

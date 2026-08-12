@@ -324,9 +324,6 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_cash_reconciliations_account_date`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_code_ci ON finance_accounts(UPPER(account_code)) WHERE TRIM(COALESCE(account_code, '')) <> ''`); err != nil {
-		return fmt.Errorf("create finance account code index: %w", err)
-	}
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_reconciliations_account_date_active ON cash_reconciliations(finance_account_id, reconciliation_date) WHERE voided_at IS NULL`); err != nil {
 		return fmt.Errorf("create active cash reconciliation unique index: %w", err)
 	}
@@ -382,6 +379,27 @@ func migrateFinanceCashbook(db *sql.DB) error {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE finance_accounts SET account_code = CASE WHEN LOWER(account_type) = 'cash' THEN 'CASH-' || printf('%03d', finance_accounts.id) ELSE 'BANK-' || printf('%03d', finance_accounts.id) END WHERE TRIM(COALESCE(account_code, '')) = ''`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		UPDATE finance_accounts
+		SET account_code = CASE
+			WHEN LOWER(account_type) = 'cash' THEN 'CASH-' || printf('%03d', finance_accounts.id)
+			ELSE 'BANK-' || printf('%03d', finance_accounts.id)
+		END
+		WHERE id IN (
+			SELECT fa.id
+			FROM finance_accounts fa
+			JOIN (
+				SELECT UPPER(TRIM(account_code)) AS normalized_code, MIN(id) AS keep_id
+				FROM finance_accounts
+				WHERE TRIM(COALESCE(account_code, '')) <> ''
+				GROUP BY UPPER(TRIM(account_code))
+				HAVING COUNT(*) > 1
+			) dup ON dup.normalized_code = UPPER(TRIM(fa.account_code))
+			WHERE fa.id <> dup.keep_id
+		)
+	`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`
@@ -540,6 +558,9 @@ func migrateFinanceCashbook(db *sql.DB) error {
 		if err := ensureFinanceSourceUniqueIndex(db, spec.indexName, spec.sourceType); err != nil {
 			return err
 		}
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_code_ci ON finance_accounts(UPPER(account_code)) WHERE TRIM(COALESCE(account_code, '')) <> ''`); err != nil {
+		return fmt.Errorf("create finance account code index: %w", err)
 	}
 	return nil
 }

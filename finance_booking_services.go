@@ -67,6 +67,8 @@ func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter Fin
 			&transaction.FinanceAccountName,
 			&transaction.FinanceAccountType,
 			&transaction.TransferGroupID,
+			&transaction.StudentName,
+			&transaction.TrainingProgramName,
 			&transaction.PersonName,
 			&transaction.Description,
 			&transaction.Notes,
@@ -130,6 +132,18 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		       COALESCE(fa.name, ''),
 		       COALESCE(fa.account_type, ''),
 		       COALESCE(ft.transfer_group_id, ''),
+		       COALESCE(CASE
+		       	WHEN ft.reference_type = 'admission' THEN adm.full_name
+		       	WHEN ft.reference_type = 'student_enrollment' THEN sea.full_name
+		       	WHEN ft.source_type = 'student_monthly_payment' THEN COALESCE(smp_adm.full_name, sea.full_name, adm.full_name)
+		       	ELSE ''
+		       END, ''),
+		       COALESCE(CASE
+		       	WHEN ft.reference_type = 'student_enrollment' THEN tp.name
+		       	WHEN ft.reference_type = 'admission' THEN adm_tp.name
+		       	WHEN ft.source_type = 'student_monthly_payment' THEN COALESCE(smp_tp.name, tp.name, adm_tp.name)
+		       	ELSE ''
+		       END, ''),
 		       ft.person_name,
 		       ft.description,
 		       COALESCE(ft.notes, ''),
@@ -156,6 +170,12 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		LEFT JOIN student_enrollments se ON ft.reference_type = 'student_enrollment' AND se.id = ft.reference_id
 		LEFT JOIN admissions sea ON sea.id = se.admission_id
 		LEFT JOIN training_programs tp ON tp.id = se.training_program_id
+		LEFT JOIN admissions adm ON ft.reference_type = 'admission' AND adm.id = ft.reference_id
+		LEFT JOIN training_programs adm_tp ON adm_tp.id = adm.training_program_id
+		LEFT JOIN student_monthly_payments smp ON ft.source_type = 'student_monthly_payment' AND smp.id = ft.source_id
+		LEFT JOIN student_enrollments smp_se ON smp_se.id = smp.enrollment_id
+		LEFT JOIN training_programs smp_tp ON smp_tp.id = smp_se.training_program_id
+		LEFT JOIN admissions smp_adm ON smp_adm.id = smp.admission_id
 		WHERE 1 = 1`
 	args := make([]any, 0, 24)
 	if filter.From != "" {
@@ -255,15 +275,22 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 			OR LOWER(COALESCE(ft.description, '')) LIKE ?
 			OR LOWER(COALESCE(ft.notes, '')) LIKE ?
 			OR LOWER(COALESCE(fa.name, '')) LIKE ?
+			OR LOWER(COALESCE(fa.account_code, '')) LIKE ?
+			OR LOWER(COALESCE(u.name, '')) LIKE ?
+			OR LOWER(COALESCE(au.name, '')) LIKE ?
 			OR LOWER(COALESCE(ft.reference_type, '')) LIKE ?
 			OR LOWER(COALESCE(ss.title, '')) LIKE ?
 			OR LOWER(COALESCE(ss.activity, '')) LIKE ?
 			OR LOWER(COALESCE(o2oo.name, '')) LIKE ?
 			OR LOWER(COALESCE(sea.full_name, '')) LIKE ?
+			OR LOWER(COALESCE(adm.full_name, '')) LIKE ?
+			OR LOWER(COALESCE(smp_adm.full_name, '')) LIKE ?
 			OR LOWER(COALESCE(tp.name, '')) LIKE ?
+			OR LOWER(COALESCE(adm_tp.name, '')) LIKE ?
+			OR LOWER(COALESCE(smp_tp.name, '')) LIKE ?
 		)`
 		term := "%" + strings.ToLower(filter.Search) + "%"
-		args = append(args, term, term, term, term, term, term, term, term, term, term, term, term)
+		args = append(args, term, term, term, term, term, term, term, term, term, term, term, term, term, term, term, term, term, term, term)
 	}
 	return query, args
 }

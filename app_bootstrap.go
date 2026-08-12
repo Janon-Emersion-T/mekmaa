@@ -515,6 +515,8 @@ type FinanceTransaction struct {
 	FinanceAccountName string
 	FinanceAccountType string
 	TransferGroupID    string
+	StudentName        string
+	TrainingProgramName string
 	PersonName         string
 	Description        string
 	Notes              string
@@ -660,6 +662,7 @@ type FinanceFilter struct {
 	PaymentMethod   string
 	PaymentMethods  []string
 	ApprovalStatuses []string
+	DetailMode      string
 	RecordedUserID  int64
 	Status          string
 	Reference       string
