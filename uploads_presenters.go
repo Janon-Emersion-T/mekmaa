@@ -460,10 +460,22 @@ func financeCategoryLabel(value string) string {
 		return "Facility or court rental"
 	case "utilities_expense":
 		return "Utilities"
+	case "loan_repayment_expense":
+		return "Loan repayment"
+	case "staff_salary_expense":
+		return "Staff salary"
+	case "electricity_bills_expense":
+		return "Utility bills - Electricity bills"
+	case "telephone_bills_expense":
+		return "Utility bills - Telephone bills"
 	case "maintenance_expense":
 		return "Maintenance and repairs"
 	case "staff_expense":
 		return "Staff and wages"
+	case "donation_expense":
+		return "Donation"
+	case "stationery_expense":
+		return "Stationery"
 	case "equipment_expense":
 		return "Equipment"
 	case "sports_supplies_expense":

@@ -466,8 +466,10 @@ func nullInt64(value int64) any {
 func validManualFinanceCategory(direction, category string) bool {
 	income := map[string]bool{"manual_income": true, "sponsorship_income": true, "other_income": true}
 	expense := map[string]bool{
-		"facility_expense": true, "utilities_expense": true, "maintenance_expense": true,
-		"staff_expense": true, "equipment_expense": true, "sports_supplies_expense": true,
+		"facility_expense": true, "utilities_expense": true, "loan_repayment_expense": true,
+		"staff_salary_expense": true, "electricity_bills_expense": true, "telephone_bills_expense": true,
+		"maintenance_expense": true, "staff_expense": true, "donation_expense": true,
+		"stationery_expense": true, "equipment_expense": true, "sports_supplies_expense": true,
 		"refreshments_expense": true, "prizes_expense": true, "marketing_expense": true,
 		"transport_expense": true, "event_expense": true, "bank_charges_expense": true,
 		"other_expense": true,
