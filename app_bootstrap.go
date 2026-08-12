@@ -504,12 +504,14 @@ type FinanceTransaction struct {
 	ReceiptNumber      string
 	ReferenceNumber    string
 	Category           string
+	ApprovalStatus     string
 	TransactionType    string
 	ReferenceType      string
 	ReferenceID        int64
 	SourceType         string
 	SourceID           int64
 	FinanceAccountID   int64
+	FinanceAccountCode string
 	FinanceAccountName string
 	FinanceAccountType string
 	TransferGroupID    string
@@ -523,9 +525,12 @@ type FinanceTransaction struct {
 	RunningBalance     float64
 	RecordedByUser     int64
 	RecordedByUserName string
+	ApprovedByUserID   int64
+	ApprovedByUserName string
 	Voided             bool
 	GeneralVoidAllowed bool
 	OrphanedSource     bool
+	ApprovedAt         time.Time
 	VoidedAt           time.Time
 	VoidedByUserID     int64
 	VoidReason         string
@@ -547,6 +552,7 @@ type FinanceCategory struct {
 
 type FinanceAccount struct {
 	ID              int64
+	AccountCode     string
 	Name            string
 	AccountType     string
 	Description     string
@@ -584,6 +590,15 @@ type FinanceTransfer struct {
 	CreatedAt          time.Time
 	TransferOutID      int64
 	TransferInID       int64
+}
+
+type FinancePeriodLock struct {
+	ID                int64
+	LockedUntil       string
+	Notes             string
+	UpdatedByUserID   int64
+	UpdatedByUserName string
+	UpdatedAt         time.Time
 }
 
 type CashReconciliation struct {
@@ -1424,6 +1439,7 @@ type TemplateData struct {
 	FinanceTransactionsTotal        int
 	FinanceCategories               []FinanceCategory
 	FinanceAccounts                 []FinanceAccount
+	FinancePeriodLock               *FinancePeriodLock
 	FinanceTransfers                []FinanceTransfer
 	CashReconciliations             []CashReconciliation
 	SelectedFinanceAccount          *FinanceAccount

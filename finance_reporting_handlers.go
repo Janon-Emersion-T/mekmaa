@@ -63,6 +63,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	data.Description = "Monitor cash, bank, receivables, expenses, transfers, reconciliations, and payment history."
 	data.FinancePage = page
 	data.TodayDate = time.Now().Format("2006-01-02")
+	data.FinancePeriodLock, _ = a.currentFinancePeriodLock()
 
 	needOperationalSummary := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts"
 	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts"
@@ -127,7 +128,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		}
 		data.Stats = buildLedgerStats(filteredTransactions)
 		for _, row := range filteredTransactions {
-			if row.Voided {
+			if !financeTransactionPosted(row) {
 				continue
 			}
 			data.StatementMoneyIn += row.MoneyIn
@@ -294,10 +295,18 @@ func (a *App) createFinanceTransactionHandler(w http.ResponseWriter, r *http.Req
 	if currentUser != nil {
 		recordedBy = currentUser.ID
 	}
-	transactionID, err := a.createManualFinanceTransactionForAccount(category, personName, description, strings.TrimSpace(r.FormValue("notes")), accountID, amount, recordedAt, recordedBy)
+	approvalStatus := financeApprovalApproved
+	if strings.TrimSpace(r.FormValue("submit_action")) == "pending" {
+		approvalStatus = financeApprovalPending
+	}
+	transactionID, err := a.createManualFinanceTransactionForAccountWithApproval(category, personName, description, strings.TrimSpace(r.FormValue("notes")), accountID, amount, recordedAt, recordedBy, approvalStatus)
 	if err != nil {
 		log.Printf("create manual finance transaction: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if approvalStatus == financeApprovalPending {
+		http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)

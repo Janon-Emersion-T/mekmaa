@@ -56,12 +56,14 @@ func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter Fin
 			&transaction.ReceiptNumber,
 			&transaction.ReferenceNumber,
 			&transaction.Category,
+			&transaction.ApprovalStatus,
 			&transaction.TransactionType,
 			&transaction.ReferenceType,
 			&transaction.ReferenceID,
 			&transaction.SourceType,
 			&transaction.SourceID,
 			&transaction.FinanceAccountID,
+			&transaction.FinanceAccountCode,
 			&transaction.FinanceAccountName,
 			&transaction.FinanceAccountType,
 			&transaction.TransferGroupID,
@@ -72,9 +74,12 @@ func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter Fin
 			&transaction.Amount,
 			&transaction.RecordedByUser,
 			&transaction.RecordedByUserName,
+			&transaction.ApprovedByUserID,
+			&transaction.ApprovedByUserName,
 			&transaction.RecordedAt,
 			&transaction.CreatedAt,
 			&updatedAtRaw,
+			&transaction.ApprovedAt,
 			&voidedAt,
 			&transaction.VoidedByUserID,
 			&transaction.VoidReason,
@@ -114,12 +119,14 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		       ft.receipt_number,
 		       COALESCE(ft.reference_number, ft.receipt_number),
 		       ft.category,
+		       COALESCE(ft.approval_status, 'approved'),
 		       COALESCE(ft.transaction_type, CASE WHEN ft.amount < 0 THEN 'expense' ELSE 'income' END),
 		       ft.reference_type,
 		       COALESCE(ft.reference_id, 0),
 		       COALESCE(ft.source_type, ''),
 		       COALESCE(ft.source_id, 0),
 		       COALESCE(ft.finance_account_id, 0),
+		       COALESCE(fa.account_code, ''),
 		       COALESCE(fa.name, ''),
 		       COALESCE(fa.account_type, ''),
 		       COALESCE(ft.transfer_group_id, ''),
@@ -130,15 +137,19 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		       ft.amount,
 		       COALESCE(ft.recorded_by_user_id, 0),
 		       COALESCE(u.name, ''),
+		       COALESCE(ft.approved_by_user_id, 0),
+		       COALESCE(au.name, ''),
 		       ft.recorded_at,
 		       ft.created_at,
 		       COALESCE(CAST(ft.updated_at AS TEXT), CAST(ft.created_at AS TEXT), ''),
+		       ft.approved_at,
 		       ft.voided_at,
 		       COALESCE(ft.voided_by_user_id, 0),
 		       COALESCE(ft.void_reason, '')
 		FROM finance_transactions ft
 		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
 		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
+		LEFT JOIN users au ON au.id = ft.approved_by_user_id
 		WHERE 1 = 1`
 	args := make([]any, 0, 12)
 	if filter.From != "" {

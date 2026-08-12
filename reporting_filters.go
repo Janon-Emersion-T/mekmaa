@@ -77,6 +77,9 @@ func (a *App) buildOperationalReport(period ReportPeriod) (*OperationalReport, e
 	report.Transactions = transactions
 	financeBreakdown := map[string]*ReportBreakdown{}
 	for _, transaction := range transactions {
+		if !financeTransactionPosted(transaction) {
+			continue
+		}
 		date := transaction.RecordedAt.Format("2006-01-02")
 		point := points[date]
 		if transaction.Amount >= 0 {

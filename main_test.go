@@ -2394,14 +2394,14 @@ func TestOpeningBalanceMetadataSyncsOnVoidAndReplacement(t *testing.T) {
 
 func TestUpdateFinanceAccountRejectsRenamingWhenHistoryExists(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
-	accountID, err := app.createFinanceAccount("Tournament Wallet", financeAccountTypeCash, "Temporary collections", 0)
+	accountID, err := app.createFinanceAccount("CASH-900", "Tournament Wallet", financeAccountTypeCash, "Temporary collections", 0)
 	if err != nil {
 		t.Fatalf("create finance account: %v", err)
 	}
 	if _, err := app.createManualFinanceTransactionForAccount("manual_income", "Desk", "Seed history", "", accountID, 500, time.Date(2026, 8, 3, 9, 0, 0, 0, time.Local), 0); err != nil {
 		t.Fatalf("seed finance history: %v", err)
 	}
-	if err := app.updateFinanceAccount(accountID, "Renamed Wallet", financeAccountTypeBank, "Changed", true, 0); err == nil {
+	if err := app.updateFinanceAccount(accountID, "BANK-900", "Renamed Wallet", financeAccountTypeBank, "Changed", true, 0); err == nil {
 		t.Fatal("expected account rename/type change with history to be rejected")
 	}
 	account, err := app.findFinanceAccountByID(accountID)

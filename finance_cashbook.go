@@ -18,6 +18,7 @@ type financeTransactionCreate struct {
 	ReceiptNumber    string
 	ReferenceNumber  string
 	Category         string
+	ApprovalStatus   string
 	TransactionType  string
 	ReferenceType    string
 	ReferenceID      int64
@@ -31,7 +32,9 @@ type financeTransactionCreate struct {
 	PaymentMethod    string
 	Amount           float64
 	RecordedByUserID int64
+	ApprovedByUserID int64
 	RecordedAt       time.Time
+	ApprovedAt       time.Time
 }
 
 type financeStatementRow struct {
@@ -74,6 +77,18 @@ func financePaymentMethodForAccount(accountType string) string {
 	return "cash"
 }
 
+func normalizeFinanceAccountCode(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func generateFinanceAccountCode(accountType string, existingCount int) string {
+	prefix := "BANK"
+	if accountType == financeAccountTypeCash {
+		prefix = "CASH"
+	}
+	return fmt.Sprintf("%s-%03d", prefix, existingCount+1)
+}
+
 func financeDirectionForTransaction(transaction FinanceTransaction) string {
 	if transaction.MoneyOut > 0 {
 		return "expense"
@@ -86,7 +101,7 @@ func financeHighRiskAuthorized(user *User) bool {
 }
 
 func financeAccountBalanceEffect(transaction FinanceTransaction) float64 {
-	if transaction.Voided {
+	if !listFinanceBalancesInclude(transaction) {
 		return 0
 	}
 	return normalizeMoney(transaction.Amount)
@@ -146,6 +161,9 @@ func financeTransactionStatusLabel(transaction FinanceTransaction) string {
 	if transaction.Voided {
 		return "Voided"
 	}
+	if transaction.ApprovalStatus == financeApprovalPending {
+		return "Pending approval"
+	}
 	return "Active"
 }
 
@@ -159,8 +177,8 @@ func financeAccountTone(accountType string) string {
 func ensureFinanceSystemAccountsTx(tx *sql.Tx) error {
 	now := time.Now().UTC()
 	required := []FinanceAccount{
-		{Name: financeAccountCashInHand, AccountType: financeAccountTypeCash, Description: "Physical cash currently held by Mekmaa.", IsSystem: true, IsActive: true},
-		{Name: financeAccountMainBank, AccountType: financeAccountTypeBank, Description: "Primary business bank balance.", IsSystem: true, IsActive: true},
+		{Name: financeAccountCashInHand, AccountCode: "CASH-001", AccountType: financeAccountTypeCash, Description: "Physical cash currently held by Mekmaa.", IsSystem: true, IsActive: true},
+		{Name: financeAccountMainBank, AccountCode: "BANK-001", AccountType: financeAccountTypeBank, Description: "Primary business bank balance.", IsSystem: true, IsActive: true},
 	}
 	for _, account := range required {
 		var existingID int64
@@ -168,13 +186,14 @@ func ensureFinanceSystemAccountsTx(tx *sql.Tx) error {
 		if err == nil {
 			if _, updateErr := tx.Exec(`
 				UPDATE finance_accounts
-				SET account_type = COALESCE(NULLIF(account_type, ''), ?),
+				SET account_code = COALESCE(NULLIF(account_code, ''), ?),
+				    account_type = COALESCE(NULLIF(account_type, ''), ?),
 				    description = CASE WHEN TRIM(COALESCE(description, '')) = '' THEN ? ELSE description END,
 				    is_system = 1,
 				    is_active = 1,
 				    updated_at = ?
 				WHERE id = ?
-			`, account.AccountType, account.Description, now, existingID); updateErr != nil {
+			`, account.AccountCode, account.AccountType, account.Description, now, existingID); updateErr != nil {
 				return updateErr
 			}
 			continue
@@ -184,10 +203,10 @@ func ensureFinanceSystemAccountsTx(tx *sql.Tx) error {
 		}
 		if _, err := tx.Exec(`
 			INSERT INTO finance_accounts (
-				name, account_type, description, opening_balance, is_system, is_active,
+				account_code, name, account_type, description, opening_balance, is_system, is_active,
 				created_at, updated_at, created_by_user_id, updated_by_user_id
-			) VALUES (?, ?, ?, 0, 1, 1, ?, ?, NULL, NULL)
-		`, account.Name, account.AccountType, account.Description, now, now); err != nil {
+			) VALUES (?, ?, ?, ?, 0, 1, 1, ?, ?, NULL, NULL)
+		`, account.AccountCode, account.Name, account.AccountType, account.Description, now, now); err != nil {
 			return err
 		}
 	}
@@ -198,6 +217,7 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS finance_accounts (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			account_code TEXT NOT NULL DEFAULT '',
 			name TEXT NOT NULL,
 			account_type TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
@@ -210,6 +230,7 @@ func migrateFinanceCashbook(db *sql.DB) error {
 			updated_by_user_id INTEGER
 		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_name_ci ON finance_accounts(LOWER(name))`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_code_ci ON finance_accounts(UPPER(account_code)) WHERE TRIM(COALESCE(account_code, '')) <> ''`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_accounts_type_active ON finance_accounts(account_type, is_active)`,
 		`CREATE TABLE IF NOT EXISTS cash_reconciliations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -241,6 +262,14 @@ func migrateFinanceCashbook(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			UNIQUE(operation_scope, user_id, fingerprint)
 		)`,
+		`CREATE TABLE IF NOT EXISTS finance_period_locks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			locked_until TEXT,
+			notes TEXT NOT NULL DEFAULT '',
+			updated_by_user_id INTEGER,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (updated_by_user_id) REFERENCES users(id)
+		)`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.Exec(stmt); err != nil {
@@ -253,7 +282,11 @@ func migrateFinanceCashbook(db *sql.DB) error {
 		column string
 		stmt   string
 	}{
+		{"finance_accounts", "account_code", `ALTER TABLE finance_accounts ADD COLUMN account_code TEXT NOT NULL DEFAULT ''`},
 		{"finance_transactions", "finance_account_id", `ALTER TABLE finance_transactions ADD COLUMN finance_account_id INTEGER`},
+		{"finance_transactions", "approval_status", `ALTER TABLE finance_transactions ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'approved'`},
+		{"finance_transactions", "approved_by_user_id", `ALTER TABLE finance_transactions ADD COLUMN approved_by_user_id INTEGER`},
+		{"finance_transactions", "approved_at", `ALTER TABLE finance_transactions ADD COLUMN approved_at DATETIME`},
 		{"finance_transactions", "transaction_type", `ALTER TABLE finance_transactions ADD COLUMN transaction_type TEXT NOT NULL DEFAULT 'income'`},
 		{"finance_transactions", "source_type", `ALTER TABLE finance_transactions ADD COLUMN source_type TEXT NOT NULL DEFAULT ''`},
 		{"finance_transactions", "source_id", `ALTER TABLE finance_transactions ADD COLUMN source_id INTEGER`},
@@ -297,6 +330,7 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	}
 	for _, stmt := range []string{
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_account ON finance_transactions(finance_account_id, recorded_at DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_approval ON finance_transactions(approval_status, recorded_at DESC, id DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_type ON finance_transactions(transaction_type, recorded_at DESC, id DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_status ON finance_transactions(voided_at, recorded_at DESC, id DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_source ON finance_transactions(source_type, source_id)`,
@@ -336,7 +370,16 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	if _, err := tx.Exec(`UPDATE finance_transactions SET updated_at = COALESCE(updated_at, created_at, recorded_at, ?)`, now); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`UPDATE finance_transactions SET approval_status = COALESCE(NULLIF(approval_status, ''), 'approved')`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE finance_transactions SET approved_at = COALESCE(approved_at, created_at, recorded_at, ?) WHERE approval_status = 'approved'`, now); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`UPDATE finance_transactions SET payment_method = 'cash' WHERE TRIM(COALESCE(payment_method, '')) = ''`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE finance_accounts SET account_code = CASE WHEN LOWER(account_type) = 'cash' THEN 'CASH-' || printf('%03d', finance_accounts.id) ELSE 'BANK-' || printf('%03d', finance_accounts.id) END WHERE TRIM(COALESCE(account_code, '')) = ''`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`
@@ -536,14 +579,14 @@ func ensureFinanceSourceUniqueIndex(db *sql.DB, indexName string, sourceType str
 
 func (a *App) listFinanceAccounts(activeOnly bool) ([]FinanceAccount, error) {
 	query := `
-		SELECT id, name, account_type, description, opening_balance, is_system, is_active,
+		SELECT finance_accounts.id, account_code, name, account_type, description, opening_balance, is_system, is_active,
 		       COALESCE(created_by_user_id, 0), COALESCE(updated_by_user_id, 0), created_at, updated_at
 		FROM finance_accounts
 	`
 	if activeOnly {
 		query += ` WHERE is_active = 1`
 	}
-	query += ` ORDER BY is_system DESC, account_type ASC, name COLLATE NOCASE ASC, id ASC`
+	query += ` ORDER BY is_system DESC, account_type ASC, account_code COLLATE NOCASE ASC, name COLLATE NOCASE ASC, finance_accounts.id ASC`
 	rows, err := a.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -554,7 +597,7 @@ func (a *App) listFinanceAccounts(activeOnly bool) ([]FinanceAccount, error) {
 		var account FinanceAccount
 		var isSystem, isActive int
 		if err := rows.Scan(
-			&account.ID, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
+			&account.ID, &account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
 			&isSystem, &isActive, &account.CreatedByUserID, &account.UpdatedByUserID, &account.CreatedAt, &account.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -568,15 +611,15 @@ func (a *App) listFinanceAccounts(activeOnly bool) ([]FinanceAccount, error) {
 
 func findFinanceAccountByIDQuery(queryer sqlQueryer, accountID int64) (*FinanceAccount, error) {
 	row := queryer.QueryRow(`
-		SELECT id, name, account_type, description, opening_balance, is_system, is_active,
+		SELECT finance_accounts.id, account_code, name, account_type, description, opening_balance, is_system, is_active,
 		       COALESCE(created_by_user_id, 0), COALESCE(updated_by_user_id, 0), created_at, updated_at
 		FROM finance_accounts
-		WHERE id = ?
+		WHERE finance_accounts.id = ?
 	`, accountID)
 	var account FinanceAccount
 	var isSystem, isActive int
 	if err := row.Scan(
-		&account.ID, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
+		&account.ID, &account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
 		&isSystem, &isActive, &account.CreatedByUserID, &account.UpdatedByUserID, &account.CreatedAt, &account.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -594,8 +637,9 @@ func normalizeFinanceAccountName(name string) string {
 	return strings.TrimSpace(name)
 }
 
-func (a *App) createFinanceAccount(name, accountType, description string, createdByUserID int64) (int64, error) {
+func (a *App) createFinanceAccount(accountCode, name, accountType, description string, createdByUserID int64) (int64, error) {
 	name = normalizeFinanceAccountName(name)
+	accountCode = normalizeFinanceAccountCode(accountCode)
 	description = strings.TrimSpace(description)
 	if name == "" {
 		return 0, errors.New("account name is required")
@@ -603,24 +647,32 @@ func (a *App) createFinanceAccount(name, accountType, description string, create
 	if !validFinanceAccountType(accountType) {
 		return 0, errors.New("a valid account type is required")
 	}
+	if accountCode == "" {
+		var count int
+		if err := a.db.QueryRow(`SELECT COUNT(*) FROM finance_accounts WHERE account_type = ?`, accountType).Scan(&count); err != nil {
+			return 0, err
+		}
+		accountCode = generateFinanceAccountCode(accountType, count)
+	}
 	now := time.Now().UTC()
 	result, err := a.db.Exec(`
 		INSERT INTO finance_accounts (
-			name, account_type, description, opening_balance, is_system, is_active,
+			account_code, name, account_type, description, opening_balance, is_system, is_active,
 			created_at, updated_at, created_by_user_id, updated_by_user_id
-		) VALUES (?, ?, ?, 0, 0, 1, ?, ?, ?, ?)
-	`, name, accountType, description, now, now, nullIfZero(createdByUserID), nullIfZero(createdByUserID))
+		) VALUES (?, ?, ?, ?, 0, 0, 1, ?, ?, ?, ?)
+	`, accountCode, name, accountType, description, now, now, nullIfZero(createdByUserID), nullIfZero(createdByUserID))
 	if err != nil {
 		if isUniqueConstraintError(err) {
-			return 0, errors.New("a finance account with that name already exists")
+			return 0, errors.New("a finance account with that name or code already exists")
 		}
 		return 0, err
 	}
 	return result.LastInsertId()
 }
 
-func (a *App) updateFinanceAccount(accountID int64, name, accountType, description string, isActive bool, updatedByUserID int64) error {
+func (a *App) updateFinanceAccount(accountID int64, accountCode, name, accountType, description string, isActive bool, updatedByUserID int64) error {
 	name = normalizeFinanceAccountName(name)
+	accountCode = normalizeFinanceAccountCode(accountCode)
 	description = strings.TrimSpace(description)
 	if accountID <= 0 {
 		return errors.New("finance account is required")
@@ -645,16 +697,20 @@ func (a *App) updateFinanceAccount(accountID int64, name, accountType, descripti
 		return err
 	}
 	if account.IsSystem {
+		accountCode = account.AccountCode
 		name = account.Name
 		accountType = account.AccountType
 		isActive = true
+	}
+	if accountCode == "" {
+		accountCode = account.AccountCode
 	}
 	var transactionCount int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE finance_account_id = ?`, accountID).Scan(&transactionCount); err != nil {
 		return err
 	}
-	if transactionCount > 0 && (!strings.EqualFold(name, account.Name) || accountType != account.AccountType) {
-		return errors.New("accounts with finance history cannot change name or type")
+	if transactionCount > 0 && (!strings.EqualFold(name, account.Name) || accountType != account.AccountType || !strings.EqualFold(accountCode, account.AccountCode)) {
+		return errors.New("accounts with finance history cannot change code, name, or type")
 	}
 	if !isActive {
 		if transactionCount > 0 {
@@ -663,12 +719,12 @@ func (a *App) updateFinanceAccount(accountID int64, name, accountType, descripti
 	}
 	_, err = tx.Exec(`
 		UPDATE finance_accounts
-		SET name = ?, account_type = ?, description = ?, is_active = ?, updated_at = ?, updated_by_user_id = ?
+		SET account_code = ?, name = ?, account_type = ?, description = ?, is_active = ?, updated_at = ?, updated_by_user_id = ?
 		WHERE id = ?
-	`, name, accountType, description, boolToInt(isActive), time.Now().UTC(), nullIfZero(updatedByUserID), accountID)
+	`, accountCode, name, accountType, description, boolToInt(isActive), time.Now().UTC(), nullIfZero(updatedByUserID), accountID)
 	if err != nil {
 		if isUniqueConstraintError(err) {
-			return errors.New("a finance account with that name already exists")
+			return errors.New("a finance account with that name or code already exists")
 		}
 		return err
 	}
@@ -677,7 +733,7 @@ func (a *App) updateFinanceAccount(accountID int64, name, accountType, descripti
 
 func findFinanceAccountByNameTx(tx *sql.Tx, name string) (*FinanceAccount, error) {
 	row := tx.QueryRow(`
-		SELECT id, name, account_type, description, opening_balance, is_system, is_active,
+		SELECT finance_accounts.id, account_code, name, account_type, description, opening_balance, is_system, is_active,
 		       COALESCE(created_by_user_id, 0), COALESCE(updated_by_user_id, 0), created_at, updated_at
 		FROM finance_accounts
 		WHERE LOWER(name) = LOWER(?)
@@ -686,7 +742,7 @@ func findFinanceAccountByNameTx(tx *sql.Tx, name string) (*FinanceAccount, error
 	var account FinanceAccount
 	var isSystem, isActive int
 	if err := row.Scan(
-		&account.ID, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
+		&account.ID, &account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
 		&isSystem, &isActive, &account.CreatedByUserID, &account.UpdatedByUserID, &account.CreatedAt, &account.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -712,6 +768,7 @@ func financeAccountBalanceTx(tx *sql.Tx, accountID int64) (float64, error) {
 		FROM finance_transactions
 		WHERE finance_account_id = ?
 		  AND voided_at IS NULL
+		  AND approval_status = 'approved'
 	`, accountID).Scan(&balance); err != nil {
 		return 0, err
 	}
@@ -725,6 +782,7 @@ func (a *App) financeAccountBalance(accountID int64) (float64, error) {
 		FROM finance_transactions
 		WHERE finance_account_id = ?
 		  AND voided_at IS NULL
+		  AND approval_status = 'approved'
 	`, accountID).Scan(&balance); err != nil {
 		return 0, err
 	}
@@ -746,6 +804,7 @@ func financeAccountBalanceAsOfTx(tx *sql.Tx, accountID int64, cutoff time.Time) 
 		FROM finance_transactions
 		WHERE finance_account_id = ?
 		  AND voided_at IS NULL
+		  AND approval_status = 'approved'
 		  AND recorded_at <= ?
 	`, accountID, cutoff.UTC()).Scan(&balance); err != nil {
 		return 0, err
@@ -778,7 +837,7 @@ func syncFinanceAccountOpeningBalanceMetadataTx(tx *sql.Tx, accountID int64) err
 		WHERE finance_account_id = ?
 		  AND transaction_type = 'opening_balance'
 		  AND voided_at IS NULL
-		ORDER BY recorded_at DESC, id DESC
+		ORDER BY recorded_at DESC, finance_transactions.id DESC
 		LIMIT 1
 	`, accountID).Scan(&openingBalance); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -846,7 +905,7 @@ func insertFinanceTransactionTx(tx *sql.Tx, entry financeTransactionCreate) (int
 	}
 	account, err := findFinanceAccountByIDQuery(tx, entry.FinanceAccountID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("load finance account for transaction: %w", err)
 	}
 	if !account.IsActive {
 		return 0, errors.New("selected finance account is inactive")
@@ -860,6 +919,17 @@ func insertFinanceTransactionTx(tx *sql.Tx, entry financeTransactionCreate) (int
 		recordedAt = time.Now().UTC()
 	}
 	createdAt := time.Now().UTC()
+	approvalStatus := strings.TrimSpace(entry.ApprovalStatus)
+	if approvalStatus == "" {
+		approvalStatus = financeApprovalApproved
+	}
+	if !validFinanceApprovalStatus(approvalStatus) {
+		return 0, errors.New("invalid finance approval status")
+	}
+	approvedAt := entry.ApprovedAt.UTC()
+	if approvalStatus == financeApprovalApproved && approvedAt.IsZero() {
+		approvedAt = createdAt
+	}
 	receiptNumber := strings.TrimSpace(entry.ReceiptNumber)
 	if receiptNumber == "" {
 		receiptNumber = financeVoucherReference("MKM-FIN", createdAt)
@@ -870,15 +940,16 @@ func insertFinanceTransactionTx(tx *sql.Tx, entry financeTransactionCreate) (int
 	}
 	result, err := tx.Exec(`
 		INSERT INTO finance_transactions (
-			receipt_number, reference_number, category, transaction_type,
+			receipt_number, reference_number, category, approval_status, transaction_type,
 			reference_type, reference_id, source_type, source_id, finance_account_id,
 			transfer_group_id, person_name, description, notes, payment_method, amount,
-			recorded_by_user_id, recorded_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			recorded_by_user_id, approved_by_user_id, recorded_at, created_at, updated_at, approved_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		receiptNumber,
 		referenceNumber,
 		strings.TrimSpace(entry.Category),
+		approvalStatus,
 		entry.TransactionType,
 		strings.TrimSpace(entry.ReferenceType),
 		nullIfZero(entry.ReferenceID),
@@ -892,12 +963,14 @@ func insertFinanceTransactionTx(tx *sql.Tx, entry financeTransactionCreate) (int
 		expectedMethod,
 		entry.Amount,
 		nullableExistingUserIDTx(tx, entry.RecordedByUserID),
+		nullableExistingUserIDTx(tx, entry.ApprovedByUserID),
 		recordedAt,
 		createdAt,
 		createdAt,
+		nullIfZeroTime(approvedAt),
 	)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("insert finance transaction: %w", err)
 	}
 	return result.LastInsertId()
 }
@@ -908,7 +981,8 @@ func voidFinanceTransactionTx(tx *sql.Tx, transactionID int64, reason string, vo
 		return errors.New("void reason is required")
 	}
 	var alreadyVoided int
-	if err := tx.QueryRow(`SELECT CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END FROM finance_transactions WHERE id = ?`, transactionID).Scan(&alreadyVoided); err != nil {
+	var recordedAt time.Time
+	if err := tx.QueryRow(`SELECT CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END, recorded_at FROM finance_transactions WHERE id = ?`, transactionID).Scan(&alreadyVoided, &recordedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("finance transaction not found")
 		}
@@ -916,6 +990,9 @@ func voidFinanceTransactionTx(tx *sql.Tx, transactionID int64, reason string, vo
 	}
 	if alreadyVoided == 1 {
 		return errors.New("finance transaction has already been voided")
+	}
+	if err := ensureFinanceDateUnlockedTx(tx, recordedAt, "transaction date"); err != nil {
+		return err
 	}
 	_, err := tx.Exec(`
 		UPDATE finance_transactions
@@ -1336,7 +1413,8 @@ func (a *App) voidCashReconciliation(reconciliationID int64, reason string, void
 	}
 	defer tx.Rollback()
 	var alreadyVoided int
-	if err := tx.QueryRow(`SELECT CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END FROM cash_reconciliations WHERE id = ?`, reconciliationID).Scan(&alreadyVoided); err != nil {
+	var reconciliationDate string
+	if err := tx.QueryRow(`SELECT CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END, reconciliation_date FROM cash_reconciliations WHERE id = ?`, reconciliationID).Scan(&alreadyVoided, &reconciliationDate); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("cash reconciliation was not found")
 		}
@@ -1344,6 +1422,13 @@ func (a *App) voidCashReconciliation(reconciliationID int64, reason string, void
 	}
 	if alreadyVoided == 1 {
 		return errors.New("cash reconciliation has already been voided")
+	}
+	day, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(reconciliationDate), time.Local)
+	if err != nil {
+		return errors.New("cash reconciliation date is invalid")
+	}
+	if err := ensureFinanceDateUnlockedTx(tx, day, "reconciliation date"); err != nil {
+		return err
 	}
 	_, err = tx.Exec(`
 		UPDATE cash_reconciliations
@@ -1357,7 +1442,14 @@ func (a *App) voidCashReconciliation(reconciliationID int64, reason string, void
 }
 
 func (a *App) createManualFinanceTransactionForAccount(category, personName, description, notes string, accountID int64, amount float64, recordedAt time.Time, recordedByUserID int64) (int64, error) {
+	return a.createManualFinanceTransactionForAccountWithApproval(category, personName, description, notes, accountID, amount, recordedAt, recordedByUserID, financeApprovalApproved)
+}
+
+func (a *App) createManualFinanceTransactionForAccountWithApproval(category, personName, description, notes string, accountID int64, amount float64, recordedAt time.Time, recordedByUserID int64, approvalStatus string) (int64, error) {
 	if err := validateFinanceRecordedAt(recordedAt, "transaction date"); err != nil {
+		return 0, err
+	}
+	if err := a.ensureFinanceDateUnlocked(recordedAt, "transaction date"); err != nil {
 		return 0, err
 	}
 	tx, err := a.db.Begin()
@@ -1367,7 +1459,7 @@ func (a *App) createManualFinanceTransactionForAccount(category, personName, des
 	defer tx.Rollback()
 	account, err := findFinanceAccountByIDQuery(tx, accountID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("load finance account for manual transaction: %w", err)
 	}
 	transactionType := financeTxnTypeIncome
 	if amount < 0 {
@@ -1391,6 +1483,7 @@ func (a *App) createManualFinanceTransactionForAccount(category, personName, des
 		ReceiptNumber:    financeVoucherReference(prefix, recordedAt),
 		ReferenceNumber:  financeVoucherReference(prefix, recordedAt),
 		Category:         category,
+		ApprovalStatus:   approvalStatus,
 		TransactionType:  transactionType,
 		ReferenceType:    "manual",
 		SourceType:       "manual",
@@ -1401,7 +1494,9 @@ func (a *App) createManualFinanceTransactionForAccount(category, personName, des
 		PaymentMethod:    financePaymentMethodForAccount(account.AccountType),
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
+		ApprovedByUserID: recordedByUserID,
 		RecordedAt:       recordedAt,
+		ApprovedAt:       recordedAt,
 	})
 	if err != nil {
 		return 0, err
@@ -1416,6 +1511,12 @@ func (a *App) createManualFinanceTransactionForAccount(category, personName, des
 }
 
 func (a *App) createManualFinanceTransaction(category, personName, description, paymentMethod string, amount float64, recordedAt time.Time, recordedByUserID int64) (int64, error) {
+	if err := validateFinanceRecordedAt(recordedAt, "transaction date"); err != nil {
+		return 0, err
+	}
+	if err := a.ensureFinanceDateUnlocked(recordedAt, "transaction date"); err != nil {
+		return 0, err
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -1437,6 +1538,7 @@ func (a *App) createManualFinanceTransaction(category, personName, description, 
 		ReceiptNumber:    financeVoucherReference(prefix, recordedAt),
 		ReferenceNumber:  financeVoucherReference(prefix, recordedAt),
 		Category:         category,
+		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  transactionType,
 		ReferenceType:    "manual",
 		SourceType:       "manual",
@@ -1446,7 +1548,9 @@ func (a *App) createManualFinanceTransaction(category, personName, description, 
 		PaymentMethod:    financePaymentMethodForAccount(account.AccountType),
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
+		ApprovedByUserID: recordedByUserID,
 		RecordedAt:       recordedAt,
+		ApprovedAt:       recordedAt,
 	})
 	if err != nil {
 		return 0, err
@@ -1469,6 +1573,9 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 		return "", errors.New("transfer amount must be greater than zero")
 	}
 	if err := validateFinanceRecordedAt(transferDate, "transfer date"); err != nil {
+		return "", err
+	}
+	if err := a.ensureFinanceDateUnlocked(transferDate, "transfer date"); err != nil {
 		return "", err
 	}
 	tx, err := a.db.Begin()
@@ -1518,6 +1625,7 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 		ReceiptNumber:    outReceipt,
 		ReferenceNumber:  referenceNumber,
 		Category:         "internal_transfer",
+		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  financeTxnTypeTransferOut,
 		ReferenceType:    "finance_transfer",
 		SourceType:       "finance_transfer",
@@ -1529,7 +1637,9 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 		PaymentMethod:    financePaymentMethodForAccount(fromAccount.AccountType),
 		Amount:           -amount,
 		RecordedByUserID: recordedByUserID,
+		ApprovedByUserID: recordedByUserID,
 		RecordedAt:       transferDate,
+		ApprovedAt:       transferDate,
 	}); err != nil {
 		return "", err
 	}
@@ -1537,6 +1647,7 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 		ReceiptNumber:    inReceipt,
 		ReferenceNumber:  referenceNumber,
 		Category:         "internal_transfer",
+		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  financeTxnTypeTransferIn,
 		ReferenceType:    "finance_transfer",
 		SourceType:       "finance_transfer",
@@ -1548,7 +1659,9 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 		PaymentMethod:    financePaymentMethodForAccount(toAccount.AccountType),
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
+		ApprovedByUserID: recordedByUserID,
 		RecordedAt:       transferDate,
+		ApprovedAt:       transferDate,
 	}); err != nil {
 		return "", err
 	}
@@ -1709,6 +1822,9 @@ func (a *App) createFinanceOpeningBalance(accountID int64, amount float64, recor
 	if err := validateFinanceRecordedAt(recordedAt, "opening balance date"); err != nil {
 		return 0, err
 	}
+	if err := a.ensureFinanceDateUnlocked(recordedAt, "opening balance date"); err != nil {
+		return 0, err
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -1716,7 +1832,7 @@ func (a *App) createFinanceOpeningBalance(accountID int64, amount float64, recor
 	defer tx.Rollback()
 	account, err := findFinanceAccountByIDQuery(tx, accountID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("load finance account for opening balance: %w", err)
 	}
 	var existingCount int
 	if err := tx.QueryRow(`
@@ -1745,6 +1861,7 @@ func (a *App) createFinanceOpeningBalance(accountID int64, amount float64, recor
 		ReceiptNumber:    financeVoucherReference("MKM-OPEN", recordedAt),
 		ReferenceNumber:  financeVoucherReference("MKM-OPEN", recordedAt),
 		Category:         "opening_balance",
+		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  financeTxnTypeOpeningBalance,
 		ReferenceType:    "finance_account",
 		ReferenceID:      account.ID,
@@ -1757,7 +1874,9 @@ func (a *App) createFinanceOpeningBalance(accountID int64, amount float64, recor
 		PaymentMethod:    financePaymentMethodForAccount(account.AccountType),
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
+		ApprovedByUserID: recordedByUserID,
 		RecordedAt:       recordedAt,
+		ApprovedAt:       recordedAt,
 	})
 	if err != nil {
 		return 0, err
@@ -1786,6 +1905,9 @@ func (a *App) createFinanceAdjustment(accountID int64, amount float64, recordedA
 	if err := validateFinanceRecordedAt(recordedAt, "adjustment date"); err != nil {
 		return 0, err
 	}
+	if err := a.ensureFinanceDateUnlocked(recordedAt, "adjustment date"); err != nil {
+		return 0, err
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -1809,6 +1931,7 @@ func (a *App) createFinanceAdjustment(accountID int64, amount float64, recordedA
 		ReceiptNumber:    financeVoucherReference("MKM-ADJ", recordedAt),
 		ReferenceNumber:  financeVoucherReference("MKM-ADJ", recordedAt),
 		Category:         "cash_adjustment",
+		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  financeTxnTypeAdjustment,
 		ReferenceType:    "finance_account",
 		ReferenceID:      account.ID,
@@ -1821,7 +1944,9 @@ func (a *App) createFinanceAdjustment(accountID int64, amount float64, recordedA
 		PaymentMethod:    financePaymentMethodForAccount(account.AccountType),
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
+		ApprovedByUserID: recordedByUserID,
 		RecordedAt:       recordedAt,
+		ApprovedAt:       recordedAt,
 	})
 	if err != nil {
 		return 0, err
@@ -1839,6 +1964,9 @@ func (a *App) createCashReconciliation(accountID int64, reconciliationDate strin
 		return 0, errors.New("a valid reconciliation date is required")
 	}
 	if err := validateFinanceRecordedAt(day, "reconciliation date"); err != nil {
+		return 0, err
+	}
+	if err := a.ensureFinanceDateUnlocked(day, "reconciliation date"); err != nil {
 		return 0, err
 	}
 	countedBalance = normalizeMoney(countedBalance)
@@ -2031,7 +2159,7 @@ func financeAccountDisplayBalance(accounts []FinanceAccount, transactions []Fina
 	}
 	total := 0.0
 	for _, transaction := range transactions {
-		if transaction.FinanceAccountID == accountID && !transaction.Voided {
+		if transaction.FinanceAccountID == accountID && listFinanceBalancesInclude(transaction) {
 			total = normalizeMoney(total + transaction.Amount)
 		}
 	}
@@ -2165,6 +2293,7 @@ func (a *App) createFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	accountID, err := a.createFinanceAccount(
+		strings.TrimSpace(r.FormValue("account_code")),
 		strings.TrimSpace(r.FormValue("name")),
 		strings.ToLower(strings.TrimSpace(r.FormValue("account_type"))),
 		strings.TrimSpace(r.FormValue("description")),
@@ -2200,6 +2329,7 @@ func (a *App) updateFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 	accountID := parseInt64Query(r.FormValue("account_id"))
 	err := a.updateFinanceAccount(
 		accountID,
+		strings.TrimSpace(r.FormValue("account_code")),
 		strings.TrimSpace(r.FormValue("name")),
 		strings.ToLower(strings.TrimSpace(r.FormValue("account_type"))),
 		strings.TrimSpace(r.FormValue("description")),
@@ -2445,6 +2575,61 @@ func (a *App) voidFinanceTransferHandler(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, "/admin/finance/transfers", http.StatusSeeOther)
 }
 
+func (a *App) approveFinanceTransactionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	transactionID := parseInt64Query(r.FormValue("transaction_id"))
+	if err := a.approveFinanceTransaction(transactionID, currentUser.ID); err != nil {
+		a.setFlash(w, "Finance transaction could not be approved: "+err.Error())
+		http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Finance transaction approved and posted to the ledger.")
+	http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+}
+
+func (a *App) updateFinancePeriodLockHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	if err := a.updateFinancePeriodLock(strings.TrimSpace(r.FormValue("locked_until")), strings.TrimSpace(r.FormValue("notes")), currentUser.ID); err != nil {
+		a.setFlash(w, "Finance period lock could not be updated: "+err.Error())
+		http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "Finance period controls updated.")
+	http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+}
+
 func (a *App) voidCashReconciliationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2536,7 +2721,7 @@ func (a *App) financeAccountStatementHandler(w http.ResponseWriter, r *http.Requ
 	data.StatementOpeningBalance = statement.OpeningBalance
 	data.StatementClosingBalance = statement.ClosingBalance
 	for _, row := range statement.Rows {
-		if row.Voided {
+		if !financeTransactionPosted(row) {
 			continue
 		}
 		data.StatementMoneyIn += row.MoneyIn

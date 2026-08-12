@@ -750,7 +750,7 @@ func buildFinanceStats(transactions []FinanceTransaction) []Stat {
 	referralPayouts := 0.0
 
 	for _, transaction := range transactions {
-		if transaction.Voided {
+		if !financeTransactionPosted(transaction) {
 			continue
 		}
 		totalIncome += transaction.Amount
@@ -830,7 +830,7 @@ func buildFinanceSummary(accounts []FinanceAccount, transactions []FinanceTransa
 	summary.BankBalance = financeAccountDisplayBalance(accounts, transactions, financeAccountMainBank)
 	summary.TotalAvailableFunds = normalizeMoney(summary.CashBalance + summary.BankBalance)
 	for _, transaction := range transactions {
-		if transaction.Voided {
+		if !financeTransactionPosted(transaction) {
 			continue
 		}
 		switch transaction.TransactionType {

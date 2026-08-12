@@ -249,6 +249,7 @@
       <article class="rounded-[1.35rem] border {{financeAccountTone .AccountType}} p-4">
         <div class="flex items-start justify-between gap-3">
           <div>
+            <p class="font-mono text-xs font-bold uppercase tracking-[0.16em] text-slate/45">{{.AccountCode}}</p>
             <p class="text-sm font-semibold text-obsidian">{{.Name}}</p>
             <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate/55">{{financeAccountTypeLabel .AccountType}}</p>
             <p class="mt-3 text-2xl font-semibold text-obsidian">{{money .CurrentBalance}}</p>
@@ -268,6 +269,9 @@
           <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
           <input type="hidden" name="account_id" value="{{.ID}}">
           <div class="grid gap-3 sm:grid-cols-2">
+            <label class="text-xs font-medium text-slate/60">Account code
+              <input name="account_code" value="{{.AccountCode}}" {{if .IsSystem}}readonly{{end}} class="mt-1 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 font-mono text-sm uppercase outline-none focus:border-aqua {{if .IsSystem}}cursor-not-allowed bg-cloud/70{{end}}">
+            </label>
             <label class="text-xs font-medium text-slate/60">Account name
               <input name="name" value="{{.Name}}" {{if .IsSystem}}readonly{{end}} class="mt-1 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua {{if .IsSystem}}cursor-not-allowed bg-cloud/70{{end}}">
             </label>
@@ -305,6 +309,7 @@
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <p class="text-sm font-semibold text-obsidian">New account</p>
         <div class="mt-3 grid gap-3">
+          <input name="account_code" maxlength="32" placeholder="CASH-002" class="h-11 rounded-xl border border-slate/10 bg-white px-3 font-mono text-sm uppercase outline-none focus:border-aqua">
           <input name="name" required maxlength="120" placeholder="Account name" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
           <select name="account_type" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
             <option value="cash">Cash</option>
