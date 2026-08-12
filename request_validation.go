@@ -367,6 +367,21 @@ func validateStudentGroupSessions(sessions []StudentGroupSession) error {
 	return nil
 }
 
+func validateCourt(court Court) error {
+	switch {
+	case strings.TrimSpace(court.Name) == "":
+		return errors.New("court name is required")
+	case strings.TrimSpace(court.Code) == "":
+		return errors.New("court code is required")
+	case strings.TrimSpace(court.Description) == "":
+		return errors.New("description is required")
+	case court.SortOrder < 0:
+		return errors.New("display order must be zero or greater")
+	default:
+		return nil
+	}
+}
+
 func validatePricingRule(rule PricingRule) error {
 	switch {
 	case rule.Activity == "":

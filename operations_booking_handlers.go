@@ -248,6 +248,11 @@ func (a *App) courtManagementHandler(
 	data.Title = "Court Manager"
 	data.Description = "Manage court activities and simultaneous-use configurations."
 	data.Courts = courts
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("court_action")))
+	switch mode {
+	case "new", "edit":
+		data.CourtMode = mode
+	}
 
 	courtID, err := strconv.ParseInt(
 		strings.TrimSpace(r.URL.Query().Get("court_id")),
@@ -364,12 +369,121 @@ func (a *App) courtManagementHandler(
 		}
 	}
 
+	if data.CourtMode == "edit" && data.SelectedCourt == nil {
+		data.CourtMode = ""
+	}
+
 	a.render(
 		w,
 		"court-management",
 		data,
 		http.StatusOK,
 	)
+}
+
+func courtFromRequest(r *http.Request) (Court, error) {
+	var court Court
+
+	court.Name = strings.TrimSpace(r.FormValue("name"))
+	court.Code = strings.ToUpper(strings.TrimSpace(r.FormValue("code")))
+	court.Description = strings.TrimSpace(r.FormValue("description"))
+	court.Active = r.FormValue("active") == "true"
+	sortOrder, err := strconv.Atoi(strings.TrimSpace(r.FormValue("sort_order")))
+	if err != nil {
+		return court, errors.New("display order must be a valid number")
+	}
+	court.SortOrder = sortOrder
+
+	if err := validateCourt(court); err != nil {
+		return court, err
+	}
+
+	return court, nil
+}
+
+func (a *App) createCourtHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	court, err := courtFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, "/admin/courts?court_action=new#court-form", http.StatusSeeOther)
+		return
+	}
+
+	courtID, err := a.createCourt(court)
+	if err != nil {
+		log.Printf("create court: %v", err)
+		if isUniqueConstraintError(err) {
+			a.setFlash(w, "Court code must be unique.")
+			http.Redirect(w, r, "/admin/courts?court_action=new#court-form", http.StatusSeeOther)
+			return
+		}
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Court created successfully.")
+	http.Redirect(w, r, "/admin/courts?court_id="+strconv.FormatInt(courtID, 10), http.StatusSeeOther)
+}
+
+func (a *App) updateCourtHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	courtID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("court_id")), 10, 64)
+	if err != nil || courtID <= 0 {
+		http.Error(w, "invalid court", http.StatusBadRequest)
+		return
+	}
+
+	court, err := courtFromRequest(r)
+	if err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, "/admin/courts?court_id="+strconv.FormatInt(courtID, 10)+"&court_action=edit#court-form", http.StatusSeeOther)
+		return
+	}
+	court.ID = courtID
+
+	if err := a.updateCourt(court); err != nil {
+		log.Printf("update court: %v", err)
+		if isUniqueConstraintError(err) {
+			a.setFlash(w, "Court code must be unique.")
+			http.Redirect(w, r, "/admin/courts?court_id="+strconv.FormatInt(courtID, 10)+"&court_action=edit#court-form", http.StatusSeeOther)
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Court not found.")
+			http.Redirect(w, r, "/admin/courts", http.StatusSeeOther)
+			return
+		}
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Court updated successfully.")
+	http.Redirect(w, r, "/admin/courts?court_id="+strconv.FormatInt(courtID, 10), http.StatusSeeOther)
 }
 
 func (a *App) createCourtLayoutHandler(

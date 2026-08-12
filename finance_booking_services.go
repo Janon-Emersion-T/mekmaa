@@ -1421,6 +1421,67 @@ func (a *App) createCourtLayout(
 	return layoutID, nil
 }
 
+func (a *App) createCourt(court Court) (int64, error) {
+	now := time.Now().UTC()
+	result, err := a.db.Exec(`
+		INSERT INTO courts (
+			name,
+			code,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		court.Name,
+		court.Code,
+		court.Description,
+		boolToInt(court.Active),
+		court.SortOrder,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (a *App) updateCourt(court Court) error {
+	result, err := a.db.Exec(`
+		UPDATE courts
+		SET
+			name = ?,
+			code = ?,
+			description = ?,
+			active = ?,
+			sort_order = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		court.Name,
+		court.Code,
+		court.Description,
+		boolToInt(court.Active),
+		court.SortOrder,
+		time.Now().UTC(),
+		court.ID,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (a *App) updateCourtLayout(
 	layout CourtLayout,
 ) error {

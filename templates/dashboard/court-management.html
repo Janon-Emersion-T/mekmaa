@@ -20,6 +20,7 @@
       </div>
 
       <div class="grid grid-cols-2 gap-3 sm:flex">
+        <a href="/admin/courts?court_action=new#court-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-semibold text-cloud transition hover:bg-slate">Add court</a>
         <div class="rounded-2xl border border-slate/10 bg-cloud px-4 py-3 text-center sm:min-w-[8rem]">
           <p class="text-xs uppercase tracking-[0.16em] text-slate/45">
             Courts
@@ -42,6 +43,56 @@
       </div>
     </div>
   </div>
+
+  {{if eq .CourtMode "new"}}
+  <div id="court-form" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">New court</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian sm:text-2xl">Create a named court or net</h2>
+      </div>
+      <a href="/admin/courts" class="text-sm font-semibold text-slate/60 transition hover:text-obsidian">Close</a>
+    </div>
+
+    <form action="/admin/courts/create" method="post" class="mt-6 space-y-5">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="grid gap-2">
+          <span class="text-sm font-semibold text-obsidian">Court name</span>
+          <input type="text" name="name" maxlength="120" required placeholder="Example: Cricket Net 1" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+        </label>
+
+        <label class="grid gap-2">
+          <span class="text-sm font-semibold text-obsidian">Court code</span>
+          <input type="text" name="code" maxlength="40" required placeholder="NET_1" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm uppercase outline-none transition focus:border-aqua" />
+        </label>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="grid gap-2">
+          <span class="text-sm font-semibold text-obsidian">Display order</span>
+          <input type="number" name="sort_order" value="100" min="0" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+        </label>
+
+        <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-cloud/45 p-4">
+          <input type="checkbox" name="active" value="true" checked class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua" />
+          <span>
+            <span class="block text-sm font-semibold text-obsidian">Active court</span>
+            <span class="mt-1 block text-xs leading-5 text-slate/55">Inactive courts stay in history but are not available for scheduling.</span>
+          </span>
+        </label>
+      </div>
+
+      <label class="grid gap-2">
+        <span class="text-sm font-semibold text-obsidian">Description</span>
+        <textarea name="description" rows="3" maxlength="500" required placeholder="Example: Dedicated lane for cricket net practice." class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-aqua"></textarea>
+      </label>
+
+      <button type="submit" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-semibold text-cloud transition hover:bg-slate">Create court</button>
+    </form>
+  </div>
+  {{end}}
 
   {{if .Courts}}
   <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
@@ -113,7 +164,62 @@
             </p>
           </div>
         </div>
+
+        <div class="mt-6 flex justify-end">
+          <a href="/admin/courts?court_id={{.SelectedCourt.ID}}&court_action=edit#court-form" class="inline-flex items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit court details</a>
+        </div>
       </div>
+
+      {{if eq .CourtMode "edit"}}
+      <div id="court-form" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Edit court</p>
+            <h2 class="mt-2 text-xl font-semibold text-obsidian">Rename or update this court</h2>
+          </div>
+          <a href="/admin/courts?court_id={{.SelectedCourt.ID}}" class="text-sm font-semibold text-slate/60 transition hover:text-obsidian">Close</a>
+        </div>
+
+        <form action="/admin/courts/update" method="post" class="mt-6 space-y-5">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <input type="hidden" name="court_id" value="{{.SelectedCourt.ID}}" />
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="grid gap-2">
+              <span class="text-sm font-semibold text-obsidian">Court name</span>
+              <input type="text" name="name" maxlength="120" required value="{{.SelectedCourt.Name}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+            </label>
+
+            <label class="grid gap-2">
+              <span class="text-sm font-semibold text-obsidian">Court code</span>
+              <input type="text" name="code" maxlength="40" required value="{{.SelectedCourt.Code}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm uppercase outline-none transition focus:border-aqua" />
+            </label>
+          </div>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="grid gap-2">
+              <span class="text-sm font-semibold text-obsidian">Display order</span>
+              <input type="number" name="sort_order" min="0" required value="{{.SelectedCourt.SortOrder}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+            </label>
+
+            <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-cloud/45 p-4">
+              <input type="checkbox" name="active" value="true" {{if .SelectedCourt.Active}}checked{{end}} class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua" />
+              <span>
+                <span class="block text-sm font-semibold text-obsidian">Active court</span>
+                <span class="mt-1 block text-xs leading-5 text-slate/55">Turn this off if the court/net should no longer be used for new scheduling.</span>
+              </span>
+            </label>
+          </div>
+
+          <label class="grid gap-2">
+            <span class="text-sm font-semibold text-obsidian">Description</span>
+            <textarea name="description" rows="3" maxlength="500" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-aqua">{{.SelectedCourt.Description}}</textarea>
+          </label>
+
+          <button type="submit" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-semibold text-cloud transition hover:bg-slate">Save court</button>
+        </form>
+      </div>
+      {{end}}
 
       <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
         <div>

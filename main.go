@@ -282,6 +282,24 @@ func main() {
 		),
 	)
 	mux.Handle(
+		"/admin/courts/create",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.createCourtHandler),
+				"courts.manage",
+			),
+		),
+	)
+	mux.Handle(
+		"/admin/courts/update",
+		app.sessionMiddleware(
+			app.requirePermission(
+				http.HandlerFunc(app.updateCourtHandler),
+				"courts.manage",
+			),
+		),
+	)
+	mux.Handle(
 		"/admin/courts/layouts/create",
 		app.sessionMiddleware(
 			app.requirePermission(
