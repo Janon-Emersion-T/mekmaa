@@ -81,6 +81,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	needTransfers := page == "transfers"
 	needReconciliations := page == "reconciliations"
 	needCategories := page == "ledger" || page == "categories" || page == "profit-loss"
+	needWorkflowOptions := page == "ledger"
 
 	var allTransactions []FinanceTransaction
 	var allMonthlyRows []StudentPaymentRow
@@ -102,6 +103,27 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 			return data, err
 		}
 		data.FinanceCategories = categories
+	}
+
+	if needWorkflowOptions {
+		trainingPrograms, err := a.listTrainingPrograms(true)
+		if err != nil {
+			log.Printf("finance %s load failed: op=list training programs duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.TrainingPrograms = trainingPrograms
+		activities, err := a.listFinanceBookingActivities()
+		if err != nil {
+			log.Printf("finance %s load failed: op=list booking activities duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.CourtActivities = activities
+		offerings, err := a.listOneToOneOfferings(true)
+		if err != nil {
+			log.Printf("finance %s load failed: op=list one-to-one offerings duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.OneToOneOfferings = offerings
 	}
 
 	if needAllTransactions {

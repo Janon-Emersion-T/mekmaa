@@ -517,6 +517,9 @@ type FinanceTransaction struct {
 	TransferGroupID    string
 	StudentName        string
 	TrainingProgramName string
+	BookingActivity    string
+	OneToOneOfferingID int64
+	OneToOneOfferingName string
 	PersonName         string
 	Description        string
 	Notes              string
@@ -663,6 +666,9 @@ type FinanceFilter struct {
 	PaymentMethods  []string
 	ApprovalStatuses []string
 	DetailMode      string
+	TrainingProgramIDs []int64
+	BookingActivities  []string
+	OneToOneOfferingIDs []int64
 	RecordedUserID  int64
 	Status          string
 	Reference       string

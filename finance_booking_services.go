@@ -69,6 +69,9 @@ func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter Fin
 			&transaction.TransferGroupID,
 			&transaction.StudentName,
 			&transaction.TrainingProgramName,
+			&transaction.BookingActivity,
+			&transaction.OneToOneOfferingID,
+			&transaction.OneToOneOfferingName,
 			&transaction.PersonName,
 			&transaction.Description,
 			&transaction.Notes,
@@ -144,6 +147,9 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		       	WHEN ft.source_type = 'student_monthly_payment' THEN COALESCE(smp_tp.name, tp.name, adm_tp.name)
 		       	ELSE ''
 		       END, ''),
+		       COALESCE(ss.activity, ''),
+		       COALESCE(o2oo.id, 0),
+		       COALESCE(o2oo.name, ''),
 		       ft.person_name,
 		       ft.description,
 		       COALESCE(ft.notes, ''),
@@ -252,6 +258,24 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 			args = append(args, value)
 		}
 	}
+	if len(filter.TrainingProgramIDs) > 0 {
+		query += ` AND ` + financeInt64InClause("COALESCE(smp_se.training_program_id, se.training_program_id, adm.training_program_id, 0)", len(filter.TrainingProgramIDs))
+		for _, value := range filter.TrainingProgramIDs {
+			args = append(args, value)
+		}
+	}
+	if len(filter.BookingActivities) > 0 {
+		query += ` AND ` + financeStringInClause("LOWER(COALESCE(ss.activity, ''))", len(filter.BookingActivities))
+		for _, value := range filter.BookingActivities {
+			args = append(args, strings.ToLower(value))
+		}
+	}
+	if len(filter.OneToOneOfferingIDs) > 0 {
+		query += ` AND ` + financeInt64InClause("COALESCE(o2oo.id, 0)", len(filter.OneToOneOfferingIDs))
+		for _, value := range filter.OneToOneOfferingIDs {
+			args = append(args, value)
+		}
+	}
 	if filter.RecordedUserID > 0 {
 		query += ` AND ft.recorded_by_user_id = ?`
 		args = append(args, filter.RecordedUserID)
@@ -305,6 +329,40 @@ func financeStringInClause(column string, size int) string {
 
 func financeInt64InClause(column string, size int) string {
 	return financeStringInClause(column, size)
+}
+
+func (a *App) listFinanceBookingActivities() ([]CourtActivity, error) {
+	rows, err := a.db.Query(`
+		SELECT activity, MAX(display_name)
+		FROM (
+			SELECT activity, COALESCE(NULLIF(display_name, ''), '') AS display_name
+			FROM court_activities
+			WHERE COALESCE(active, 1) = 1
+			UNION ALL
+			SELECT activity, ''
+			FROM space_schedules
+			WHERE entry_type = 'booking'
+		)
+		WHERE TRIM(COALESCE(activity, '')) <> ''
+		GROUP BY activity
+		ORDER BY activity ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var activities []CourtActivity
+	for rows.Next() {
+		var item CourtActivity
+		if err := rows.Scan(&item.Activity, &item.DisplayName); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(item.DisplayName) == "" {
+			item.DisplayName = activityLabel(item.Activity)
+		}
+		activities = append(activities, item)
+	}
+	return activities, rows.Err()
 }
 
 func (a *App) countFinanceTransactions(ctx context.Context, filter FinanceFilter) (int, error) {

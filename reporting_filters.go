@@ -289,6 +289,9 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 		PaymentMethods:    normalizeStringFilterValues(query["payment_method"], normalizePaymentMethod),
 		ApprovalStatuses:  normalizeStringFilterValues(query["approval_status"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
 		DetailMode:        strings.ToLower(strings.TrimSpace(query.Get("detail_mode"))),
+		TrainingProgramIDs: normalizeInt64FilterValues(query["training_program_id"]),
+		BookingActivities:  normalizeStringFilterValues(query["booking_activity"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
+		OneToOneOfferingIDs: normalizeInt64FilterValues(query["one_to_one_offering_id"]),
 		RecordedUserID:    parseInt64Query(query.Get("recorded_user_id")),
 		Status:            strings.ToLower(strings.TrimSpace(query.Get("status"))),
 		Reference:         strings.TrimSpace(query.Get("reference")),
@@ -480,6 +483,15 @@ func financeFilterExportURL(filter FinanceFilter) string {
 	}
 	if filter.DetailMode != "" {
 		query.Set("detail_mode", filter.DetailMode)
+	}
+	for _, value := range filter.TrainingProgramIDs {
+		query.Add("training_program_id", strconv.FormatInt(value, 10))
+	}
+	for _, value := range filter.BookingActivities {
+		query.Add("booking_activity", value)
+	}
+	for _, value := range filter.OneToOneOfferingIDs {
+		query.Add("one_to_one_offering_id", strconv.FormatInt(value, 10))
 	}
 	if filter.RecordedUserID > 0 {
 		query.Set("recorded_user_id", strconv.FormatInt(filter.RecordedUserID, 10))

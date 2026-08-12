@@ -81,7 +81,44 @@
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Ledger</p>
         <h2 class="mt-2 text-xl font-semibold text-obsidian">Account-linked transaction history</h2>
       </div>
-      <form method="get" action="/admin/finance/ledger" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-8">
+      <form method="get" action="/admin/finance/ledger" class="grid gap-4">
+        <div class="grid gap-3 xl:grid-cols-4">
+          <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-3">
+            <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Income · Students</p>
+            <label class="mt-2 block text-xs font-medium text-slate/60">Training programmes
+              <select name="training_program_id" multiple size="5" class="mt-2 min-h-[8rem] w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua">
+                {{range .TrainingPrograms}}
+                <option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.TrainingProgramIDs .ID}}selected{{end}}>{{.Name}}</option>
+                {{end}}
+              </select>
+            </label>
+          </article>
+          <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-3">
+            <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Income · Bookings</p>
+            <label class="mt-2 block text-xs font-medium text-slate/60">Games / court activities
+              <select name="booking_activity" multiple size="5" class="mt-2 min-h-[8rem] w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua">
+                {{range .CourtActivities}}
+                <option value="{{.Activity}}" {{if contains $.FinanceFilter.BookingActivities .Activity}}selected{{end}}>{{.DisplayName}}</option>
+                {{end}}
+              </select>
+            </label>
+          </article>
+          <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-3">
+            <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Income · 1 to 1</p>
+            <label class="mt-2 block text-xs font-medium text-slate/60">1 to 1 offerings
+              <select name="one_to_one_offering_id" multiple size="5" class="mt-2 min-h-[8rem] w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua">
+                {{range .OneToOneOfferings}}
+                <option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.OneToOneOfferingIDs .ID}}selected{{end}}>{{.Name}}</option>
+                {{end}}
+              </select>
+            </label>
+          </article>
+          <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-3">
+            <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Expense workflow</p>
+            <p class="mt-2 text-xs leading-5 text-slate/55">Use the category multi-select below to isolate expense groups and see how much each category reduced net income in the selected period.</p>
+          </article>
+        </div>
+        <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-8">
         <input name="search" value="{{.FinanceFilter.Search}}" placeholder="Reference, party, booking, student, programme" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua xl:col-span-2">
         <input name="reference" value="{{.FinanceFilter.Reference}}" placeholder="Voucher or receipt" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
         <input name="from" type="date" value="{{.FinanceFilter.From}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
@@ -158,6 +195,7 @@
         </select>
         <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-semibold text-cloud transition hover:bg-slate">Apply</button>
         <a href="/admin/finance/ledger#ledger" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Clear</a>
+        </div>
       </form>
       <p class="text-xs text-slate/50">Use Ctrl or Cmd while clicking to select more than one account, category, source, payment method, or reference type.</p>
     </div>
@@ -261,6 +299,8 @@
               <p>Source type: {{.SourceType}}{{if gt .SourceID 0}} · ID {{.SourceID}}{{end}}</p>
               {{if .StudentName}}<p>Student: {{.StudentName}}</p>{{end}}
               {{if .TrainingProgramName}}<p>Training programme: {{.TrainingProgramName}}</p>{{end}}
+              {{if .BookingActivity}}<p>Booking game: {{activityLabel .BookingActivity}}</p>{{end}}
+              {{if .OneToOneOfferingName}}<p>1 to 1 offering: {{.OneToOneOfferingName}}</p>{{end}}
               {{if .TransferGroupID}}<p>Transfer group: {{.TransferGroupID}}</p>{{end}}
             </div>
             {{end}}
@@ -285,6 +325,8 @@
             <p>{{.ReferenceType}}{{if gt .ReferenceID 0}} #{{.ReferenceID}}{{end}}</p>
             <p class="mt-1">{{.SourceType}}{{if gt .SourceID 0}} #{{.SourceID}}{{end}}</p>
             {{if .TrainingProgramName}}<p class="mt-1">{{.TrainingProgramName}}</p>{{end}}
+            {{if .BookingActivity}}<p class="mt-1">{{activityLabel .BookingActivity}}</p>{{end}}
+            {{if .OneToOneOfferingName}}<p class="mt-1">{{.OneToOneOfferingName}}</p>{{end}}
           </td>
           {{end}}
           <td class="px-5 py-4">
@@ -342,6 +384,8 @@
             <p>Source: {{.SourceType}}{{if gt .SourceID 0}} #{{.SourceID}}{{end}}</p>
             {{if .StudentName}}<p>Student: {{.StudentName}}</p>{{end}}
             {{if .TrainingProgramName}}<p>Training programme: {{.TrainingProgramName}}</p>{{end}}
+            {{if .BookingActivity}}<p>Booking game: {{activityLabel .BookingActivity}}</p>{{end}}
+            {{if .OneToOneOfferingName}}<p>1 to 1 offering: {{.OneToOneOfferingName}}</p>{{end}}
             <p>{{if .RecordedByUserName}}Recorded by {{.RecordedByUserName}}{{else}}Recorded by system{{end}}{{if .ApprovedByUserName}} · Approved by {{.ApprovedByUserName}}{{end}}</p>
           </div>
           {{end}}
