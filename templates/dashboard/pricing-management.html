@@ -46,6 +46,22 @@
         </div>
       </div>
 
+      {{if not .BookingOptions}}
+      <div class="mt-6 rounded-3xl border border-dashed border-slate/20 bg-cloud/60 p-5 sm:p-6">
+        <p class="text-sm font-semibold text-obsidian">Pricing is empty because no pricing-ready court activities exist yet.</p>
+        <p class="mt-2 text-sm leading-6 text-slate/65">Create court activities and at least one valid layout in <a href="/admin/courts" class="font-semibold text-obsidian underline decoration-aqua/50 underline-offset-4">court manager</a>. As soon as a public game has a usable activity and layout capacity, it will become available here automatically.</p>
+      </div>
+      {{else}}
+      <div class="mt-6 rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Pricing-ready options</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {{range .BookingOptions}}
+          <span class="rounded-full border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate">{{bookingProductLabelForGames $.Games .Activity .Quantity}}</span>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+
       {{if .PricingSettings}}
       <div class="mt-6 rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -71,13 +87,18 @@
         </div>
         <form action="/admin/pricing/create" method="post" class="mt-5 grid gap-3">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-          <select name="game_id" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+          <select id="pricing-game-create" name="game_id" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
             <option value="">Select game</option>
             {{range .Games}}
-            <option value="{{.ID}}">{{.Name}}</option>
+            <option value="{{.ID}}" data-activity="{{.Activity}}">{{.Name}}</option>
             {{end}}
           </select>
-          <input type="number" name="quantity" min="1" max="3" placeholder="Quantity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <select id="pricing-quantity-create" name="quantity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+            <option value="">Select quantity</option>
+            {{range .BookingOptions}}
+            <option value="{{.Quantity}}" data-activity="{{.Activity}}">{{bookingProductLabelForGames $.Games .Activity .Quantity}}</option>
+            {{end}}
+          </select>
           <input type="number" step="0.01" min="0" name="weekday_offpeak_price" placeholder="Weekday off-peak" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
           <input type="number" step="0.01" min="0" name="weekday_peak_price" placeholder="Weekday peak" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
           <input type="number" step="0.01" min="0" name="weekend_offpeak_price" placeholder="Weekend off-peak" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
@@ -133,15 +154,20 @@
           <input type="hidden" name="pricing_id" value="{{.SelectedPricing.ID}}" />
           <label class="grid gap-2">
             <span class="text-sm font-medium text-obsidian">Activity</span>
-            <select name="game_id" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+            <select id="pricing-game-edit" name="game_id" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
               {{range .Games}}
-              <option value="{{.ID}}" {{if eq $.SelectedPricing.GameID .ID}}selected{{end}}>{{.Name}}</option>
+              <option value="{{.ID}}" data-activity="{{.Activity}}" {{if eq $.SelectedPricing.GameID .ID}}selected{{end}}>{{.Name}}</option>
               {{end}}
             </select>
           </label>
           <label class="grid gap-2">
             <span class="text-sm font-medium text-obsidian">Quantity</span>
-            <input type="number" name="quantity" min="1" max="3" value="{{.SelectedPricing.Quantity}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            <select id="pricing-quantity-edit" name="quantity" data-selected-quantity="{{.SelectedPricing.Quantity}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+              <option value="">Select quantity</option>
+              {{range .BookingOptions}}
+              <option value="{{.Quantity}}" data-activity="{{.Activity}}" {{if and (eq $.SelectedPricing.Activity .Activity) (eq $.SelectedPricing.Quantity .Quantity)}}selected{{end}}>{{bookingProductLabelForGames $.Games .Activity .Quantity}}</option>
+              {{end}}
+            </select>
           </label>
           <label class="grid gap-2">
             <span class="text-sm font-medium text-obsidian">Weekday Off-peak Price</span>
@@ -214,4 +240,54 @@
     </div>
   </div>
 </section>
+
+<script>
+  (function () {
+    function bindPricingQuantity(gameSelectId, quantitySelectId) {
+      const gameSelect = document.getElementById(gameSelectId);
+      const quantitySelect = document.getElementById(quantitySelectId);
+      if (!gameSelect || !quantitySelect) return;
+
+      const baseOptions = Array.from(quantitySelect.querySelectorAll("option")).map((option) => ({
+        value: option.value,
+        label: option.textContent,
+        activity: option.dataset.activity || "",
+      }));
+      const selectedQuantity = quantitySelect.dataset.selectedQuantity || quantitySelect.value;
+
+      function rebuild() {
+        const activity = gameSelect.options[gameSelect.selectedIndex]?.dataset.activity || "";
+        quantitySelect.innerHTML = "";
+
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = activity ? "Select quantity" : "Select game first";
+        quantitySelect.appendChild(placeholder);
+
+        baseOptions.forEach((option) => {
+          if (!option.value || option.activity !== activity) return;
+          const node = document.createElement("option");
+          node.value = option.value;
+          node.textContent = option.label;
+          if (option.value === selectedQuantity || option.value === quantitySelect.dataset.currentValue) {
+            node.selected = true;
+          }
+          quantitySelect.appendChild(node);
+        });
+
+        quantitySelect.disabled = !activity;
+      }
+
+      gameSelect.addEventListener("change", function () {
+        quantitySelect.dataset.currentValue = "";
+        rebuild();
+      });
+
+      rebuild();
+    }
+
+    bindPricingQuantity("pricing-game-create", "pricing-quantity-create");
+    bindPricingQuantity("pricing-game-edit", "pricing-quantity-edit");
+  })();
+</script>
 {{end}}

@@ -1369,9 +1369,6 @@ ON court_closures(activity, active, closure_date)`,
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_admissions_student_id ON admissions(student_id)`); err != nil {
 		return err
 	}
-	if err := seedPricingRules(db); err != nil {
-		return err
-	}
 	if err := seedAdmissionPricing(db); err != nil {
 		return err
 	}

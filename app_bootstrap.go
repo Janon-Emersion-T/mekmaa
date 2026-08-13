@@ -1497,6 +1497,8 @@ type TemplateData struct {
 	SelectedCourt                   *Court
 	CourtMode                       string
 	CourtActivities                 []CourtActivity
+	SelectedCourtActivity           *CourtActivity
+	CourtActivityMode               string
 	Games                           []Game
 	SelectedGame                    *Game
 	GameMode                        string

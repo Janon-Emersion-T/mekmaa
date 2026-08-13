@@ -1426,6 +1426,48 @@ func (a *App) listCourtActivities(
 	return activities, nil
 }
 
+func (a *App) findCourtActivityByID(
+	activityID int64,
+) (*CourtActivity, error) {
+	var activity CourtActivity
+	var autoAccept int
+
+	err := a.db.QueryRow(`
+		SELECT
+			id,
+			court_id,
+			COALESCE(game_id, 0),
+			activity,
+			display_name,
+			max_quantity,
+			auto_accept,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM court_activities
+		WHERE id = ?
+	`, activityID).Scan(
+		&activity.ID,
+		&activity.CourtID,
+		&activity.GameID,
+		&activity.Activity,
+		&activity.DisplayName,
+		&activity.MaxQuantity,
+		&autoAccept,
+		&activity.Active,
+		&activity.SortOrder,
+		&activity.CreatedAt,
+		&activity.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	activity.AutoAccept = autoAccept == 1
+	return &activity, nil
+}
+
 func (a *App) listCourtLayouts(
 	courtID int64,
 	includeInactive bool,
@@ -1790,6 +1832,7 @@ func activeBookingConfigurationQuery(
 		SELECT
 			ca.id,
 			ca.court_id,
+			COALESCE(ca.game_id, 0),
 			ca.activity,
 			ca.display_name,
 			ca.max_quantity,
@@ -1820,6 +1863,7 @@ func activeBookingConfigurationQuery(
 		if err := activitiesRows.Scan(
 			&activity.ID,
 			&activity.CourtID,
+			&activity.GameID,
 			&activity.Activity,
 			&activity.DisplayName,
 			&activity.MaxQuantity,

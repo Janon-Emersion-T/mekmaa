@@ -556,6 +556,105 @@ func validateCourt(court Court) error {
 	}
 }
 
+func courtActivityFromRequest(
+	r *http.Request,
+	games []Game,
+) (CourtActivity, error) {
+	courtID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("court_id")),
+		10,
+		64,
+	)
+	if err != nil || courtID <= 0 {
+		return CourtActivity{}, errors.New("valid court is required")
+	}
+
+	maxQuantity, err := strconv.Atoi(
+		strings.TrimSpace(r.FormValue("max_quantity")),
+	)
+	if err != nil {
+		return CourtActivity{}, errors.New("valid maximum quantity is required")
+	}
+
+	sortOrder, err := strconv.Atoi(
+		strings.TrimSpace(r.FormValue("sort_order")),
+	)
+	if err != nil {
+		return CourtActivity{}, errors.New("valid sort order is required")
+	}
+
+	activityType := strings.ToLower(
+		strings.TrimSpace(r.FormValue("activity_type")),
+	)
+
+	activity := CourtActivity{
+		CourtID:     courtID,
+		DisplayName: strings.TrimSpace(r.FormValue("display_name")),
+		MaxQuantity: maxQuantity,
+		AutoAccept:  r.FormValue("auto_accept") == "1",
+		Active:      r.FormValue("active") == "1",
+		SortOrder:   sortOrder,
+	}
+
+	switch activityType {
+	case "training":
+		activity.Activity = "training"
+		activity.GameID = 0
+		if activity.DisplayName == "" {
+			activity.DisplayName = "Training"
+		}
+	case "game":
+		gameID, err := strconv.ParseInt(
+			strings.TrimSpace(r.FormValue("game_id")),
+			10,
+			64,
+		)
+		if err != nil || gameID <= 0 {
+			return CourtActivity{}, errors.New("valid game is required")
+		}
+
+		var selectedGame *Game
+		for i := range games {
+			if games[i].ID == gameID {
+				selectedGame = &games[i]
+				break
+			}
+		}
+		if selectedGame == nil {
+			return CourtActivity{}, errors.New("selected game was not found")
+		}
+
+		activity.GameID = selectedGame.ID
+		activity.Activity = selectedGame.Activity
+		if activity.DisplayName == "" {
+			activity.DisplayName = selectedGame.Name
+		}
+	default:
+		return CourtActivity{}, errors.New("valid activity type is required")
+	}
+
+	return activity, nil
+}
+
+func validateCourtActivity(activity CourtActivity) error {
+	switch {
+	case activity.CourtID <= 0:
+		return errors.New("court is required")
+	case strings.TrimSpace(activity.Activity) == "":
+		return errors.New("activity is required")
+	case strings.TrimSpace(activity.DisplayName) == "":
+		return errors.New("display name is required")
+	case activity.MaxQuantity <= 0:
+		return errors.New("maximum quantity must be at least 1")
+	case activity.SortOrder < 0:
+		return errors.New("sort order must be zero or greater")
+	case activity.Activity == "training" && activity.GameID > 0:
+		return errors.New("training cannot be linked to a public game")
+	default:
+		return nil
+	}
+}
+
 func validatePricingRule(rule PricingRule) error {
 	switch {
 	case rule.GameID <= 0:
@@ -564,6 +663,24 @@ func validatePricingRule(rule PricingRule) error {
 		return errors.New("quantity must be greater than 0")
 	case rule.WeekdayOffPeak < 0 || rule.WeekdayPeak < 0 || rule.WeekendOffPeak < 0 || rule.WeekendPeak < 0:
 		return errors.New("prices cannot be negative")
+	}
+	return nil
+}
+
+func validatePricingRuleAgainstOptions(
+	rule PricingRule,
+	activities []CourtActivity,
+	layouts []CourtLayout,
+) error {
+	if !bookingOptionExists(
+		rule.Activity,
+		rule.Quantity,
+		activities,
+		layouts,
+	) {
+		return errors.New(
+			"selected quantity is not available in court manager",
+		)
 	}
 	return nil
 }

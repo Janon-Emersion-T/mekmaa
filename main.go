@@ -112,12 +112,6 @@ func main() {
 	if err := seedRoles(db); err != nil {
 		log.Fatalf("seed roles: %v", err)
 	}
-	if err := seedCourtManager(db); err != nil {
-		log.Fatalf("seed court manager: %v", err)
-	}
-	if err := verifyCourtManagerConfiguration(db); err != nil {
-		log.Fatalf("verify court manager: %v", err)
-	}
 	if err := seedTrainingPrograms(db); err != nil {
 		log.Fatalf("seed training programmes: %v", err)
 	}
@@ -382,6 +376,9 @@ func main() {
 			),
 		),
 	)
+	mux.Handle("/admin/courts/activities/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createCourtActivityHandler), "courts.manage")))
+	mux.Handle("/admin/courts/activities/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateCourtActivityHandler), "courts.manage")))
+	mux.Handle("/admin/courts/activities/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteCourtActivityHandler), "courts.manage")))
 	mux.Handle("/admin/courts/activities/auto-accept", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateCourtActivityAutoAcceptHandler), "courts.manage")))
 	mux.Handle("/admin/courts/activities/game", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateCourtActivityGameHandler), "courts.manage")))
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))

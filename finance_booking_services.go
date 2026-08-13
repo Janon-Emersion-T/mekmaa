@@ -1861,6 +1861,47 @@ func (a *App) createCourtLayout(
 	return layoutID, nil
 }
 
+func (a *App) createCourtActivity(
+	activity CourtActivity,
+) (int64, error) {
+	if err := validateCourtActivity(activity); err != nil {
+		return 0, err
+	}
+
+	now := time.Now().UTC()
+	result, err := a.db.Exec(`
+		INSERT INTO court_activities (
+			court_id,
+			game_id,
+			activity,
+			display_name,
+			max_quantity,
+			auto_accept,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		activity.CourtID,
+		activity.GameID,
+		activity.Activity,
+		activity.DisplayName,
+		activity.MaxQuantity,
+		boolToInt(activity.AutoAccept),
+		boolToInt(activity.Active),
+		activity.SortOrder,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.LastInsertId()
+}
+
 func (a *App) createCourt(court Court) (int64, error) {
 	now := time.Now().UTC()
 	result, err := a.db.Exec(`
@@ -3369,6 +3410,49 @@ func (a *App) updatePricingRule(rule PricingRule) error {
 	return err
 }
 
+func (a *App) updateCourtActivity(
+	activity CourtActivity,
+) error {
+	if err := validateCourtActivity(activity); err != nil {
+		return err
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE court_activities
+		SET
+			display_name = ?,
+			max_quantity = ?,
+			auto_accept = ?,
+			active = ?,
+			sort_order = ?,
+			updated_at = ?
+		WHERE id = ?
+		  AND court_id = ?
+	`,
+		activity.DisplayName,
+		activity.MaxQuantity,
+		boolToInt(activity.AutoAccept),
+		boolToInt(activity.Active),
+		activity.SortOrder,
+		time.Now().UTC(),
+		activity.ID,
+		activity.CourtID,
+	)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
 func (a *App) updateEvent(event Event) error {
 	_, err := a.db.Exec(`
 		UPDATE events
@@ -4246,6 +4330,105 @@ func (a *App) deleteSpaceSchedule(scheduleID int64) error {
 func (a *App) deletePricingRule(pricingID int64) error {
 	_, err := a.db.Exec(`DELETE FROM pricing_rules WHERE id = ?`, pricingID)
 	return err
+}
+
+func (a *App) deleteCourtActivity(activityID int64) error {
+	var activity string
+	if err := a.db.QueryRow(`
+		SELECT activity
+		FROM court_activities
+		WHERE id = ?
+	`, activityID).Scan(&activity); err != nil {
+		return err
+	}
+
+	checks := []struct {
+		query           string
+		message         string
+		needsActivityID bool
+	}{
+		{
+			query: `
+				SELECT COUNT(*)
+				FROM court_layout_items cli
+				JOIN court_layouts cl
+					ON cl.id = cli.layout_id
+				WHERE cli.activity = ?
+				  AND cl.court_id = (
+					  SELECT court_id
+					  FROM court_activities
+					  WHERE id = ?
+				  )
+			`,
+			message:         "this activity is used by one or more court layouts",
+			needsActivityID: true,
+		},
+		{
+			query: `
+				SELECT COUNT(*)
+				FROM court_closures
+				WHERE activity = ?
+				  AND court_id = (
+					  SELECT court_id
+					  FROM court_activities
+					  WHERE id = ?
+				  )
+			`,
+			message:         "this activity is used by one or more court closures",
+			needsActivityID: true,
+		},
+		{
+			query: `
+				SELECT COUNT(*)
+				FROM space_schedules
+				WHERE activity = ?
+			`,
+			message: "this activity is already used by bookings or internal schedules",
+		},
+		{
+			query: `
+				SELECT COUNT(*)
+				FROM pricing_rules
+				WHERE activity = ?
+			`,
+			message: "this activity is linked to one or more pricing rules",
+		},
+	}
+
+	for _, check := range checks {
+		var count int
+		args := []any{activity}
+		if check.needsActivityID {
+			args = append(args, activityID)
+		}
+		if err := a.db.QueryRow(
+			check.query,
+			args...,
+		).Scan(&count); err != nil {
+			return err
+		}
+		if count > 0 {
+			return errors.New(check.message)
+		}
+	}
+
+	result, err := a.db.Exec(
+		`DELETE FROM court_activities WHERE id = ?`,
+		activityID,
+	)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
 func (a *App) deleteEvent(eventID int64) error {

@@ -242,64 +242,216 @@
       {{end}}
 
       <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
-            Available sports
-          </p>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
+              Available sports
+            </p>
 
-          <h2 class="mt-2 text-xl font-semibold text-obsidian">
-            Court activities
-          </h2>
+            <h2 class="mt-2 text-xl font-semibold text-obsidian">
+              Court activities
+            </h2>
 
-          <p class="mt-2 text-sm leading-6 text-slate/65">
-            Maximum quantity is the largest amount this physical court can
-            support under any valid layout.
-          </p>
-          {{if gt (courtActivitiesUnlinkedCount .CourtActivities) 0}}
-          <p class="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Some court activities are still not linked to a game. Link every public activity so pricing, layouts, closures, and booking flows stay aligned.
-          </p>
-          {{end}}
+            <p class="mt-2 text-sm leading-6 text-slate/65">
+              Build the court from zero. Create each activity here, then use those
+              activities in layouts, closures, and pricing.
+            </p>
+          </div>
+
+          <a href="/admin/courts?court_id={{.SelectedCourt.ID}}&activity_action=new#activity-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-semibold text-cloud transition hover:bg-slate">Add activity</a>
         </div>
 
-        <div class="mt-5 space-y-3">
+        {{if eq .CourtActivityMode "new"}}
+        <div id="activity-form" class="mt-6 rounded-3xl border border-aqua/40 bg-aqua/5 p-5 sm:p-6">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">New activity</p>
+              <h3 class="mt-2 text-lg font-semibold text-obsidian">Create court activity</h3>
+            </div>
+            <a href="/admin/courts?court_id={{.SelectedCourt.ID}}" class="text-sm font-semibold text-slate/60 transition hover:text-obsidian">Close</a>
+          </div>
+
+          <form action="/admin/courts/activities/create" method="post" class="mt-6 space-y-5">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="court_id" value="{{.SelectedCourt.ID}}" />
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Activity type</span>
+                <select name="activity_type" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua">
+                  <option value="game">Public game</option>
+                  <option value="training">Internal training</option>
+                </select>
+              </label>
+
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Game</span>
+                <select name="game_id" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua">
+                  <option value="">Select game</option>
+                  {{range .Games}}
+                  <option value="{{.ID}}">{{.Name}}</option>
+                  {{end}}
+                </select>
+              </label>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Display name</span>
+                <input type="text" name="display_name" maxlength="120" placeholder="Leave blank to use the game name" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+              </label>
+
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Maximum quantity</span>
+                <input type="number" name="max_quantity" value="1" min="1" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+              </label>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Display order</span>
+                <input type="number" name="sort_order" value="100" min="0" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+              </label>
+
+              <div class="grid gap-3 sm:grid-cols-2">
+                <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white/85 p-4">
+                  <input type="checkbox" name="active" value="1" checked class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua" />
+                  <span>
+                    <span class="block text-sm font-semibold text-obsidian">Active</span>
+                    <span class="mt-1 block text-xs leading-5 text-slate/55">Available for layouts and closures.</span>
+                  </span>
+                </label>
+
+                <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white/85 p-4">
+                  <input type="checkbox" name="auto_accept" value="1" class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua" />
+                  <span>
+                    <span class="block text-sm font-semibold text-obsidian">Auto-accept</span>
+                    <span class="mt-1 block text-xs leading-5 text-slate/55">Public bookings confirm instantly.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <button type="submit" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-semibold text-cloud transition hover:bg-slate">Create activity</button>
+          </form>
+        </div>
+        {{end}}
+
+        {{if and (eq .CourtActivityMode "edit") .SelectedCourtActivity}}
+        <div id="activity-form" class="mt-6 rounded-3xl border border-aqua/40 bg-aqua/5 p-5 sm:p-6">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Edit activity</p>
+              <h3 class="mt-2 text-lg font-semibold text-obsidian">Update {{.SelectedCourtActivity.DisplayName}}</h3>
+            </div>
+            <a href="/admin/courts?court_id={{.SelectedCourt.ID}}" class="text-sm font-semibold text-slate/60 transition hover:text-obsidian">Close</a>
+          </div>
+
+          <form action="/admin/courts/activities/update" method="post" class="mt-6 space-y-5">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="court_id" value="{{.SelectedCourt.ID}}" />
+            <input type="hidden" name="activity_id" value="{{.SelectedCourtActivity.ID}}" />
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Internal activity</span>
+                <input type="text" value="{{.SelectedCourtActivity.Activity}}" readonly class="h-12 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm text-slate/60 outline-none" />
+              </label>
+
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Linked game</span>
+                <input type="text" value="{{if .SelectedCourtActivity.GameID}}{{gameNameByID .Games .SelectedCourtActivity.GameID}}{{else}}Internal only{{end}}" readonly class="h-12 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm text-slate/60 outline-none" />
+              </label>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Display name</span>
+                <input type="text" name="display_name" maxlength="120" required value="{{.SelectedCourtActivity.DisplayName}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+              </label>
+
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Maximum quantity</span>
+                <input type="number" name="max_quantity" min="1" required value="{{.SelectedCourtActivity.MaxQuantity}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+              </label>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="grid gap-2">
+                <span class="text-sm font-semibold text-obsidian">Display order</span>
+                <input type="number" name="sort_order" min="0" required value="{{.SelectedCourtActivity.SortOrder}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none transition focus:border-aqua" />
+              </label>
+
+              <div class="grid gap-3 sm:grid-cols-2">
+                <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white/85 p-4">
+                  <input type="checkbox" name="active" value="1" {{if .SelectedCourtActivity.Active}}checked{{end}} class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua" />
+                  <span>
+                    <span class="block text-sm font-semibold text-obsidian">Active</span>
+                    <span class="mt-1 block text-xs leading-5 text-slate/55">Keep available for new layouts.</span>
+                  </span>
+                </label>
+
+                <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white/85 p-4">
+                  <input type="checkbox" name="auto_accept" value="1" {{if .SelectedCourtActivity.AutoAccept}}checked{{end}} class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua" />
+                  <span>
+                    <span class="block text-sm font-semibold text-obsidian">Auto-accept</span>
+                    <span class="mt-1 block text-xs leading-5 text-slate/55">Public bookings confirm instantly.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <button type="submit" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-semibold text-cloud transition hover:bg-slate">Save activity</button>
+          </form>
+        </div>
+        {{end}}
+
+        {{if gt (courtActivitiesUnlinkedCount .CourtActivities) 0}}
+        <p class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Some court activities are still not linked to a game. Link every public activity so pricing, layouts, closures, and booking flows stay aligned.
+        </p>
+        {{end}}
+
+        <div class="mt-5 space-y-4">
           {{range .CourtActivities}}
           {{$activity := .}}
-          <div class="flex items-center justify-between gap-4 rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-4">
-            <div>
-              <div class="flex flex-wrap items-center gap-2">
-                <p class="font-semibold text-obsidian">
-                  {{.DisplayName}}
-                </p>
+          <div class="rounded-3xl border border-slate/10 bg-cloud/60 p-4 sm:p-5">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="font-semibold text-obsidian">{{.DisplayName}}</p>
+                  {{if .Active}}
+                  <span class="rounded-full bg-emerald-50 px-2 py-1 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-emerald-700">Active</span>
+                  {{else}}
+                  <span class="rounded-full bg-white px-2 py-1 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate/45">Inactive</span>
+                  {{end}}
+                  {{if eq .Activity "training"}}
+                  <span class="rounded-full bg-white px-2 py-1 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate/55">Internal</span>
+                  {{end}}
+                </div>
 
-                {{if .Active}}
-                <span class="rounded-full bg-emerald-50 px-2 py-1 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-emerald-700">
-                  Active
-                </span>
-                {{else}}
-                <span class="rounded-full bg-white px-2 py-1 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate/45">
-                  Inactive
-                </span>
-                {{end}}
+                <p class="mt-1 text-xs font-medium text-slate/45">
+                  {{if .GameID}}{{gameNameByID $.Games .GameID}}{{else if eq .Activity "training"}}Training{{else}}Not linked{{end}} · {{.Activity}}
+                </p>
               </div>
 
-              <p class="mt-1 text-xs font-medium text-slate/45">
-                {{if .GameID}}{{gameNameByID $.Games .GameID}}{{else}}{{gameNameFor $.Games .Activity}}{{end}} · {{.Activity}}
-              </p>
+              <div class="grid grid-cols-3 gap-3 text-center">
+                <div class="rounded-2xl bg-white px-3 py-3">
+                  <p class="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate/40">Maximum</p>
+                  <p class="mt-1 text-lg font-semibold text-obsidian">{{.MaxQuantity}}</p>
+                </div>
+                <div class="rounded-2xl bg-white px-3 py-3">
+                  <p class="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate/40">Sort</p>
+                  <p class="mt-1 text-lg font-semibold text-obsidian">{{.SortOrder}}</p>
+                </div>
+                <div class="rounded-2xl bg-white px-3 py-3">
+                  <p class="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate/40">Auto</p>
+                  <p class="mt-1 text-sm font-semibold {{if .AutoAccept}}text-emerald-700{{else}}text-slate/60{{end}}">{{if .AutoAccept}}On{{else}}Off{{end}}</p>
+                </div>
+              </div>
             </div>
 
-            <div class="text-right">
-              <p class="text-xs uppercase tracking-[0.14em] text-slate/45">
-                Maximum
-              </p>
-
-              <p class="mt-1 text-lg font-semibold text-obsidian">
-                {{.MaxQuantity}}
-              </p>
-            </div>
-          </div>
-          <div class="mt-3 rounded-2xl border border-slate/10 bg-white px-4 py-4">
-            <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <form action="/admin/courts/activities/game" method="post" class="grid gap-2">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                 <input type="hidden" name="court_id" value="{{$.SelectedCourt.ID}}" />
@@ -307,11 +459,8 @@
                 <label class="grid gap-1.5">
                   <span class="text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate/40">Linked game</span>
                   {{if eq .Activity "training"}}
-                  <input type="text" value="Internal training only" readonly class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-sm text-slate/55 outline-none" />
+                  <input type="text" value="Internal training only" readonly class="h-10 rounded-xl border border-slate/10 bg-white px-3 text-sm text-slate/55 outline-none" />
                   {{else}}
-                  <p class="text-xs text-slate/55">
-                    {{if .GameID}}Currently linked to {{gameNameByID $.Games .GameID}}.{{else}}No game linked yet.{{end}}
-                  </p>
                   <div class="flex flex-wrap gap-2">
                     <select name="game_id" class="h-10 min-w-[14rem] rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
                       <option value="">No linked game</option>
@@ -319,30 +468,36 @@
                       <option value="{{.ID}}" {{if eq $activity.GameID .ID}}selected{{end}}>{{.Name}}</option>
                       {{end}}
                     </select>
-                    <button class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-cloud px-4 text-xs font-bold uppercase tracking-[0.14em] text-slate">Save game</button>
+                    <button class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold uppercase tracking-[0.14em] text-slate">Save game</button>
                   </div>
                   {{end}}
                 </label>
               </form>
-              <form action="/admin/courts/activities/auto-accept" method="post" class="flex items-center gap-2">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                <input type="hidden" name="court_id" value="{{$.SelectedCourt.ID}}" />
-                <input type="hidden" name="activity_id" value="{{.ID}}" />
-                <input type="hidden" name="auto_accept" value="{{if .AutoAccept}}0{{else}}1{{end}}" />
-                <div>
-                  <p class="text-[0.62rem] font-bold uppercase tracking-[0.16em] text-slate/40">Auto-accept public bookings</p>
-                  <p class="mt-1 text-xs text-slate/60">When enabled, valid `/book` requests for this activity are confirmed immediately.</p>
-                </div>
-                <button class="{{if .AutoAccept}}border-emerald-200 bg-emerald-50 text-emerald-800{{else}}border-slate/10 bg-cloud text-slate{{end}} inline-flex h-10 items-center justify-center rounded-xl border px-4 text-xs font-bold uppercase tracking-[0.14em]">
-                  {{if .AutoAccept}}Enabled{{else}}Disabled{{end}}
-                </button>
-              </form>
+
+              <div class="flex flex-wrap gap-2 lg:justify-end">
+                <form action="/admin/courts/activities/auto-accept" method="post">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="court_id" value="{{$.SelectedCourt.ID}}" />
+                  <input type="hidden" name="activity_id" value="{{.ID}}" />
+                  <input type="hidden" name="auto_accept" value="{{if .AutoAccept}}0{{else}}1{{end}}" />
+                  <button class="{{if .AutoAccept}}border-emerald-200 bg-emerald-50 text-emerald-800{{else}}border-slate/10 bg-white text-slate{{end}} inline-flex h-10 items-center justify-center rounded-xl border px-4 text-xs font-bold uppercase tracking-[0.14em]">
+                    {{if .AutoAccept}}Disable auto-accept{{else}}Enable auto-accept{{end}}
+                  </button>
+                </form>
+                <a href="/admin/courts?court_id={{$.SelectedCourt.ID}}&activity_action=edit&activity_id={{.ID}}#activity-form" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold uppercase tracking-[0.14em] text-slate">Edit</a>
+                <form action="/admin/courts/activities/delete" method="post">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="court_id" value="{{$.SelectedCourt.ID}}" />
+                  <input type="hidden" name="activity_id" value="{{.ID}}" />
+                  <button class="inline-flex h-10 items-center justify-center rounded-xl border border-red-200 bg-white px-4 text-xs font-bold uppercase tracking-[0.14em] text-red-700">Delete</button>
+                </form>
+              </div>
             </div>
           </div>
           {{else}}
           <div class="rounded-2xl border border-dashed border-slate/20 bg-cloud/50 px-4 py-8 text-center">
             <p class="text-sm text-slate/60">
-              No activities have been configured.
+              No activities have been configured yet. Start by creating the first activity for this court.
             </p>
           </div>
           {{end}}

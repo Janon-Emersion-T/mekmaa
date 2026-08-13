@@ -6325,3 +6325,82 @@ func TestGameCRUD(t *testing.T) {
 		t.Fatalf("expected deleted game to be missing, got %v", err)
 	}
 }
+
+func TestDeleteCourtActivityAllowsOnlyUnlinkedActivities(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	now := time.Now().UTC()
+	result, err := app.db.Exec(`
+		INSERT INTO court_activities (
+			court_id, game_id, activity, display_name, max_quantity, auto_accept, active, sort_order, created_at, updated_at
+		)
+		VALUES (1, 0, 'pickleball', 'Pickleball', 1, 0, 1, 90, ?, ?)
+	`, now, now)
+	if err != nil {
+		t.Fatalf("create activity: %v", err)
+	}
+	activityID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("activity last insert id: %v", err)
+	}
+
+	gameID, err := app.createGame(Game{
+		Name:        "Pickleball",
+		Activity:    "pickleball",
+		Description: "Test game",
+		Active:      true,
+		SortOrder:   90,
+	})
+	if err != nil {
+		t.Fatalf("create linked game: %v", err)
+	}
+
+	if _, err := app.db.Exec(`
+		INSERT INTO pricing_rules (
+			game_id, activity, quantity, weekday_offpeak_price, weekday_peak_price,
+			weekend_offpeak_price, weekend_peak_price, created_at, updated_at
+		)
+		VALUES (?, 'pickleball', 1, 1000, 1000, 1000, 1000, ?, ?)
+	`, gameID, now, now); err != nil {
+		t.Fatalf("create linked pricing rule: %v", err)
+	}
+
+	if err := app.deleteCourtActivity(activityID); err == nil || !strings.Contains(err.Error(), "pricing rules") {
+		t.Fatalf("expected delete to be blocked by pricing rule, got %v", err)
+	}
+
+	if _, err := app.db.Exec(`DELETE FROM pricing_rules WHERE activity = 'pickleball'`); err != nil {
+		t.Fatalf("remove linked pricing rule: %v", err)
+	}
+
+	if err := app.deleteCourtActivity(activityID); err != nil {
+		t.Fatalf("delete unlinked activity: %v", err)
+	}
+}
+
+func TestValidatePricingRuleAgainstOptionsRejectsUnavailableQuantity(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	activities, layouts, err := app.activeBookingConfiguration()
+	if err != nil {
+		t.Fatalf("load active booking configuration: %v", err)
+	}
+
+	valid := PricingRule{
+		GameID:   1,
+		Activity: "full_indoor_cricket",
+		Quantity: 1,
+	}
+	if err := validatePricingRuleAgainstOptions(valid, activities, layouts); err != nil {
+		t.Fatalf("expected configured quantity to be valid, got %v", err)
+	}
+
+	invalid := PricingRule{
+		GameID:   1,
+		Activity: "full_indoor_cricket",
+		Quantity: 2,
+	}
+	if err := validatePricingRuleAgainstOptions(invalid, activities, layouts); err == nil {
+		t.Fatal("expected unavailable quantity to be rejected")
+	}
+}

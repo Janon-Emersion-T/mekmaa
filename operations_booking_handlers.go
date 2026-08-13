@@ -248,6 +248,7 @@ func (a *App) courtManagementHandler(
 	data.Title = "Court Manager"
 	data.Description = "Manage court activities and simultaneous-use configurations."
 	data.Courts = courts
+	data.Games, _ = a.listGames(true)
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("court_action")))
 	switch mode {
 	case "new", "edit":
@@ -281,7 +282,6 @@ func (a *App) courtManagementHandler(
 			data.SelectedCourt = selectedCourt
 			data.CourtActivities = selectedCourt.Activities
 			data.CourtLayouts = selectedCourt.Layouts
-			data.Games, _ = a.listGames(true)
 
 			closures, err := a.listCourtClosures(
 				selectedCourt.ID,
@@ -305,6 +305,11 @@ func (a *App) courtManagementHandler(
 			mode := strings.ToLower(
 				strings.TrimSpace(
 					r.URL.Query().Get("action"),
+				),
+			)
+			activityAction := strings.ToLower(
+				strings.TrimSpace(
+					r.URL.Query().Get("activity_action"),
 				),
 			)
 
@@ -347,6 +352,28 @@ func (a *App) courtManagementHandler(
 			case "new", "edit":
 				data.CourtLayoutMode = mode
 			}
+			switch activityAction {
+			case "new", "edit":
+				data.CourtActivityMode = activityAction
+			}
+			if data.CourtActivityMode == "edit" {
+				activityID, err := strconv.ParseInt(
+					strings.TrimSpace(
+						r.URL.Query().Get("activity_id"),
+					),
+					10,
+					64,
+				)
+				if err == nil && activityID > 0 {
+					activity, err := a.findCourtActivityByID(
+						activityID,
+					)
+					if err == nil &&
+						activity.CourtID == selectedCourt.ID {
+						data.SelectedCourtActivity = activity
+					}
+				}
+			}
 
 			if data.CourtLayoutMode == "edit" {
 				layoutID, err := strconv.ParseInt(
@@ -372,6 +399,17 @@ func (a *App) courtManagementHandler(
 
 	if data.CourtMode == "edit" && data.SelectedCourt == nil {
 		data.CourtMode = ""
+	}
+	if data.CourtActivityMode == "edit" &&
+		data.SelectedCourtActivity == nil {
+		data.CourtActivityMode = ""
+	}
+
+	if data.SelectedCourt != nil {
+		data.BookingOptions = bookingOptionCatalog(
+			data.CourtActivities,
+			data.CourtLayouts,
+		)
 	}
 
 	a.render(
@@ -2348,6 +2386,15 @@ func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.PricingSettings = settings
 	data.Games, _ = a.listGames(true)
 	data.SetupWarnings = a.setupWarningsForUser(user)
+	activities, layouts, err := a.activeBookingConfiguration()
+	if err != nil {
+		log.Printf("load active booking configuration: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.CourtActivities = activities
+	data.CourtLayouts = layouts
+	data.BookingOptions = bookingOptionCatalog(activities, layouts)
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -2726,6 +2773,20 @@ func (a *App) createPricingHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	activities, layouts, err := a.activeBookingConfiguration()
+	if err != nil {
+		log.Printf("load active booking configuration: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := validatePricingRuleAgainstOptions(
+		pricing,
+		activities,
+		layouts,
+	); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := a.createPricingRule(pricing); err != nil {
 		if isUniqueConstraintError(err) {
 			http.Error(w, "pricing already exists for that option", http.StatusConflict)
@@ -2772,6 +2833,20 @@ func (a *App) updatePricingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	pricing.Activity = game.Activity
 	if err := validatePricingRule(pricing); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	activities, layouts, err := a.activeBookingConfiguration()
+	if err != nil {
+		log.Printf("load active booking configuration: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := validatePricingRuleAgainstOptions(
+		pricing,
+		activities,
+		layouts,
+	); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -3955,6 +4030,159 @@ func (a *App) updateCourtActivityGameHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	a.setFlash(w, "Court activity game updated.")
+	http.Redirect(w, r, "/admin/courts?court_id="+url.QueryEscape(courtID), http.StatusSeeOther)
+}
+
+func (a *App) createCourtActivityHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	games, _ := a.listGames(true)
+	activity, err := courtActivityFromRequest(r, games)
+	if err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, "/admin/courts?court_id="+r.FormValue("court_id")+"&activity_action=new#activity-form", http.StatusSeeOther)
+		return
+	}
+
+	activityID, err := a.createCourtActivity(activity)
+	if err != nil {
+		log.Printf("create court activity: %v", err)
+		if isUniqueConstraintError(err) {
+			a.setFlash(w, "That activity already exists on this court.")
+			http.Redirect(w, r, "/admin/courts?court_id="+r.FormValue("court_id")+"&activity_action=new#activity-form", http.StatusSeeOther)
+			return
+		}
+		a.setFlash(w, "Court activity could not be created.")
+		http.Redirect(w, r, "/admin/courts?court_id="+r.FormValue("court_id")+"&activity_action=new#activity-form", http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, "Court activity created.")
+	http.Redirect(w, r, "/admin/courts?court_id="+strconv.FormatInt(activity.CourtID, 10)+"&activity_id="+strconv.FormatInt(activityID, 10), http.StatusSeeOther)
+}
+
+func (a *App) updateCourtActivityHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	activityID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("activity_id")),
+		10,
+		64,
+	)
+	if err != nil || activityID <= 0 {
+		http.Error(w, "invalid activity id", http.StatusBadRequest)
+		return
+	}
+
+	existing, err := a.findCourtActivityByID(activityID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Court activity not found.")
+			http.Redirect(w, r, "/admin/courts?court_id="+r.FormValue("court_id"), http.StatusSeeOther)
+			return
+		}
+		log.Printf("find court activity: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	updated := *existing
+	updated.DisplayName = strings.TrimSpace(r.FormValue("display_name"))
+	maxQuantity, err := strconv.Atoi(strings.TrimSpace(r.FormValue("max_quantity")))
+	if err != nil {
+		a.setFlash(w, "Valid maximum quantity is required.")
+		http.Redirect(w, r, "/admin/courts?court_id="+strconv.FormatInt(existing.CourtID, 10)+"&activity_action=edit&activity_id="+strconv.FormatInt(existing.ID, 10)+"#activity-form", http.StatusSeeOther)
+		return
+	}
+	sortOrder, err := strconv.Atoi(strings.TrimSpace(r.FormValue("sort_order")))
+	if err != nil {
+		a.setFlash(w, "Valid sort order is required.")
+		http.Redirect(w, r, "/admin/courts?court_id="+strconv.FormatInt(existing.CourtID, 10)+"&activity_action=edit&activity_id="+strconv.FormatInt(existing.ID, 10)+"#activity-form", http.StatusSeeOther)
+		return
+	}
+	updated.MaxQuantity = maxQuantity
+	updated.SortOrder = sortOrder
+	updated.AutoAccept = r.FormValue("auto_accept") == "1"
+	updated.Active = r.FormValue("active") == "1"
+
+	if err := a.updateCourtActivity(updated); err != nil {
+		log.Printf("update court activity: %v", err)
+		a.setFlash(w, "Court activity could not be updated.")
+		http.Redirect(w, r, "/admin/courts?court_id="+strconv.FormatInt(existing.CourtID, 10)+"&activity_action=edit&activity_id="+strconv.FormatInt(existing.ID, 10)+"#activity-form", http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, "Court activity updated.")
+	http.Redirect(w, r, "/admin/courts?court_id="+strconv.FormatInt(existing.CourtID, 10), http.StatusSeeOther)
+}
+
+func (a *App) deleteCourtActivityHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	activityID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("activity_id")),
+		10,
+		64,
+	)
+	if err != nil || activityID <= 0 {
+		http.Error(w, "invalid activity id", http.StatusBadRequest)
+		return
+	}
+
+	courtID := strings.TrimSpace(r.FormValue("court_id"))
+	if err := a.deleteCourtActivity(activityID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Court activity not found.")
+		} else {
+			a.setFlash(w, err.Error())
+		}
+		http.Redirect(w, r, "/admin/courts?court_id="+url.QueryEscape(courtID), http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, "Court activity deleted.")
 	http.Redirect(w, r, "/admin/courts?court_id="+url.QueryEscape(courtID), http.StatusSeeOther)
 }
 
