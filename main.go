@@ -92,12 +92,13 @@ func main() {
 		log.Fatal("production startup validation failed")
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", sqliteRuntimeDSN(dbPath))
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
 	defer db.Close()
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(4)
 	if err := enableSQLiteForeignKeys(db); err != nil {
 		log.Fatalf("enable sqlite foreign keys: %v", err)
 	}

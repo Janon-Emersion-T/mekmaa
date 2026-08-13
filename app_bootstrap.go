@@ -317,6 +317,26 @@ func enableSQLiteForeignKeys(db *sql.DB) error {
 	return nil
 }
 
+func sqliteRuntimeDSN(dbPath string) string {
+	if strings.Contains(dbPath, "_pragma=") {
+		return dbPath
+	}
+
+	separator := "?"
+	if strings.Contains(dbPath, "?") {
+		separator = "&"
+	}
+
+	// Apply pragmas through the DSN so every pooled connection gets the same
+	// runtime settings instead of only the first opened connection.
+	return dbPath +
+		separator +
+		"_pragma=busy_timeout(10000)" +
+		"&_pragma=foreign_keys(ON)" +
+		"&_pragma=journal_mode(WAL)" +
+		"&_pragma=synchronous(NORMAL)"
+}
+
 type contextKey string
 
 const userContextKey contextKey = "currentUser"
@@ -500,48 +520,48 @@ type StudentEnrollment struct {
 }
 
 type FinanceTransaction struct {
-	ID                 int64
-	ReceiptNumber      string
-	ReferenceNumber    string
-	Category           string
-	ApprovalStatus     string
-	TransactionType    string
-	ReferenceType      string
-	ReferenceID        int64
-	SourceType         string
-	SourceID           int64
-	FinanceAccountID   int64
-	FinanceAccountCode string
-	FinanceAccountName string
-	FinanceAccountType string
-	TransferGroupID    string
-	StudentName        string
-	TrainingProgramName string
-	BookingActivity    string
-	OneToOneOfferingID int64
+	ID                   int64
+	ReceiptNumber        string
+	ReferenceNumber      string
+	Category             string
+	ApprovalStatus       string
+	TransactionType      string
+	ReferenceType        string
+	ReferenceID          int64
+	SourceType           string
+	SourceID             int64
+	FinanceAccountID     int64
+	FinanceAccountCode   string
+	FinanceAccountName   string
+	FinanceAccountType   string
+	TransferGroupID      string
+	StudentName          string
+	TrainingProgramName  string
+	BookingActivity      string
+	OneToOneOfferingID   int64
 	OneToOneOfferingName string
-	PersonName         string
-	Description        string
-	Notes              string
-	PaymentMethod      string
-	Amount             float64
-	MoneyIn            float64
-	MoneyOut           float64
-	RunningBalance     float64
-	RecordedByUser     int64
-	RecordedByUserName string
-	ApprovedByUserID   int64
-	ApprovedByUserName string
-	Voided             bool
-	GeneralVoidAllowed bool
-	OrphanedSource     bool
-	ApprovedAt         time.Time
-	VoidedAt           time.Time
-	VoidedByUserID     int64
-	VoidReason         string
-	RecordedAt         time.Time
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	PersonName           string
+	Description          string
+	Notes                string
+	PaymentMethod        string
+	Amount               float64
+	MoneyIn              float64
+	MoneyOut             float64
+	RunningBalance       float64
+	RecordedByUser       int64
+	RecordedByUserName   string
+	ApprovedByUserID     int64
+	ApprovedByUserName   string
+	Voided               bool
+	GeneralVoidAllowed   bool
+	OrphanedSource       bool
+	ApprovedAt           time.Time
+	VoidedAt             time.Time
+	VoidedByUserID       int64
+	VoidReason           string
+	RecordedAt           time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type FinanceCategory struct {
@@ -649,33 +669,33 @@ type BookingPaymentCollection struct {
 }
 
 type FinanceFilter struct {
-	From            string
-	To              string
-	Direction       string
-	Category        string
-	Categories      []string
-	AccountID       int64
-	AccountIDs      []int64
-	TransactionType string
-	TransactionTypes []string
-	SourceType      string
-	SourceTypes     []string
-	ReferenceType   string
-	ReferenceTypes  []string
-	PaymentMethod   string
-	PaymentMethods  []string
-	ApprovalStatuses []string
-	DetailMode      string
-	TrainingProgramIDs []int64
-	BookingActivities  []string
+	From                string
+	To                  string
+	Direction           string
+	Category            string
+	Categories          []string
+	AccountID           int64
+	AccountIDs          []int64
+	TransactionType     string
+	TransactionTypes    []string
+	SourceType          string
+	SourceTypes         []string
+	ReferenceType       string
+	ReferenceTypes      []string
+	PaymentMethod       string
+	PaymentMethods      []string
+	ApprovalStatuses    []string
+	DetailMode          string
+	TrainingProgramIDs  []int64
+	BookingActivities   []string
 	OneToOneOfferingIDs []int64
-	RecordedUserID  int64
-	Status          string
-	Reference       string
-	Search          string
-	ExportKind      string
-	Page            int
-	Limit           int
+	RecordedUserID      int64
+	Status              string
+	Reference           string
+	Search              string
+	ExportKind          string
+	Page                int
+	Limit               int
 }
 
 type AdmissionsFilter struct {
