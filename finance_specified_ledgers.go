@@ -14,6 +14,13 @@ type financeSpecifiedLedgerDefinition struct {
 	Match       func(FinanceTransaction) bool
 }
 
+type financeSpecifiedLedgerSeed struct {
+	Key         string
+	Title       string
+	Description string
+	Nature      string
+}
+
 func financeSpecifiedLedgerPeriod(
 	fromRaw,
 	toRaw string,
@@ -61,9 +68,6 @@ func financeSpecifiedLedgerDefinitions() []financeSpecifiedLedgerDefinition {
 			Description: "Bank transfers, bank opening balances, bank adjustments, and bank charges.",
 			Nature:      "asset",
 			Match: func(tx FinanceTransaction) bool {
-				if tx.Category == "bank_charges_expense" {
-					return true
-				}
 				if tx.FinanceAccountType != financeAccountTypeBank {
 					return false
 				}
@@ -78,43 +82,17 @@ func financeSpecifiedLedgerDefinitions() []financeSpecifiedLedgerDefinition {
 				}
 			},
 		},
-		{
-			Key:         "loan_repayments",
-			Title:       "Loan Repayments",
-			Description: "Loan repayment expenses.",
-			Nature:      "expense",
-			Match: func(tx FinanceTransaction) bool {
-				return tx.Category == "loan_repayment_expense"
-			},
-		},
-		{
-			Key:         "rent",
-			Title:       "Rent",
-			Description: "Facility and court rental expenses.",
-			Nature:      "expense",
-			Match: func(tx FinanceTransaction) bool {
-				return tx.Category == "facility_expense"
-			},
-		},
-		{
-			Key:         "electricity",
-			Title:       "Electricity",
-			Description: "Electricity bill expenses.",
-			Nature:      "expense",
-			Match: func(tx FinanceTransaction) bool {
-				return tx.Category == "electricity_bills_expense"
-			},
-		},
-		{
-			Key:         "salary",
-			Title:       "Salary",
-			Description: "Salary, staff, and wage expenses.",
-			Nature:      "expense",
-			Match: func(tx FinanceTransaction) bool {
-				return tx.Category == "staff_salary_expense" ||
-					tx.Category == "staff_expense"
-			},
-		},
+	}
+}
+
+func financeSpecifiedLedgerSeedForCategory(
+	category FinanceCategory,
+) financeSpecifiedLedgerSeed {
+	return financeSpecifiedLedgerSeed{
+		Key:         category.Code,
+		Title:       financeCategoryLabel(category.Code),
+		Description: "Specified ledger for the " + strings.ToLower(financeCategoryLabel(category.Code)) + " category.",
+		Nature:      category.Direction,
 	}
 }
 
@@ -299,10 +277,14 @@ func (a *App) buildFinanceSpecifiedLedgers(
 	if err != nil {
 		return nil, "", "", err
 	}
+	categories, err := a.listFinanceCategories(false)
+	if err != nil {
+		return nil, "", "", err
+	}
 
 	definitions := financeSpecifiedLedgerDefinitions()
-	ledgers := make([]FinanceSpecifiedLedger, 0, len(definitions))
-	positions := make(map[string]int, len(definitions))
+	ledgers := make([]FinanceSpecifiedLedger, 0, len(definitions)+len(categories))
+	positions := make(map[string]int, len(definitions)+len(categories))
 
 	for _, definition := range definitions {
 		positions[definition.Key] = len(ledgers)
@@ -313,6 +295,22 @@ func (a *App) buildFinanceSpecifiedLedgers(
 				Title:       definition.Title,
 				Description: definition.Description,
 				Nature:      definition.Nature,
+			},
+		)
+	}
+
+	categoryCodes := make(map[string]FinanceCategory, len(categories))
+	for _, category := range categories {
+		seed := financeSpecifiedLedgerSeedForCategory(category)
+		categoryCodes[category.Code] = category
+		positions[seed.Key] = len(ledgers)
+		ledgers = append(
+			ledgers,
+			FinanceSpecifiedLedger{
+				Key:         seed.Key,
+				Title:       seed.Title,
+				Description: seed.Description,
+				Nature:      seed.Nature,
 			},
 		)
 	}
@@ -344,6 +342,12 @@ func (a *App) buildFinanceSpecifiedLedgers(
 		}
 
 		key := strings.TrimSpace(tx.Category)
+		if _, exists := categoryCodes[key]; exists {
+			ledger := &ledgers[positions[key]]
+			appendFinanceSpecifiedLedgerEntry(ledger, tx)
+			continue
+		}
+
 		if key == "" {
 			key = "other_ledger_movements"
 		}
@@ -397,4 +401,73 @@ func findFinanceSpecifiedLedger(
 		}
 	}
 	return nil
+}
+
+func isFinanceSpecifiedSystemLedgerKey(key string) bool {
+	switch strings.TrimSpace(key) {
+	case "bookings_all_games",
+		"admissions",
+		"class_monthly_fees",
+		"banking":
+		return true
+	default:
+		return false
+	}
+}
+
+func financeSpecifiedSystemLedgers(
+	ledgers []FinanceSpecifiedLedger,
+) []FinanceSpecifiedLedger {
+	filtered := make([]FinanceSpecifiedLedger, 0, len(ledgers))
+	for _, ledger := range ledgers {
+		if isFinanceSpecifiedSystemLedgerKey(ledger.Key) {
+			filtered = append(filtered, ledger)
+		}
+	}
+	return filtered
+}
+
+func financeSpecifiedIncomeLedgers(
+	ledgers []FinanceSpecifiedLedger,
+) []FinanceSpecifiedLedger {
+	filtered := make([]FinanceSpecifiedLedger, 0, len(ledgers))
+	for _, ledger := range ledgers {
+		if isFinanceSpecifiedSystemLedgerKey(ledger.Key) {
+			continue
+		}
+		if ledger.Nature == "income" {
+			filtered = append(filtered, ledger)
+		}
+	}
+	return filtered
+}
+
+func financeSpecifiedExpenseLedgers(
+	ledgers []FinanceSpecifiedLedger,
+) []FinanceSpecifiedLedger {
+	filtered := make([]FinanceSpecifiedLedger, 0, len(ledgers))
+	for _, ledger := range ledgers {
+		if isFinanceSpecifiedSystemLedgerKey(ledger.Key) {
+			continue
+		}
+		if ledger.Nature == "expense" {
+			filtered = append(filtered, ledger)
+		}
+	}
+	return filtered
+}
+
+func financeSpecifiedOtherLedgers(
+	ledgers []FinanceSpecifiedLedger,
+) []FinanceSpecifiedLedger {
+	filtered := make([]FinanceSpecifiedLedger, 0, len(ledgers))
+	for _, ledger := range ledgers {
+		if isFinanceSpecifiedSystemLedgerKey(ledger.Key) {
+			continue
+		}
+		if ledger.Nature != "income" && ledger.Nature != "expense" {
+			filtered = append(filtered, ledger)
+		}
+	}
+	return filtered
 }

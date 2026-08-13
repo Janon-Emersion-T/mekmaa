@@ -126,41 +126,151 @@
   </div>
 
   <div class="space-y-6">
-    {{range .FinanceSpecifiedLedgers}}
-    <article class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
-      <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">{{.BalanceLabel}}</p>
-            <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
-            <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
-          </div>
-          <div class="grid grid-cols-3 gap-3 text-center">
-            <div class="rounded-2xl bg-cloud px-4 py-3">
-              <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Debit</p>
-              <p class="mt-1 text-base font-semibold text-obsidian">{{money .DebitTotal}}</p>
-            </div>
-            <div class="rounded-2xl bg-cloud px-4 py-3">
-              <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Credit</p>
-              <p class="mt-1 text-base font-semibold text-obsidian">{{money .CreditTotal}}</p>
-            </div>
-            <div class="rounded-2xl bg-cloud px-4 py-3">
-              <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Balance</p>
-              <p class="mt-1 text-base font-semibold text-obsidian">{{money .NetBalance}}</p>
-            </div>
-          </div>
+    {{$systemLedgers := financeSpecifiedSystemLedgers .FinanceSpecifiedLedgers}}
+    {{$incomeLedgers := financeSpecifiedIncomeLedgers .FinanceSpecifiedLedgers}}
+    {{$expenseLedgers := financeSpecifiedExpenseLedgers .FinanceSpecifiedLedgers}}
+    {{$otherLedgers := financeSpecifiedOtherLedgers .FinanceSpecifiedLedgers}}
+
+    {{if .FinanceSpecifiedLedgers}}
+    <section class="space-y-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Core ledgers</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">System specified ledgers</h3>
         </div>
+        <span class="rounded-full bg-cloud px-3 py-1 text-xs font-semibold text-slate/60">{{len $systemLedgers}} items</span>
       </div>
-      <div class="px-5 py-4 sm:px-6">
-        <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
+      <div class="grid gap-4 xl:grid-cols-2">
+        {{range $systemLedgers}}
+        <article class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+          <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">{{.BalanceLabel}}</p>
+                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
+              </div>
+              <div class="grid grid-cols-3 gap-3 text-center">
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Debit</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .DebitTotal}}</p></div>
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Credit</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .CreditTotal}}</p></div>
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Balance</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .NetBalance}}</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="px-5 py-4 sm:px-6">
+            <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
+          </div>
+        </article>
+        {{end}}
       </div>
-    </article>
+    </section>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700/70">Income categories</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Income category ledgers</h3>
+        </div>
+        <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{{len $incomeLedgers}} items</span>
+      </div>
+      <div class="grid gap-4 xl:grid-cols-2">
+        {{range $incomeLedgers}}
+        <article class="overflow-hidden rounded-[2rem] border border-emerald-100 bg-white/90 shadow-sm">
+          <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700/70">{{.BalanceLabel}}</p>
+                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
+              </div>
+              <div class="grid grid-cols-3 gap-3 text-center">
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Debit</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .DebitTotal}}</p></div>
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Credit</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .CreditTotal}}</p></div>
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Balance</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .NetBalance}}</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="px-5 py-4 sm:px-6">
+            <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
+          </div>
+        </article>
+        {{end}}
+      </div>
+    </section>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700/70">Expense categories</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Expense category ledgers</h3>
+        </div>
+        <span class="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">{{len $expenseLedgers}} items</span>
+      </div>
+      <div class="grid gap-4 xl:grid-cols-2">
+        {{range $expenseLedgers}}
+        <article class="overflow-hidden rounded-[2rem] border border-rose-100 bg-white/90 shadow-sm">
+          <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700/70">{{.BalanceLabel}}</p>
+                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
+              </div>
+              <div class="grid grid-cols-3 gap-3 text-center">
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Debit</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .DebitTotal}}</p></div>
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Credit</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .CreditTotal}}</p></div>
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Balance</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .NetBalance}}</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="px-5 py-4 sm:px-6">
+            <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
+          </div>
+        </article>
+        {{end}}
+      </div>
+    </section>
+
+    {{if $otherLedgers}}
+    <section class="space-y-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700/70">Other ledgers</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Other specified ledgers</h3>
+        </div>
+        <span class="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">{{len $otherLedgers}} items</span>
+      </div>
+      <div class="grid gap-4 xl:grid-cols-2">
+        {{range $otherLedgers}}
+        <article class="overflow-hidden rounded-[2rem] border border-sky-100 bg-white/90 shadow-sm">
+          <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700/70">{{.BalanceLabel}}</p>
+                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
+              </div>
+              <div class="grid grid-cols-3 gap-3 text-center">
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Debit</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .DebitTotal}}</p></div>
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Credit</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .CreditTotal}}</p></div>
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Balance</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .NetBalance}}</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="px-5 py-4 sm:px-6">
+            <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
+          </div>
+        </article>
+        {{end}}
+      </div>
+    </section>
+    {{end}}
     {{else}}
     <div class="rounded-[2rem] border border-dashed border-slate/20 bg-cloud/45 px-6 py-12 text-center text-sm text-slate/60">
       No posted transactions matched the selected period.
     </div>
     {{end}}
-    </div>
+  </div>
   {{end}}
 </section>
 {{end}}

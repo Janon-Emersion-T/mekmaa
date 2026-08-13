@@ -6462,17 +6462,20 @@ func TestBuildFinanceSpecifiedLedgersGroupsCoreLedgers(t *testing.T) {
 	if ledger := found["class_monthly_fees"]; ledger.CreditTotal != 3200 || ledger.EntryCount != 1 {
 		t.Fatalf("unexpected monthly fees ledger: %#v", ledger)
 	}
-	if ledger := found["rent"]; ledger.DebitTotal != 50000 || ledger.EntryCount != 1 {
-		t.Fatalf("unexpected rent ledger: %#v", ledger)
+	if ledger := found["facility_expense"]; ledger.DebitTotal != 50000 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected facility expense ledger: %#v", ledger)
 	}
-	if ledger := found["electricity"]; ledger.DebitTotal != 12000 || ledger.EntryCount != 1 {
-		t.Fatalf("unexpected electricity ledger: %#v", ledger)
+	if ledger := found["electricity_bills_expense"]; ledger.DebitTotal != 12000 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected electricity expense ledger: %#v", ledger)
 	}
-	if ledger := found["salary"]; ledger.DebitTotal != 30000 || ledger.EntryCount != 1 {
-		t.Fatalf("unexpected salary ledger: %#v", ledger)
+	if ledger := found["staff_salary_expense"]; ledger.DebitTotal != 30000 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected salary expense ledger: %#v", ledger)
 	}
-	if ledger := found["loan_repayments"]; ledger.DebitTotal != 9000 || ledger.EntryCount != 1 {
-		t.Fatalf("unexpected loan repayments ledger: %#v", ledger)
+	if ledger := found["loan_repayment_expense"]; ledger.DebitTotal != 9000 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected loan repayment ledger: %#v", ledger)
+	}
+	if ledger := found["marketing_expense"]; ledger.EntryCount != 0 {
+		t.Fatalf("expected empty category ledger to exist, got %#v", ledger)
 	}
 }
 
@@ -6519,16 +6522,27 @@ func TestBuildFinanceSpecifiedLedgersBankingUsesDebitCreditAssetView(t *testing.
 		}
 	}
 
-	if banking.EntryCount != 3 {
-		t.Fatalf("expected 3 banking entries, got %#v", banking)
+	if banking.EntryCount != 2 {
+		t.Fatalf("expected 2 banking entries, got %#v", banking)
 	}
 	if banking.DebitTotal != 115000 {
 		t.Fatalf("unexpected banking debit total: %#v", banking)
 	}
-	if banking.CreditTotal != 500 {
+	if banking.CreditTotal != 0 {
 		t.Fatalf("unexpected banking credit total: %#v", banking)
 	}
-	if banking.NetBalance != 114500 || banking.BalanceLabel != "Debit balance" {
+	if banking.NetBalance != 115000 || banking.BalanceLabel != "Debit balance" {
 		t.Fatalf("unexpected banking balance: %#v", banking)
+	}
+
+	var bankCharges FinanceSpecifiedLedger
+	for _, ledger := range ledgers {
+		if ledger.Key == "bank_charges_expense" {
+			bankCharges = ledger
+			break
+		}
+	}
+	if bankCharges.EntryCount != 1 || bankCharges.DebitTotal != 500 {
+		t.Fatalf("unexpected bank charges ledger: %#v", bankCharges)
 	}
 }
