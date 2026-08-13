@@ -2327,11 +2327,12 @@ func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode
 func (a *App) createPricingRule(rule PricingRule) error {
 	_, err := a.db.Exec(`
 		INSERT INTO pricing_rules (
-			activity, quantity, weekday_offpeak_price, weekday_peak_price,
+			game_id, activity, quantity, weekday_offpeak_price, weekday_peak_price,
 			weekend_offpeak_price, weekend_peak_price, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
+		rule.GameID,
 		rule.Activity,
 		rule.Quantity,
 		rule.WeekdayOffPeak,
@@ -2347,11 +2348,12 @@ func (a *App) createPricingRule(rule PricingRule) error {
 func (a *App) createEvent(event Event) error {
 	_, err := a.db.Exec(`
 		INSERT INTO events (
-			title, category, event_date, start_time, end_time, registration_deadline, venue, summary,
+			game_id, title, category, event_date, start_time, end_time, registration_deadline, venue, summary,
 			image_path, cta_label, cta_link, published, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
+		event.GameID,
 		event.Title,
 		event.Category,
 		event.EventDate,
@@ -3350,10 +3352,11 @@ func (a *App) updateSpaceSchedule(
 func (a *App) updatePricingRule(rule PricingRule) error {
 	_, err := a.db.Exec(`
 		UPDATE pricing_rules
-		SET activity = ?, quantity = ?, weekday_offpeak_price = ?, weekday_peak_price = ?,
+		SET game_id = ?, activity = ?, quantity = ?, weekday_offpeak_price = ?, weekday_peak_price = ?,
 		    weekend_offpeak_price = ?, weekend_peak_price = ?, updated_at = ?
 		WHERE id = ?
 	`,
+		rule.GameID,
 		rule.Activity,
 		rule.Quantity,
 		rule.WeekdayOffPeak,
@@ -3369,10 +3372,11 @@ func (a *App) updatePricingRule(rule PricingRule) error {
 func (a *App) updateEvent(event Event) error {
 	_, err := a.db.Exec(`
 		UPDATE events
-		SET title = ?, category = ?, event_date = ?, start_time = ?, end_time = ?, registration_deadline = ?, venue = ?, summary = ?,
+		SET game_id = ?, title = ?, category = ?, event_date = ?, start_time = ?, end_time = ?, registration_deadline = ?, venue = ?, summary = ?,
 		    image_path = ?, cta_label = ?, cta_link = ?, published = ?, updated_at = ?
 		WHERE id = ?
 	`,
+		event.GameID,
 		event.Title,
 		event.Category,
 		event.EventDate,

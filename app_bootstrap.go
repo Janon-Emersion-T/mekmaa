@@ -981,6 +981,7 @@ type Court struct {
 type CourtActivity struct {
 	ID          int64
 	CourtID     int64
+	GameID      int64
 	Activity    string
 	DisplayName string
 	MaxQuantity int
@@ -1071,6 +1072,7 @@ type AdminBookingOption struct {
 
 type PricingRule struct {
 	ID             int64
+	GameID         int64
 	Activity       string
 	Quantity       int
 	WeekdayOffPeak float64
@@ -1314,6 +1316,7 @@ type AdmissionPricing struct {
 
 type TrainingProgram struct {
 	ID             int64
+	GameID         int64
 	Name           string
 	Activity       string
 	TrainingFormat string
@@ -1327,6 +1330,7 @@ type TrainingProgram struct {
 
 type Event struct {
 	ID                   int64
+	GameID               int64
 	Title                string
 	Category             string
 	EventDate            string

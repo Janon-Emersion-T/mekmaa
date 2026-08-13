@@ -127,6 +127,10 @@ func scheduleFromRequest(r *http.Request) SpaceSchedule {
 }
 
 func pricingRuleFromRequest(r *http.Request) (PricingRule, error) {
+	gameID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("game_id")), 10, 64)
+	if err != nil || gameID <= 0 {
+		return PricingRule{}, errors.New("valid game is required")
+	}
 	quantity, err := strconv.Atoi(strings.TrimSpace(r.FormValue("quantity")))
 	if err != nil {
 		return PricingRule{}, errors.New("valid quantity is required")
@@ -149,7 +153,7 @@ func pricingRuleFromRequest(r *http.Request) (PricingRule, error) {
 	}
 
 	return PricingRule{
-		Activity:       strings.ToLower(strings.TrimSpace(r.FormValue("activity"))),
+		GameID:         gameID,
 		Quantity:       quantity,
 		WeekdayOffPeak: weekdayOffPeak,
 		WeekdayPeak:    weekdayPeak,
@@ -276,7 +280,12 @@ func (a *App) eventFromRequest(r *http.Request) (Event, error) {
 	if err != nil {
 		return Event{}, err
 	}
+	gameID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("game_id")), 10, 64)
+	if err != nil || gameID <= 0 {
+		return Event{}, errors.New("valid game is required")
+	}
 	return Event{
+		GameID:               gameID,
 		Title:                strings.TrimSpace(r.FormValue("title")),
 		Category:             strings.TrimSpace(r.FormValue("category")),
 		EventDate:            strings.TrimSpace(r.FormValue("event_date")),
@@ -539,20 +548,14 @@ func validateCourt(court Court) error {
 
 func validatePricingRule(rule PricingRule) error {
 	switch {
-	case rule.Activity == "":
-		return errors.New("activity is required")
+	case rule.GameID <= 0:
+		return errors.New("game is required")
 	case rule.Quantity <= 0:
 		return errors.New("quantity must be greater than 0")
 	case rule.WeekdayOffPeak < 0 || rule.WeekdayPeak < 0 || rule.WeekendOffPeak < 0 || rule.WeekendPeak < 0:
 		return errors.New("prices cannot be negative")
 	}
-
-	for _, option := range defaultBookingOptionCatalog() {
-		if option.Activity == rule.Activity && option.Quantity == rule.Quantity {
-			return nil
-		}
-	}
-	return errors.New("unsupported booking option")
+	return nil
 }
 
 func validatePricingSettings(settings PricingSettings) error {
@@ -585,6 +588,8 @@ func validateEnrollment(enrollment StudentEnrollment) error {
 
 func validateEvent(event Event) error {
 	switch {
+	case event.GameID <= 0:
+		return errors.New("game is required")
 	case event.Title == "":
 		return errors.New("title is required")
 	case event.Category == "":

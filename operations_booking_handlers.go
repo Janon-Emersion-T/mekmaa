@@ -2709,6 +2709,12 @@ func (a *App) createPricingHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	game, err := a.findGameByID(pricing.GameID)
+	if err != nil {
+		http.Error(w, "selected game was not found", http.StatusBadRequest)
+		return
+	}
+	pricing.Activity = game.Activity
 	if err := validatePricingRule(pricing); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -2752,6 +2758,12 @@ func (a *App) updatePricingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pricing.ID = pricingID
+	game, err := a.findGameByID(pricing.GameID)
+	if err != nil {
+		http.Error(w, "selected game was not found", http.StatusBadRequest)
+		return
+	}
+	pricing.Activity = game.Activity
 	if err := validatePricingRule(pricing); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -2822,6 +2834,13 @@ func (a *App) createEventHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	game, err := a.findGameByID(event.GameID)
+	if err != nil {
+		a.removeUploadedEventImage(event.ImagePath)
+		http.Error(w, "selected game was not found", http.StatusBadRequest)
+		return
+	}
+	event.Category = game.Name
 	if err := validateEvent(event); err != nil {
 		a.removeUploadedEventImage(event.ImagePath)
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -2874,6 +2893,15 @@ func (a *App) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	event.ID = eventID
+	game, err := a.findGameByID(event.GameID)
+	if err != nil {
+		if event.ImagePath != "" {
+			a.removeUploadedEventImage(event.ImagePath)
+		}
+		http.Error(w, "selected game was not found", http.StatusBadRequest)
+		return
+	}
+	event.Category = game.Name
 	uploadedReplacement := event.ImagePath
 	if event.ImagePath == "" {
 		event.ImagePath = existingEvent.ImagePath

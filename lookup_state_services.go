@@ -1045,7 +1045,7 @@ func scanSpaceSchedule(row rowScanner) (*SpaceSchedule, error) {
 
 func (a *App) findPricingRuleByID(pricingID int64) (*PricingRule, error) {
 	row := a.db.QueryRow(`
-		SELECT id, activity, quantity, weekday_offpeak_price, weekday_peak_price,
+		SELECT id, COALESCE(game_id, 0), activity, quantity, weekday_offpeak_price, weekday_peak_price,
 		       weekend_offpeak_price, weekend_peak_price, created_at, updated_at
 		FROM pricing_rules
 		WHERE id = ?
@@ -1054,6 +1054,7 @@ func (a *App) findPricingRuleByID(pricingID int64) (*PricingRule, error) {
 	var rule PricingRule
 	if err := row.Scan(
 		&rule.ID,
+		&rule.GameID,
 		&rule.Activity,
 		&rule.Quantity,
 		&rule.WeekdayOffPeak,
@@ -1070,7 +1071,7 @@ func (a *App) findPricingRuleByID(pricingID int64) (*PricingRule, error) {
 
 func (a *App) findEventByID(eventID int64) (*Event, error) {
 	row := a.db.QueryRow(`
-		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
+		SELECT id, COALESCE(game_id, 0), title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
 		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
 		       cta_label, cta_link, published, created_at, updated_at
 		FROM events
@@ -1081,6 +1082,7 @@ func (a *App) findEventByID(eventID int64) (*Event, error) {
 	var published int
 	if err := row.Scan(
 		&event.ID,
+		&event.GameID,
 		&event.Title,
 		&event.Category,
 		&event.EventDate,

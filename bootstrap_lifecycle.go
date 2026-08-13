@@ -1169,6 +1169,83 @@ ON court_closures(activity, active, closure_date)`,
 		return fmt.Errorf("backfill games from court activities: %w", err)
 	}
 	for _, migration := range []struct {
+		table  string
+		column string
+		stmt   string
+	}{
+		{table: "court_activities", column: "game_id", stmt: `ALTER TABLE court_activities ADD COLUMN game_id INTEGER NOT NULL DEFAULT 0`},
+		{table: "pricing_rules", column: "game_id", stmt: `ALTER TABLE pricing_rules ADD COLUMN game_id INTEGER NOT NULL DEFAULT 0`},
+		{table: "training_programs", column: "game_id", stmt: `ALTER TABLE training_programs ADD COLUMN game_id INTEGER NOT NULL DEFAULT 0`},
+		{table: "events", column: "game_id", stmt: `ALTER TABLE events ADD COLUMN game_id INTEGER NOT NULL DEFAULT 0`},
+	} {
+		exists, err := tableHasColumn(db, migration.table, migration.column)
+		if err != nil {
+			return fmt.Errorf("check %s %s column: %w", migration.table, migration.column, err)
+		}
+		if !exists {
+			if _, err := db.Exec(migration.stmt); err != nil {
+				return fmt.Errorf("add %s %s column: %w", migration.table, migration.column, err)
+			}
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_court_activities_game_id ON court_activities(game_id)`); err != nil {
+		return fmt.Errorf("create court_activities game index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_pricing_rules_game_id ON pricing_rules(game_id)`); err != nil {
+		return fmt.Errorf("create pricing_rules game index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_training_programs_game_id ON training_programs(game_id)`); err != nil {
+		return fmt.Errorf("create training_programs game index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_game_id ON events(game_id)`); err != nil {
+		return fmt.Errorf("create events game index: %w", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE court_activities
+		SET game_id = COALESCE((SELECT g.id FROM games g WHERE g.activity = court_activities.activity), 0)
+		WHERE game_id = 0 AND TRIM(activity) <> '' AND activity <> 'training'
+	`); err != nil {
+		return fmt.Errorf("backfill court activity games: %w", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE pricing_rules
+		SET game_id = COALESCE((SELECT g.id FROM games g WHERE g.activity = pricing_rules.activity), 0)
+		WHERE game_id = 0 AND TRIM(activity) <> ''
+	`); err != nil {
+		return fmt.Errorf("backfill pricing rule games: %w", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE training_programs
+		SET game_id = COALESCE((SELECT g.id FROM games g WHERE g.activity = training_programs.activity), 0)
+		WHERE game_id = 0 AND TRIM(activity) <> ''
+	`); err != nil {
+		return fmt.Errorf("backfill training program games: %w", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE events
+		SET game_id = COALESCE((
+			SELECT g.id
+			FROM games g
+			WHERE g.name = events.category
+			LIMIT 1
+		), 0)
+		WHERE game_id = 0 AND TRIM(category) <> ''
+	`); err != nil {
+		return fmt.Errorf("backfill event games by name: %w", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE events
+		SET game_id = COALESCE((
+			SELECT g.id
+			FROM games g
+			WHERE g.activity = events.category
+			LIMIT 1
+		), 0)
+		WHERE game_id = 0 AND TRIM(category) <> ''
+	`); err != nil {
+		return fmt.Errorf("backfill event games by activity: %w", err)
+	}
+	for _, migration := range []struct {
 		column string
 		stmt   string
 	}{

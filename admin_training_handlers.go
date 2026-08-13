@@ -603,7 +603,7 @@ func (a *App) createTrainingProgramHandler(
 		return
 	}
 
-	program, err := trainingProgramFromRequest(r)
+	program, err := a.trainingProgramFromRequest(r)
 	if err != nil {
 		a.setFlash(w, "Training programme could not be created: "+err.Error())
 		http.Redirect(
@@ -671,7 +671,7 @@ func (a *App) updateTrainingProgramHandler(
 		return
 	}
 
-	program, err := trainingProgramFromRequest(r)
+	program, err := a.trainingProgramFromRequest(r)
 	if err != nil {
 		a.setFlash(w, "Training programme could not be updated: "+err.Error())
 
@@ -829,13 +829,14 @@ func (a *App) deleteTrainingProgramHandler(
 	)
 }
 
-func trainingProgramFromRequest(
+func (a *App) trainingProgramFromRequest(
 	r *http.Request,
 ) (TrainingProgram, error) {
 	name := strings.TrimSpace(r.FormValue("name"))
-	activity := normalizeTrainingActivity(
-		r.FormValue("activity"),
-	)
+	gameID, err := parsePositiveInt64(r.FormValue("game_id"))
+	if err != nil {
+		return TrainingProgram{}, errors.New("valid game is required")
+	}
 	trainingFormat := strings.ToLower(
 		strings.TrimSpace(r.FormValue("training_format")),
 	)
@@ -870,14 +871,19 @@ func trainingProgramFromRequest(
 	}
 
 	program := TrainingProgram{
+		GameID:         gameID,
 		Name:           name,
-		Activity:       activity,
 		TrainingFormat: trainingFormat,
 		AdmissionFee:   admissionFee,
 		MonthlyFee:     monthlyFee,
 		Active:         r.FormValue("active") == "on",
 		SortOrder:      sortOrder,
 	}
+	game, err := a.findGameByID(gameID)
+	if err != nil {
+		return TrainingProgram{}, errors.New("selected game was not found")
+	}
+	program.Activity = normalizeTrainingActivity(game.Activity)
 
 	if err := validateTrainingProgram(program); err != nil {
 		return TrainingProgram{}, err
@@ -899,6 +905,9 @@ func validateTrainingProgram(program TrainingProgram) error {
 
 	if program.Activity == "" {
 		return errors.New("activity is required")
+	}
+	if program.GameID <= 0 {
+		return errors.New("game is required")
 	}
 
 	if len(program.Activity) > 60 {

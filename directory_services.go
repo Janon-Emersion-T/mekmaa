@@ -319,6 +319,7 @@ func (a *App) listTrainingProgramsForAdmissions(admissionIDs []int64) (map[int64
 		SELECT
 			atp.admission_id,
 			tp.id,
+			COALESCE(tp.game_id, 0),
 			tp.name,
 			tp.activity,
 			tp.training_format,
@@ -349,6 +350,7 @@ func (a *App) listTrainingProgramsForAdmissions(admissionIDs []int64) (map[int64
 		if err := rows.Scan(
 			&admissionID,
 			&program.ID,
+			&program.GameID,
 			&program.Name,
 			&program.Activity,
 			&program.TrainingFormat,
@@ -383,6 +385,7 @@ func (a *App) listTrainingProgramsByIDs(programIDs []int64) ([]TrainingProgram, 
 	rows, err := a.db.Query(fmt.Sprintf(`
 		SELECT
 			id,
+			COALESCE(game_id, 0),
 			name,
 			activity,
 			training_format,
@@ -406,6 +409,7 @@ func (a *App) listTrainingProgramsByIDs(programIDs []int64) ([]TrainingProgram, 
 		var active int
 		if err := rows.Scan(
 			&program.ID,
+			&program.GameID,
 			&program.Name,
 			&program.Activity,
 			&program.TrainingFormat,
@@ -741,7 +745,7 @@ func (a *App) findStudentEnrollmentByID(enrollmentID int64) (*StudentEnrollment,
 
 func (a *App) listEvents() ([]Event, error) {
 	rows, err := a.db.Query(`
-		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
+		SELECT id, COALESCE(game_id, 0), title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
 		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
 		       cta_label, cta_link, published, created_at, updated_at
 		FROM events
@@ -758,6 +762,7 @@ func (a *App) listEvents() ([]Event, error) {
 		var published int
 		if err := rows.Scan(
 			&event.ID,
+			&event.GameID,
 			&event.Title,
 			&event.Category,
 			&event.EventDate,
@@ -847,7 +852,7 @@ func (a *App) findGameByID(gameID int64) (*Game, error) {
 
 func (a *App) listPublishedEvents() ([]Event, error) {
 	rows, err := a.db.Query(`
-		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
+		SELECT id, COALESCE(game_id, 0), title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
 		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
 		       cta_label, cta_link, published, created_at, updated_at
 		FROM events
@@ -865,6 +870,7 @@ func (a *App) listPublishedEvents() ([]Event, error) {
 		var published int
 		if err := rows.Scan(
 			&event.ID,
+			&event.GameID,
 			&event.Title,
 			&event.Category,
 			&event.EventDate,
@@ -1361,6 +1367,7 @@ func (a *App) listCourtActivities(
 		SELECT
 			id,
 			court_id,
+			COALESCE(game_id, 0),
 			activity,
 			display_name,
 			max_quantity,
@@ -1394,6 +1401,7 @@ func (a *App) listCourtActivities(
 		err := rows.Scan(
 			&activity.ID,
 			&activity.CourtID,
+			&activity.GameID,
 			&activity.Activity,
 			&activity.DisplayName,
 			&activity.MaxQuantity,
@@ -2368,7 +2376,7 @@ func (a *App) listPricingRules() ([]PricingRule, error) {
 
 func listPricingRulesQuery(queryer sqlQueryer) ([]PricingRule, error) {
 	rows, err := queryer.Query(`
-		SELECT id, activity, quantity, weekday_offpeak_price, weekday_peak_price,
+		SELECT id, COALESCE(game_id, 0), activity, quantity, weekday_offpeak_price, weekday_peak_price,
 		       weekend_offpeak_price, weekend_peak_price, created_at, updated_at
 		FROM pricing_rules
 		ORDER BY activity ASC, quantity ASC, id ASC
@@ -2383,6 +2391,7 @@ func listPricingRulesQuery(queryer sqlQueryer) ([]PricingRule, error) {
 		var rule PricingRule
 		if err := rows.Scan(
 			&rule.ID,
+			&rule.GameID,
 			&rule.Activity,
 			&rule.Quantity,
 			&rule.WeekdayOffPeak,
@@ -2403,6 +2412,7 @@ func (a *App) listTrainingPrograms(includeInactive bool) ([]TrainingProgram, err
 	query := `
 		SELECT
 			id,
+			COALESCE(game_id, 0),
 			name,
 			activity,
 			training_format,
@@ -2435,6 +2445,7 @@ func (a *App) listTrainingPrograms(includeInactive bool) ([]TrainingProgram, err
 
 		if err := rows.Scan(
 			&program.ID,
+			&program.GameID,
 			&program.Name,
 			&program.Activity,
 			&program.TrainingFormat,
@@ -2463,6 +2474,7 @@ func (a *App) findTrainingProgramByID(programID int64) (*TrainingProgram, error)
 	row := a.db.QueryRow(`
 		SELECT
 			id,
+			COALESCE(game_id, 0),
 			name,
 			activity,
 			training_format,
@@ -2481,6 +2493,7 @@ func (a *App) findTrainingProgramByID(programID int64) (*TrainingProgram, error)
 
 	if err := row.Scan(
 		&program.ID,
+		&program.GameID,
 		&program.Name,
 		&program.Activity,
 		&program.TrainingFormat,
@@ -2504,6 +2517,7 @@ func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
 
 	result, err := a.db.Exec(`
 		INSERT INTO training_programs (
+			game_id,
 			name,
 			activity,
 			training_format,
@@ -2514,8 +2528,9 @@ func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
+		program.GameID,
 		program.Name,
 		program.Activity,
 		program.TrainingFormat,
@@ -2542,6 +2557,7 @@ func (a *App) updateTrainingProgram(program TrainingProgram) error {
 	_, err := a.db.Exec(`
 		UPDATE training_programs
 		SET
+			game_id = ?,
 			name = ?,
 			activity = ?,
 			training_format = ?,
@@ -2552,6 +2568,7 @@ func (a *App) updateTrainingProgram(program TrainingProgram) error {
 			updated_at = ?
 		WHERE id = ?
 	`,
+		program.GameID,
 		program.Name,
 		program.Activity,
 		program.TrainingFormat,
