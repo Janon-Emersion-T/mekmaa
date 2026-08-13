@@ -4200,7 +4200,7 @@ func TestHeldBookingReservesCapacityAndReleasesOnFinalStates(t *testing.T) {
 	}
 }
 
-func TestAutoAcceptedRequestDoesNotCreateDuplicateStatusCommunication(t *testing.T) {
+func TestPublicBookingRequestStaysPendingEvenWhenCourtActivityAutoAcceptIsEnabled(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	if _, err := app.db.Exec(`UPDATE court_activities SET auto_accept = 1 WHERE activity = 'badminton'`); err != nil {
 		t.Fatalf("enable auto accept: %v", err)
@@ -4213,7 +4213,7 @@ func TestAutoAcceptedRequestDoesNotCreateDuplicateStatusCommunication(t *testing
 		"slot_hour":       {"18:00"},
 		"activity":        {"badminton"},
 		"quantity":        {"1"},
-		"title":           {"Auto Accepted"},
+		"title":           {"Pending Review Booking"},
 		"requester_name":  {"Auto Customer"},
 		"requester_email": {"auto@example.com"},
 		"requester_phone": {"+94770000000"},
@@ -4230,11 +4230,11 @@ func TestAutoAcceptedRequestDoesNotCreateDuplicateStatusCommunication(t *testing
 
 	var scheduleID int64
 	var status string
-	if err := app.db.QueryRow(`SELECT id, status FROM space_schedules WHERE title = 'Auto Accepted'`).Scan(&scheduleID, &status); err != nil {
-		t.Fatalf("load auto accepted booking: %v", err)
+	if err := app.db.QueryRow(`SELECT id, status FROM space_schedules WHERE title = 'Pending Review Booking'`).Scan(&scheduleID, &status); err != nil {
+		t.Fatalf("load pending review booking: %v", err)
 	}
-	if status != bookingStatusConfirmed {
-		t.Fatalf("expected confirmed status, got %s", status)
+	if status != bookingStatusPending {
+		t.Fatalf("expected pending status, got %s", status)
 	}
 
 	rows, err := app.db.Query(`SELECT DISTINCT event_type FROM booking_communications WHERE schedule_id = ?`, scheduleID)
@@ -4250,8 +4250,8 @@ func TestAutoAcceptedRequestDoesNotCreateDuplicateStatusCommunication(t *testing
 		}
 		events = append(events, eventType)
 	}
-	if len(events) != 1 || events[0] != bookingCommEventConfirmed {
-		t.Fatalf("unexpected auto-accept communication events: %v", events)
+	if len(events) != 1 || events[0] != bookingCommEventRequestReceived {
+		t.Fatalf("unexpected booking-request communication events: %v", events)
 	}
 }
 

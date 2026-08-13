@@ -462,7 +462,7 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	schedule.QuotedPrice = priceForRuleSlot(*rule, settings, schedule.SlotDate, schedule.SlotHour)
-	created, changeID, err := a.createPublicBookingRequestDetailed(schedule)
+	created, _, err := a.createPublicBookingRequestDetailed(schedule)
 	if err != nil {
 		a.writePublicBookingError(w, r, &schedule, err.Error(), http.StatusBadRequest)
 		return
@@ -475,11 +475,6 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 	eventType := bookingCommEventRequestReceived
 	eventKey := fmt.Sprintf("schedule:%d:%s", requestID, bookingCommEventRequestReceived)
 	flashMessage := "Booking request " + bookingReference(requestID) + " received. Keep this reference while our team reviews the request."
-	if created.Status == bookingStatusConfirmed {
-		eventType = bookingCommEventConfirmed
-		eventKey = fmt.Sprintf("schedule:%d:%s:change:%d", requestID, bookingCommEventConfirmed, changeID)
-		flashMessage = "Booking " + bookingReference(requestID) + " was confirmed immediately. Check your booking status link for the latest details."
-	}
 
 	results, commErr := a.sendBookingCommunicationEvent(
 		requestID,
@@ -498,7 +493,7 @@ func (a *App) publicBookingRequestHandler(w http.ResponseWriter, r *http.Request
 	} else {
 		a.setFlash(w, flashMessage+" We could not confirm SMS delivery automatically.")
 	}
-	if strings.TrimSpace(rawToken) != "" && (created.Status == bookingStatusConfirmed || (!emailSent && !smsSent)) {
+	if strings.TrimSpace(rawToken) != "" && (!emailSent && !smsSent) {
 		http.Redirect(w, r, "/booking/status?token="+url.QueryEscape(rawToken), http.StatusSeeOther)
 		return
 	}

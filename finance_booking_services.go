@@ -2494,12 +2494,6 @@ func (a *App) createPublicBookingRequestDetailed(
 	statusSource := ""
 	changeSource := "customer"
 	actionType := bookingStatusPending
-	if activity := courtActivityFor(courtActivities, schedule.Activity); activity != nil && activity.AutoAccept {
-		requestStatus = bookingStatusConfirmed
-		statusSource = "system_auto_accept"
-		changeSource = "system_auto_accept"
-		actionType = "auto_confirmed"
-	}
 
 	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
