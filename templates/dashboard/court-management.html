@@ -163,6 +163,26 @@
               {{len .CourtLayouts}}
             </p>
           </div>
+
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate/45">
+              Linked games
+            </p>
+
+            <p class="mt-2 text-2xl font-semibold text-obsidian">
+              {{courtActivitiesLinkedCount .CourtActivities}}
+            </p>
+          </div>
+
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate/45">
+              Need linking
+            </p>
+
+            <p class="mt-2 text-2xl font-semibold {{if gt (courtActivitiesUnlinkedCount .CourtActivities) 0}}text-amber-900{{else}}text-obsidian{{end}}">
+              {{courtActivitiesUnlinkedCount .CourtActivities}}
+            </p>
+          </div>
         </div>
 
         <div class="mt-6 flex justify-end">
@@ -235,6 +255,11 @@
             Maximum quantity is the largest amount this physical court can
             support under any valid layout.
           </p>
+          {{if gt (courtActivitiesUnlinkedCount .CourtActivities) 0}}
+          <p class="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Some court activities are still not linked to a game. Link every public activity so pricing, layouts, closures, and booking flows stay aligned.
+          </p>
+          {{end}}
         </div>
 
         <div class="mt-5 space-y-3">
@@ -284,6 +309,9 @@
                   {{if eq .Activity "training"}}
                   <input type="text" value="Internal training only" readonly class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-sm text-slate/55 outline-none" />
                   {{else}}
+                  <p class="text-xs text-slate/55">
+                    {{if .GameID}}Currently linked to {{gameNameByID $.Games .GameID}}.{{else}}No game linked yet.{{end}}
+                  </p>
                   <div class="flex flex-wrap gap-2">
                     <select name="game_id" class="h-10 min-w-[14rem] rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
                       <option value="">No linked game</option>
@@ -448,7 +476,7 @@
                       </span>
 
                       <span class="mt-0.5 block text-xs text-slate/45">
-                        Maximum supported: {{.MaxQuantity}}
+                        {{if .GameID}}Linked game: {{gameNameByID $.Games .GameID}}{{else}}No linked game yet{{end}} · Maximum supported: {{.MaxQuantity}}
                       </span>
                     </span>
                   </label>
@@ -611,7 +639,7 @@
                       </span>
 
                       <span class="mt-0.5 block text-xs text-slate/45">
-                        Maximum supported: {{.MaxQuantity}}
+                        {{if .GameID}}Linked game: {{gameNameByID $.Games .GameID}}{{else}}No linked game yet{{end}} · Maximum supported: {{.MaxQuantity}}
                       </span>
                     </span>
                   </label>
@@ -746,11 +774,11 @@
               {{range .Items}}
               <div class="rounded-2xl border border-slate/10 bg-white px-4 py-3">
                 <p class="text-sm font-semibold text-obsidian">
-                  {{.DisplayName}}
+                  {{courtActivityGameName $.Games $.CourtActivities .Activity}}
                 </p>
 
                 <p class="mt-1 text-xs text-slate/50">
-                  Capacity: {{.Quantity}}
+                  {{.DisplayName}} · Capacity: {{.Quantity}}
                 </p>
               </div>
               {{else}}
@@ -928,7 +956,7 @@
               {{range .CourtActivities}}
               {{if .Active}}
               <option value="{{.Activity}}">
-                {{.DisplayName}} only
+                {{courtActivityGameName $.Games $.CourtActivities .Activity}} only
               </option>
               {{end}}
               {{end}}
@@ -1109,7 +1137,7 @@
                 value="{{.Activity}}"
                 {{if eq $.SelectedCourtClosure.Activity .Activity}}selected{{end}}
               >
-                {{.DisplayName}} only
+                {{courtActivityGameName $.Games $.CourtActivities .Activity}} only
               </option>
               {{end}}
               {{end}}
@@ -1202,7 +1230,7 @@
 
               {{if .Activity}}
               <span class="rounded-xl border border-aqua/30 bg-aqua/10 px-3 py-2 text-obsidian">
-                Activity: {{gameNameFor $.Games .Activity}}
+                Activity: {{courtActivityGameName $.Games $.CourtActivities .Activity}}
               </span>
               {{else}}
               <span class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">

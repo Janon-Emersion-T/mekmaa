@@ -1380,6 +1380,49 @@ func gameNameByID(games []Game, gameID int64) string {
 	return ""
 }
 
+func courtActivityGameName(games []Game, activities []CourtActivity, activity string) string {
+	for _, candidate := range activities {
+		if strings.EqualFold(candidate.Activity, activity) {
+			if candidate.GameID > 0 {
+				if name := gameNameByID(games, candidate.GameID); name != "" {
+					return name
+				}
+			}
+			if strings.TrimSpace(candidate.DisplayName) != "" {
+				return candidate.DisplayName
+			}
+			break
+		}
+	}
+	return gameNameFor(games, activity)
+}
+
+func courtActivitiesLinkedCount(activities []CourtActivity) int {
+	count := 0
+	for _, activity := range activities {
+		if strings.EqualFold(activity.Activity, "training") {
+			continue
+		}
+		if activity.GameID > 0 {
+			count++
+		}
+	}
+	return count
+}
+
+func courtActivitiesUnlinkedCount(activities []CourtActivity) int {
+	count := 0
+	for _, activity := range activities {
+		if strings.EqualFold(activity.Activity, "training") {
+			continue
+		}
+		if activity.GameID == 0 {
+			count++
+		}
+	}
+	return count
+}
+
 func bookingProductLabelForGames(games []Game, activity string, quantity int) string {
 	label := gameNameFor(games, activity)
 	if quantity <= 1 {
