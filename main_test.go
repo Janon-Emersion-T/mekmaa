@@ -6404,3 +6404,131 @@ func TestValidatePricingRuleAgainstOptionsRejectsUnavailableQuantity(t *testing.
 		t.Fatal("expected unavailable quantity to be rejected")
 	}
 }
+
+func TestBuildFinanceSpecifiedLedgersGroupsCoreLedgers(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+
+	recordedAt := time.Date(2026, time.August, 10, 9, 0, 0, 0, time.Local)
+	cases := []struct {
+		category    string
+		person      string
+		description string
+		amount      float64
+	}{
+		{"booking_payment", "Booking Customer", "Badminton booking", 2500},
+		{"admission_payment", "Admission Student", "Admission fee", 1500},
+		{"student_monthly_payment", "Monthly Student", "Monthly fee", 3200},
+		{"facility_expense", "Landlord", "August rent", -50000},
+		{"electricity_bills_expense", "Power Board", "Electricity bill", -12000},
+		{"staff_salary_expense", "Coach", "Salary payout", -30000},
+		{"loan_repayment_expense", "Bank", "Loan installment", -9000},
+	}
+	for i, item := range cases {
+		if _, err := app.createManualFinanceTransactionForAccountWithApproval(
+			item.category,
+			item.person,
+			item.description,
+			"",
+			cashID,
+			item.amount,
+			recordedAt.Add(time.Duration(i)*time.Minute),
+			0,
+			financeApprovalApproved,
+		); err != nil {
+			t.Fatalf("create finance transaction for %s: %v", item.category, err)
+		}
+	}
+
+	ledgers, from, to, err := app.buildFinanceSpecifiedLedgers("2026-08-01", "2026-08-31")
+	if err != nil {
+		t.Fatalf("build specified ledgers: %v", err)
+	}
+	if from != "2026-08-01" || to != "2026-08-31" {
+		t.Fatalf("unexpected period: from=%s to=%s", from, to)
+	}
+
+	found := make(map[string]FinanceSpecifiedLedger)
+	for _, ledger := range ledgers {
+		found[ledger.Key] = ledger
+	}
+
+	if ledger := found["bookings_all_games"]; ledger.CreditTotal != 2500 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected bookings ledger: %#v", ledger)
+	}
+	if ledger := found["admissions"]; ledger.CreditTotal != 1500 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected admissions ledger: %#v", ledger)
+	}
+	if ledger := found["class_monthly_fees"]; ledger.CreditTotal != 3200 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected monthly fees ledger: %#v", ledger)
+	}
+	if ledger := found["rent"]; ledger.DebitTotal != 50000 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected rent ledger: %#v", ledger)
+	}
+	if ledger := found["electricity"]; ledger.DebitTotal != 12000 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected electricity ledger: %#v", ledger)
+	}
+	if ledger := found["salary"]; ledger.DebitTotal != 30000 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected salary ledger: %#v", ledger)
+	}
+	if ledger := found["loan_repayments"]; ledger.DebitTotal != 9000 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected loan repayments ledger: %#v", ledger)
+	}
+}
+
+func TestBuildFinanceSpecifiedLedgersBankingUsesDebitCreditAssetView(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	bankID := financeAccountIDByName(t, app, financeAccountMainBank)
+
+	recordedAt := time.Date(2026, time.August, 11, 10, 0, 0, 0, time.Local)
+
+	if _, err := app.createFinanceOpeningBalance(cashID, 50000, recordedAt.Add(-time.Minute), "Cash opening", 0); err != nil {
+		t.Fatalf("create cash opening balance: %v", err)
+	}
+	if _, err := app.createFinanceOpeningBalance(bankID, 100000, recordedAt, "Bank opening", 0); err != nil {
+		t.Fatalf("create bank opening balance: %v", err)
+	}
+	if _, err := app.createFinanceTransfer(cashID, bankID, 15000, recordedAt, "TRF-1", "Cash to bank", "", 0); err != nil {
+		t.Fatalf("create transfer: %v", err)
+	}
+	if _, err := app.createManualFinanceTransactionForAccountWithApproval(
+		"bank_charges_expense",
+		"Bank",
+		"Monthly charge",
+		"",
+		bankID,
+		-500,
+		recordedAt,
+		0,
+		financeApprovalApproved,
+	); err != nil {
+		t.Fatalf("create bank charge: %v", err)
+	}
+
+	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers("2026-08-01", "2026-08-31")
+	if err != nil {
+		t.Fatalf("build specified ledgers: %v", err)
+	}
+
+	var banking FinanceSpecifiedLedger
+	for _, ledger := range ledgers {
+		if ledger.Key == "banking" {
+			banking = ledger
+			break
+		}
+	}
+
+	if banking.EntryCount != 3 {
+		t.Fatalf("expected 3 banking entries, got %#v", banking)
+	}
+	if banking.DebitTotal != 115000 {
+		t.Fatalf("unexpected banking debit total: %#v", banking)
+	}
+	if banking.CreditTotal != 500 {
+		t.Fatalf("unexpected banking credit total: %#v", banking)
+	}
+	if banking.NetBalance != 114500 || banking.BalanceLabel != "Debit balance" {
+		t.Fatalf("unexpected banking balance: %#v", banking)
+	}
+}

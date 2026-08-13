@@ -318,6 +318,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"templates/dashboard/src/finance-receivables.html",
 		"templates/dashboard/src/finance-customers.html",
 		"templates/dashboard/src/finance-ledger.html",
+		"templates/dashboard/src/finance-specified-ledgers.html",
 		"templates/dashboard/src/finance-ledger-filters.html",
 		"templates/dashboard/src/finance-ledger-results.html",
 		"templates/dashboard/src/finance-statements.html",

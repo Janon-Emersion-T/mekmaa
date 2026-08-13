@@ -735,6 +735,31 @@ type FinanceStatementItem struct {
 	Delta            float64
 }
 
+type FinanceSpecifiedLedgerEntry struct {
+	TransactionID      int64
+	RecordedAt         time.Time
+	ReferenceNumber    string
+	Counterparty       string
+	Description        string
+	FinanceAccountName string
+	DebitAmount        float64
+	CreditAmount       float64
+}
+
+type FinanceSpecifiedLedger struct {
+	Key           string
+	Title         string
+	Description   string
+	Nature        string
+	DebitEntries  []FinanceSpecifiedLedgerEntry
+	CreditEntries []FinanceSpecifiedLedgerEntry
+	DebitTotal    float64
+	CreditTotal   float64
+	NetBalance    float64
+	BalanceLabel  string
+	EntryCount    int
+}
+
 type FinanceProfitAndLoss struct {
 	From                string
 	To                  string
@@ -1555,6 +1580,9 @@ type TemplateData struct {
 	FinanceSummary                  FinanceSummary
 	FinanceProfitAndLoss            *FinanceProfitAndLoss
 	FinanceBalanceSheet             *FinanceBalanceSheet
+	FinanceSpecifiedLedgers         []FinanceSpecifiedLedger
+	FinanceSpecifiedLedgerFrom      string
+	FinanceSpecifiedLedgerTo        string
 	FinanceCustomerSearch           string
 	StatementOpeningBalance         float64
 	StatementClosingBalance         float64

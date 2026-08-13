@@ -52,6 +52,13 @@ func (a *App) financeBalanceSheetHandler(w http.ResponseWriter, r *http.Request)
 	a.financeSectionHandler(w, r, "balance-sheet")
 }
 
+func (a *App) financeSpecifiedLedgersHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	a.financeSectionHandler(w, r, "specified-ledgers")
+}
+
 func (a *App) financeSectionHandler(w http.ResponseWriter, r *http.Request, page string) {
 	user, _ := a.currentUser(r.Context())
 	started := time.Now()
@@ -73,9 +80,9 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	data.TodayDate = time.Now().Format("2006-01-02")
 	data.FinancePeriodLock, _ = a.currentFinancePeriodLock()
 
-	needOperationalSummary := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "profit-loss" || page == "balance-sheet"
+	needOperationalSummary := page == "ledger" || page == "specified-ledgers" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "profit-loss" || page == "balance-sheet"
 	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "balance-sheet"
-	needAllTransactions := page == "ledger" || page == "accounts" || page == "transfers" || page == "reconciliations" || page == "profit-loss" || page == "balance-sheet"
+	needAllTransactions := page == "ledger" || page == "specified-ledgers" || page == "accounts" || page == "transfers" || page == "reconciliations" || page == "profit-loss" || page == "balance-sheet"
 	needBookingFinancials := page == "receivables" || page == "customers"
 	needMonthlyRows := page == "receivables"
 	needTransfers := page == "transfers"
@@ -222,6 +229,20 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 			return data, err
 		}
 		data.FinanceBalanceSheet = report
+	}
+
+	if page == "specified-ledgers" {
+		ledgers, from, to, err := a.buildFinanceSpecifiedLedgers(
+			strings.TrimSpace(r.URL.Query().Get("from")),
+			strings.TrimSpace(r.URL.Query().Get("to")),
+		)
+		if err != nil {
+			log.Printf("finance %s load failed: op=build specified ledgers duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.FinanceSpecifiedLedgers = ledgers
+		data.FinanceSpecifiedLedgerFrom = from
+		data.FinanceSpecifiedLedgerTo = to
 	}
 
 	if needMonthlyRows {
