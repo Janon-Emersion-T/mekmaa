@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -234,6 +235,15 @@ func gameFromRequest(r *http.Request) (Game, error) {
 		Active:      r.FormValue("active") == "1",
 		SortOrder:   sortOrder,
 	}, nil
+}
+
+var gameActivitySanitizer = regexp.MustCompile(`[^a-z0-9]+`)
+
+func normalizeGameActivitySlug(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = gameActivitySanitizer.ReplaceAllString(name, "_")
+	name = strings.Trim(name, "_")
+	return name
 }
 
 func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, int, float64, float64, string, string, error) {
@@ -645,11 +655,9 @@ func validateGame(game Game, activities []CourtActivity) error {
 	case strings.TrimSpace(game.Name) == "":
 		return errors.New("name is required")
 	case strings.TrimSpace(game.Activity) == "":
-		return errors.New("linked activity is required")
+		return errors.New("internal activity is required")
 	case game.Activity == "training":
 		return errors.New("training cannot be used as a public game")
-	case !bookingActivityExists(game.Activity, activities):
-		return errors.New("linked activity is not active in court manager")
 	case game.SortOrder < 0:
 		return errors.New("sort order must be zero or greater")
 	default:

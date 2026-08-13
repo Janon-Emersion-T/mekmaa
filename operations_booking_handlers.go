@@ -1465,6 +1465,7 @@ func (a *App) createGameHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	game.Activity = normalizeGameActivitySlug(game.Name)
 	courtActivities, _, err := a.activeBookingConfiguration()
 	if err != nil {
 		log.Printf("load activities for game create: %v", err)
@@ -1514,6 +1515,12 @@ func (a *App) updateGameHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	game.ID = gameID
+	existingGame, err := a.findGameByID(gameID)
+	if err != nil {
+		http.Error(w, "game not found", http.StatusNotFound)
+		return
+	}
+	game.Activity = existingGame.Activity
 
 	courtActivities, _, err := a.activeBookingConfiguration()
 	if err != nil {

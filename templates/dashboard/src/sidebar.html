@@ -43,22 +43,25 @@
       {{end}}
     </div>
 
-    {{if or (hasPermission .User "admissions.manage") (hasPermission .User "coaches.manage") (hasPermission .User "training_programs.manage") (hasPermission .User "student_groups.manage") (hasPermission .User "attendance.manage") (hasPermission .User "finance.manage")}}
+    {{if or (hasPermission .User "admissions.manage") (hasPermission .User "coaches.manage") (hasPermission .User "training_programs.manage") (hasPermission .User "student_groups.manage") (hasPermission .User "attendance.manage")}}
     <div>
-      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Students</p>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Student Operations</p>
       <div class="space-y-1">
         {{if hasPermission .User "admissions.manage"}}
         <a href="/admin/admissions" class="{{if isCurrentPath .CurrentPath "/admin/admissions"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Admissions</span><span class="{{if isCurrentPath .CurrentPath "/admin/admissions"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">New</span>
+          <span>Admissions</span><span class="{{if isCurrentPath .CurrentPath "/admin/admissions"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Intake</span>
         </a>
         <a href="/admin/enrollments" class="{{if isCurrentPath .CurrentPath "/admin/enrollments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Enrollments</span><span class="{{if isCurrentPath .CurrentPath "/admin/enrollments"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Fees</span>
+          <span>Enrollments</span><span class="{{if isCurrentPath .CurrentPath "/admin/enrollments"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Active</span>
+        </a>
+        <a href="/admin/student-leaves" class="{{if isCurrentPath .CurrentPath "/admin/student-leaves"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Student leaves</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Breaks</span>
         </a>
         {{end}}
 
         {{if hasPermission .User "training_programs.manage"}}
         <a href="/admin/training-programs" class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Training Manager</span><span class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Programs</span>
+          <span>Training programmes</span><span class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Catalog</span>
         </a>
         {{end}}
         {{if hasPermission .User "coaches.manage"}}
@@ -69,7 +72,7 @@
 
         {{if hasPermission .User "student_groups.manage"}}
         <a href="/admin/student-groups" class="{{if isCurrentPath .CurrentPath "/admin/student-groups"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Student groups</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Teams</span>
+          <span>Student groups</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Batches</span>
         </a>
         {{end}}
         {{if hasPermission .User "attendance.manage"}}
@@ -81,13 +84,13 @@
     </div>
     {{end}}
 
-    {{if or (hasPermission .User "courts.manage") (hasPermission .User "space_bookings.manage") (hasPermission .User "booking_requests.manage") (hasPermission .User "pricing.manage")}}
+    {{if or (hasPermission .User "courts.manage") (hasPermission .User "space_bookings.manage") (hasPermission .User "pricing.manage")}}
     <div>
-      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Scheduling</p>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Booking Setup</p>
       <div class="space-y-1">
         {{if hasPermission .User "courts.manage"}}
 <a href="/admin/courts" class="{{if isCurrentPath .CurrentPath "/admin/courts"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-  <span>Court Manager</span>
+  <span>Courts</span>
   <span class="{{if isCurrentPath .CurrentPath "/admin/courts"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">
     Layouts
   </span>
@@ -95,26 +98,36 @@
 {{end}}
         {{if hasPermission .User "space_bookings.manage"}}
         <a href="/admin/games" class="{{if isCurrentPath .CurrentPath "/admin/games"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Games</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Setup</span>
+          <span>Games</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Catalog</span>
         </a>
         <a href="/admin/one-to-one" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>1 to 1</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Setup</span>
+          <span>1 to 1 offerings</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Catalog</span>
         </a>
-        <a href="/admin/one-to-one-bookings" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-bookings"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>1 to 1 bookings</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Book</span>
+        {{end}}
+        {{if hasPermission .User "pricing.manage"}}
+        <a href="/admin/pricing" class="{{if isCurrentPath .CurrentPath "/admin/pricing"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Pricing</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Rates</span>
         </a>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+
+    {{if or (hasPermission .User "space_bookings.manage") (hasPermission .User "booking_requests.manage")}}
+    <div>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Booking Operations</p>
+      <div class="space-y-1">
+        {{if hasPermission .User "space_bookings.manage"}}
         <a href="/admin/bookings" class="{{if isCurrentPath .CurrentPath "/admin/bookings"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Booking calendar</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Slots</span>
+        </a>
+        <a href="/admin/one-to-one-bookings" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-bookings"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>1 to 1 bookings</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Sessions</span>
         </a>
         {{end}}
         {{if hasPermission .User "booking_requests.manage"}}
         <a href="/admin/booking-requests" class="{{if isCurrentPath .CurrentPath "/admin/booking-requests"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Booking requests</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Review</span>
-        </a>
-        {{end}}
-        {{if hasPermission .User "pricing.manage"}}
-        <a href="/admin/pricing" class="{{if isCurrentPath .CurrentPath "/admin/pricing"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Booking pricing</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Rates</span>
         </a>
         {{end}}
       </div>
@@ -158,18 +171,27 @@
     </div>
     {{end}}
 
-    {{if hasPermission .User "events.manage"}}
+    {{if or (hasPermission .User "events.manage") (hasPermission .User "reports.view")}}
     <div>
-      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Content</p>
-      <a href="/admin/events" class="{{if isCurrentPath .CurrentPath "/admin/events"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-        <span>Events</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Public</span>
-      </a>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Insights & Content</p>
+      <div class="space-y-1">
+        {{if hasPermission .User "events.manage"}}
+        <a href="/admin/events" class="{{if isCurrentPath .CurrentPath "/admin/events"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Events</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Public</span>
+        </a>
+        {{end}}
+        {{if hasPermission .User "reports.view"}}
+        <a href="/admin/reports" class="{{if isCurrentPath .CurrentPath "/admin/reports"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Reports</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Insights</span>
+        </a>
+        {{end}}
+      </div>
     </div>
     {{end}}
 
     {{if or (hasPermission .User "users.manage") (hasPermission .User "roles.manage")}}
     <div>
-      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Administration</p>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">System Administration</p>
       <div class="space-y-1">
         {{if hasPermission .User "users.manage"}}
         <a href="/admin/users" class="{{if isCurrentPath .CurrentPath "/admin/users"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">

@@ -17,7 +17,7 @@
       <div class="flex items-center justify-between gap-3">
         <div>
           <h2 class="text-xl font-semibold sm:text-2xl">Game setup</h2>
-          <p class="mt-2 text-sm text-slate/70">Each game points to one active court activity so the booking engine keeps using the existing activity model.</p>
+          <p class="mt-2 text-sm text-slate/70">Manage the visible game catalogue used across bookings, pricing, events, and 1 to 1 offerings.</p>
         </div>
         <div class="rounded-2xl bg-cloud px-4 py-3 text-right">
           <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Games</p>
@@ -34,21 +34,10 @@
         <form action="{{if eq .GameMode "edit"}}/admin/games/update{{else}}/admin/games/create{{end}}" method="post" class="mt-5 grid gap-5">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
           {{if eq .GameMode "edit"}}<input type="hidden" name="game_id" value="{{.SelectedGame.ID}}" />{{end}}
-          <div class="grid gap-4 md:grid-cols-2">
+          <div class="grid gap-4">
             <label class="grid gap-2">
               <span class="text-sm font-medium text-obsidian">Game name</span>
               <input type="text" name="name" value="{{if .SelectedGame}}{{.SelectedGame.Name}}{{end}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
-            </label>
-            <label class="grid gap-2">
-              <span class="text-sm font-medium text-obsidian">Linked activity</span>
-              <select name="activity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
-                <option value="">Select activity</option>
-                {{range .CourtActivities}}
-                {{if ne .Activity "training"}}
-                <option value="{{.Activity}}" {{if and $.SelectedGame (eq $.SelectedGame.Activity .Activity)}}selected{{end}}>{{.DisplayName}}</option>
-                {{end}}
-                {{end}}
-              </select>
             </label>
           </div>
           <label class="grid gap-2">
@@ -80,7 +69,6 @@
           <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
             <tr>
               <th class="px-5 py-4 font-medium sm:px-6">Game</th>
-              <th class="px-5 py-4 font-medium">Linked activity</th>
               <th class="px-5 py-4 font-medium">Status</th>
               <th class="px-5 py-4 font-medium">Order</th>
               <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
@@ -93,7 +81,6 @@
                 <p class="font-medium text-obsidian">{{.Name}}</p>
                 {{if .Description}}<p class="mt-1 text-xs text-slate/55">{{.Description}}</p>{{end}}
               </td>
-              <td class="px-5 py-4 text-slate/75">{{activityLabel .Activity}}</td>
               <td class="px-5 py-4 text-slate/75">
                 <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {{if .Active}}bg-mint text-obsidian{{else}}bg-slate/10 text-slate{{end}}">
                   {{if .Active}}Active{{else}}Inactive{{end}}
@@ -113,7 +100,7 @@
             </tr>
             {{else}}
             <tr>
-              <td colspan="5" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No games created yet.</td>
+              <td colspan="4" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No games created yet.</td>
             </tr>
             {{end}}
           </tbody>
