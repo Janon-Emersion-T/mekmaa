@@ -383,6 +383,7 @@ func main() {
 		),
 	)
 	mux.Handle("/admin/courts/activities/auto-accept", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateCourtActivityAutoAcceptHandler), "courts.manage")))
+	mux.Handle("/admin/courts/activities/game", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateCourtActivityGameHandler), "courts.manage")))
 	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage")))
 	mux.Handle("/admin/games", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.gameManagementHandler), "space_bookings.manage")))
 	mux.Handle("/admin/games/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createGameHandler), "space_bookings.manage")))
@@ -447,6 +448,7 @@ func main() {
 	mux.Handle("/admin/finance/transfers/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransferHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAccountHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateFinanceAccountHandler), "finance.manage")))
+	mux.Handle("/admin/finance/accounts/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteFinanceAccountHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/opening-balance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceOpeningBalanceHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/adjustment", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAdjustmentHandler), "finance.manage")))
 	mux.Handle("/admin/finance/accounts/statement", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountStatementHandler), "finance.manage")))

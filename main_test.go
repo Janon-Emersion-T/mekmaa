@@ -2427,6 +2427,35 @@ func TestUpdateFinanceAccountRejectsRenamingWhenHistoryExists(t *testing.T) {
 	}
 }
 
+func TestDeleteFinanceAccountAllowsOnlyUnlinkedAccounts(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	deletableID, err := app.createFinanceAccount("CASH-910", "Delete Me", financeAccountTypeCash, "Unused", 0)
+	if err != nil {
+		t.Fatalf("create deletable finance account: %v", err)
+	}
+	if err := app.deleteFinanceAccount(deletableID); err != nil {
+		t.Fatalf("delete unlinked finance account: %v", err)
+	}
+	if _, err := app.findFinanceAccountByID(deletableID); err == nil {
+		t.Fatal("expected deleted finance account lookup to fail")
+	}
+
+	linkedID, err := app.createFinanceAccount("CASH-911", "Keep Me", financeAccountTypeCash, "Linked", 0)
+	if err != nil {
+		t.Fatalf("create linked finance account: %v", err)
+	}
+	if _, err := app.createManualFinanceTransactionForAccount("manual_income", "Desk", "Seed history", "", linkedID, 250, time.Date(2026, 8, 3, 10, 0, 0, 0, time.Local), 0); err != nil {
+		t.Fatalf("seed linked finance history: %v", err)
+	}
+	if err := app.deleteFinanceAccount(linkedID); err == nil {
+		t.Fatal("expected linked finance account delete to be rejected")
+	}
+	if _, err := app.findFinanceAccountByID(linkedID); err != nil {
+		t.Fatalf("linked finance account should still exist: %v", err)
+	}
+}
+
 func TestFinanceStatementRunningBalance(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)

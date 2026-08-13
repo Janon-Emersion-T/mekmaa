@@ -298,6 +298,13 @@
           {{end}}
           <button class="h-10 rounded-xl border border-slate/10 bg-white px-3 text-sm font-semibold text-slate transition hover:bg-cloud">Save account</button>
         </form>
+        {{if not .IsSystem}}
+        <form method="post" action="/admin/finance/accounts/delete" onsubmit="return confirm('Delete this finance account? This is only allowed when the account has no linked finance history.');" class="mt-3">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <input type="hidden" name="account_id" value="{{.ID}}">
+          <button class="h-10 rounded-xl border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition hover:bg-red-50">Delete</button>
+        </form>
+        {{end}}
         {{end}}
       </article>
       {{end}}

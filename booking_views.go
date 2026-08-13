@@ -1371,6 +1371,15 @@ func gameNameFor(games []Game, activity string) string {
 	return activityLabel(activity)
 }
 
+func gameNameByID(games []Game, gameID int64) string {
+	for _, game := range games {
+		if game.ID == gameID {
+			return game.Name
+		}
+	}
+	return ""
+}
+
 func bookingProductLabelForGames(games []Game, activity string, quantity int) string {
 	label := gameNameFor(games, activity)
 	if quantity <= 1 {

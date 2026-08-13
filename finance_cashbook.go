@@ -754,6 +754,58 @@ func (a *App) updateFinanceAccount(accountID int64, accountCode, name, accountTy
 	return tx.Commit()
 }
 
+func (a *App) deleteFinanceAccount(accountID int64) error {
+	if accountID <= 0 {
+		return errors.New("finance account is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	account, err := findFinanceAccountByIDQuery(tx, accountID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("finance account was not found")
+		}
+		return err
+	}
+	if account.IsSystem {
+		return errors.New("system accounts cannot be deleted")
+	}
+
+	var transactionCount int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE finance_account_id = ?`, accountID).Scan(&transactionCount); err != nil {
+		return err
+	}
+	if transactionCount > 0 {
+		return errors.New("linked accounts cannot be deleted")
+	}
+
+	var reconciliationCount int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM cash_reconciliations WHERE finance_account_id = ?`, accountID).Scan(&reconciliationCount); err != nil {
+		return err
+	}
+	if reconciliationCount > 0 {
+		return errors.New("linked accounts cannot be deleted")
+	}
+
+	result, err := tx.Exec(`DELETE FROM finance_accounts WHERE id = ?`, accountID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return errors.New("finance account was not found")
+	}
+
+	return tx.Commit()
+}
+
 func findFinanceAccountByNameTx(tx *sql.Tx, name string) (*FinanceAccount, error) {
 	row := tx.QueryRow(`
 		SELECT finance_accounts.id, account_code, name, account_type, description, opening_balance, is_system, is_active,
@@ -2365,6 +2417,36 @@ func (a *App) updateFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	a.setFlash(w, "Finance account updated.")
+	http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
+}
+
+func (a *App) deleteFinanceAccountHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !financeHighRiskAuthorized(currentUser) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	accountID := parseInt64Query(r.FormValue("account_id"))
+	if err := a.deleteFinanceAccount(accountID); err != nil {
+		a.setFlash(w, "Finance account could not be deleted: "+err.Error())
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, "Finance account deleted.")
 	http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
 }
 

@@ -155,6 +155,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"coachAttendanceRecordFor":                  coachAttendanceRecordFor,
 		"activityLabel":                             activityLabel,
 		"gameNameFor":                               gameNameFor,
+		"gameNameByID":                              gameNameByID,
 		"bookingProductLabel":                       bookingProductLabel,
 		"bookingProductLabelForGames":               bookingProductLabelForGames,
 		"optionSummary":                             optionSummary,

@@ -3895,6 +3895,69 @@ func (a *App) updateCourtActivityAutoAcceptHandler(w http.ResponseWriter, r *htt
 	http.Redirect(w, r, "/admin/courts?court_id="+url.QueryEscape(courtID), http.StatusSeeOther)
 }
 
+func (a *App) updateCourtActivityGameHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	activityID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("activity_id")), 10, 64)
+	if err != nil || activityID <= 0 {
+		http.Error(w, "invalid activity id", http.StatusBadRequest)
+		return
+	}
+	courtID := strings.TrimSpace(r.FormValue("court_id"))
+
+	var currentActivity string
+	if err := a.db.QueryRow(`SELECT activity FROM court_activities WHERE id = ?`, activityID).Scan(&currentActivity); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "activity not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("find court activity: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	gameID := int64(0)
+	if rawGameID := strings.TrimSpace(r.FormValue("game_id")); rawGameID != "" {
+		gameID, err = strconv.ParseInt(rawGameID, 10, 64)
+		if err != nil || gameID <= 0 {
+			http.Error(w, "invalid game id", http.StatusBadRequest)
+			return
+		}
+		if currentActivity == "training" {
+			http.Error(w, "training activity cannot be linked to a public game", http.StatusBadRequest)
+			return
+		}
+		if _, err := a.findGameByID(gameID); err != nil {
+			http.Error(w, "selected game was not found", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if _, err := a.db.Exec(`
+		UPDATE court_activities
+		SET game_id = ?, updated_at = ?
+		WHERE id = ?
+	`, gameID, time.Now().UTC(), activityID); err != nil {
+		log.Printf("update court activity game: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Court activity game updated.")
+	http.Redirect(w, r, "/admin/courts?court_id="+url.QueryEscape(courtID), http.StatusSeeOther)
+}
+
 func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
