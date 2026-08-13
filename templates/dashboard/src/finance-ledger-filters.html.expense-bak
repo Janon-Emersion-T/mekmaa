@@ -280,33 +280,21 @@
         id="ledger-expense-section"
         class="hidden rounded-[1.5rem] border border-rose-100 bg-rose-50/35 p-4 sm:p-5"
       >
-        <div class="flex flex-col gap-1">
-          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700/70">
-            Expense analysis
-          </p>
-          <h3 class="text-lg font-semibold text-obsidian">
-            Expense type
-          </h3>
-          <p class="text-sm leading-6 text-slate/55">
-            Filter operating expenses using the categories configured in Finance Categories.
-          </p>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700/70">Expense analysis</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Expense category</h3>
         </div>
 
         <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <label class="text-xs font-semibold text-slate/60">
             Expense category
             <select
-              id="ledger-expense-category"
               name="category"
               class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
             >
               <option value="">All expense categories</option>
-
               {{range financeActiveCategoriesForDirection .FinanceCategories "expense"}}
-              <option
-                value="{{.Code}}"
-                {{if contains $.FinanceFilter.Categories .Code}}selected{{end}}
-              >
+              <option value="{{.Code}}" {{if contains $.FinanceFilter.Categories .Code}}selected{{end}}>
                 {{.Name}}
               </option>
               {{end}}
@@ -512,10 +500,6 @@
 
     if (incomeSource) {
       incomeSource.required = showIncome;
-
-      if (!showIncome) {
-        incomeSource.value = '';
-      }
     }
 
     updateIncomeSource();

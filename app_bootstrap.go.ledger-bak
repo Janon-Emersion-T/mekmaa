@@ -500,48 +500,48 @@ type StudentEnrollment struct {
 }
 
 type FinanceTransaction struct {
-	ID                   int64
-	ReceiptNumber        string
-	ReferenceNumber      string
-	Category             string
-	ApprovalStatus       string
-	TransactionType      string
-	ReferenceType        string
-	ReferenceID          int64
-	SourceType           string
-	SourceID             int64
-	FinanceAccountID     int64
-	FinanceAccountCode   string
-	FinanceAccountName   string
-	FinanceAccountType   string
-	TransferGroupID      string
-	StudentName          string
-	TrainingProgramName  string
-	BookingActivity      string
-	OneToOneOfferingID   int64
+	ID                 int64
+	ReceiptNumber      string
+	ReferenceNumber    string
+	Category           string
+	ApprovalStatus     string
+	TransactionType    string
+	ReferenceType      string
+	ReferenceID        int64
+	SourceType         string
+	SourceID           int64
+	FinanceAccountID   int64
+	FinanceAccountCode string
+	FinanceAccountName string
+	FinanceAccountType string
+	TransferGroupID    string
+	StudentName        string
+	TrainingProgramName string
+	BookingActivity    string
+	OneToOneOfferingID int64
 	OneToOneOfferingName string
-	PersonName           string
-	Description          string
-	Notes                string
-	PaymentMethod        string
-	Amount               float64
-	MoneyIn              float64
-	MoneyOut             float64
-	RunningBalance       float64
-	RecordedByUser       int64
-	RecordedByUserName   string
-	ApprovedByUserID     int64
-	ApprovedByUserName   string
-	Voided               bool
-	GeneralVoidAllowed   bool
-	OrphanedSource       bool
-	ApprovedAt           time.Time
-	VoidedAt             time.Time
-	VoidedByUserID       int64
-	VoidReason           string
-	RecordedAt           time.Time
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	PersonName         string
+	Description        string
+	Notes              string
+	PaymentMethod      string
+	Amount             float64
+	MoneyIn            float64
+	MoneyOut           float64
+	RunningBalance     float64
+	RecordedByUser     int64
+	RecordedByUserName string
+	ApprovedByUserID   int64
+	ApprovedByUserName string
+	Voided             bool
+	GeneralVoidAllowed bool
+	OrphanedSource     bool
+	ApprovedAt         time.Time
+	VoidedAt           time.Time
+	VoidedByUserID     int64
+	VoidReason         string
+	RecordedAt         time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type FinanceCategory struct {
@@ -649,46 +649,33 @@ type BookingPaymentCollection struct {
 }
 
 type FinanceFilter struct {
-	From             string
-	To               string
-	Direction        string
-	Category         string
-	Categories       []string
-	AccountID        int64
-	AccountIDs       []int64
-	TransactionType  string
+	From            string
+	To              string
+	Direction       string
+	Category        string
+	Categories      []string
+	AccountID       int64
+	AccountIDs      []int64
+	TransactionType string
 	TransactionTypes []string
-	SourceType       string
-	SourceTypes      []string
-	ReferenceType    string
-	ReferenceTypes   []string
-	PaymentMethod    string
-	PaymentMethods   []string
+	SourceType      string
+	SourceTypes     []string
+	ReferenceType   string
+	ReferenceTypes  []string
+	PaymentMethod   string
+	PaymentMethods  []string
 	ApprovalStatuses []string
-	DetailMode       string
-
-	// Business-oriented ledger workflow.
-	IncomeSource         string
-	TrainingProgramIDs   []int64
-	TrainingActivity     string
-	TrainingFormat       string
-	StudentFeeType       string
-	BookingActivities    []string
-	BookingQuantity      int
-	BookingPeriod        string
-	OneToOneOfferingIDs  []int64
-	OneToOneGame         string
-	OneToOneAudience     string
-	OneToOneOccurrence   string
-	OneToOneSessionCount int
-
-	RecordedUserID int64
-	Status         string
-	Reference      string
-	Search         string
-	ExportKind     string
-	Page           int
-	Limit          int
+	DetailMode      string
+	TrainingProgramIDs []int64
+	BookingActivities  []string
+	OneToOneOfferingIDs []int64
+	RecordedUserID  int64
+	Status          string
+	Reference       string
+	Search          string
+	ExportKind      string
+	Page            int
+	Limit           int
 }
 
 type AdmissionsFilter struct {
