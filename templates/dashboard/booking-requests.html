@@ -281,6 +281,53 @@
                 <p class="mt-3 text-sm font-semibold text-obsidian">{{.RequesterName}}</p>
                 <a href="mailto:{{.RequesterEmail}}" class="mt-1 block break-all text-xs text-slate/60 hover:text-obsidian">{{.RequesterEmail}}</a>
                 <a href="tel:{{.RequesterPhone}}" class="mt-1 block text-xs text-slate/60 hover:text-obsidian">{{.RequesterPhone}}</a>
+                {{if or (eq .Status "pending") (eq .Status "held") (eq .Status "reschedule_pending")}}
+                <div class="mt-4 rounded-[1.3rem] border border-slate/10 bg-cloud/50 p-3">
+                  <p class="text-xs font-semibold text-obsidian">Accept or reject</p>
+                  <p class="mt-1 text-[0.68rem] leading-5 text-slate/50">Approve only after checking the calendar and customer details. Customer messaging can fail without blocking the booking decision.</p>
+                  <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[0.68rem] leading-5 text-amber-950">
+                    If SMS or email is unavailable, accept or reject here and then call the customer manually.
+                  </div>
+                  <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                    {{if .RequesterPhone}}
+                    <a href="tel:{{.RequesterPhone}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white text-xs font-bold text-slate transition hover:border-aqua">Call customer</a>
+                    {{end}}
+                    {{if .RequesterEmail}}
+                    <a href="mailto:{{.RequesterEmail}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white text-xs font-bold text-slate transition hover:border-aqua {{if not .RequesterPhone}}sm:col-span-2{{end}}">Email customer</a>
+                    {{end}}
+                  </div>
+                  <form action="/admin/booking-requests/confirm" method="post" class="mt-3" onsubmit="return confirm('Confirm {{bookingReference .ID}} for {{.RequesterName}}?')">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                    <textarea name="customer_message" rows="3" placeholder="Optional customer message for the accepted booking" class="mb-2 w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
+                    <button class="h-11 w-full rounded-xl bg-obsidian text-sm font-bold text-cloud transition hover:bg-slate">Accept booking</button>
+                  </form>
+                  <form action="/admin/booking-requests/hold" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Place {{bookingReference .ID}} on hold?')">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                    <input type="hidden" name="return_to" value="/admin/booking-requests" />
+                    <input type="text" name="review_note" placeholder="Internal hold note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+                    <textarea name="customer_message" rows="3" placeholder="Required customer-facing hold message" required class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
+                    <button class="h-10 w-full rounded-xl border border-violet-200 bg-violet-50 text-xs font-bold text-violet-800 transition hover:bg-violet-100">Place on hold</button>
+                  </form>
+                  <a href="/admin/booking-requests?action=reschedule&id={{.ID}}#request-reschedule" class="mt-2 inline-flex h-10 w-full items-center justify-center rounded-xl border border-aqua/25 bg-aqua/10 text-xs font-bold text-emerald-900 transition hover:bg-aqua/20">Reschedule</a>
+                  <form action="/admin/bookings/cancel" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Cancel {{bookingReference .ID}}?')">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                    <input type="text" name="cancellation_reason" placeholder="Cancellation reason" required class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+                    <input type="text" name="customer_message" placeholder="Customer-facing cancellation message" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+                    <input type="hidden" name="cancellation_finance_note" value="" />
+                    <button class="h-10 w-full rounded-xl border border-slate/200 bg-white text-xs font-bold text-slate-800 transition hover:bg-slate-50">Cancel booking</button>
+                  </form>
+                  <form action="/admin/booking-requests/reject" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Reject {{bookingReference .ID}}?')">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <input type="hidden" name="schedule_id" value="{{.ID}}" />
+                    <input type="text" name="review_note" placeholder="Internal reason for rejection" required class="h-10 w-full rounded-xl border border-red-200 bg-white px-3 text-xs outline-none focus:border-red-400" />
+                    <textarea name="customer_message" rows="3" placeholder="Customer-facing rejection message" required class="w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-xs outline-none focus:border-red-400"></textarea>
+                    <button class="h-10 w-full rounded-xl border border-red-200 bg-white text-xs font-bold text-red-700 transition hover:bg-red-50">Reject request</button>
+                  </form>
+                </div>
+                {{end}}
                 {{if .ReviewNote}}
                 <div class="mt-4 rounded-xl bg-cloud/60 p-3">
                   <p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Review note</p>
@@ -295,25 +342,14 @@
                 {{end}}
                 {{$access := bookingAccessTokenFor $.BookingAccessTokens .ID}}
                 <div class="mt-4 rounded-xl border border-slate/10 bg-white p-3">
-                  <p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Secure status link</p>
+                  <p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Customer status link</p>
                   {{if $access}}
+                  <p class="mt-1 text-[0.68rem] text-slate/60">This is the private link the customer can use to track booking status and messages.</p>
                   <p class="mt-1 text-[0.68rem] text-slate/60">Active {{if $access.Active}}yes{{else}}no{{end}} · Expires {{formatDateTime $access.ExpiresAt}}</p>
                   <p class="mt-1 text-[0.68rem] text-slate/60">{{if $access.LastAccessedAt.IsZero}}Not opened yet{{else}}Last opened {{relativeTime $access.LastAccessedAt}}{{end}}</p>
                   {{else}}
-                  <p class="mt-1 text-[0.68rem] text-slate/60">No active customer link has been issued yet.</p>
+                  <p class="mt-1 text-[0.68rem] text-slate/60">No active customer status link has been issued yet.</p>
                   {{end}}
-                  <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                    <form action="/admin/bookings/access/rotate" method="post">
-                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                      <input type="hidden" name="schedule_id" value="{{.ID}}" />
-                      <button class="inline-flex h-9 w-full items-center justify-center rounded-lg border border-slate/10 bg-cloud px-3 text-[0.65rem] font-bold text-slate">Rotate link</button>
-                    </form>
-                    <form action="/admin/bookings/access/revoke" method="post">
-                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                      <input type="hidden" name="schedule_id" value="{{.ID}}" />
-                      <button class="inline-flex h-9 w-full items-center justify-center rounded-lg border border-red-200 bg-white px-3 text-[0.65rem] font-bold text-red-700">Revoke link</button>
-                    </form>
-                  </div>
                 </div>
                 <div class="mt-4 rounded-xl border border-slate/10 bg-cloud/45 p-3">
                   <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -410,50 +446,9 @@
               </div>
 
               {{if or (eq .Status "pending") (eq .Status "held") (eq .Status "reschedule_pending")}}
-              <div class="rounded-[1.3rem] border border-slate/10 bg-cloud/50 p-3">
-                <p class="text-xs font-semibold text-obsidian">Accept or reject</p>
-                <p class="mt-1 text-[0.68rem] leading-5 text-slate/50">Accept only after checking the calendar and customer details. Holds continue to reserve the slot until staff take a final action.</p>
-                <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[0.68rem] leading-5 text-amber-950">
-                  Booking approval does not depend on SMS or email delivery. If customer messaging is unavailable, staff can still accept or reject here and then call the customer manually.
-                </div>
-                <div class="mt-2 grid gap-2 sm:grid-cols-2">
-                  {{if .RequesterPhone}}
-                  <a href="tel:{{.RequesterPhone}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white text-xs font-bold text-slate transition hover:border-aqua">Call customer</a>
-                  {{end}}
-                  {{if .RequesterEmail}}
-                  <a href="mailto:{{.RequesterEmail}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white text-xs font-bold text-slate transition hover:border-aqua {{if not .RequesterPhone}}sm:col-span-2{{end}}">Email customer</a>
-                  {{end}}
-                </div>
-                <form action="/admin/booking-requests/confirm" method="post" class="mt-3" onsubmit="return confirm('Confirm {{bookingReference .ID}} for {{.RequesterName}}?')">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
-                  <textarea name="customer_message" rows="3" placeholder="Optional customer message for the accepted booking" class="mb-2 w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
-                  <button class="h-11 w-full rounded-xl bg-obsidian text-sm font-bold text-cloud transition hover:bg-slate">Accept booking</button>
-                </form>
-                <form action="/admin/booking-requests/hold" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Place {{bookingReference .ID}} on hold?')">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
-                  <input type="hidden" name="return_to" value="/admin/booking-requests" />
-                  <input type="text" name="review_note" placeholder="Internal hold note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
-                  <textarea name="customer_message" rows="3" placeholder="Required customer-facing hold message" required class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
-                  <button class="h-10 w-full rounded-xl border border-violet-200 bg-violet-50 text-xs font-bold text-violet-800 transition hover:bg-violet-100">Place on hold</button>
-                </form>
-                <a href="/admin/booking-requests?action=reschedule&id={{.ID}}#request-reschedule" class="mt-2 inline-flex h-10 w-full items-center justify-center rounded-xl border border-aqua/25 bg-aqua/10 text-xs font-bold text-emerald-900 transition hover:bg-aqua/20">Reschedule</a>
-                <form action="/admin/bookings/cancel" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Cancel {{bookingReference .ID}}?')">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
-                  <input type="text" name="cancellation_reason" placeholder="Cancellation reason" required class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
-                  <input type="text" name="customer_message" placeholder="Customer-facing cancellation message" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
-                  <input type="hidden" name="cancellation_finance_note" value="" />
-                  <button class="h-10 w-full rounded-xl border border-slate/200 bg-white text-xs font-bold text-slate-800 transition hover:bg-slate-50">Cancel booking</button>
-                </form>
-                <form action="/admin/booking-requests/reject" method="post" class="mt-2 grid gap-2" onsubmit="return confirm('Reject {{bookingReference .ID}}?')">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                  <input type="hidden" name="schedule_id" value="{{.ID}}" />
-                  <input type="text" name="review_note" placeholder="Internal reason for rejection" required class="h-10 w-full rounded-xl border border-red-200 bg-white px-3 text-xs outline-none focus:border-red-400" />
-                  <textarea name="customer_message" rows="3" placeholder="Customer-facing rejection message" required class="w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-xs outline-none focus:border-red-400"></textarea>
-                  <button class="h-10 w-full rounded-xl border border-red-200 bg-white text-xs font-bold text-red-700 transition hover:bg-red-50">Reject request</button>
-                </form>
+              <div class="rounded-[1.3rem] border border-amber-200 bg-amber-50/60 p-4 text-center">
+                <p class="text-sm font-bold text-amber-950">Request awaiting staff action</p>
+                <p class="mt-1 text-xs leading-5 text-amber-900">Use the customer column to accept, hold, reschedule, cancel, or reject this booking request.</p>
               </div>
               {{else}}
               <div class="flex items-center justify-center rounded-[1.3rem] border border-current/10 bg-white/45 p-4 text-center">

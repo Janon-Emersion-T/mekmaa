@@ -1281,7 +1281,7 @@ func TestBookingRequestPaymentUIByStatusAndPermission(t *testing.T) {
 	if !strings.Contains(pendingHTML, "Accept booking") || !strings.Contains(pendingHTML, "Reject request") {
 		t.Fatal("pending booking request should render accept and reject actions")
 	}
-	if !strings.Contains(pendingHTML, "Booking approval does not depend on SMS or email delivery.") {
+	if !strings.Contains(pendingHTML, "If SMS or email is unavailable, accept or reject here and then call the customer manually.") {
 		t.Fatal("pending booking request should explain that messaging failures do not block acceptance")
 	}
 
