@@ -41,7 +41,7 @@
               name="direction"
               class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
             >
-              <option value="">Select income or expense</option>
+              <option value="">All transactions</option>
               <option value="income" {{if eq .FinanceFilter.Direction "income"}}selected{{end}}>Income</option>
               <option value="expense" {{if eq .FinanceFilter.Direction "expense"}}selected{{end}}>Expense</option>
             </select>
@@ -79,10 +79,10 @@
               name="income_source"
               class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
             >
-              <option value="">Select income source</option>
-              <option value="students" {{if eq .FinanceFilter.IncomeSource "students"}}selected{{end}}>Students</option>
-              <option value="bookings" {{if eq .FinanceFilter.IncomeSource "bookings"}}selected{{end}}>Bookings</option>
-              <option value="one_to_one" {{if eq .FinanceFilter.IncomeSource "one_to_one"}}selected{{end}}>1 to 1</option>
+              <option value="">All income</option>
+              <option value="students">Students</option>
+              <option value="bookings">Bookings</option>
+              <option value="one_to_one">1 to 1</option>
             </select>
           </label>
 
@@ -99,12 +99,7 @@
               >
                 <option value="">All programmes</option>
                 {{range .TrainingPrograms}}
-                <option
-                  value="{{.ID}}"
-                  data-activity="{{.Activity}}"
-                  data-format="{{.TrainingFormat}}"
-                  {{if containsInt64 $.FinanceFilter.TrainingProgramIDs .ID}}selected{{end}}
-                >
+                <option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.TrainingProgramIDs .ID}}selected{{end}}>
                   {{.Name}}
                 </option>
                 {{end}}
@@ -116,7 +111,6 @@
               <select
                 id="ledger-training-activity"
                 name="training_activity"
-                data-selected="{{.FinanceFilter.TrainingActivity}}"
                 class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
               >
                 <option value="">All activities</option>
@@ -128,22 +122,9 @@
               <select
                 id="ledger-training-format"
                 name="training_format"
-                data-selected="{{.FinanceFilter.TrainingFormat}}"
                 class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
               >
                 <option value="">All formats</option>
-              </select>
-            </label>
-
-            <label class="text-xs font-semibold text-slate/60">
-              Fee type
-              <select
-                name="student_fee_type"
-                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
-              >
-                <option value="">All student income</option>
-                <option value="admission" {{if eq .FinanceFilter.StudentFeeType "admission"}}selected{{end}}>Admission fee</option>
-                <option value="monthly" {{if eq .FinanceFilter.StudentFeeType "monthly"}}selected{{end}}>Monthly fee</option>
               </select>
             </label>
 
@@ -156,7 +137,6 @@
             <label class="text-xs font-semibold text-slate/60">
               Booking activity
               <select
-                id="ledger-booking-activity"
                 name="booking_activity"
                 class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
               >
@@ -174,7 +154,6 @@
               <select
                 id="ledger-booking-quantity"
                 name="booking_quantity"
-                data-selected="{{.FinanceFilter.BookingQuantity}}"
                 class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
               >
                 <option value="">All quantities</option>
@@ -189,10 +168,10 @@
                 class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
               >
                 <option value="">All pricing periods</option>
-                <option value="weekday_offpeak" {{if eq .FinanceFilter.BookingPeriod "weekday_offpeak"}}selected{{end}}>Weekday off-peak</option>
-                <option value="weekday_peak" {{if eq .FinanceFilter.BookingPeriod "weekday_peak"}}selected{{end}}>Weekday peak</option>
-                <option value="weekend_offpeak" {{if eq .FinanceFilter.BookingPeriod "weekend_offpeak"}}selected{{end}}>Weekend off-peak</option>
-                <option value="weekend_peak" {{if eq .FinanceFilter.BookingPeriod "weekend_peak"}}selected{{end}}>Weekend peak</option>
+                <option value="weekday_offpeak">Weekday off-peak</option>
+                <option value="weekday_peak">Weekday peak</option>
+                <option value="weekend_offpeak">Weekend off-peak</option>
+                <option value="weekend_peak">Weekend peak</option>
               </select>
             </label>
 
@@ -210,14 +189,7 @@
               >
                 <option value="">All offerings</option>
                 {{range .OneToOneOfferings}}
-                <option
-                  value="{{.ID}}"
-                  data-game="{{.Game}}"
-                  data-audience="{{.Audience}}"
-                  data-occurrence="{{.Occurrence}}"
-                  data-session-count="{{.SessionCount}}"
-                  {{if containsInt64 $.FinanceFilter.OneToOneOfferingIDs .ID}}selected{{end}}
-                >
+                <option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.OneToOneOfferingIDs .ID}}selected{{end}}>
                   {{.Name}}
                 </option>
                 {{end}}
@@ -228,7 +200,6 @@
               Game
               <select
                 id="ledger-one-to-one-game"
-                data-selected="{{.FinanceFilter.OneToOneGame}}"
                 name="one_to_one_game"
                 class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
               >
@@ -240,7 +211,6 @@
               Audience
               <select
                 id="ledger-one-to-one-audience"
-                data-selected="{{.FinanceFilter.OneToOneAudience}}"
                 name="one_to_one_audience"
                 class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
               >
@@ -252,7 +222,6 @@
               Occurrence
               <select
                 id="ledger-one-to-one-occurrence"
-                data-selected="{{.FinanceFilter.OneToOneOccurrence}}"
                 name="one_to_one_occurrence"
                 class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
               >
@@ -264,7 +233,6 @@
               Session count
               <select
                 id="ledger-one-to-one-session-count"
-                data-selected="{{.FinanceFilter.OneToOneSessionCount}}"
                 name="one_to_one_session_count"
                 class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
               >
@@ -280,33 +248,21 @@
         id="ledger-expense-section"
         class="hidden rounded-[1.5rem] border border-rose-100 bg-rose-50/35 p-4 sm:p-5"
       >
-        <div class="flex flex-col gap-1">
-          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700/70">
-            Expense analysis
-          </p>
-          <h3 class="text-lg font-semibold text-obsidian">
-            Expense type
-          </h3>
-          <p class="text-sm leading-6 text-slate/55">
-            Filter operating expenses using the categories configured in Finance Categories.
-          </p>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700/70">Expense analysis</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Expense category</h3>
         </div>
 
         <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <label class="text-xs font-semibold text-slate/60">
             Expense category
             <select
-              id="ledger-expense-category"
               name="category"
               class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
             >
               <option value="">All expense categories</option>
-
               {{range financeActiveCategoriesForDirection .FinanceCategories "expense"}}
-              <option
-                value="{{.Code}}"
-                {{if contains $.FinanceFilter.Categories .Code}}selected{{end}}
-              >
+              <option value="{{.Code}}" {{if contains $.FinanceFilter.Categories .Code}}selected{{end}}>
                 {{.Name}}
               </option>
               {{end}}
@@ -346,213 +302,32 @@
   const bookingFields = document.getElementById('ledger-booking-fields');
   const oneToOneFields = document.getElementById('ledger-one-to-one-fields');
 
-  const programmeSelect = document.querySelector('[name="training_program_id"]');
-  const trainingActivity = document.getElementById('ledger-training-activity');
-  const trainingFormat = document.getElementById('ledger-training-format');
-
-  const bookingActivity = document.getElementById('ledger-booking-activity');
-  const bookingQuantity = document.getElementById('ledger-booking-quantity');
-
-  const offeringSelect = document.querySelector('[name="one_to_one_offering_id"]');
-  const oneToOneGame = document.getElementById('ledger-one-to-one-game');
-  const oneToOneAudience = document.getElementById('ledger-one-to-one-audience');
-  const oneToOneOccurrence = document.getElementById('ledger-one-to-one-occurrence');
-  const oneToOneSessionCount = document.getElementById('ledger-one-to-one-session-count');
-
-  function setControlsEnabled(container, enabled) {
-    if (!container) return;
-
-    container.querySelectorAll('input, select, textarea').forEach((control) => {
-      control.disabled = !enabled;
-    });
-  }
-
-  function unique(values) {
-    return [...new Set(
-      values
-        .map((value) => String(value || '').trim())
-        .filter(Boolean)
-    )].sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
-  }
-
-  function fillSelect(select, values, allLabel, selectedValue = '') {
-    if (!select) return;
-
-    const selected = String(selectedValue || select.dataset.selected || '').trim();
-
-    select.innerHTML = '';
-
-    const first = document.createElement('option');
-    first.value = '';
-    first.textContent = allLabel;
-    select.appendChild(first);
-
-    unique(values).forEach((value) => {
-      const option = document.createElement('option');
-      option.value = value.toLowerCase();
-      option.textContent = value;
-      option.selected = option.value === selected.toLowerCase();
-      select.appendChild(option);
-    });
-  }
-
-  function trainingProgrammeOptions() {
-    if (!programmeSelect) return [];
-    return [...programmeSelect.options].filter((option) => option.value);
-  }
-
-  function populateTrainingDimensions() {
-    const options = trainingProgrammeOptions();
-
-    fillSelect(
-      trainingActivity,
-      options.map((option) => option.dataset.activity),
-      'All activities'
-    );
-
-    fillSelect(
-      trainingFormat,
-      options.map((option) => option.dataset.format),
-      'All formats'
-    );
-  }
-
-  function offeringOptions() {
-    if (!offeringSelect) return [];
-    return [...offeringSelect.options].filter((option) => option.value);
-  }
-
-  function populateOneToOneDimensions() {
-    const options = offeringOptions();
-
-    fillSelect(
-      oneToOneGame,
-      options.map((option) => option.dataset.game),
-      'All games'
-    );
-
-    fillSelect(
-      oneToOneAudience,
-      options.map((option) => option.dataset.audience),
-      'All audiences'
-    );
-
-    fillSelect(
-      oneToOneOccurrence,
-      options.map((option) => option.dataset.occurrence),
-      'All occurrence types'
-    );
-
-    fillSelect(
-      oneToOneSessionCount,
-      options.map((option) => option.dataset.sessionCount),
-      'All session counts'
-    );
-  }
-
-  async function populateBookingQuantities() {
-    if (!bookingQuantity) return;
-
-    const activity = bookingActivity ? bookingActivity.value : '';
-    const selected = String(bookingQuantity.dataset.selected || bookingQuantity.value || '');
-
-    const params = new URLSearchParams({
-      kind: 'booking_quantities'
-    });
-
-    if (activity) {
-      params.set('activity', activity);
-    }
-
-    try {
-      const response = await fetch(`/admin/finance/ledger/options?${params.toString()}`, {
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Could not load booking quantities');
-      }
-
-      const payload = await response.json();
-
-      bookingQuantity.innerHTML = '';
-
-      const first = document.createElement('option');
-      first.value = '';
-      first.textContent = 'All quantities';
-      bookingQuantity.appendChild(first);
-
-      (payload.quantities || []).forEach((quantity) => {
-        const option = document.createElement('option');
-        option.value = String(quantity);
-        option.textContent = String(quantity);
-        option.selected = String(quantity) === selected;
-        bookingQuantity.appendChild(option);
-      });
-
-      bookingQuantity.dataset.selected = bookingQuantity.value;
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
   function updateDirection() {
     const value = direction ? direction.value : '';
 
-    const showIncome = value === 'income';
-    const showExpense = value === 'expense';
-
-    incomeSection?.classList.toggle('hidden', !showIncome);
-    expenseSection?.classList.toggle('hidden', !showExpense);
-
-    setControlsEnabled(incomeSection, showIncome);
-    setControlsEnabled(expenseSection, showExpense);
-
-    if (incomeSource) {
-      incomeSource.required = showIncome;
-
-      if (!showIncome) {
-        incomeSource.value = '';
-      }
+    if (value === 'expense') {
+      incomeSection?.classList.add('hidden');
+      expenseSection?.classList.remove('hidden');
+      return;
     }
 
-    updateIncomeSource();
+    expenseSection?.classList.add('hidden');
+    incomeSection?.classList.remove('hidden');
   }
 
   function updateIncomeSource() {
     const value = incomeSource ? incomeSource.value : '';
-    const incomeEnabled = direction && direction.value === 'income';
 
-    const showStudents = incomeEnabled && value === 'students';
-    const showBookings = incomeEnabled && value === 'bookings';
-    const showOneToOne = incomeEnabled && value === 'one_to_one';
-
-    studentFields?.classList.toggle('hidden', !showStudents);
-    bookingFields?.classList.toggle('hidden', !showBookings);
-    oneToOneFields?.classList.toggle('hidden', !showOneToOne);
-
-    setControlsEnabled(studentFields, showStudents);
-    setControlsEnabled(bookingFields, showBookings);
-    setControlsEnabled(oneToOneFields, showOneToOne);
+    studentFields?.classList.toggle('hidden', value !== 'students');
+    bookingFields?.classList.toggle('hidden', value !== 'bookings');
+    oneToOneFields?.classList.toggle('hidden', value !== 'one_to_one');
   }
 
   direction?.addEventListener('change', updateDirection);
   incomeSource?.addEventListener('change', updateIncomeSource);
 
-  bookingActivity?.addEventListener('change', () => {
-    if (bookingQuantity) {
-      bookingQuantity.dataset.selected = '';
-    }
-    populateBookingQuantities();
-  });
-
-  populateTrainingDimensions();
-  populateOneToOneDimensions();
-  populateBookingQuantities();
-
   updateDirection();
+  updateIncomeSource();
 })();
 </script>
 {{end}}

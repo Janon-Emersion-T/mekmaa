@@ -60,7 +60,6 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		LEFT JOIN space_schedules ss ON ft.reference_type = 'space_schedule' AND ss.id = ft.reference_id
 		LEFT JOIN one_to_one_bookings o2ob ON o2ob.schedule_id = ss.id
 		LEFT JOIN one_to_one_offerings o2oo ON o2oo.id = o2ob.offering_id
-		LEFT JOIN pricing_settings ps ON ps.id = 1
 		LEFT JOIN student_enrollments se ON ft.reference_type = 'student_enrollment' AND se.id = ft.reference_id
 		LEFT JOIN admissions sea ON sea.id = se.admission_id
 		LEFT JOIN training_programs tp ON tp.id = se.training_program_id
@@ -85,19 +84,6 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		query += ` AND ft.amount > 0`
 	case "expense":
 		query += ` AND ft.amount < 0`
-	}
-
-	// Business source selection. 1-to-1 payments use the booking finance
-	// workflow but are distinguished by their linked one_to_one_booking.
-	if filter.Direction == "income" {
-		switch filter.IncomeSource {
-		case "students":
-			query += ` AND ft.category IN ('admission_payment', 'student_monthly_payment')`
-		case "bookings":
-			query += ` AND ft.category = 'booking_payment' AND o2ob.id IS NULL`
-		case "one_to_one":
-			query += ` AND ft.category = 'booking_payment' AND o2ob.id IS NOT NULL`
-		}
 	}
 	if len(filter.Categories) > 0 {
 		query += ` AND ` + financeStringInClause("ft.category", len(filter.Categories))
@@ -165,75 +151,17 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 			args = append(args, value)
 		}
 	}
-
-	if filter.TrainingActivity != "" {
-		query += ` AND LOWER(COALESCE(smp_tp.activity, tp.activity, adm_tp.activity, '')) = ?`
-		args = append(args, filter.TrainingActivity)
-	}
-
-	if filter.TrainingFormat != "" {
-		query += ` AND LOWER(COALESCE(smp_tp.training_format, tp.training_format, adm_tp.training_format, '')) = ?`
-		args = append(args, filter.TrainingFormat)
-	}
-
-	switch filter.StudentFeeType {
-	case "admission":
-		query += ` AND ft.category = 'admission_payment'`
-	case "monthly":
-		query += ` AND ft.category = 'student_monthly_payment'`
-	}
 	if len(filter.BookingActivities) > 0 {
 		query += ` AND ` + financeStringInClause("LOWER(COALESCE(ss.activity, ''))", len(filter.BookingActivities))
 		for _, value := range filter.BookingActivities {
 			args = append(args, strings.ToLower(value))
 		}
 	}
-
-	if filter.BookingQuantity > 0 {
-		query += ` AND COALESCE(ss.quantity, 0) = ?`
-		args = append(args, filter.BookingQuantity)
-	}
-
-	if filter.BookingPeriod != "" {
-		weekendExpr := `CAST(strftime('%w', ss.slot_date) AS INTEGER) IN (0, 6)`
-		peakExpr := `(TRIM(COALESCE(ss.slot_hour, '')) >= TRIM(COALESCE(ps.peak_start_hour, '')) AND TRIM(COALESCE(ss.slot_hour, '')) <= TRIM(COALESCE(ps.peak_end_hour, '')))`
-
-		switch filter.BookingPeriod {
-		case "weekday_offpeak":
-			query += ` AND NOT (` + weekendExpr + `) AND NOT (` + peakExpr + `)`
-		case "weekday_peak":
-			query += ` AND NOT (` + weekendExpr + `) AND (` + peakExpr + `)`
-		case "weekend_offpeak":
-			query += ` AND (` + weekendExpr + `) AND NOT (` + peakExpr + `)`
-		case "weekend_peak":
-			query += ` AND (` + weekendExpr + `) AND (` + peakExpr + `)`
-		}
-	}
 	if len(filter.OneToOneOfferingIDs) > 0 {
-		query += ` AND ` + financeInt64InClause("COALESCE(o2ob.offering_id, o2oo.id, 0)", len(filter.OneToOneOfferingIDs))
+		query += ` AND ` + financeInt64InClause("COALESCE(o2oo.id, 0)", len(filter.OneToOneOfferingIDs))
 		for _, value := range filter.OneToOneOfferingIDs {
 			args = append(args, value)
 		}
-	}
-
-	if filter.OneToOneGame != "" {
-		query += ` AND LOWER(COALESCE(o2ob.game, o2oo.game, '')) = ?`
-		args = append(args, filter.OneToOneGame)
-	}
-
-	if filter.OneToOneAudience != "" {
-		query += ` AND LOWER(COALESCE(o2ob.audience, o2oo.audience, '')) = ?`
-		args = append(args, filter.OneToOneAudience)
-	}
-
-	if filter.OneToOneOccurrence != "" {
-		query += ` AND LOWER(COALESCE(o2ob.occurrence, o2oo.occurrence, '')) = ?`
-		args = append(args, filter.OneToOneOccurrence)
-	}
-
-	if filter.OneToOneSessionCount > 0 {
-		query += ` AND COALESCE(o2ob.max_sessions, o2oo.session_count, 0) = ?`
-		args = append(args, filter.OneToOneSessionCount)
 	}
 	if filter.RecordedUserID > 0 {
 		query += ` AND ft.recorded_by_user_id = ?`

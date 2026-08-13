@@ -15,37 +15,27 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 		parseIntQuery(query.Get("limit")),
 	)
 	filter := FinanceFilter{
-		From:                 strings.TrimSpace(query.Get("from")),
-		To:                   strings.TrimSpace(query.Get("to")),
-		Direction:            strings.ToLower(strings.TrimSpace(query.Get("direction"))),
-		Categories:           normalizeStringFilterValues(query["category"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
-		AccountIDs:           normalizeInt64FilterValues(query["account_id"]),
-		TransactionTypes:     normalizeStringFilterValues(query["transaction_type"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
-		SourceTypes:          normalizeStringFilterValues(query["source_type"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
-		ReferenceTypes:       normalizeStringFilterValues(query["reference_type"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
-		PaymentMethods:       normalizeStringFilterValues(query["payment_method"], normalizePaymentMethod),
-		ApprovalStatuses:     normalizeStringFilterValues(query["approval_status"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
-		DetailMode:           strings.ToLower(strings.TrimSpace(query.Get("detail_mode"))),
-		IncomeSource:         strings.ToLower(strings.TrimSpace(query.Get("income_source"))),
-		TrainingProgramIDs:   normalizeInt64FilterValues(query["training_program_id"]),
-		TrainingActivity:     strings.ToLower(strings.TrimSpace(query.Get("training_activity"))),
-		TrainingFormat:       strings.ToLower(strings.TrimSpace(query.Get("training_format"))),
-		StudentFeeType:       strings.ToLower(strings.TrimSpace(query.Get("student_fee_type"))),
-		BookingActivities:    normalizeStringFilterValues(query["booking_activity"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
-		BookingQuantity:      parseIntQuery(query.Get("booking_quantity")),
-		BookingPeriod:        strings.ToLower(strings.TrimSpace(query.Get("booking_period"))),
-		OneToOneOfferingIDs:  normalizeInt64FilterValues(query["one_to_one_offering_id"]),
-		OneToOneGame:         strings.ToLower(strings.TrimSpace(query.Get("one_to_one_game"))),
-		OneToOneAudience:     strings.ToLower(strings.TrimSpace(query.Get("one_to_one_audience"))),
-		OneToOneOccurrence:   strings.ToLower(strings.TrimSpace(query.Get("one_to_one_occurrence"))),
-		OneToOneSessionCount: parseIntQuery(query.Get("one_to_one_session_count")),
-		RecordedUserID:       parseInt64Query(query.Get("recorded_user_id")),
-		Status:               strings.ToLower(strings.TrimSpace(query.Get("status"))),
-		Reference:            strings.TrimSpace(query.Get("reference")),
-		Search:               strings.TrimSpace(query.Get("search")),
-		ExportKind:           strings.ToLower(strings.TrimSpace(query.Get("kind"))),
-		Page:                 page,
-		Limit:                limit,
+		From:                strings.TrimSpace(query.Get("from")),
+		To:                  strings.TrimSpace(query.Get("to")),
+		Direction:           strings.ToLower(strings.TrimSpace(query.Get("direction"))),
+		Categories:          normalizeStringFilterValues(query["category"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
+		AccountIDs:          normalizeInt64FilterValues(query["account_id"]),
+		TransactionTypes:    normalizeStringFilterValues(query["transaction_type"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
+		SourceTypes:         normalizeStringFilterValues(query["source_type"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
+		ReferenceTypes:      normalizeStringFilterValues(query["reference_type"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
+		PaymentMethods:      normalizeStringFilterValues(query["payment_method"], normalizePaymentMethod),
+		ApprovalStatuses:    normalizeStringFilterValues(query["approval_status"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
+		DetailMode:          strings.ToLower(strings.TrimSpace(query.Get("detail_mode"))),
+		TrainingProgramIDs:  normalizeInt64FilterValues(query["training_program_id"]),
+		BookingActivities:   normalizeStringFilterValues(query["booking_activity"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
+		OneToOneOfferingIDs: normalizeInt64FilterValues(query["one_to_one_offering_id"]),
+		RecordedUserID:      parseInt64Query(query.Get("recorded_user_id")),
+		Status:              strings.ToLower(strings.TrimSpace(query.Get("status"))),
+		Reference:           strings.TrimSpace(query.Get("reference")),
+		Search:              strings.TrimSpace(query.Get("search")),
+		ExportKind:          strings.ToLower(strings.TrimSpace(query.Get("kind"))),
+		Page:                page,
+		Limit:               limit,
 	}
 	if len(filter.Categories) == 1 {
 		filter.Category = filter.Categories[0]
@@ -79,48 +69,6 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 	}
 	if filter.DetailMode != "detailed" {
 		filter.DetailMode = "summary"
-	}
-
-	switch filter.IncomeSource {
-	case "students", "bookings", "one_to_one":
-	default:
-		filter.IncomeSource = ""
-	}
-
-	switch filter.StudentFeeType {
-	case "admission", "monthly":
-	default:
-		filter.StudentFeeType = ""
-	}
-
-	switch filter.BookingPeriod {
-	case "weekday_offpeak", "weekday_peak", "weekend_offpeak", "weekend_peak":
-	default:
-		filter.BookingPeriod = ""
-	}
-
-	if filter.BookingQuantity < 0 {
-		filter.BookingQuantity = 0
-	}
-	if filter.OneToOneSessionCount < 0 {
-		filter.OneToOneSessionCount = 0
-	}
-
-	// Income-only business dimensions must never affect an expense ledger.
-	if filter.Direction == "expense" {
-		filter.IncomeSource = ""
-		filter.TrainingProgramIDs = nil
-		filter.TrainingActivity = ""
-		filter.TrainingFormat = ""
-		filter.StudentFeeType = ""
-		filter.BookingActivities = nil
-		filter.BookingQuantity = 0
-		filter.BookingPeriod = ""
-		filter.OneToOneOfferingIDs = nil
-		filter.OneToOneGame = ""
-		filter.OneToOneAudience = ""
-		filter.OneToOneOccurrence = ""
-		filter.OneToOneSessionCount = 0
 	}
 	filter.PaymentMethods = normalizeStringFilterValues(filter.PaymentMethods, func(value string) string {
 		if validFinancePaymentMethod(value) {
@@ -229,36 +177,6 @@ func financeFilterExportURL(filter FinanceFilter) string {
 	}
 	if filter.DetailMode != "" {
 		query.Set("detail_mode", filter.DetailMode)
-	}
-	if filter.IncomeSource != "" {
-		query.Set("income_source", filter.IncomeSource)
-	}
-	if filter.TrainingActivity != "" {
-		query.Set("training_activity", filter.TrainingActivity)
-	}
-	if filter.TrainingFormat != "" {
-		query.Set("training_format", filter.TrainingFormat)
-	}
-	if filter.StudentFeeType != "" {
-		query.Set("student_fee_type", filter.StudentFeeType)
-	}
-	if filter.BookingQuantity > 0 {
-		query.Set("booking_quantity", strconv.Itoa(filter.BookingQuantity))
-	}
-	if filter.BookingPeriod != "" {
-		query.Set("booking_period", filter.BookingPeriod)
-	}
-	if filter.OneToOneGame != "" {
-		query.Set("one_to_one_game", filter.OneToOneGame)
-	}
-	if filter.OneToOneAudience != "" {
-		query.Set("one_to_one_audience", filter.OneToOneAudience)
-	}
-	if filter.OneToOneOccurrence != "" {
-		query.Set("one_to_one_occurrence", filter.OneToOneOccurrence)
-	}
-	if filter.OneToOneSessionCount > 0 {
-		query.Set("one_to_one_session_count", strconv.Itoa(filter.OneToOneSessionCount))
 	}
 	for _, value := range filter.TrainingProgramIDs {
 		query.Add("training_program_id", strconv.FormatInt(value, 10))

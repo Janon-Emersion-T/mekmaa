@@ -423,7 +423,6 @@ func main() {
 	mux.Handle("/admin/events/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEventHandler), "events.manage")))
 	mux.Handle("/admin/finance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.manage")))
 	mux.Handle("/admin/finance/ledger", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeLedgerHandler), "finance.manage")))
-	mux.Handle("/admin/finance/ledger/options", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeLedgerOptionsHandler), "finance.manage")))
 	mux.Handle("/admin/finance/profit-and-loss", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeProfitAndLossHandler), "finance.manage")))
 	mux.Handle("/admin/finance/balance-sheet", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeBalanceSheetHandler), "finance.manage")))
 	mux.Handle("/admin/finance/receivables", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReceivablesHandler), "finance.manage")))
