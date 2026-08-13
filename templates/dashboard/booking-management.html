@@ -126,7 +126,7 @@
     </div>
     <div class="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
       <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Date & time</p><p class="mt-2 text-sm font-semibold">{{formatCalendarDate .SelectedSchedule.SlotDate}} · {{.SelectedSchedule.SlotHour}}</p></div>
-      <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Inventory</p><p class="mt-2 text-sm font-semibold">{{scheduleSummary .SelectedSchedule}}</p></div>
+      <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Inventory</p><p class="mt-2 text-sm font-semibold">{{bookingProductLabelForGames .Games .SelectedSchedule.Activity .SelectedSchedule.Quantity}}</p></div>
       <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Type & status</p><p class="mt-2 text-sm font-semibold capitalize">{{.SelectedSchedule.EntryType}} · {{.SelectedSchedule.Status}}</p></div>
       <div class="rounded-2xl bg-emerald-50 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800/45">Quoted amount</p><p class="mt-2 text-sm font-bold text-emerald-900">{{if eq .SelectedSchedule.EntryType "booking"}}{{quotedPriceForSchedule .BookingFinancials .SelectedSchedule.ID}}{{else}}Internal{{end}}</p></div>
       {{if and $financial (eq .SelectedSchedule.EntryType "booking")}}
@@ -431,7 +431,7 @@
                     <p class="text-sm font-semibold text-obsidian">{{.Title}}</p>
                     <span class="rounded-full bg-rose-100 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-rose-800">Closure</span>
                   </div>
-                  <p class="mt-1 text-xs text-slate/65">{{formatClockTime .StartHour}} to {{formatClockTime .EndHour}} · {{if .Activity}}{{activityLabel .Activity}}{{else}}Whole court{{end}}</p>
+                  <p class="mt-1 text-xs text-slate/65">{{formatClockTime .StartHour}} to {{formatClockTime .EndHour}} · {{if .Activity}}{{gameNameFor $.Games .Activity}}{{else}}Whole court{{end}}</p>
                   {{if .Reason}}<p class="mt-2 text-xs leading-5 text-slate/70">{{.Reason}}</p>{{end}}
                 </div>
                 <a href="/admin/courts" class="rounded-lg bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Open courts</a>

@@ -172,6 +172,7 @@
             id="new-activity"
             type="text"
             name="activity"
+            list="training-program-games"
             maxlength="60"
             required
             placeholder="Example: Cricket"
@@ -412,6 +413,7 @@
             type="text"
             name="activity"
             value="{{$program.Activity}}"
+            list="training-program-games"
             maxlength="60"
             required
             class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
@@ -552,7 +554,7 @@
         </p>
 
         <p class="mt-2 font-semibold capitalize text-obsidian">
-          {{$program.Activity}}
+          {{gameNameFor $.Games $program.Activity}}
         </p>
       </div>
 
@@ -630,7 +632,7 @@
               </p>
 
               <p class="mt-1 text-xs capitalize text-slate/50">
-                {{.Activity}} · Order {{.SortOrder}}
+                {{gameNameFor $.Games .Activity}} · Order {{.SortOrder}}
               </p>
             </td>
 
@@ -794,4 +796,9 @@
     {{end}}
   </section>
 </section>
+<datalist id="training-program-games">
+  {{range .Games}}
+  <option value="{{.Activity}}">{{.Name}}</option>
+  {{end}}
+</datalist>
 {{end}}

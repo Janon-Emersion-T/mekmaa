@@ -40,6 +40,7 @@ func (a *App) coachManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Title = "Coach Management"
 	data.Description = "Manage coaches and coach attendance."
 	data.Coaches = coaches
+	data.Games, _ = a.listGames(false)
 	for _, coach := range coaches {
 		if coach.CoachType == "main" {
 			data.AvailableCoaches = append(data.AvailableCoaches, coach)
@@ -525,6 +526,7 @@ func (a *App) trainingProgramManagementHandler(
 	data.Title = "Training Manager"
 	data.Description = "Manage training programmes and student fees."
 	data.TrainingPrograms = trainingPrograms
+	data.Games, _ = a.listGames(false)
 
 	mode := strings.ToLower(
 		strings.TrimSpace(r.URL.Query().Get("action")),

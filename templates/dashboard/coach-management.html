@@ -35,7 +35,7 @@
         <option value="{{.ID}}">{{.Name}}</option>
         {{end}}
       </select>
-      <input type="text" name="specialties" placeholder="Specialties" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      <input type="text" name="specialties" list="coach-specialties-games" placeholder="Specialties" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
       <label class="flex items-center gap-3 rounded-2xl border border-slate/10 bg-cloud/60 px-4 py-3 text-sm font-medium text-obsidian">
         <input type="checkbox" name="active" value="true" checked class="h-4 w-4 accent-obsidian" />
         Active coach
@@ -88,7 +88,7 @@
             {{end}}
             {{end}}
           </select>
-          <input type="text" name="specialties" value="{{.Specialties}}" placeholder="Specialties" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua sm:col-span-2 xl:col-span-1" />
+          <input type="text" name="specialties" value="{{.Specialties}}" list="coach-specialties-games" placeholder="Specialties" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua sm:col-span-2 xl:col-span-1" />
           <label class="flex items-center gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm font-medium text-obsidian">
             <input type="checkbox" name="active" value="true" {{if .Active}}checked{{end}} class="h-4 w-4 accent-obsidian" />
             Active coach
@@ -182,4 +182,9 @@
     </form>
   </section>
 </section>
+<datalist id="coach-specialties-games">
+  {{range .Games}}
+  <option value="{{.Name}}"></option>
+  {{end}}
+</datalist>
 {{end}}

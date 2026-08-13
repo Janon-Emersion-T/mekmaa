@@ -1362,6 +1362,23 @@ func bookingProductLabel(activity string, quantity int) string {
 	return scheduleSummary(SpaceSchedule{Activity: activity, Quantity: quantity})
 }
 
+func gameNameFor(games []Game, activity string) string {
+	for _, game := range games {
+		if strings.EqualFold(game.Activity, activity) {
+			return game.Name
+		}
+	}
+	return activityLabel(activity)
+}
+
+func bookingProductLabelForGames(games []Game, activity string, quantity int) string {
+	label := gameNameFor(games, activity)
+	if quantity <= 1 {
+		return label
+	}
+	return fmt.Sprintf("%s x%d", label, quantity)
+}
+
 func isPeakHour(slotHour string, settings *PricingSettings) bool {
 	if settings == nil {
 		return false

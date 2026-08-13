@@ -258,7 +258,7 @@
               </div>
 
               <p class="mt-1 text-xs font-medium text-slate/45">
-                {{.Activity}}
+                {{gameNameFor $.Games .Activity}} · {{.Activity}}
               </p>
             </div>
 
@@ -1180,7 +1180,7 @@
 
               {{if .Activity}}
               <span class="rounded-xl border border-aqua/30 bg-aqua/10 px-3 py-2 text-obsidian">
-                Activity: {{.Activity}}
+                Activity: {{gameNameFor $.Games .Activity}}
               </span>
               {{else}}
               <span class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">

@@ -281,6 +281,7 @@ func (a *App) courtManagementHandler(
 			data.SelectedCourt = selectedCourt
 			data.CourtActivities = selectedCourt.Activities
 			data.CourtLayouts = selectedCourt.Layouts
+			data.Games, _ = a.listGames(true)
 
 			closures, err := a.listCourtClosures(
 				selectedCourt.ID,
@@ -2338,6 +2339,7 @@ func (a *App) pricingManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Description = "Manage booking pricing."
 	data.Pricings = pricings
 	data.PricingSettings = settings
+	data.Games, _ = a.listGames(true)
 	data.SetupWarnings = a.setupWarningsForUser(user)
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
@@ -2369,6 +2371,7 @@ func (a *App) eventManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Title = "Events"
 	data.Description = "Manage public events."
 	data.Events = events
+	data.Games, _ = a.listGames(true)
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -2973,6 +2976,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	data.CourtActivities = courtActivities
 	data.CourtLayouts = courtLayouts
 	data.CourtClosures = courtClosures
+	data.Games, _ = a.listGames(false)
 	data.Activities = bookingActivities()
 	data.Hours = bookingHours()
 	data.TodayDate = time.Now().Format("2006-01-02")
