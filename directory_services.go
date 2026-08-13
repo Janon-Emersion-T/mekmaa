@@ -1025,17 +1025,35 @@ func (a *App) listAttendanceRecords(groupID int64, sessionID int64, attendanceDa
 	return records, rows.Err()
 }
 
-func (a *App) listRecentAttendanceDates(groupID int64, limit int) ([]string, error) {
+func (a *App) listRecentAttendanceDates(groupID int64, sessionID int64, limit int) ([]string, error) {
 	if limit <= 0 {
 		limit = 8
 	}
-	rows, err := a.db.Query(`
+	sessionColumnExists, err := tableHasColumn(a.db, "attendance_records", "session_id")
+	if err != nil {
+		return nil, err
+	}
+
+	query := `
 		SELECT DISTINCT attendance_date
 		FROM attendance_records
 		WHERE group_id = ?
 		ORDER BY attendance_date DESC
 		LIMIT ?
-	`, groupID, limit)
+	`
+	args := []any{groupID, limit}
+	if sessionColumnExists && sessionID > 0 {
+		query = `
+			SELECT DISTINCT attendance_date
+			FROM attendance_records
+			WHERE group_id = ? AND COALESCE(session_id, 0) = ?
+			ORDER BY attendance_date DESC
+			LIMIT ?
+		`
+		args = []any{groupID, sessionID, limit}
+	}
+
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1052,9 +1070,7 @@ func (a *App) listRecentAttendanceDates(groupID int64, limit int) ([]string, err
 	return dates, rows.Err()
 }
 
-func (a *App) getAttendanceSummary(
-	groupID int64,
-) (AttendanceSummary, error) {
+func (a *App) getAttendanceSummary(groupID int64, sessionID int64) (AttendanceSummary, error) {
 	var summary AttendanceSummary
 	sessionColumnExists, err := tableHasColumn(a.db, "attendance_records", "session_id")
 	if err != nil {
@@ -1072,7 +1088,8 @@ func (a *App) getAttendanceSummary(
 		FROM attendance_records
 		WHERE group_id = ?
 	`
-	if sessionColumnExists {
+	args := []any{groupID}
+	if sessionColumnExists && sessionID > 0 {
 		query = `
 			SELECT
 				COUNT(DISTINCT attendance_date || ':' || COALESCE(CAST(session_id AS TEXT), '0')),
@@ -1082,11 +1099,12 @@ func (a *App) getAttendanceSummary(
 				COALESCE(SUM(CASE WHEN status = 'excused' THEN 1 ELSE 0 END), 0),
 				COUNT(*)
 			FROM attendance_records
-			WHERE group_id = ?
+			WHERE group_id = ? AND COALESCE(session_id, 0) = ?
 		`
+		args = []any{groupID, sessionID}
 	}
 
-	err = a.db.QueryRow(query, groupID).Scan(
+	err = a.db.QueryRow(query, args...).Scan(
 		&summary.SessionCount,
 		&summary.PresentCount,
 		&summary.AbsentCount,

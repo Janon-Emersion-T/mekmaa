@@ -3563,6 +3563,88 @@ func TestAttendanceLimitWarningsScopeToTrainingProgramme(t *testing.T) {
 	}
 }
 
+func TestAttendanceQueriesAreScopedToSelectedSession(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-ATT-003",
+		FullName:              "Multi Session Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2011-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Parent",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0775550001",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if err := app.createStudentGroup(StudentGroup{
+		Name: "Multi Session Group",
+		Code: "MULTI-ATT",
+	}, []int64{admissionID}, nil, []StudentGroupSession{
+		{Title: "Monday Session", DayOfWeek: "monday", StartTime: "09:00", EndTime: "10:00", Active: true},
+		{Title: "Wednesday Session", DayOfWeek: "wednesday", StartTime: "09:00", EndTime: "10:00", Active: true},
+	}); err != nil {
+		t.Fatalf("create multi-session group: %v", err)
+	}
+
+	groups, err := app.listStudentGroups()
+	if err != nil {
+		t.Fatalf("list student groups: %v", err)
+	}
+	var group StudentGroup
+	for _, item := range groups {
+		if item.Code == "MULTI-ATT" {
+			group = item
+			break
+		}
+	}
+	if group.ID == 0 || len(group.Sessions) != 2 {
+		t.Fatalf("expected multi-session group, got %#v", group)
+	}
+
+	mondaySession := group.Sessions[0]
+	wednesdaySession := group.Sessions[1]
+	if mondaySession.DayOfWeek != "monday" {
+		mondaySession, wednesdaySession = wednesdaySession, mondaySession
+	}
+
+	seedRecords := []AttendanceRecord{
+		{GroupID: group.ID, SessionID: mondaySession.ID, SessionTitle: mondaySession.Title, AdmissionID: admissionID, AttendanceDate: "2026-08-03", Status: "present"},
+		{GroupID: group.ID, SessionID: mondaySession.ID, SessionTitle: mondaySession.Title, AdmissionID: admissionID, AttendanceDate: "2026-08-10", Status: "late"},
+		{GroupID: group.ID, SessionID: wednesdaySession.ID, SessionTitle: wednesdaySession.Title, AdmissionID: admissionID, AttendanceDate: "2026-08-05", Status: "absent"},
+		{GroupID: group.ID, SessionID: wednesdaySession.ID, SessionTitle: wednesdaySession.Title, AdmissionID: admissionID, AttendanceDate: "2026-08-12", Status: "excused"},
+	}
+	for i, record := range seedRecords {
+		if _, err := app.db.Exec(`
+			INSERT INTO attendance_records (
+				group_id, session_id, admission_id, attendance_date, status, note, recorded_at, updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, '', ?, ?)
+		`, record.GroupID, record.SessionID, record.AdmissionID, record.AttendanceDate, record.Status, time.Now().UTC(), time.Now().UTC()); err != nil {
+			t.Fatalf("seed attendance %d: %v", i, err)
+		}
+	}
+
+	recentDates, err := app.listRecentAttendanceDates(group.ID, mondaySession.ID, 8)
+	if err != nil {
+		t.Fatalf("list recent attendance dates: %v", err)
+	}
+	if len(recentDates) != 2 || recentDates[0] != "2026-08-10" || recentDates[1] != "2026-08-03" {
+		t.Fatalf("unexpected session-scoped recent dates: %#v", recentDates)
+	}
+
+	summary, err := app.getAttendanceSummary(group.ID, mondaySession.ID)
+	if err != nil {
+		t.Fatalf("get attendance summary: %v", err)
+	}
+	if summary.SessionCount != 2 || summary.PresentCount != 1 || summary.LateCount != 1 || summary.AbsentCount != 0 || summary.ExcusedCount != 0 || summary.TotalEntries != 2 {
+		t.Fatalf("unexpected session-scoped attendance summary: %#v", summary)
+	}
+}
+
 func TestSaveAttendanceHandlerRejectsMismatchedSessionDate(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{

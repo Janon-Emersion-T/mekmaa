@@ -168,7 +168,7 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 				data.AttendanceLimitWarnings = warnings
 			}
 
-			recentDates, err := a.listRecentAttendanceDates(groupID, 8)
+			recentDates, err := a.listRecentAttendanceDates(groupID, data.SelectedGroupSessionID, 8)
 			if err != nil {
 				log.Printf("list recent attendance dates: %v", err)
 				http.Error(
@@ -181,7 +181,7 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 
 			data.RecentDates = recentDates
 
-			summary, err := a.getAttendanceSummary(groupID)
+			summary, err := a.getAttendanceSummary(groupID, data.SelectedGroupSessionID)
 			if err != nil {
 				log.Printf("get attendance summary: %v", err)
 				http.Error(
