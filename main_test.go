@@ -1278,6 +1278,12 @@ func TestBookingRequestPaymentUIByStatusAndPermission(t *testing.T) {
 	if !strings.Contains(pendingHTML, "Payment collection becomes available after the booking is confirmed.") {
 		t.Fatal("pending booking request should explain that collection is unavailable")
 	}
+	if !strings.Contains(pendingHTML, "Accept booking") || !strings.Contains(pendingHTML, "Reject request") {
+		t.Fatal("pending booking request should render accept and reject actions")
+	}
+	if !strings.Contains(pendingHTML, "Booking approval does not depend on SMS or email delivery.") {
+		t.Fatal("pending booking request should explain that messaging failures do not block acceptance")
+	}
 
 	heldHTML := renderTemplateToString(t, templates, "booking-requests", bookingTestDataForRequestPage(bookingStaff, []SpaceSchedule{held}, financials, nil))
 	if strings.Contains(heldHTML, `action="/admin/bookings/payments/collect"`) {
