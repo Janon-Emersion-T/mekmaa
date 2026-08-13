@@ -973,28 +973,14 @@ func (a *App) coachAssignedToGroup(
 }
 
 func (a *App) listAttendanceRecords(groupID int64, sessionID int64, attendanceDate string) ([]AttendanceRecord, error) {
-	sessionColumnExists, err := tableHasColumn(a.db, "attendance_records", "session_id")
-	if err != nil {
-		return nil, err
-	}
-
 	query := `
-		SELECT ar.id, ar.group_id, 0, '', ar.admission_id, ar.attendance_date, ar.status, ar.note, COALESCE(ar.recorded_by_user_id, 0), ar.recorded_at, ar.updated_at
+		SELECT ar.id, ar.group_id, COALESCE(ar.session_id, 0), COALESCE(sgs.title, ''), ar.admission_id, ar.attendance_date, ar.status, ar.note, COALESCE(ar.recorded_by_user_id, 0), ar.recorded_at, ar.updated_at
 		FROM attendance_records ar
-		WHERE ar.group_id = ? AND ar.attendance_date = ?
+		LEFT JOIN student_group_sessions sgs ON sgs.id = ar.session_id
+		WHERE ar.group_id = ? AND COALESCE(ar.session_id, 0) = ? AND ar.attendance_date = ?
 		ORDER BY ar.admission_id ASC, ar.id ASC
 	`
-	args := []any{groupID, attendanceDate}
-	if sessionColumnExists {
-		query = `
-			SELECT ar.id, ar.group_id, COALESCE(ar.session_id, 0), COALESCE(sgs.title, ''), ar.admission_id, ar.attendance_date, ar.status, ar.note, COALESCE(ar.recorded_by_user_id, 0), ar.recorded_at, ar.updated_at
-			FROM attendance_records ar
-			LEFT JOIN student_group_sessions sgs ON sgs.id = ar.session_id
-			WHERE ar.group_id = ? AND COALESCE(ar.session_id, 0) = ? AND ar.attendance_date = ?
-			ORDER BY ar.admission_id ASC, ar.id ASC
-		`
-		args = []any{groupID, sessionID, attendanceDate}
-	}
+	args := []any{groupID, sessionID, attendanceDate}
 
 	rows, err := a.db.Query(query, args...)
 	if err != nil {
@@ -1029,29 +1015,14 @@ func (a *App) listRecentAttendanceDates(groupID int64, sessionID int64, limit in
 	if limit <= 0 {
 		limit = 8
 	}
-	sessionColumnExists, err := tableHasColumn(a.db, "attendance_records", "session_id")
-	if err != nil {
-		return nil, err
-	}
-
 	query := `
 		SELECT DISTINCT attendance_date
 		FROM attendance_records
-		WHERE group_id = ?
+		WHERE group_id = ? AND COALESCE(session_id, 0) = ?
 		ORDER BY attendance_date DESC
 		LIMIT ?
 	`
-	args := []any{groupID, limit}
-	if sessionColumnExists && sessionID > 0 {
-		query = `
-			SELECT DISTINCT attendance_date
-			FROM attendance_records
-			WHERE group_id = ? AND COALESCE(session_id, 0) = ?
-			ORDER BY attendance_date DESC
-			LIMIT ?
-		`
-		args = []any{groupID, sessionID, limit}
-	}
+	args := []any{groupID, sessionID, limit}
 
 	rows, err := a.db.Query(query, args...)
 	if err != nil {
@@ -1072,39 +1043,18 @@ func (a *App) listRecentAttendanceDates(groupID int64, sessionID int64, limit in
 
 func (a *App) getAttendanceSummary(groupID int64, sessionID int64) (AttendanceSummary, error) {
 	var summary AttendanceSummary
-	sessionColumnExists, err := tableHasColumn(a.db, "attendance_records", "session_id")
-	if err != nil {
-		return AttendanceSummary{}, err
-	}
-
 	query := `
 		SELECT
-			COUNT(DISTINCT attendance_date),
+			COUNT(DISTINCT attendance_date || ':' || COALESCE(CAST(session_id AS TEXT), '0')),
 			COALESCE(SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'excused' THEN 1 ELSE 0 END), 0),
 			COUNT(*)
 		FROM attendance_records
-		WHERE group_id = ?
+		WHERE group_id = ? AND COALESCE(session_id, 0) = ?
 	`
-	args := []any{groupID}
-	if sessionColumnExists && sessionID > 0 {
-		query = `
-			SELECT
-				COUNT(DISTINCT attendance_date || ':' || COALESCE(CAST(session_id AS TEXT), '0')),
-				COALESCE(SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END), 0),
-				COALESCE(SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END), 0),
-				COALESCE(SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END), 0),
-				COALESCE(SUM(CASE WHEN status = 'excused' THEN 1 ELSE 0 END), 0),
-				COUNT(*)
-			FROM attendance_records
-			WHERE group_id = ? AND COALESCE(session_id, 0) = ?
-		`
-		args = []any{groupID, sessionID}
-	}
-
-	err = a.db.QueryRow(query, args...).Scan(
+	err := a.db.QueryRow(query, groupID, sessionID).Scan(
 		&summary.SessionCount,
 		&summary.PresentCount,
 		&summary.AbsentCount,
@@ -1123,11 +1073,6 @@ func (a *App) listAttendanceLimitWarnings(groupID int64, sessionID int64, attend
 	if limit <= 0 {
 		limit = 8
 	}
-	sessionColumnExists, err := tableHasColumn(a.db, "attendance_records", "session_id")
-	if err != nil {
-		return nil, err
-	}
-
 	query := `
 		SELECT
 			a.id,
@@ -1149,42 +1094,13 @@ func (a *App) listAttendanceLimitWarnings(groupID int64, sessionID int64, attend
 		) AS monthly_sessions ON monthly_sessions.admission_id = ar.admission_id
 		                       AND monthly_sessions.training_program_id = COALESCE(sg.training_program_id, 0)
 		WHERE ar.group_id = ?
+		  AND COALESCE(ar.session_id, 0) = ?
 		  AND ar.attendance_date = ?
 		  AND ar.status IN ('present', 'late')
 		  AND monthly_sessions.session_count > ?
 		ORDER BY monthly_sessions.session_count DESC, a.full_name COLLATE NOCASE
 	`
-	args := []any{attendanceDate, groupID, attendanceDate, limit}
-	if sessionColumnExists {
-		query = `
-			SELECT
-				a.id,
-				a.student_id,
-				a.full_name,
-				COALESCE(tp.name, ''),
-				monthly_sessions.session_count
-			FROM attendance_records ar
-			JOIN admissions a ON a.id = ar.admission_id
-			JOIN student_groups sg ON sg.id = ar.group_id
-			LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
-			JOIN (
-				SELECT ar2.admission_id, COALESCE(sg2.training_program_id, 0) AS training_program_id, COUNT(*) AS session_count
-				FROM attendance_records ar2
-				JOIN student_groups sg2 ON sg2.id = ar2.group_id
-				WHERE SUBSTR(ar2.attendance_date, 1, 7) = SUBSTR(?, 1, 7)
-				  AND ar2.status IN ('present', 'late')
-				GROUP BY ar2.admission_id, COALESCE(sg2.training_program_id, 0)
-			) AS monthly_sessions ON monthly_sessions.admission_id = ar.admission_id
-			                       AND monthly_sessions.training_program_id = COALESCE(sg.training_program_id, 0)
-			WHERE ar.group_id = ?
-			  AND COALESCE(ar.session_id, 0) = ?
-			  AND ar.attendance_date = ?
-			  AND ar.status IN ('present', 'late')
-			  AND monthly_sessions.session_count > ?
-			ORDER BY monthly_sessions.session_count DESC, a.full_name COLLATE NOCASE
-		`
-		args = []any{attendanceDate, groupID, sessionID, attendanceDate, limit}
-	}
+	args := []any{attendanceDate, groupID, sessionID, attendanceDate, limit}
 
 	rows, err := a.db.Query(query, args...)
 	if err != nil {
