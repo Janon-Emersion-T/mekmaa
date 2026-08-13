@@ -59,6 +59,145 @@ func (a *App) financeSpecifiedLedgersHandler(
 	a.financeSectionHandler(w, r, "specified-ledgers")
 }
 
+func (a *App) financeSpecifiedLedgerDetailHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	user, _ := a.currentUser(r.Context())
+	key := strings.TrimPrefix(
+		r.URL.Path,
+		"/admin/finance/specified-ledgers/",
+	)
+	key = strings.Trim(key, "/")
+	if key == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	ledgers, from, to, err := a.buildFinanceSpecifiedLedgers(
+		strings.TrimSpace(r.URL.Query().Get("from")),
+		strings.TrimSpace(r.URL.Query().Get("to")),
+	)
+	if err != nil {
+		log.Printf("finance specified ledger detail: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	selected := findFinanceSpecifiedLedger(ledgers, key)
+	if selected == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	switch format {
+	case "csv":
+		a.exportFinanceSpecifiedLedgerCSV(w, *selected, from, to)
+		return
+	case "pdf":
+		data := a.newTemplateData(w, r, user)
+		data.HideChrome = true
+		data.Title = selected.Title + " | Specified Ledger"
+		data.Description = selected.Description
+		data.FinancePage = "specified-ledgers"
+		data.SelectedFinanceSpecifiedLedger = selected
+		data.FinanceSpecifiedLedgerFrom = from
+		data.FinanceSpecifiedLedgerTo = to
+		a.render(w, "finance-specified-ledger-print", data, http.StatusOK)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	data, err := a.buildFinanceSectionData(
+		w,
+		r,
+		user,
+		ctx,
+		time.Now(),
+		"specified-ledgers",
+	)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.SelectedFinanceSpecifiedLedger = selected
+	data.FinanceSpecifiedLedgerFrom = from
+	data.FinanceSpecifiedLedgerTo = to
+	a.render(w, "finance-management", data, http.StatusOK)
+}
+
+func (a *App) exportFinanceSpecifiedLedgerCSV(
+	w http.ResponseWriter,
+	ledger FinanceSpecifiedLedger,
+	from string,
+	to string,
+) {
+	filename := fmt.Sprintf(
+		"mekmaa-specified-ledger-%s-%s-to-%s.csv",
+		ledger.Key,
+		from,
+		to,
+	)
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set(
+		"Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s"`, filename),
+	)
+
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	_ = writer.Write([]string{
+		"Ledger",
+		"Period From",
+		"Period To",
+		"Side",
+		"Date",
+		"Reference",
+		"Counterparty",
+		"Description",
+		"Account",
+		"Debit",
+		"Credit",
+	})
+
+	writeEntries := func(side string, entries []FinanceSpecifiedLedgerEntry) {
+		for _, entry := range entries {
+			_ = writer.Write([]string{
+				ledger.Title,
+				from,
+				to,
+				side,
+				entry.RecordedAt.In(time.Local).Format("2006-01-02"),
+				entry.ReferenceNumber,
+				entry.Counterparty,
+				entry.Description,
+				entry.FinanceAccountName,
+				fmt.Sprintf("%.2f", entry.DebitAmount),
+				fmt.Sprintf("%.2f", entry.CreditAmount),
+			})
+		}
+	}
+
+	writeEntries("debit", ledger.DebitEntries)
+	writeEntries("credit", ledger.CreditEntries)
+	_ = writer.Write([]string{
+		ledger.Title,
+		from,
+		to,
+		"totals",
+		"",
+		"",
+		"",
+		"",
+		"",
+		fmt.Sprintf("%.2f", ledger.DebitTotal),
+		fmt.Sprintf("%.2f", ledger.CreditTotal),
+	})
+}
+
 func (a *App) financeSectionHandler(w http.ResponseWriter, r *http.Request, page string) {
 	user, _ := a.currentUser(r.Context())
 	started := time.Now()

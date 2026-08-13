@@ -1581,6 +1581,7 @@ type TemplateData struct {
 	FinanceProfitAndLoss            *FinanceProfitAndLoss
 	FinanceBalanceSheet             *FinanceBalanceSheet
 	FinanceSpecifiedLedgers         []FinanceSpecifiedLedger
+	SelectedFinanceSpecifiedLedger  *FinanceSpecifiedLedger
 	FinanceSpecifiedLedgerFrom      string
 	FinanceSpecifiedLedgerTo        string
 	FinanceCustomerSearch           string

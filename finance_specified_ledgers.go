@@ -385,3 +385,16 @@ func (a *App) buildFinanceSpecifiedLedgers(
 
 	return ledgers, from, to, nil
 }
+
+func findFinanceSpecifiedLedger(
+	ledgers []FinanceSpecifiedLedger,
+	key string,
+) *FinanceSpecifiedLedger {
+	key = strings.TrimSpace(key)
+	for i := range ledgers {
+		if ledgers[i].Key == key {
+			return &ledgers[i]
+		}
+	}
+	return nil
+}

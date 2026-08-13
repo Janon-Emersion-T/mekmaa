@@ -142,6 +142,9 @@
         <a href="/admin/finance/ledger" class="{{if isCurrentPath .CurrentPath "/admin/finance" "/admin/finance/ledger" "/admin/finance/receipt"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>General ledger</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Core</span>
         </a>
+        <a href="/admin/finance/specified-ledgers" class="{{if hasPathPrefix .CurrentPath "/admin/finance/specified-ledgers"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Specified ledgers</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">T-accounts</span>
+        </a>
         <a href="/admin/student-payments" class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Student payments</span><span class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-aqua text-obsidian{{else}}bg-amber/15 text-amber-700{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Ledger</span>
         </a>

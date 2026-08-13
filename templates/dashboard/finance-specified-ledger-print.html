@@ -1,0 +1,73 @@
+{{define "finance-specified-ledger-print"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+{{$ledger := .SelectedFinanceSpecifiedLedger}}
+<section class="space-y-6">
+  <style>
+    @media print {
+      body, main { background: #fff !important; }
+    }
+  </style>
+
+  <div class="mx-auto max-w-6xl rounded-[2rem] border border-slate/10 bg-white p-6 shadow-sm">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Specified ledger</p>
+        <h1 class="mt-2 text-3xl font-semibold text-obsidian">{{$ledger.Title}}</h1>
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{$ledger.Description}}</p>
+      </div>
+      <div class="flex gap-2 print:hidden">
+        <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud">Print / Save PDF</button>
+        <a href="/admin/finance/specified-ledgers/{{$ledger.Key}}?from={{urlquery .FinanceSpecifiedLedgerFrom}}&to={{urlquery .FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">Back</a>
+      </div>
+    </div>
+
+    <div class="mt-6 grid gap-3 sm:grid-cols-5">
+      <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">From</p><p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .FinanceSpecifiedLedgerFrom}}</p></div>
+      <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">To</p><p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .FinanceSpecifiedLedgerTo}}</p></div>
+      <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Debit</p><p class="mt-1 text-sm font-semibold text-obsidian">{{money $ledger.DebitTotal}}</p></div>
+      <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Credit</p><p class="mt-1 text-sm font-semibold text-obsidian">{{money $ledger.CreditTotal}}</p></div>
+      <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">{{$ledger.BalanceLabel}}</p><p class="mt-1 text-sm font-semibold text-obsidian">{{money $ledger.NetBalance}}</p></div>
+    </div>
+  </div>
+
+  <article class="mx-auto max-w-6xl overflow-hidden rounded-[2rem] border border-slate/10 bg-white shadow-sm">
+    <div class="grid gap-px bg-slate/10 xl:grid-cols-2">
+      <div class="bg-white">
+        <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
+          <p class="text-sm font-semibold text-obsidian">Debit</p>
+        </div>
+        <div class="divide-y divide-slate/10">
+          {{range $ledger.DebitEntries}}
+          <div class="grid gap-3 px-5 py-4 sm:grid-cols-[7rem_9rem_minmax(0,1fr)_9rem] sm:px-6">
+            <div class="text-xs text-slate/55">{{formatCalendarDate (.RecordedAt.Format "2006-01-02")}}</div>
+            <div class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</div>
+            <div><p class="text-sm font-semibold text-obsidian">{{.Counterparty}}</p><p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}{{if .FinanceAccountName}} · {{.FinanceAccountName}}{{end}}</p></div>
+            <div class="text-right text-sm font-semibold text-obsidian">{{money .DebitAmount}}</div>
+          </div>
+          {{else}}
+          <div class="px-5 py-8 text-sm text-slate/55 sm:px-6">No debit entries in this period.</div>
+          {{end}}
+        </div>
+      </div>
+      <div class="bg-white">
+        <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
+          <p class="text-sm font-semibold text-obsidian">Credit</p>
+        </div>
+        <div class="divide-y divide-slate/10">
+          {{range $ledger.CreditEntries}}
+          <div class="grid gap-3 px-5 py-4 sm:grid-cols-[7rem_9rem_minmax(0,1fr)_9rem] sm:px-6">
+            <div class="text-xs text-slate/55">{{formatCalendarDate (.RecordedAt.Format "2006-01-02")}}</div>
+            <div class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</div>
+            <div><p class="text-sm font-semibold text-obsidian">{{.Counterparty}}</p><p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}{{if .FinanceAccountName}} · {{.FinanceAccountName}}{{end}}</p></div>
+            <div class="text-right text-sm font-semibold text-obsidian">{{money .CreditAmount}}</div>
+          </div>
+          {{else}}
+          <div class="px-5 py-8 text-sm text-slate/55 sm:px-6">No credit entries in this period.</div>
+          {{end}}
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+{{end}}

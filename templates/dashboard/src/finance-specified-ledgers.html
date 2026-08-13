@@ -1,5 +1,98 @@
 {{define "finance-specified-ledgers-section"}}
 <section class="space-y-6">
+  {{if .SelectedFinanceSpecifiedLedger}}
+  {{$ledger := .SelectedFinanceSpecifiedLedger}}
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Specified ledger detail</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian sm:text-2xl">{{$ledger.Title}}</h2>
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{$ledger.Description}}</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/admin/finance/specified-ledgers?from={{urlquery .FinanceSpecifiedLedgerFrom}}&to={{urlquery .FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">All ledgers</a>
+        <a href="/admin/finance/specified-ledgers/{{$ledger.Key}}?from={{urlquery .FinanceSpecifiedLedgerFrom}}&to={{urlquery .FinanceSpecifiedLedgerTo}}&format=csv" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">Export CSV</a>
+        <a href="/admin/finance/specified-ledgers/{{$ledger.Key}}?from={{urlquery .FinanceSpecifiedLedgerFrom}}&to={{urlquery .FinanceSpecifiedLedgerTo}}&format=pdf" target="_blank" rel="noopener" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud">Print / PDF</a>
+      </div>
+    </div>
+
+    <form method="get" action="/admin/finance/specified-ledgers/{{$ledger.Key}}" class="mt-5 grid gap-3 sm:grid-cols-3">
+      <input name="from" type="date" value="{{.FinanceSpecifiedLedgerFrom}}" class="h-11 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
+      <input name="to" type="date" value="{{.FinanceSpecifiedLedgerTo}}" class="h-11 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
+      <div class="flex gap-2">
+        <button type="submit" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud">Apply</button>
+        <a href="/admin/finance/specified-ledgers/{{$ledger.Key}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">Reset</a>
+      </div>
+    </form>
+  </div>
+
+  <article class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+      <div class="grid gap-3 sm:grid-cols-4">
+        <div class="rounded-2xl bg-cloud px-4 py-3">
+          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Debit</p>
+          <p class="mt-1 text-base font-semibold text-obsidian">{{money $ledger.DebitTotal}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-3">
+          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Credit</p>
+          <p class="mt-1 text-base font-semibold text-obsidian">{{money $ledger.CreditTotal}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-3">
+          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Balance</p>
+          <p class="mt-1 text-base font-semibold text-obsidian">{{money $ledger.NetBalance}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-3">
+          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">{{$ledger.BalanceLabel}}</p>
+          <p class="mt-1 text-base font-semibold text-obsidian">{{$ledger.EntryCount}} entries</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-px bg-slate/10 xl:grid-cols-2">
+      <div class="bg-white">
+        <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
+          <p class="text-sm font-semibold text-obsidian">Debit</p>
+        </div>
+        <div class="divide-y divide-slate/10">
+          {{range $ledger.DebitEntries}}
+          <div class="grid gap-3 px-5 py-4 sm:grid-cols-[7rem_9rem_minmax(0,1fr)_9rem] sm:px-6">
+            <div class="text-xs text-slate/55">{{formatCalendarDate (.RecordedAt.Format "2006-01-02")}}</div>
+            <div class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</div>
+            <div>
+              <p class="text-sm font-semibold text-obsidian">{{.Counterparty}}</p>
+              <p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}{{if .FinanceAccountName}} · {{.FinanceAccountName}}{{end}}</p>
+            </div>
+            <div class="text-right text-sm font-semibold text-obsidian">{{money .DebitAmount}}</div>
+          </div>
+          {{else}}
+          <div class="px-5 py-8 text-sm text-slate/55 sm:px-6">No debit entries in this period.</div>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="bg-white">
+        <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
+          <p class="text-sm font-semibold text-obsidian">Credit</p>
+        </div>
+        <div class="divide-y divide-slate/10">
+          {{range $ledger.CreditEntries}}
+          <div class="grid gap-3 px-5 py-4 sm:grid-cols-[7rem_9rem_minmax(0,1fr)_9rem] sm:px-6">
+            <div class="text-xs text-slate/55">{{formatCalendarDate (.RecordedAt.Format "2006-01-02")}}</div>
+            <div class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</div>
+            <div>
+              <p class="text-sm font-semibold text-obsidian">{{.Counterparty}}</p>
+              <p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}{{if .FinanceAccountName}} · {{.FinanceAccountName}}{{end}}</p>
+            </div>
+            <div class="text-right text-sm font-semibold text-obsidian">{{money .CreditAmount}}</div>
+          </div>
+          {{else}}
+          <div class="px-5 py-8 text-sm text-slate/55 sm:px-6">No credit entries in this period.</div>
+          {{end}}
+        </div>
+      </div>
+    </div>
+  </article>
+  {{else}}
   <div class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div>
@@ -39,7 +132,7 @@
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">{{.BalanceLabel}}</p>
-            <h3 class="mt-2 text-xl font-semibold text-obsidian">{{.Title}}</h3>
+            <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
             <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
           </div>
           <div class="grid grid-cols-3 gap-3 text-center">
@@ -58,49 +151,8 @@
           </div>
         </div>
       </div>
-
-      <div class="grid gap-px bg-slate/10 xl:grid-cols-2">
-        <div class="bg-white">
-          <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
-            <p class="text-sm font-semibold text-obsidian">Debit</p>
-          </div>
-          <div class="divide-y divide-slate/10">
-            {{range .DebitEntries}}
-            <div class="grid gap-3 px-5 py-4 sm:grid-cols-[7rem_9rem_minmax(0,1fr)_9rem] sm:px-6">
-              <div class="text-xs text-slate/55">{{formatCalendarDate (.RecordedAt.Format "2006-01-02")}}</div>
-              <div class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</div>
-              <div>
-                <p class="text-sm font-semibold text-obsidian">{{.Counterparty}}</p>
-                <p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}{{if .FinanceAccountName}} · {{.FinanceAccountName}}{{end}}</p>
-              </div>
-              <div class="text-right text-sm font-semibold text-obsidian">{{money .DebitAmount}}</div>
-            </div>
-            {{else}}
-            <div class="px-5 py-8 text-sm text-slate/55 sm:px-6">No debit entries in this period.</div>
-            {{end}}
-          </div>
-        </div>
-
-        <div class="bg-white">
-          <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
-            <p class="text-sm font-semibold text-obsidian">Credit</p>
-          </div>
-          <div class="divide-y divide-slate/10">
-            {{range .CreditEntries}}
-            <div class="grid gap-3 px-5 py-4 sm:grid-cols-[7rem_9rem_minmax(0,1fr)_9rem] sm:px-6">
-              <div class="text-xs text-slate/55">{{formatCalendarDate (.RecordedAt.Format "2006-01-02")}}</div>
-              <div class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</div>
-              <div>
-                <p class="text-sm font-semibold text-obsidian">{{.Counterparty}}</p>
-                <p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}{{if .FinanceAccountName}} · {{.FinanceAccountName}}{{end}}</p>
-              </div>
-              <div class="text-right text-sm font-semibold text-obsidian">{{money .CreditAmount}}</div>
-            </div>
-            {{else}}
-            <div class="px-5 py-8 text-sm text-slate/55 sm:px-6">No credit entries in this period.</div>
-            {{end}}
-          </div>
-        </div>
+      <div class="px-5 py-4 sm:px-6">
+        <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
       </div>
     </article>
     {{else}}
@@ -108,6 +160,7 @@
       No posted transactions matched the selected period.
     </div>
     {{end}}
-  </div>
+    </div>
+  {{end}}
 </section>
 {{end}}
