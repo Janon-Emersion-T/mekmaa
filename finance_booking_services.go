@@ -1077,6 +1077,96 @@ func (a *App) createOneToOneOffering(offering OneToOneOffering) (int64, error) {
 	return result.LastInsertId()
 }
 
+func (a *App) createGame(game Game) (int64, error) {
+	now := time.Now().UTC()
+	result, err := a.db.Exec(`
+		INSERT INTO games (
+			name,
+			activity,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		game.Name,
+		game.Activity,
+		game.Description,
+		boolToInt(game.Active),
+		game.SortOrder,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (a *App) updateGame(game Game) error {
+	result, err := a.db.Exec(`
+		UPDATE games
+		SET
+			name = ?,
+			activity = ?,
+			description = ?,
+			active = ?,
+			sort_order = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		game.Name,
+		game.Activity,
+		game.Description,
+		boolToInt(game.Active),
+		game.SortOrder,
+		time.Now().UTC(),
+		game.ID,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (a *App) deleteGame(id int64) error {
+	var offerings int
+	if err := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM one_to_one_offerings o
+		JOIN games g
+			ON g.activity = o.game
+		WHERE g.id = ?
+	`, id).Scan(&offerings); err != nil {
+		return err
+	}
+	if offerings > 0 {
+		return errors.New("this game is already used by 1 to 1 offerings; set it inactive instead of deleting it")
+	}
+
+	result, err := a.db.Exec(`DELETE FROM games WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (a *App) updateOneToOneOffering(offering OneToOneOffering) error {
 	if strings.TrimSpace(offering.Occurrence) == "" {
 		offering.Occurrence = "per_day"

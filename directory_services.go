@@ -781,6 +781,70 @@ func (a *App) listEvents() ([]Event, error) {
 	return events, rows.Err()
 }
 
+func (a *App) listGames(includeInactive bool) ([]Game, error) {
+	query := `
+		SELECT id, name, activity, COALESCE(description, ''), active, sort_order, created_at, updated_at
+		FROM games
+	`
+	args := []any{}
+	if !includeInactive {
+		query += ` WHERE active = 1`
+	}
+	query += ` ORDER BY active DESC, sort_order ASC, name COLLATE NOCASE ASC, id ASC`
+
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var games []Game
+	for rows.Next() {
+		var game Game
+		var active int
+		if err := rows.Scan(
+			&game.ID,
+			&game.Name,
+			&game.Activity,
+			&game.Description,
+			&active,
+			&game.SortOrder,
+			&game.CreatedAt,
+			&game.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		game.Active = active == 1
+		games = append(games, game)
+	}
+	return games, rows.Err()
+}
+
+func (a *App) findGameByID(gameID int64) (*Game, error) {
+	row := a.db.QueryRow(`
+		SELECT id, name, activity, COALESCE(description, ''), active, sort_order, created_at, updated_at
+		FROM games
+		WHERE id = ?
+	`, gameID)
+
+	var game Game
+	var active int
+	if err := row.Scan(
+		&game.ID,
+		&game.Name,
+		&game.Activity,
+		&game.Description,
+		&active,
+		&game.SortOrder,
+		&game.CreatedAt,
+		&game.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	game.Active = active == 1
+	return &game, nil
+}
+
 func (a *App) listPublishedEvents() ([]Event, error) {
 	rows, err := a.db.Query(`
 		SELECT id, title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),

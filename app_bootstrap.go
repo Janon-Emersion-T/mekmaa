@@ -1103,6 +1103,17 @@ type OneToOneOffering struct {
 	UpdatedAt    time.Time
 }
 
+type Game struct {
+	ID          int64
+	Name        string
+	Activity    string
+	Description string
+	Active      bool
+	SortOrder   int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type OneToOneBooking struct {
 	ID              int64
 	ScheduleID      int64
@@ -1482,6 +1493,9 @@ type TemplateData struct {
 	SelectedCourt                   *Court
 	CourtMode                       string
 	CourtActivities                 []CourtActivity
+	Games                           []Game
+	SelectedGame                    *Game
+	GameMode                        string
 	CourtLayouts                    []CourtLayout
 	SelectedCourtLayout             *CourtLayout
 	CourtLayoutMode                 string

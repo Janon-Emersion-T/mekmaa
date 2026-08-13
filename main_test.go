@@ -6238,3 +6238,61 @@ func TestCourtLayoutSupportsUsageAllowsUnusedCapacity(t *testing.T) {
 		)
 	}
 }
+
+func TestGameCRUD(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	if _, err := app.db.Exec(`
+		INSERT INTO court_activities (
+			court_id, activity, display_name, max_quantity, auto_accept, active, sort_order, created_at, updated_at
+		)
+		VALUES (1, 'pickleball', 'Pickleball', 1, 0, 1, 90, ?, ?)
+	`, time.Now().UTC(), time.Now().UTC()); err != nil {
+		t.Fatalf("create court activity for game: %v", err)
+	}
+
+	gameID, err := app.createGame(Game{
+		Name:        "Pickleball",
+		Activity:    "pickleball",
+		Description: "Test game",
+		Active:      true,
+		SortOrder:   90,
+	})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	game, err := app.findGameByID(gameID)
+	if err != nil {
+		t.Fatalf("find game: %v", err)
+	}
+	if game.Name != "Pickleball" || game.Activity != "pickleball" || !game.Active {
+		t.Fatalf("unexpected game after create: %#v", game)
+	}
+
+	if err := app.updateGame(Game{
+		ID:          gameID,
+		Name:        "Pickleball Plus",
+		Activity:    "pickleball",
+		Description: "Updated",
+		Active:      false,
+		SortOrder:   91,
+	}); err != nil {
+		t.Fatalf("update game: %v", err)
+	}
+
+	updated, err := app.findGameByID(gameID)
+	if err != nil {
+		t.Fatalf("find updated game: %v", err)
+	}
+	if updated.Name != "Pickleball Plus" || updated.Description != "Updated" || updated.Active || updated.SortOrder != 91 {
+		t.Fatalf("unexpected game after update: %#v", updated)
+	}
+
+	if err := app.deleteGame(gameID); err != nil {
+		t.Fatalf("delete game: %v", err)
+	}
+	if _, err := app.findGameByID(gameID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected deleted game to be missing, got %v", err)
+	}
+}

@@ -36,10 +36,11 @@
         <span class="mb-1.5 block text-xs font-semibold text-slate/55">Game</span>
         <select name="game" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
           <option value="">Select game</option>
-          {{range .CourtActivities}}
-          <option value="{{.Activity}}" {{if and $.SelectedOneToOneOffering (eq $.SelectedOneToOneOffering.Game .Activity)}}selected{{end}}>{{.DisplayName}}</option>
+          {{range .Games}}
+          <option value="{{.Activity}}" {{if and $.SelectedOneToOneOffering (eq $.SelectedOneToOneOffering.Game .Activity)}}selected{{end}}>{{.Name}}</option>
           {{end}}
         </select>
+        <span class="mt-1.5 block text-xs text-slate/55">Manage this list from <a href="/admin/games" class="font-semibold text-obsidian underline decoration-slate/20 underline-offset-2">Games</a>.</span>
       </label>
       <label>
         <span class="mb-1.5 block text-xs font-semibold text-slate/55">Who</span>

@@ -178,7 +178,15 @@ func oneToOneOfferingFromRequest(r *http.Request) (OneToOneOffering, error) {
 	}, nil
 }
 
-func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActivity) error {
+func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActivity, games []Game) error {
+	gameExists := false
+	for _, game := range games {
+		if game.Active && game.Activity == offering.Game {
+			gameExists = true
+			break
+		}
+	}
+
 	switch {
 	case strings.TrimSpace(offering.Name) == "":
 		return errors.New("name is required")
@@ -186,6 +194,8 @@ func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActiv
 		return errors.New("game is required")
 	case offering.Game == "training":
 		return errors.New("training is reserved for internal schedules; choose a customer-bookable game")
+	case !gameExists:
+		return errors.New("selected game is not available in the games list")
 	case !bookingActivityExists(offering.Game, activities):
 		return errors.New("selected game is not active in court manager")
 	case offering.Audience != "local" && offering.Audience != "foreign":
@@ -201,6 +211,25 @@ func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActiv
 	default:
 		return nil
 	}
+}
+
+func gameFromRequest(r *http.Request) (Game, error) {
+	sortOrder := 0
+	if rawSortOrder := strings.TrimSpace(r.FormValue("sort_order")); rawSortOrder != "" {
+		parsed, err := strconv.Atoi(rawSortOrder)
+		if err != nil {
+			return Game{}, errors.New("valid sort order is required")
+		}
+		sortOrder = parsed
+	}
+
+	return Game{
+		Name:        strings.TrimSpace(r.FormValue("name")),
+		Activity:    strings.ToLower(strings.TrimSpace(r.FormValue("activity"))),
+		Description: strings.TrimSpace(r.FormValue("description")),
+		Active:      r.FormValue("active") == "1",
+		SortOrder:   sortOrder,
+	}, nil
 }
 
 func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, int, float64, float64, string, string, error) {
@@ -605,6 +634,24 @@ func validateEvent(event Event) error {
 	}
 	return nil
 }
+
+func validateGame(game Game, activities []CourtActivity) error {
+	switch {
+	case strings.TrimSpace(game.Name) == "":
+		return errors.New("name is required")
+	case strings.TrimSpace(game.Activity) == "":
+		return errors.New("linked activity is required")
+	case game.Activity == "training":
+		return errors.New("training cannot be used as a public game")
+	case !bookingActivityExists(game.Activity, activities):
+		return errors.New("linked activity is not active in court manager")
+	case game.SortOrder < 0:
+		return errors.New("sort order must be zero or greater")
+	default:
+		return nil
+	}
+}
+
 func courtClosureFromRequest(
 	r *http.Request,
 ) (CourtClosure, error) {

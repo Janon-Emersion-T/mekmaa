@@ -1229,6 +1229,10 @@ func (a *App) buildOneToOneTemplateData(w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		return TemplateData{}, err
 	}
+	games, err := a.listGames(false)
+	if err != nil {
+		return TemplateData{}, err
+	}
 	scheduleIDs := make([]int64, 0, len(bookings))
 	for _, booking := range bookings {
 		scheduleIDs = append(scheduleIDs, booking.ScheduleID)
@@ -1247,9 +1251,52 @@ func (a *App) buildOneToOneTemplateData(w http.ResponseWriter, r *http.Request, 
 	data.BookingFinancials = financials
 	data.BookingReferrals, _ = a.listBookingReferralsForScheduleIDs(scheduleIDs)
 	data.CourtActivities = courtActivities
+	data.Games = games
 	data.Hours = bookingHours()
 	data.TodayDate = time.Now().Format("2006-01-02")
 	return data, nil
+}
+
+func (a *App) gameManagementHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	games, err := a.listGames(true)
+	if err != nil {
+		log.Printf("list games: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	courtActivities, _, err := a.activeBookingConfiguration()
+	if err != nil {
+		log.Printf("load activities for games: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Games"
+	data.Description = "Manage the game list used by 1 to 1 products."
+	data.Games = games
+	data.CourtActivities = courtActivities
+
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	switch mode {
+	case "new", "edit":
+		data.GameMode = mode
+	}
+	if data.GameMode == "edit" {
+		gameID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+		if err == nil && gameID > 0 {
+			selectedGame, err := a.findGameByID(gameID)
+			if err == nil {
+				data.SelectedGame = selectedGame
+			}
+		}
+		if data.SelectedGame == nil {
+			data.GameMode = ""
+		}
+	}
+
+	a.render(w, "games-management", data, http.StatusOK)
 }
 
 func (a *App) oneToOneManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -1304,7 +1351,13 @@ func (a *App) createOneToOneOfferingHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	if err := validateOneToOneOffering(offering, courtActivities); err != nil {
+	games, err := a.listGames(false)
+	if err != nil {
+		log.Printf("load games for 1 to 1 create: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := validateOneToOneOffering(offering, courtActivities, games); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1347,7 +1400,13 @@ func (a *App) updateOneToOneOfferingHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	if err := validateOneToOneOffering(offering, courtActivities); err != nil {
+	games, err := a.listGames(false)
+	if err != nil {
+		log.Printf("load games for 1 to 1 update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := validateOneToOneOffering(offering, courtActivities, games); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1384,6 +1443,127 @@ func (a *App) deleteOneToOneOfferingHandler(w http.ResponseWriter, r *http.Reque
 	}
 	a.setFlash(w, "1 to 1 offering deleted.")
 	http.Redirect(w, r, "/admin/one-to-one", http.StatusSeeOther)
+}
+
+func (a *App) createGameHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	game, err := gameFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	courtActivities, _, err := a.activeBookingConfiguration()
+	if err != nil {
+		log.Printf("load activities for game create: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := validateGame(game, courtActivities); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, err := a.createGame(game); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "that game name or linked activity already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("create game: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Game created.")
+	http.Redirect(w, r, "/admin/games", http.StatusSeeOther)
+}
+
+func (a *App) updateGameHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	gameID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("game_id")), 10, 64)
+	if err != nil || gameID <= 0 {
+		http.Error(w, "invalid game id", http.StatusBadRequest)
+		return
+	}
+	game, err := gameFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	game.ID = gameID
+
+	courtActivities, _, err := a.activeBookingConfiguration()
+	if err != nil {
+		log.Printf("load activities for game update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := validateGame(game, courtActivities); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.updateGame(game); err != nil {
+		if isUniqueConstraintError(err) {
+			http.Error(w, "that game name or linked activity already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("update game: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.setFlash(w, "Game updated.")
+	http.Redirect(w, r, "/admin/games", http.StatusSeeOther)
+}
+
+func (a *App) deleteGameHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	gameID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("game_id")), 10, 64)
+	if err != nil || gameID <= 0 {
+		http.Error(w, "invalid game id", http.StatusBadRequest)
+		return
+	}
+	if err := a.deleteGame(gameID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	a.setFlash(w, "Game deleted.")
+	http.Redirect(w, r, "/admin/games", http.StatusSeeOther)
 }
 
 func (a *App) oneToOneBookingManagementHandler(w http.ResponseWriter, r *http.Request) {

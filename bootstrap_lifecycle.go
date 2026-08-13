@@ -359,6 +359,16 @@ func runMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS games (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			activity TEXT NOT NULL UNIQUE,
+			description TEXT NOT NULL DEFAULT '',
+			active INTEGER NOT NULL DEFAULT 1,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS referral_partners (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
@@ -597,6 +607,7 @@ ON court_closures(activity, active, closure_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_month ON student_monthly_payments(payment_month, collected_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date, start_time)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_published ON events(published, event_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_games_active_order ON games(active, sort_order, name)`,
 		`CREATE INDEX IF NOT EXISTS idx_space_schedules_slot ON space_schedules(slot_date, slot_hour)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_referrals_partner ON booking_referrals(partner_id, paid)`,
 		`CREATE INDEX IF NOT EXISTS idx_booking_financials_paid ON booking_financials(paid, schedule_id)`,
@@ -1128,6 +1139,34 @@ ON court_closures(activity, active, closure_date)`,
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admissions_admission_date ON admissions(admission_date)`); err != nil {
 		return err
+	}
+	if _, err := db.Exec(`
+		INSERT INTO games (
+			name,
+			activity,
+			description,
+			active,
+			sort_order,
+			created_at,
+			updated_at
+		)
+		SELECT
+			ca.display_name,
+			ca.activity,
+			'',
+			COALESCE(ca.active, 1),
+			COALESCE(ca.sort_order, 0),
+			COALESCE(ca.created_at, CURRENT_TIMESTAMP),
+			COALESCE(ca.updated_at, COALESCE(ca.created_at, CURRENT_TIMESTAMP))
+		FROM court_activities ca
+		WHERE ca.activity <> 'training'
+			AND NOT EXISTS (
+				SELECT 1
+				FROM games g
+				WHERE g.activity = ca.activity
+			)
+	`); err != nil {
+		return fmt.Errorf("backfill games from court activities: %w", err)
 	}
 	for _, migration := range []struct {
 		column string

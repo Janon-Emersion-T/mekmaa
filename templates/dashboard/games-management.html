@@ -1,0 +1,125 @@
+{{define "games-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold sm:text-3xl">Games</h1>
+        <p class="mt-2 text-sm text-slate/70">Manage the game catalogue used by 1 to 1 offerings and related booking flows.</p>
+      </div>
+      <a href="/admin/games?action=new#game-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add game</a>
+    </div>
+  </div>
+
+  <div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+    <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-xl font-semibold sm:text-2xl">Game setup</h2>
+          <p class="mt-2 text-sm text-slate/70">Each game points to one active court activity so the booking engine keeps using the existing activity model.</p>
+        </div>
+        <div class="rounded-2xl bg-cloud px-4 py-3 text-right">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Games</p>
+          <p class="mt-1 text-2xl font-semibold text-obsidian">{{len .Games}}</p>
+        </div>
+      </div>
+
+      {{if or (eq .GameMode "new") (and (eq .GameMode "edit") .SelectedGame)}}
+      <div id="game-form" class="mt-6">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-lg font-semibold">{{if eq .GameMode "edit"}}Edit game{{else}}Create game{{end}}</h3>
+          <a href="/admin/games" class="text-sm font-medium text-slate/65 transition hover:text-obsidian">Close</a>
+        </div>
+        <form action="{{if eq .GameMode "edit"}}/admin/games/update{{else}}/admin/games/create{{end}}" method="post" class="mt-5 grid gap-5">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          {{if eq .GameMode "edit"}}<input type="hidden" name="game_id" value="{{.SelectedGame.ID}}" />{{end}}
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="grid gap-2">
+              <span class="text-sm font-medium text-obsidian">Game name</span>
+              <input type="text" name="name" value="{{if .SelectedGame}}{{.SelectedGame.Name}}{{end}}" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            </label>
+            <label class="grid gap-2">
+              <span class="text-sm font-medium text-obsidian">Linked activity</span>
+              <select name="activity" required class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+                <option value="">Select activity</option>
+                {{range .CourtActivities}}
+                {{if ne .Activity "training"}}
+                <option value="{{.Activity}}" {{if and $.SelectedGame (eq $.SelectedGame.Activity .Activity)}}selected{{end}}>{{.DisplayName}}</option>
+                {{end}}
+                {{end}}
+              </select>
+            </label>
+          </div>
+          <label class="grid gap-2">
+            <span class="text-sm font-medium text-obsidian">Description</span>
+            <textarea name="description" rows="4" class="rounded-2xl border border-slate/10 bg-white px-4 py-4 text-sm outline-none focus:border-aqua" placeholder="Optional note">{{if .SelectedGame}}{{.SelectedGame.Description}}{{end}}</textarea>
+          </label>
+          <div class="grid gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+            <label class="grid gap-2">
+              <span class="text-sm font-medium text-obsidian">Sort order</span>
+              <input type="number" name="sort_order" min="0" step="1" value="{{if .SelectedGame}}{{.SelectedGame.SortOrder}}{{else}}0{{end}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+            </label>
+            <label class="inline-flex items-center gap-3 rounded-2xl bg-cloud px-4 py-3 text-sm font-medium text-obsidian">
+              <input type="checkbox" name="active" value="1" {{if or (not .SelectedGame) .SelectedGame.Active}}checked{{end}} class="h-4 w-4 rounded border-slate/20 text-obsidian focus:ring-aqua" />
+              Active for new offerings
+            </label>
+          </div>
+          <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">{{if eq .GameMode "edit"}}Update game{{else}}Create game{{end}}</button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+
+    <div class="rounded-[1.5rem] border border-white/80 bg-white/85 shadow-sm sm:rounded-[2rem]">
+      <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
+        <h2 class="text-xl font-semibold sm:text-2xl">Game list</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+            <tr>
+              <th class="px-5 py-4 font-medium sm:px-6">Game</th>
+              <th class="px-5 py-4 font-medium">Linked activity</th>
+              <th class="px-5 py-4 font-medium">Status</th>
+              <th class="px-5 py-4 font-medium">Order</th>
+              <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate/10">
+            {{range .Games}}
+            <tr class="bg-white/70 align-top">
+              <td class="px-5 py-4 sm:px-6 text-slate/75">
+                <p class="font-medium text-obsidian">{{.Name}}</p>
+                {{if .Description}}<p class="mt-1 text-xs text-slate/55">{{.Description}}</p>{{end}}
+              </td>
+              <td class="px-5 py-4 text-slate/75">{{activityLabel .Activity}}</td>
+              <td class="px-5 py-4 text-slate/75">
+                <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {{if .Active}}bg-mint text-obsidian{{else}}bg-slate/10 text-slate{{end}}">
+                  {{if .Active}}Active{{else}}Inactive{{end}}
+                </span>
+              </td>
+              <td class="px-5 py-4 text-slate/75">{{.SortOrder}}</td>
+              <td class="px-5 py-4 sm:px-6">
+                <div class="flex min-w-[12rem] flex-wrap justify-end gap-2">
+                  <a href="/admin/games?action=edit&id={{.ID}}#game-form" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+                  <form action="/admin/games/delete" method="post">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <input type="hidden" name="game_id" value="{{.ID}}" />
+                    <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50">Delete</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {{else}}
+            <tr>
+              <td colspan="5" class="px-5 py-10 text-center text-sm text-slate/60 sm:px-6">No games created yet.</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+{{end}}
