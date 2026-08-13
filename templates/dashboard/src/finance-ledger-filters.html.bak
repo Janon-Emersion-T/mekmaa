@@ -1,0 +1,127 @@
+{{define "finance-ledger-filters"}}
+<div class="border-b border-slate/10 p-5 sm:p-6">
+  <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Ledger</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Account-linked transaction history</h2>
+    </div>
+    <form method="get" action="/admin/finance/ledger" class="grid gap-4">
+      <div class="grid gap-3 xl:grid-cols-4">
+        <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-3">
+          <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Income · Students</p>
+          <label class="mt-2 block text-xs font-medium text-slate/60">Training programmes
+            <select name="training_program_id" multiple size="5" class="mt-2 min-h-[8rem] w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua">
+              {{range .TrainingPrograms}}
+              <option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.TrainingProgramIDs .ID}}selected{{end}}>{{.Name}}</option>
+              {{end}}
+            </select>
+          </label>
+        </article>
+        <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-3">
+          <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Income · Bookings</p>
+          <label class="mt-2 block text-xs font-medium text-slate/60">Games / court activities
+            <select name="booking_activity" multiple size="5" class="mt-2 min-h-[8rem] w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua">
+              {{range .CourtActivities}}
+              <option value="{{.Activity}}" {{if contains $.FinanceFilter.BookingActivities .Activity}}selected{{end}}>{{.DisplayName}}</option>
+              {{end}}
+            </select>
+          </label>
+        </article>
+        <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-3">
+          <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Income · 1 to 1</p>
+          <label class="mt-2 block text-xs font-medium text-slate/60">1 to 1 offerings
+            <select name="one_to_one_offering_id" multiple size="5" class="mt-2 min-h-[8rem] w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua">
+              {{range .OneToOneOfferings}}
+              <option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.OneToOneOfferingIDs .ID}}selected{{end}}>{{.Name}}</option>
+              {{end}}
+            </select>
+          </label>
+        </article>
+        <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-3">
+          <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate/45">Expense workflow</p>
+          <p class="mt-2 text-xs leading-5 text-slate/55">Use the category multi-select below to isolate expense groups and see how much each category reduced net income in the selected period.</p>
+        </article>
+      </div>
+      <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-8">
+      <input name="search" value="{{.FinanceFilter.Search}}" placeholder="Reference, party, booking, student, programme" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua xl:col-span-2">
+      <input name="reference" value="{{.FinanceFilter.Reference}}" placeholder="Voucher or receipt" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+      <input name="from" type="date" value="{{.FinanceFilter.From}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+      <input name="to" type="date" value="{{.FinanceFilter.To}}" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+      <select name="direction" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+        <option value="">All directions</option>
+        <option value="income" {{if eq .FinanceFilter.Direction "income"}}selected{{end}}>Money in</option>
+        <option value="expense" {{if eq .FinanceFilter.Direction "expense"}}selected{{end}}>Money out</option>
+      </select>
+      <select name="status" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+        <option value="">All statuses</option>
+        <option value="active" {{if eq .FinanceFilter.Status "active"}}selected{{end}}>Active</option>
+        <option value="voided" {{if eq .FinanceFilter.Status "voided"}}selected{{end}}>Voided</option>
+      </select>
+      <select name="account_id" multiple size="4" class="min-h-[7rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua xl:col-span-2">
+        {{range .FinanceAccounts}}<option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.AccountIDs .ID}}selected{{end}}>{{.AccountCode}} · {{.Name}}</option>{{end}}
+      </select>
+      <select name="category" multiple size="6" class="min-h-[9rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua xl:col-span-2">
+        <option value="admission_payment" {{if contains $.FinanceFilter.Categories "admission_payment"}}selected{{end}}>Admission payment</option>
+        <option value="student_monthly_payment" {{if contains $.FinanceFilter.Categories "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
+        <option value="booking_payment" {{if contains $.FinanceFilter.Categories "booking_payment"}}selected{{end}}>Booking payment</option>
+        <option value="referral_commission_payment" {{if contains $.FinanceFilter.Categories "referral_commission_payment"}}selected{{end}}>Referral payment</option>
+        {{range .FinanceCategories}}
+        <option value="{{.Code}}" {{if contains $.FinanceFilter.Categories .Code}}selected{{end}}>{{.Name}}</option>
+        {{end}}
+        <option value="cash_adjustment" {{if contains $.FinanceFilter.Categories "cash_adjustment"}}selected{{end}}>Adjustment</option>
+        <option value="opening_balance" {{if contains $.FinanceFilter.Categories "opening_balance"}}selected{{end}}>Opening balance</option>
+      </select>
+      <select name="transaction_type" multiple size="4" class="min-h-[7rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+        <option value="income" {{if contains $.FinanceFilter.TransactionTypes "income"}}selected{{end}}>Income</option>
+        <option value="expense" {{if contains $.FinanceFilter.TransactionTypes "expense"}}selected{{end}}>Expense</option>
+        <option value="transfer_in" {{if contains $.FinanceFilter.TransactionTypes "transfer_in"}}selected{{end}}>Transfer in</option>
+        <option value="transfer_out" {{if contains $.FinanceFilter.TransactionTypes "transfer_out"}}selected{{end}}>Transfer out</option>
+        <option value="opening_balance" {{if contains $.FinanceFilter.TransactionTypes "opening_balance"}}selected{{end}}>Opening balance</option>
+        <option value="adjustment" {{if contains $.FinanceFilter.TransactionTypes "adjustment"}}selected{{end}}>Adjustment</option>
+      </select>
+      <select name="source_type" multiple size="5" class="min-h-[8rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+        <option value="manual" {{if contains $.FinanceFilter.SourceTypes "manual"}}selected{{end}}>Manual</option>
+        <option value="admission" {{if contains $.FinanceFilter.SourceTypes "admission"}}selected{{end}}>Admission</option>
+        <option value="student_enrollment" {{if contains $.FinanceFilter.SourceTypes "student_enrollment"}}selected{{end}}>Enrollment</option>
+        <option value="student_monthly_payment" {{if contains $.FinanceFilter.SourceTypes "student_monthly_payment"}}selected{{end}}>Student monthly payment</option>
+        <option value="booking_payment_collection" {{if contains $.FinanceFilter.SourceTypes "booking_payment_collection"}}selected{{end}}>Court / facility booking collection</option>
+        <option value="booking_referral_payment" {{if contains $.FinanceFilter.SourceTypes "booking_referral_payment"}}selected{{end}}>Referral payout</option>
+        <option value="finance_transfer" {{if contains $.FinanceFilter.SourceTypes "finance_transfer"}}selected{{end}}>Transfer</option>
+        <option value="finance_adjustment" {{if contains $.FinanceFilter.SourceTypes "finance_adjustment"}}selected{{end}}>Adjustment</option>
+        <option value="finance_account_opening_balance" {{if contains $.FinanceFilter.SourceTypes "finance_account_opening_balance"}}selected{{end}}>Opening balance</option>
+      </select>
+      <select name="reference_type" multiple size="4" class="min-h-[7rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+        <option value="admission" {{if contains $.FinanceFilter.ReferenceTypes "admission"}}selected{{end}}>Admission record</option>
+        <option value="student_enrollment" {{if contains $.FinanceFilter.ReferenceTypes "student_enrollment"}}selected{{end}}>Enrollment record</option>
+        <option value="space_schedule" {{if contains $.FinanceFilter.ReferenceTypes "space_schedule"}}selected{{end}}>Court / booking schedule</option>
+        <option value="manual" {{if contains $.FinanceFilter.ReferenceTypes "manual"}}selected{{end}}>Manual</option>
+        <option value="finance_account" {{if contains $.FinanceFilter.ReferenceTypes "finance_account"}}selected{{end}}>Finance account</option>
+        <option value="finance_transfer" {{if contains $.FinanceFilter.ReferenceTypes "finance_transfer"}}selected{{end}}>Transfer group</option>
+      </select>
+      <select name="payment_method" multiple size="3" class="min-h-[6rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+        <option value="cash" {{if contains $.FinanceFilter.PaymentMethods "cash"}}selected{{end}}>Cash</option>
+        <option value="bank_transfer" {{if contains $.FinanceFilter.PaymentMethods "bank_transfer"}}selected{{end}}>Bank transfer</option>
+        <option value="qr_pay" {{if contains $.FinanceFilter.PaymentMethods "qr_pay"}}selected{{end}}>QR pay</option>
+      </select>
+      <select name="approval_status" multiple size="2" class="min-h-[5rem] rounded-xl border border-slate/10 bg-cloud px-3 py-2 text-xs outline-none focus:border-aqua">
+        <option value="approved" {{if contains $.FinanceFilter.ApprovalStatuses "approved"}}selected{{end}}>Approved</option>
+        <option value="pending" {{if contains $.FinanceFilter.ApprovalStatuses "pending"}}selected{{end}}>Pending approval</option>
+      </select>
+      <select name="detail_mode" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+        <option value="summary" {{if eq .FinanceFilter.DetailMode "summary"}}selected{{end}}>Summary view</option>
+        <option value="detailed" {{if eq .FinanceFilter.DetailMode "detailed"}}selected{{end}}>Detailed view</option>
+      </select>
+      <select name="limit" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-xs outline-none focus:border-aqua">
+        <option value="25" {{if eq .FinanceFilter.Limit 25}}selected{{end}}>25 rows</option>
+        <option value="50" {{if eq .FinanceFilter.Limit 50}}selected{{end}}>50 rows</option>
+        <option value="100" {{if eq .FinanceFilter.Limit 100}}selected{{end}}>100 rows</option>
+        <option value="200" {{if eq .FinanceFilter.Limit 200}}selected{{end}}>200 rows</option>
+      </select>
+      <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-semibold text-cloud transition hover:bg-slate">Apply</button>
+      <a href="/admin/finance/ledger#ledger" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Clear</a>
+      </div>
+    </form>
+    <p class="text-xs text-slate/50">Use Ctrl or Cmd while clicking to select more than one account, category, source, payment method, or reference type.</p>
+  </div>
+</div>
+{{end}}

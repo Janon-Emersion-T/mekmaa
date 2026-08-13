@@ -1,0 +1,333 @@
+{{define "finance-ledger-filters"}}
+<div class="border-b border-slate/10 p-5 sm:p-6">
+  <div class="flex flex-col gap-5">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Ledger analysis</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Business performance ledger</h2>
+      <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/55">
+        Analyse income and expenses by student programmes, bookings, 1-to-1 services and operating expense categories.
+      </p>
+    </div>
+
+    <form id="ledger-filter-form" method="get" action="/admin/finance/ledger" class="grid gap-5">
+
+      <section class="rounded-[1.5rem] border border-slate/10 bg-cloud/30 p-4 sm:p-5">
+        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+
+          <label class="text-xs font-semibold text-slate/60">
+            From date
+            <input
+              type="date"
+              name="from"
+              value="{{.FinanceFilter.From}}"
+              class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+            >
+          </label>
+
+          <label class="text-xs font-semibold text-slate/60">
+            To date
+            <input
+              type="date"
+              name="to"
+              value="{{.FinanceFilter.To}}"
+              class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+            >
+          </label>
+
+          <label class="text-xs font-semibold text-slate/60">
+            Transaction type
+            <select
+              id="ledger-direction"
+              name="direction"
+              class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+            >
+              <option value="">All transactions</option>
+              <option value="income" {{if eq .FinanceFilter.Direction "income"}}selected{{end}}>Income</option>
+              <option value="expense" {{if eq .FinanceFilter.Direction "expense"}}selected{{end}}>Expense</option>
+            </select>
+          </label>
+
+          <label class="text-xs font-semibold text-slate/60">
+            View
+            <select
+              name="detail_mode"
+              class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+            >
+              <option value="summary" {{if eq .FinanceFilter.DetailMode "summary"}}selected{{end}}>Simplified</option>
+              <option value="detailed" {{if eq .FinanceFilter.DetailMode "detailed"}}selected{{end}}>Detailed</option>
+            </select>
+          </label>
+
+        </div>
+      </section>
+
+      <section
+        id="ledger-income-section"
+        class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/35 p-4 sm:p-5"
+      >
+        <div class="flex flex-col gap-1">
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700/70">Income analysis</p>
+          <h3 class="text-lg font-semibold text-obsidian">Income source</h3>
+        </div>
+
+        <div class="mt-4 grid gap-4 md:grid-cols-3">
+
+          <label class="text-xs font-semibold text-slate/60">
+            Income source
+            <select
+              id="ledger-income-source"
+              name="income_source"
+              class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+            >
+              <option value="">All income</option>
+              <option value="students">Students</option>
+              <option value="bookings">Bookings</option>
+              <option value="one_to_one">1 to 1</option>
+            </select>
+          </label>
+
+        </div>
+
+        <div id="ledger-student-fields" class="mt-5 hidden">
+          <div class="grid gap-4 lg:grid-cols-3">
+
+            <label class="text-xs font-semibold text-slate/60">
+              Training programme
+              <select
+                name="training_program_id"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All programmes</option>
+                {{range .TrainingPrograms}}
+                <option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.TrainingProgramIDs .ID}}selected{{end}}>
+                  {{.Name}}
+                </option>
+                {{end}}
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold text-slate/60">
+              Activity
+              <select
+                id="ledger-training-activity"
+                name="training_activity"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All activities</option>
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold text-slate/60">
+              Training format
+              <select
+                id="ledger-training-format"
+                name="training_format"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All formats</option>
+              </select>
+            </label>
+
+          </div>
+        </div>
+
+        <div id="ledger-booking-fields" class="mt-5 hidden">
+          <div class="grid gap-4 lg:grid-cols-3">
+
+            <label class="text-xs font-semibold text-slate/60">
+              Booking activity
+              <select
+                name="booking_activity"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All booking activities</option>
+                {{range .CourtActivities}}
+                <option value="{{.Activity}}" {{if contains $.FinanceFilter.BookingActivities .Activity}}selected{{end}}>
+                  {{.DisplayName}}
+                </option>
+                {{end}}
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold text-slate/60">
+              Quantity / configuration
+              <select
+                id="ledger-booking-quantity"
+                name="booking_quantity"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All quantities</option>
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold text-slate/60">
+              Pricing period
+              <select
+                id="ledger-booking-period"
+                name="booking_period"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All pricing periods</option>
+                <option value="weekday_offpeak">Weekday off-peak</option>
+                <option value="weekday_peak">Weekday peak</option>
+                <option value="weekend_offpeak">Weekend off-peak</option>
+                <option value="weekend_peak">Weekend peak</option>
+              </select>
+            </label>
+
+          </div>
+        </div>
+
+        <div id="ledger-one-to-one-fields" class="mt-5 hidden">
+          <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+
+            <label class="text-xs font-semibold text-slate/60">
+              Offering
+              <select
+                name="one_to_one_offering_id"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All offerings</option>
+                {{range .OneToOneOfferings}}
+                <option value="{{.ID}}" {{if containsInt64 $.FinanceFilter.OneToOneOfferingIDs .ID}}selected{{end}}>
+                  {{.Name}}
+                </option>
+                {{end}}
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold text-slate/60">
+              Game
+              <select
+                id="ledger-one-to-one-game"
+                name="one_to_one_game"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All games</option>
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold text-slate/60">
+              Audience
+              <select
+                id="ledger-one-to-one-audience"
+                name="one_to_one_audience"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All audiences</option>
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold text-slate/60">
+              Occurrence
+              <select
+                id="ledger-one-to-one-occurrence"
+                name="one_to_one_occurrence"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All occurrence types</option>
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold text-slate/60">
+              Session count
+              <select
+                id="ledger-one-to-one-session-count"
+                name="one_to_one_session_count"
+                class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+              >
+                <option value="">All session counts</option>
+              </select>
+            </label>
+
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="ledger-expense-section"
+        class="hidden rounded-[1.5rem] border border-rose-100 bg-rose-50/35 p-4 sm:p-5"
+      >
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700/70">Expense analysis</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Expense category</h3>
+        </div>
+
+        <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <label class="text-xs font-semibold text-slate/60">
+            Expense category
+            <select
+              name="category"
+              class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+            >
+              <option value="">All expense categories</option>
+              {{range financeActiveCategoriesForDirection .FinanceCategories "expense"}}
+              <option value="{{.Code}}" {{if contains $.FinanceFilter.Categories .Code}}selected{{end}}>
+                {{.Name}}
+              </option>
+              {{end}}
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <a
+          href="/admin/finance/ledger#ledger"
+          class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud"
+        >
+          Clear
+        </a>
+
+        <button
+          type="submit"
+          class="h-11 rounded-xl bg-obsidian px-6 text-sm font-semibold text-cloud transition hover:bg-slate"
+        >
+          Generate ledger
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script>
+(() => {
+  const direction = document.getElementById('ledger-direction');
+  const incomeSection = document.getElementById('ledger-income-section');
+  const expenseSection = document.getElementById('ledger-expense-section');
+  const incomeSource = document.getElementById('ledger-income-source');
+
+  const studentFields = document.getElementById('ledger-student-fields');
+  const bookingFields = document.getElementById('ledger-booking-fields');
+  const oneToOneFields = document.getElementById('ledger-one-to-one-fields');
+
+  function updateDirection() {
+    const value = direction ? direction.value : '';
+
+    if (value === 'expense') {
+      incomeSection?.classList.add('hidden');
+      expenseSection?.classList.remove('hidden');
+      return;
+    }
+
+    expenseSection?.classList.add('hidden');
+    incomeSection?.classList.remove('hidden');
+  }
+
+  function updateIncomeSource() {
+    const value = incomeSource ? incomeSource.value : '';
+
+    studentFields?.classList.toggle('hidden', value !== 'students');
+    bookingFields?.classList.toggle('hidden', value !== 'bookings');
+    oneToOneFields?.classList.toggle('hidden', value !== 'one_to_one');
+  }
+
+  direction?.addEventListener('change', updateDirection);
+  incomeSource?.addEventListener('change', updateIncomeSource);
+
+  updateDirection();
+  updateIncomeSource();
+})();
+</script>
+{{end}}
