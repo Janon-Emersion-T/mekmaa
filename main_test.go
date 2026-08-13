@@ -1291,6 +1291,30 @@ func TestBookingRequestPaymentUIByStatusAndPermission(t *testing.T) {
 	}
 }
 
+func TestFilterBookingRequestsByStatusAndSearch(t *testing.T) {
+	now := time.Now()
+	requests := []SpaceSchedule{
+		{ID: 1, Title: "Pending Booking", Activity: "badminton", RequesterName: "Alice", RequesterEmail: "alice@example.com", RequesterPhone: "0700000001", Status: "Pending", CreatedAt: now},
+		{ID: 2, Title: "Held Booking", Activity: "tennis", RequesterName: "Bob", RequesterEmail: "bob@example.com", RequesterPhone: "0700000002", Status: "held", CreatedAt: now},
+		{ID: 3, Title: "Confirmed Booking", Activity: "futsal", RequesterName: "Carol", RequesterEmail: "carol@example.com", RequesterPhone: "0700000003", Status: "confirmed", CreatedAt: now},
+	}
+
+	pending := filterBookingRequests(requests, "pending", "")
+	if len(pending) != 1 || pending[0].ID != 1 {
+		t.Fatalf("expected only pending request, got %+v", pending)
+	}
+
+	held := filterBookingRequests(requests, "held", "")
+	if len(held) != 1 || held[0].ID != 2 {
+		t.Fatalf("expected only held request, got %+v", held)
+	}
+
+	all := filterBookingRequests(requests, "all", "carol")
+	if len(all) != 1 || all[0].ID != 3 {
+		t.Fatalf("expected search to match confirmed booking, got %+v", all)
+	}
+}
+
 func TestBookingManagementPaymentHistoryAcrossLifecycleStatuses(t *testing.T) {
 	templates, err := buildTemplates()
 	if err != nil {

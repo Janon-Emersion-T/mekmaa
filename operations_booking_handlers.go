@@ -1777,6 +1777,9 @@ func (a *App) bookingRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Title = "Booking Requests"
 	data.Description = "Review unresolved booking requests."
+	data.BookingRequestFilterStatus = normalizeBookingRequestFilterStatus(r.URL.Query().Get("status"))
+	data.BookingRequestSearch = strings.TrimSpace(r.URL.Query().Get("q"))
+	data.BookingRequests = filterBookingRequests(data.BookingRequests, data.BookingRequestFilterStatus, data.BookingRequestSearch)
 	data.BookingCommunications, err = a.listBookingCommunicationsForScheduleIDs(scheduleIDs(data.BookingRequests))
 	if err != nil {
 		log.Printf("list booking communications: %v", err)

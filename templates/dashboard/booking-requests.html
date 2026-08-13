@@ -206,18 +206,19 @@
   <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
       <div class="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]" data-request-filters>
-        <button type="button" data-request-filter="pending" class="whitespace-nowrap rounded-full bg-obsidian px-4 py-2.5 text-xs font-bold text-cloud">Pending</button>
-        <button type="button" data-request-filter="held" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Held</button>
-        <button type="button" data-request-filter="reschedule_pending" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Reschedule pending</button>
-        <button type="button" data-request-filter="all" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">All requests</button>
-        <button type="button" data-request-filter="confirmed" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Confirmed</button>
-        <button type="button" data-request-filter="rejected" class="whitespace-nowrap rounded-full border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Rejected</button>
+        <a href="/admin/booking-requests?status=pending{{if .BookingRequestSearch}}&q={{.BookingRequestSearch}}{{end}}" class="whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-bold {{if eq .BookingRequestFilterStatus "pending"}}bg-obsidian text-cloud{{else}}border border-slate/10 bg-white text-slate{{end}}">Pending</a>
+        <a href="/admin/booking-requests?status=held{{if .BookingRequestSearch}}&q={{.BookingRequestSearch}}{{end}}" class="whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-bold {{if eq .BookingRequestFilterStatus "held"}}bg-obsidian text-cloud{{else}}border border-slate/10 bg-white text-slate{{end}}">Held</a>
+        <a href="/admin/booking-requests?status=reschedule_pending{{if .BookingRequestSearch}}&q={{.BookingRequestSearch}}{{end}}" class="whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-bold {{if eq .BookingRequestFilterStatus "reschedule_pending"}}bg-obsidian text-cloud{{else}}border border-slate/10 bg-white text-slate{{end}}">Reschedule pending</a>
+        <a href="/admin/booking-requests?status=all{{if .BookingRequestSearch}}&q={{.BookingRequestSearch}}{{end}}" class="whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-bold {{if eq .BookingRequestFilterStatus "all"}}bg-obsidian text-cloud{{else}}border border-slate/10 bg-white text-slate{{end}}">All requests</a>
+        <a href="/admin/booking-requests?status=confirmed{{if .BookingRequestSearch}}&q={{.BookingRequestSearch}}{{end}}" class="whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-bold {{if eq .BookingRequestFilterStatus "confirmed"}}bg-obsidian text-cloud{{else}}border border-slate/10 bg-white text-slate{{end}}">Confirmed</a>
+        <a href="/admin/booking-requests?status=rejected{{if .BookingRequestSearch}}&q={{.BookingRequestSearch}}{{end}}" class="whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-bold {{if eq .BookingRequestFilterStatus "rejected"}}bg-obsidian text-cloud{{else}}border border-slate/10 bg-white text-slate{{end}}">Rejected</a>
       </div>
-      <label class="relative block xl:w-80">
+      <form method="get" action="/admin/booking-requests" class="relative block xl:w-80">
+        <input type="hidden" name="status" value="{{.BookingRequestFilterStatus}}" />
         <span class="sr-only">Search booking requests</span>
         <svg class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate/35" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4" stroke-linecap="round"/></svg>
-        <input type="search" data-request-search placeholder="Search customer, reference or sport" class="h-11 w-full rounded-2xl border border-slate/10 bg-cloud/50 pl-11 pr-4 text-sm outline-none focus:border-aqua" />
-      </label>
+        <input type="search" name="q" value="{{.BookingRequestSearch}}" placeholder="Search customer, reference or sport" class="h-11 w-full rounded-2xl border border-slate/10 bg-cloud/50 pl-11 pr-4 text-sm outline-none focus:border-aqua" />
+      </form>
     </div>
 
     <div class="mt-6 grid gap-4" data-request-list>
@@ -464,13 +465,16 @@
       </article>
       {{else}}
       <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/45 px-6 py-16 text-center">
+        {{if or .BookingRequestSearch (ne .BookingRequestFilterStatus "pending")}}
+        <p class="font-semibold text-obsidian">No requests match this filter.</p>
+        <p class="mt-2 text-sm text-slate/50">Try a different status tab or adjust the search term.</p>
+        {{else}}
         <p class="font-semibold text-obsidian">No customer booking requests yet.</p>
         <p class="mt-2 text-sm text-slate/50">New requests from the public booking page will appear here.</p>
+        {{end}}
       </div>
       {{end}}
     </div>
-
-    <div data-request-empty hidden class="mt-6 rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/45 px-6 py-14 text-center text-sm text-slate/55">No requests match this filter.</div>
   </div>
 </section>
 
@@ -484,39 +488,6 @@
         "\"": "&quot;",
         "'": "&#39;",
       }[char]));
-
-    const buttons = Array.from(document.querySelectorAll("[data-request-filter]"));
-    const search = document.querySelector("[data-request-search]");
-    const rows = Array.from(document.querySelectorAll("[data-request-row]"));
-    const empty = document.querySelector("[data-request-empty]");
-    let status = "pending";
-
-    const refresh = () => {
-      const query = search.value.trim().toLowerCase();
-      let visible = 0;
-      rows.forEach((row) => {
-        const show = (status === "all" || row.dataset.status === status) && row.dataset.search.toLowerCase().includes(query);
-        row.hidden = !show;
-        if (show) visible++;
-      });
-      empty.hidden = visible !== 0 || rows.length === 0;
-    };
-
-    buttons.forEach((button) => button.addEventListener("click", () => {
-      status = button.dataset.requestFilter;
-      buttons.forEach((item) => {
-        const active = item === button;
-        item.classList.toggle("bg-obsidian", active);
-        item.classList.toggle("text-cloud", active);
-        item.classList.toggle("border", !active);
-        item.classList.toggle("border-slate/10", !active);
-        item.classList.toggle("bg-white", !active);
-        item.classList.toggle("text-slate", !active);
-      });
-      refresh();
-    }));
-    search?.addEventListener("input", refresh);
-    refresh();
 
     document.querySelectorAll("[data-request-reschedule-form]").forEach((form) => {
       const type = form.querySelector("[data-entry-type]");

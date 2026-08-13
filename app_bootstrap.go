@@ -1639,6 +1639,8 @@ type TemplateData struct {
 	HeldRequestCount                int
 	BookingReminders                []BookingReminder
 	BookingAttentionStats           []Stat
+	BookingRequestFilterStatus      string
+	BookingRequestSearch            string
 	CalendarCanGoBack               bool
 	PendingEmail                    string
 	OTPCodeLength                   int

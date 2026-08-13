@@ -81,6 +81,47 @@ func buildBookingRequestStats(requests []SpaceSchedule) []Stat {
 	}
 }
 
+func normalizeBookingRequestFilterStatus(status string) string {
+	switch canonicalBookingStatus(status) {
+	case "all",
+		bookingStatusPending,
+		bookingStatusHeld,
+		bookingStatusReschedulePending,
+		bookingStatusConfirmed,
+		bookingStatusRejected:
+		return canonicalBookingStatus(status)
+	default:
+		return bookingStatusPending
+	}
+}
+
+func filterBookingRequests(requests []SpaceSchedule, statusFilter string, search string) []SpaceSchedule {
+	statusFilter = normalizeBookingRequestFilterStatus(statusFilter)
+	search = strings.ToLower(strings.TrimSpace(search))
+	filtered := make([]SpaceSchedule, 0, len(requests))
+	for _, request := range requests {
+		status := canonicalBookingStatus(request.Status)
+		if statusFilter != "all" && status != statusFilter {
+			continue
+		}
+		if search != "" {
+			haystack := strings.ToLower(strings.Join([]string{
+				bookingReference(request.ID),
+				request.RequesterName,
+				request.RequesterEmail,
+				request.RequesterPhone,
+				request.Title,
+				request.Activity,
+			}, " "))
+			if !strings.Contains(haystack, search) {
+				continue
+			}
+		}
+		filtered = append(filtered, request)
+	}
+	return filtered
+}
+
 func canonicalBookingStatus(status string) string {
 	normalized := strings.ToLower(strings.TrimSpace(status))
 	normalized = strings.ReplaceAll(normalized, "-", "_")
