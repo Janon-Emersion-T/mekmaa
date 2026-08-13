@@ -1362,6 +1362,13 @@ ON court_closures(activity, active, closure_date)`,
 		if _, err := db.Exec(`UPDATE space_schedules SET status = 'confirmed' WHERE status IS NULL OR TRIM(status) = ''`); err != nil {
 			return err
 		}
+		if _, err := db.Exec(`
+			UPDATE space_schedules
+			SET status = REPLACE(REPLACE(LOWER(TRIM(status)), '-', '_'), ' ', '_')
+			WHERE status IS NOT NULL AND TRIM(status) <> ''
+		`); err != nil {
+			return err
+		}
 		if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_space_schedules_status ON space_schedules(status)`); err != nil {
 			return err
 		}

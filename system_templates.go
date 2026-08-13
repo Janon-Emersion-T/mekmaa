@@ -187,6 +187,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"bookingPaymentStatusTone":                  bookingPaymentStatusTone,
 		"pendingCancellationRequestFor":             pendingCancellationRequestFor,
 		"bookingStatusTone":                         bookingStatusTone,
+		"bookingStatusKey":                          canonicalBookingStatus,
+		"unresolvedBookingRequestStatus":            unresolvedBookingRequestStatus,
 		"quotedPriceForSchedule":                    quotedPriceForSchedule,
 		"courtLayoutHasActivity":                    courtLayoutHasActivity,
 		"courtLayoutActivityQuantity":               courtLayoutActivityQuantity,

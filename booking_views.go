@@ -29,8 +29,8 @@ func customerBookingRequests(schedules []SpaceSchedule) []SpaceSchedule {
 		}
 	}
 	sort.SliceStable(requests, func(i, j int) bool {
-		iNeedsAction := requests[i].Status == bookingStatusPending || requests[i].Status == bookingStatusHeld || requests[i].Status == bookingStatusReschedulePending
-		jNeedsAction := requests[j].Status == bookingStatusPending || requests[j].Status == bookingStatusHeld || requests[j].Status == bookingStatusReschedulePending
+		iNeedsAction := unresolvedBookingRequestStatus(requests[i].Status)
+		jNeedsAction := unresolvedBookingRequestStatus(requests[j].Status)
 		if iNeedsAction != jNeedsAction {
 			return iNeedsAction
 		}
@@ -55,7 +55,7 @@ func buildBookingRequestStats(requests []SpaceSchedule) []Stat {
 	receivedToday := 0
 	today := time.Now().Format("2006-01-02")
 	for _, request := range requests {
-		switch request.Status {
+		switch canonicalBookingStatus(request.Status) {
 		case bookingStatusPending:
 			pending++
 		case bookingStatusHeld:
@@ -81,8 +81,20 @@ func buildBookingRequestStats(requests []SpaceSchedule) []Stat {
 	}
 }
 
+func canonicalBookingStatus(status string) string {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, " ", "_")
+	return normalized
+}
+
 func unresolvedBookingRequestStatus(status string) bool {
-	return status == bookingStatusPending || status == bookingStatusHeld || status == bookingStatusReschedulePending
+	switch canonicalBookingStatus(status) {
+	case bookingStatusPending, bookingStatusHeld, bookingStatusReschedulePending:
+		return true
+	default:
+		return false
+	}
 }
 
 func buildBookingReminders(requests []SpaceSchedule, now time.Time) []BookingReminder {
@@ -259,7 +271,7 @@ func relativeTime(value time.Time) string {
 }
 
 func bookingStatusTone(status string) string {
-	switch status {
+	switch canonicalBookingStatus(status) {
 	case bookingStatusPending:
 		return "border-amber-200 bg-amber-50 text-amber-900"
 	case bookingStatusHeld:
@@ -399,7 +411,7 @@ func bookingPaymentInactiveMessage(schedule *SpaceSchedule) string {
 	if schedule == nil {
 		return "Payment collection is unavailable for this booking."
 	}
-	switch schedule.Status {
+	switch canonicalBookingStatus(schedule.Status) {
 	case bookingStatusPending, bookingStatusHeld, bookingStatusReschedulePending:
 		return "Payment collection becomes available after the booking is confirmed."
 	case bookingStatusRejected, bookingStatusExpired:

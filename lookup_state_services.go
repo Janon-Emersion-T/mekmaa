@@ -1040,6 +1040,7 @@ func scanSpaceSchedule(row rowScanner) (*SpaceSchedule, error) {
 	if statusChangedAt.Valid {
 		schedule.StatusChangedAt = statusChangedAt.Time
 	}
+	schedule.Status = canonicalBookingStatus(schedule.Status)
 	return &schedule, nil
 }
 

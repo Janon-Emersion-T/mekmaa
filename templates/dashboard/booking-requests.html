@@ -227,7 +227,7 @@
       {{$original := bookingRequestOriginalSnapshot . $.BookingRequestChanges $.BookingFinancials}}
       {{$financial := bookingFinancialForSchedule $.BookingFinancials .ID}}
       {{$payments := bookingPaymentsForSchedule $.BookingPaymentCollections .ID}}
-      <article data-request-row data-status="{{.Status}}" data-search="{{bookingReference .ID}} {{.RequesterName}} {{.RequesterEmail}} {{.RequesterPhone}} {{.Title}} {{.Activity}}{{if $referral}} {{$referral.PartnerName}} {{$referral.PartnerCode}}{{end}}" class="overflow-hidden rounded-[1.6rem] border {{bookingStatusTone .Status}}">
+      <article data-request-row data-status="{{bookingStatusKey .Status}}" data-search="{{bookingReference .ID}} {{.RequesterName}} {{.RequesterEmail}} {{.RequesterPhone}} {{.Title}} {{.Activity}}{{if $referral}} {{$referral.PartnerName}} {{$referral.PartnerCode}}{{end}}" class="overflow-hidden rounded-[1.6rem] border {{bookingStatusTone .Status}}">
         <div class="grid lg:grid-cols-[9.5rem_minmax(0,1fr)]">
           <div class="{{if eq .Status "pending"}}bg-amber-100/70{{else if eq .Status "confirmed"}}bg-emerald-100/65{{else}}bg-red-100/55{{end}} p-4 sm:p-5">
             <div class="flex items-start justify-between gap-3 lg:block">
@@ -281,7 +281,7 @@
                 <p class="mt-3 text-sm font-semibold text-obsidian">{{.RequesterName}}</p>
                 <a href="mailto:{{.RequesterEmail}}" class="mt-1 block break-all text-xs text-slate/60 hover:text-obsidian">{{.RequesterEmail}}</a>
                 <a href="tel:{{.RequesterPhone}}" class="mt-1 block text-xs text-slate/60 hover:text-obsidian">{{.RequesterPhone}}</a>
-                {{if or (eq .Status "pending") (eq .Status "held") (eq .Status "reschedule_pending")}}
+              {{if unresolvedBookingRequestStatus .Status}}
                 <div class="mt-4 rounded-[1.3rem] border border-slate/10 bg-cloud/50 p-3">
                   <p class="text-xs font-semibold text-obsidian">Accept or reject</p>
                   <p class="mt-1 text-[0.68rem] leading-5 text-slate/50">Approve only after checking the calendar and customer details. Customer messaging can fail without blocking the booking decision.</p>
@@ -445,7 +445,7 @@
                 {{end}}
               </div>
 
-              {{if or (eq .Status "pending") (eq .Status "held") (eq .Status "reschedule_pending")}}
+              {{if unresolvedBookingRequestStatus .Status}}
               <div class="rounded-[1.3rem] border border-amber-200 bg-amber-50/60 p-4 text-center">
                 <p class="text-sm font-bold text-amber-950">Request awaiting staff action</p>
                 <p class="mt-1 text-xs leading-5 text-amber-900">Use the customer column to accept, hold, reschedule, cancel, or reject this booking request.</p>

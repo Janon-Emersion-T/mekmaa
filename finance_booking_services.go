@@ -3655,7 +3655,7 @@ func moneyEquals(left, right float64) bool {
 }
 
 func bookingPaymentCollectibleStatus(status string) bool {
-	switch status {
+	switch canonicalBookingStatus(status) {
 	case bookingStatusConfirmed, bookingStatusCompleted, bookingStatusNoShow, bookingStatusCancelled:
 		return true
 	default:

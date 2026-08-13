@@ -1223,13 +1223,13 @@ func TestBookingRequestPaymentUIByStatusAndPermission(t *testing.T) {
 	pending := confirmed
 	pending.ID = 102
 	pending.Title = "Pending Booking"
-	pending.Status = bookingStatusPending
+	pending.Status = "Pending"
 	pending.RequesterEmail = "pending@example.com"
 	pending.RequesterPhone = "0700000002"
 	held := confirmed
 	held.ID = 103
 	held.Title = "Held Booking"
-	held.Status = bookingStatusHeld
+	held.Status = "Held"
 	held.RequesterEmail = "held@example.com"
 	held.RequesterPhone = "0700000003"
 
@@ -5553,6 +5553,57 @@ func TestRunMigrationsPreservesExistingConfirmedBookingAndAutoAcceptDefaults(t *
 	}
 	if autoAccept != 0 {
 		t.Fatalf("expected auto_accept default 0 for legacy activity, got %d", autoAccept)
+	}
+}
+
+func TestRunMigrationsNormalizesLegacyBookingStatuses(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:migration-normalize-booking-status-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	if _, err := db.Exec(`CREATE TABLE space_schedules (id INTEGER PRIMARY KEY AUTOINCREMENT, slot_date TEXT NOT NULL, slot_hour TEXT NOT NULL, entry_type TEXT NOT NULL, activity TEXT NOT NULL, quantity INTEGER NOT NULL, title TEXT NOT NULL, notes TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'confirmed', requester_name TEXT NOT NULL DEFAULT '', requester_email TEXT NOT NULL DEFAULT '', requester_phone TEXT NOT NULL DEFAULT '', requested_by_user_id INTEGER, review_note TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if _, err := db.Exec(`INSERT INTO space_schedules (slot_date, slot_hour, entry_type, activity, quantity, title, notes, status, created_at, updated_at) VALUES (?, ?, 'booking', 'badminton', 1, 'Legacy Pending', '', 'Pending', ?, ?)`, now.Format("2006-01-02"), "18:00", now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO space_schedules (slot_date, slot_hour, entry_type, activity, quantity, title, notes, status, created_at, updated_at) VALUES (?, ?, 'booking', 'badminton', 1, 'Legacy Reschedule', '', 'Reschedule Pending', ?, ?)`, now.Format("2006-01-02"), "19:00", now, now); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	rows, err := db.Query(`SELECT status FROM space_schedules ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var statuses []string
+	for rows.Next() {
+		var status string
+		if err := rows.Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		statuses = append(statuses, status)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(statuses) != 2 {
+		t.Fatalf("expected 2 statuses, got %d", len(statuses))
+	}
+	if statuses[0] != bookingStatusPending {
+		t.Fatalf("expected pending status, got %q", statuses[0])
+	}
+	if statuses[1] != bookingStatusReschedulePending {
+		t.Fatalf("expected reschedule_pending status, got %q", statuses[1])
 	}
 }
 

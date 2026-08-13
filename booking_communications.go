@@ -30,7 +30,7 @@ func bookingStatusConsumesCapacity(status string) bool {
 	// Unresolved requests continue to reserve the slot in this application.
 	// `held` follows the same behavior as `pending` so staff do not accidentally
 	// promise a slot twice while a request is under review.
-	switch status {
+	switch canonicalBookingStatus(status) {
 	case bookingStatusPending, bookingStatusHeld, bookingStatusConfirmed, bookingStatusReschedulePending:
 		return true
 	default:
@@ -39,7 +39,7 @@ func bookingStatusConsumesCapacity(status string) bool {
 }
 
 func isInactiveBookingStatus(status string) bool {
-	switch status {
+	switch canonicalBookingStatus(status) {
 	case bookingStatusRejected, bookingStatusCancelled, bookingStatusCompleted, bookingStatusNoShow, bookingStatusExpired:
 		return true
 	default:
@@ -48,7 +48,7 @@ func isInactiveBookingStatus(status string) bool {
 }
 
 func validBookingStatus(status string) bool {
-	switch status {
+	switch canonicalBookingStatus(status) {
 	case bookingStatusPending, bookingStatusHeld, bookingStatusConfirmed, bookingStatusRejected, bookingStatusReschedulePending, bookingStatusCancelled, bookingStatusCompleted, bookingStatusNoShow, bookingStatusExpired:
 		return true
 	default:
