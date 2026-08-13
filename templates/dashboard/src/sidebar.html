@@ -145,6 +145,34 @@
         <a href="/admin/finance/specified-ledgers" class="{{if hasPathPrefix .CurrentPath "/admin/finance/specified-ledgers"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Specified ledgers</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">T-accounts</span>
         </a>
+        {{if .FinanceSpecifiedLedgers}}
+        <div class="ml-3 mt-2 space-y-1 border-l border-slate/10 pl-3">
+          {{range financeSpecifiedSystemLedgers .FinanceSpecifiedLedgers}}
+          <a href="/admin/finance/specified-ledgers/{{.Key}}" class="{{if and $.SelectedFinanceSpecifiedLedger (eq $.SelectedFinanceSpecifiedLedger.Key .Key)}}bg-cloud text-obsidian{{else}}text-slate/60 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition">
+            <span>{{.Title}}</span>
+            <span class="opacity-45">{{.EntryCount}}</span>
+          </a>
+          {{end}}
+          {{range financeSpecifiedIncomeLedgers .FinanceSpecifiedLedgers}}
+          <a href="/admin/finance/specified-ledgers/{{.Key}}" class="{{if and $.SelectedFinanceSpecifiedLedger (eq $.SelectedFinanceSpecifiedLedger.Key .Key)}}bg-cloud text-obsidian{{else}}text-slate/60 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition">
+            <span>{{.Title}}</span>
+            <span class="opacity-45">{{.EntryCount}}</span>
+          </a>
+          {{end}}
+          {{range financeSpecifiedExpenseLedgers .FinanceSpecifiedLedgers}}
+          <a href="/admin/finance/specified-ledgers/{{.Key}}" class="{{if and $.SelectedFinanceSpecifiedLedger (eq $.SelectedFinanceSpecifiedLedger.Key .Key)}}bg-cloud text-obsidian{{else}}text-slate/60 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition">
+            <span>{{.Title}}</span>
+            <span class="opacity-45">{{.EntryCount}}</span>
+          </a>
+          {{end}}
+          {{range financeSpecifiedOtherLedgers .FinanceSpecifiedLedgers}}
+          <a href="/admin/finance/specified-ledgers/{{.Key}}" class="{{if and $.SelectedFinanceSpecifiedLedger (eq $.SelectedFinanceSpecifiedLedger.Key .Key)}}bg-cloud text-obsidian{{else}}text-slate/60 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition">
+            <span>{{.Title}}</span>
+            <span class="opacity-45">{{.EntryCount}}</span>
+          </a>
+          {{end}}
+        </div>
+        {{end}}
         <a href="/admin/student-payments" class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Student payments</span><span class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-aqua text-obsidian{{else}}bg-amber/15 text-amber-700{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Ledger</span>
         </a>
