@@ -324,7 +324,7 @@ func (a *App) buildFinanceBalanceSheet(asOfRaw string) (*FinanceBalanceSheet, er
 	referrals, err := a.listBookingReferrals()
 	if err == nil {
 		for _, referral := range referrals {
-			if referral.BookingStatus == "confirmed" && !referral.Paid {
+			if bookingReferralIsPayable(referral) {
 				report.MemoUnpaidReferralCommissions += referral.CommissionAmount
 			}
 		}

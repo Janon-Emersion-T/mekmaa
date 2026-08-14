@@ -870,7 +870,7 @@ func buildFinanceSummary(accounts []FinanceAccount, transactions []FinanceTransa
 		}
 	}
 	for _, referral := range referrals {
-		if referral.BookingStatus == "confirmed" && !referral.Paid {
+		if bookingReferralIsPayable(referral) {
 			summary.PayableReferrals += referral.CommissionAmount
 		}
 	}

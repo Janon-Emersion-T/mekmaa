@@ -126,7 +126,7 @@
 
     <div class="mt-5 grid gap-3">
       {{range .BookingReferrals}}
-      {{$state := "pending"}}{{if .Paid}}{{$state = "paid"}}{{else if eq .BookingStatus "confirmed"}}{{$state = "payable"}}{{else if eq .BookingStatus "rejected"}}{{$state = "void"}}{{end}}
+      {{$state := "pending"}}{{if .Paid}}{{$state = "paid"}}{{else if eq .BookingStatus "confirmed"}}{{$state = "payable"}}{{else if or (eq .BookingStatus "rejected") (eq .BookingStatus "cancelled")}}{{$state = "void"}}{{end}}
       <article data-referral-row data-state="{{$state}}" data-search="{{.PartnerName}} {{.PartnerCode}} {{.BookingReference}} {{.BookingTitle}}" class="rounded-[1.5rem] border {{if eq $state "payable"}}border-amber-200 bg-amber-50/60{{else if eq $state "paid"}}border-emerald-200 bg-emerald-50/45{{else}}border-slate/10 bg-cloud/40{{end}} p-4 sm:p-5">
         <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,.7fr)_minmax(17rem,.8fr)] xl:items-center">
           <div><div class="flex flex-wrap items-center gap-2"><h3 class="font-semibold">{{.PartnerName}}</h3><span class="rounded-full bg-white px-2.5 py-1 font-mono text-[0.62rem] font-bold text-emerald-800">{{.PartnerCode}}</span><span class="rounded-full bg-white/70 px-2.5 py-1 text-[0.58rem] font-bold uppercase">{{$state}}</span></div><p class="mt-2 text-sm text-slate/65">{{.BookingTitle}}</p><p class="mt-1 font-mono text-xs text-slate/45">{{.BookingReference}} · {{formatCalendarDate .SlotDate}}</p></div>
@@ -139,7 +139,7 @@
           </form>
           {{else if .Paid}}
           <div class="xl:text-right"><p class="text-sm font-semibold text-emerald-900">Paid {{formatDateTime .PaidAt}}</p><p class="mt-1 text-xs uppercase text-emerald-800/55">{{.PaymentMethod}}</p>{{if .FinanceTransactionID}}<a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="mt-2 inline-block text-xs font-bold underline underline-offset-4">View receipt</a>{{end}}</div>
-          {{else if eq .BookingStatus "rejected"}}<p class="text-sm text-slate/50 xl:text-right">No commission owed for a rejected booking.</p>
+          {{else if or (eq .BookingStatus "rejected") (eq .BookingStatus "cancelled")}}<p class="text-sm text-slate/50 xl:text-right">No commission owed for a cancelled or rejected booking.</p>
           {{else}}<p class="text-sm text-slate/50 xl:text-right">Waiting for booking confirmation.</p>{{end}}
         </div>
       </article>

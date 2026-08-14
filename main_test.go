@@ -1891,6 +1891,72 @@ func TestCreateSpaceScheduleCreatesReferralCommissionForDirectBooking(t *testing
 	}
 }
 
+func TestCancelledBookingReferralIsNotPayable(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:cancelled-referral-commission-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	seedBookingEngine(t, db)
+
+	app := &App{db: db}
+	if err := app.updateReferralCommissionAmount(500); err != nil {
+		t.Fatalf("configure referral commission: %v", err)
+	}
+	if err := app.createReferralPartner(ReferralPartner{Name: "Referral Partner", Code: "COACH-02", Phone: "0700000002", Active: true}); err != nil {
+		t.Fatalf("create referral partner: %v", err)
+	}
+
+	requestID, err := app.createPublicBookingRequest(SpaceSchedule{
+		SlotDate:       time.Now().AddDate(0, 0, 2).Format("2006-01-02"),
+		SlotHour:       "19:00",
+		EntryType:      "booking",
+		Activity:       "full_indoor_cricket",
+		Quantity:       1,
+		Title:          "Cancelled Referral Booking",
+		Status:         bookingStatusPending,
+		RequesterName:  "Cancelled Customer",
+		RequesterEmail: "cancelled@example.com",
+		RequesterPhone: "0710000002",
+		ReferralCode:   "COACH-02",
+	})
+	if err != nil {
+		t.Fatalf("create referred booking: %v", err)
+	}
+	if _, err := app.updateBookingRequestStatus(requestID, bookingStatusConfirmed, "", ""); err != nil {
+		t.Fatalf("confirm referred booking: %v", err)
+	}
+	updated, _, err := app.transitionManagedBookingStatus(requestID, bookingStatusCancelled, "Customer cancelled", "", "Customer cancelled", "", "admin", 0)
+	if err != nil {
+		t.Fatalf("cancel referred booking: %v", err)
+	}
+	if updated.Status != bookingStatusCancelled {
+		t.Fatalf("unexpected status after cancellation: %s", updated.Status)
+	}
+
+	referrals, err := app.listBookingReferrals()
+	if err != nil {
+		t.Fatalf("list booking referrals: %v", err)
+	}
+	if len(referrals) != 1 {
+		t.Fatalf("expected one booking referral, got %d", len(referrals))
+	}
+	if bookingReferralIsPayable(referrals[0]) {
+		t.Fatalf("cancelled referral should not be payable: %#v", referrals[0])
+	}
+	if buildReferralStats(referrals)[2].Value != money(0) {
+		t.Fatalf("expected zero payable referral stats, got %s", buildReferralStats(referrals)[2].Value)
+	}
+	summary := buildFinanceSummary(nil, nil, nil, nil, referrals, nil)
+	if summary.PayableReferrals != 0 {
+		t.Fatalf("expected zero payable referrals in finance summary, got %.2f", summary.PayableReferrals)
+	}
+}
+
 func TestReferralPartnerManagementUsesSharedRate(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:referral-partner-management-test?mode=memory&cache=shared")
 	if err != nil {

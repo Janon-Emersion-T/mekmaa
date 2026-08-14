@@ -1176,9 +1176,9 @@ func buildReferralStats(referrals []BookingReferral) []Stat {
 		switch {
 		case referral.Paid:
 			paid += referral.CommissionAmount
-		case referral.BookingStatus == "confirmed":
+		case bookingReferralIsPayable(referral):
 			payable += referral.CommissionAmount
-		case referral.BookingStatus == "pending":
+		case bookingReferralIsPending(referral):
 			pendingBookings++
 		}
 	}
@@ -1208,14 +1208,22 @@ func buildReferralPartnerSummaries(partners []ReferralPartner, referrals []Booki
 		case referral.Paid:
 			summary.PaidCount++
 			summary.PaidAmount += referral.CommissionAmount
-		case referral.BookingStatus == "confirmed":
+		case bookingReferralIsPayable(referral):
 			summary.PayableCount++
 			summary.PayableAmount += referral.CommissionAmount
-		case referral.BookingStatus == "pending":
+		case bookingReferralIsPending(referral):
 			summary.PendingCount++
 		}
 	}
 	return summaries
+}
+
+func bookingReferralIsPayable(referral BookingReferral) bool {
+	return !referral.Paid && referral.BookingStatus == bookingStatusConfirmed
+}
+
+func bookingReferralIsPending(referral BookingReferral) bool {
+	return !referral.Paid && referral.BookingStatus == bookingStatusPending
 }
 
 func containsPermission(permissions []string, target string) bool {
