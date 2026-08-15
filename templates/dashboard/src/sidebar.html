@@ -48,8 +48,8 @@
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Student Operations</p>
       <div class="space-y-1">
         {{if hasPermission .User "admissions.manage"}}
-        <a href="/admin/admissions" class="{{if isCurrentPath .CurrentPath "/admin/admissions"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Students</span><span class="{{if isCurrentPath .CurrentPath "/admin/admissions"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Master</span>
+        <a href="/admin/students" class="{{if or (isCurrentPath .CurrentPath "/admin/admissions") (isCurrentPath .CurrentPath "/admin/students")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Students</span><span class="{{if or (isCurrentPath .CurrentPath "/admin/admissions") (isCurrentPath .CurrentPath "/admin/students")}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Master</span>
         </a>
         <a href="/admin/enrollments" class="{{if isCurrentPath .CurrentPath "/admin/enrollments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Enrollments</span><span class="{{if isCurrentPath .CurrentPath "/admin/enrollments"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Active</span>

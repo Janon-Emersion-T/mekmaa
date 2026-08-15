@@ -709,8 +709,8 @@ func TestAdmissionManagementTemplateRenders(t *testing.T) {
 		TrainingPrograms:          []TrainingProgram{{ID: 1, Name: "Cricket", Active: true, AdmissionFee: 2500}},
 	})
 
-	if !strings.Contains(html, "Current admissions") {
-		t.Fatalf("expected admissions directory to render")
+	if !strings.Contains(html, "Student directory") {
+		t.Fatalf("expected student directory to render")
 	}
 }
 

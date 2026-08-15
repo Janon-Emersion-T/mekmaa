@@ -3629,6 +3629,9 @@ func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a superadmin can assign administrator roles", http.StatusForbidden)
 		return
 	}
+	if !canViewAllDivisions(current) && len(current.DivisionIDs) > 0 {
+		divisionIDs = append([]int64(nil), current.DivisionIDs...)
+	}
 	if _, err := a.validateAssignableDivisionIDs(current, divisionIDs); err != nil {
 		if errors.Is(err, ErrForbiddenDivision) {
 			http.Error(w, "one or more divisions are not authorized", http.StatusForbidden)
@@ -3967,12 +3970,19 @@ func (a *App) updateRolesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
+	if !canViewAllDivisions(current) && len(current.DivisionIDs) > 0 && !divisionSlicesOverlap(current.DivisionIDs, target.DivisionIDs) {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
 	currentIsSuperadmin := containsRole(current.Roles, "superadmin")
 	if (containsPrivilegedRole(target.Roles) || containsPrivilegedRole(roles)) && !currentIsSuperadmin {
 		http.Error(w, "only a superadmin can manage administrator accounts", http.StatusForbidden)
 		return
 	}
 	divisionIDs := normalizeDivisionIDs(r.Form["division_ids"])
+	if !canViewAllDivisions(current) && len(current.DivisionIDs) > 0 {
+		divisionIDs = append([]int64(nil), current.DivisionIDs...)
+	}
 	if _, err := a.validateAssignableDivisionIDs(current, divisionIDs); err != nil {
 		if errors.Is(err, ErrForbiddenDivision) {
 			http.Error(w, "one or more divisions are not authorized", http.StatusForbidden)

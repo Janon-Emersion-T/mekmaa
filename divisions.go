@@ -468,6 +468,17 @@ func (a *App) requireDivisionAccessForDivision(w http.ResponseWriter, r *http.Re
 	return false
 }
 
+func (a *App) requireSportsOperationalAccess(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, _ := a.currentUser(r.Context())
+		if userCanAccessSportsSilo(user) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		a.writeDivisionForbidden(w, r, user)
+	})
+}
+
 func (a *App) validateAssignableDivisionIDs(currentUser *User, rawIDs []int64) ([]Division, error) {
 	if len(rawIDs) == 0 {
 		return nil, nil
@@ -578,6 +589,24 @@ func divisionIDsFromDivisions(divisions []Division) []int64 {
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	return ids
+}
+
+func divisionSlicesOverlap(left, right []int64) bool {
+	if len(left) == 0 || len(right) == 0 {
+		return false
+	}
+	seen := make(map[int64]struct{}, len(left))
+	for _, id := range left {
+		if id > 0 {
+			seen[id] = struct{}{}
+		}
+	}
+	for _, id := range right {
+		if _, ok := seen[id]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func financeDivisionIDForEntryTx(tx *sql.Tx, entry financeTransactionCreate) (int64, error) {

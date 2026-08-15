@@ -1000,7 +1000,7 @@ func (a *App) adminRedirectHandler(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) userManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	users, err := a.listUsers()
+	users, err := a.listUsersVisibleToManager(user)
 	if err != nil {
 		log.Printf("list users: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -1014,10 +1014,11 @@ func (a *App) userManagementHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := a.newTemplateData(w, r, user)
-	data.Title = "User Management"
-	data.Description = "Manage users."
+	data.Title = "User Access"
+	data.Description = "Manage staff access inside authorized divisions."
 	data.Users = users
-	data.ActiveDivisions, _ = a.listDivisions(true)
+	data.ActiveDivisions, _ = a.accessibleDivisionsForUser(user, false)
+	data.AvailableDivisions = data.ActiveDivisions
 	for _, role := range roles {
 		if isPrivilegedRole(role.Name) && !containsRole(user.Roles, "superadmin") {
 			continue

@@ -839,6 +839,27 @@ func (a *App) listUsers() ([]User, error) {
 	return users, nil
 }
 
+func (a *App) listUsersVisibleToManager(current *User) ([]User, error) {
+	users, err := a.listUsers()
+	if err != nil {
+		return nil, err
+	}
+	if current == nil || canViewAllDivisions(current) {
+		return users, nil
+	}
+	filtered := make([]User, 0, len(users))
+	for _, user := range users {
+		if user.ID == current.ID {
+			filtered = append(filtered, user)
+			continue
+		}
+		if divisionSlicesOverlap(current.DivisionIDs, user.DivisionIDs) {
+			filtered = append(filtered, user)
+		}
+	}
+	return filtered, nil
+}
+
 func (a *App) listCoachUsersDetailed(includeInactive bool) ([]User, error) {
 	query := `
 		SELECT DISTINCT

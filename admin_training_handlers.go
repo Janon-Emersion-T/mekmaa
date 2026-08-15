@@ -109,8 +109,8 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	data := a.newTemplateData(w, r, user)
-	data.Title = "Admissions Management"
-	data.Description = "Manage admissions."
+	data.Title = "Students"
+	data.Description = "Manage the shared student master and division enrollments."
 	data.Admissions = admissions
 	data.AdmissionsTotal = totalAdmissions
 	data.AdmissionsFilter = filter

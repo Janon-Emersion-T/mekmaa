@@ -332,7 +332,7 @@ func admissionsFilterPageURL(r *http.Request, filter AdmissionsFilter, page int)
 	} else {
 		query.Set("division", filter.Division)
 	}
-	return "/admin/admissions?" + query.Encode() + "#admissions-directory"
+	return "/admin/students?" + query.Encode() + "#admissions-directory"
 }
 
 func admissionsFilterBaseURL(r *http.Request, filter AdmissionsFilter) string {
@@ -352,9 +352,9 @@ func admissionsFilterBaseURL(r *http.Request, filter AdmissionsFilter) string {
 	}
 	encoded := query.Encode()
 	if encoded == "" {
-		return "/admin/admissions"
+		return "/admin/students"
 	}
-	return "/admin/admissions?" + encoded
+	return "/admin/students?" + encoded
 }
 
 func admissionsTotalPages(total, limit int) int {

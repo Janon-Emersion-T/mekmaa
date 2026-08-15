@@ -24,23 +24,23 @@
           />
         </svg>
 
-        <span class="text-obsidian">Admissions</span>
+        <span class="text-obsidian">Students</span>
       </div>
 
       <h1 class="mt-2 text-3xl font-semibold tracking-tight text-obsidian sm:text-4xl">
-        Admissions management
+        Students
       </h1>
 
       <p class="mt-2 max-w-2xl text-sm leading-6 text-slate/65 sm:text-base">
         Register students, maintain guardian and medical information, and manage
-        the current admissions directory.
+        the shared student directory.
       </p>
     </div>
 
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
       <div class="rounded-2xl border border-obsidian/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
         <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/50">
-          Admissions
+          Students
         </p>
 
         <p class="mt-1 text-2xl font-semibold text-obsidian">
@@ -50,7 +50,7 @@
 
       {{if ne .AdmissionMode "new"}}
       <a
-        href="/admin/admissions?action=new#admission-form"
+        href="/admin/students?action=new#admission-form"
         class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-obsidian px-6 text-sm font-semibold text-cloud shadow-[0_12px_30px_rgba(11,18,21,0.22)] transition hover:-translate-y-0.5 hover:bg-slate hover:shadow-[0_16px_35px_rgba(11,18,21,0.26)] focus:outline-none focus:ring-4 focus:ring-aqua/30 active:translate-y-0"
       >
         <svg
@@ -68,7 +68,7 @@
           />
         </svg>
 
-        Add admission
+        Add student
       </a>
       {{end}}
     </div>
@@ -101,17 +101,17 @@
 
         <div>
           <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
-            New student admission
+            Add student
           </h2>
 
           <p class="mt-1 text-sm leading-6 text-slate/60">
-            Enter the student, guardian, education, and medical details below.
+            Enter the student master profile, guardian, education, and medical details below.
           </p>
         </div>
       </div>
 
       <a
-        href="/admin/admissions"
+        href="/admin/students"
         class="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-slate/20 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
       >
         <svg
@@ -523,11 +523,11 @@
     <div class="flex flex-col gap-4 border-b border-slate/10 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
       <div>
         <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
-          Current admissions
+          Student directory
         </h2>
 
         <p class="mt-1 text-sm leading-6 text-slate/60">
-          Review student records and open, edit, or remove an admission.
+          Review student master records and open, edit, or remove a student profile.
         </p>
       </div>
 
@@ -538,7 +538,7 @@
     </div>
 
     <div class="border-b border-slate/10 px-5 py-5 sm:px-8">
-      <form method="get" action="/admin/admissions" class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,0.5fr))]">
+      <form method="get" action="/admin/students" class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,0.5fr))]">
         {{if .AdmissionMode}}
         <input type="hidden" name="action" value="{{.AdmissionMode}}" />
         {{end}}
@@ -611,7 +611,7 @@
 
           <div class="flex flex-wrap gap-3">
             <a
-              href="/admin/admissions#admissions-directory"
+              href="/admin/students#admissions-directory"
               class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
             >
               Reset
@@ -720,14 +720,14 @@
             <td class="px-6 py-5">
               <div class="flex min-w-[12rem] justify-end gap-2">
                 <a
-                  href="/admin/admissions?action=view&id={{.ID}}#admission-view"
+                  href="/admin/students?action=view&id={{.ID}}#admission-view"
                   class="inline-flex h-9 items-center justify-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate shadow-sm transition hover:border-aqua/50 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
                 >
                   View
                 </a>
 
                 <a
-                  href="/admin/admissions/student-id?id={{.ID}}"
+                  href="/admin/students/student-id?id={{.ID}}"
                   target="_blank"
                   rel="noopener"
                   class="inline-flex h-9 items-center justify-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate shadow-sm transition hover:border-aqua/50 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
@@ -743,13 +743,13 @@
                 </a>
 
                 <a
-                  href="/admin/admissions?action=edit&id={{.ID}}#admission-edit"
+                  href="/admin/students?action=edit&id={{.ID}}#admission-edit"
                   class="inline-flex h-9 items-center justify-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate shadow-sm transition hover:border-aqua/50 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/20"
                 >
                   Edit
                 </a>
 
-                <form action="/admin/admissions/delete" method="post">
+                <form action="/admin/students/delete" method="post">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="admission_id" value="{{.ID}}" />
 
@@ -786,18 +786,18 @@
                 </div>
 
                 <h3 class="mt-4 text-lg font-semibold text-obsidian">
-                  No admissions found
+                  No students found
                 </h3>
 
                 <p class="mt-2 max-w-sm text-sm leading-6 text-slate/55">
-                  Add the first student admission to begin building the admissions directory.
+                  Add the first student to begin building the shared student directory.
                 </p>
 
                 <a
-                  href="/admin/admissions?action=new#admission-form"
+                  href="/admin/students?action=new#admission-form"
                   class="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"
                 >
-                  Add admission
+                  Add student
                 </a>
               </div>
             </td>
