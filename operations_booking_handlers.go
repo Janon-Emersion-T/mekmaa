@@ -15,26 +15,35 @@ import (
 
 func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	groups, err := a.listStudentGroups()
+	divisionIDs := []int64(nil)
+	var err error
+	if !canViewAllDivisions(user) {
+		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	groups, err := a.listStudentGroupsByDivisionIDs(divisionIDs)
 	if err != nil {
 		log.Printf("list student groups: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	admissions, err := a.listAdmissions()
+	admissions, err := a.listAdmissionIdentities()
 	if err != nil {
 		log.Printf("list admissions for groups: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	coaches, err := a.listCoachUsers()
+	coaches, err := a.listCoachUsersDetailedByDivisionIDs(divisionIDs, false)
 	if err != nil {
 		log.Printf("list coach users for student groups: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	trainingPrograms, err := a.listTrainingPrograms(false)
+	trainingPrograms, err := a.listTrainingProgramsByDivisionIDs(divisionIDs, false, true)
 	if err != nil {
 		log.Printf("list training programmes for student groups: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -56,7 +65,7 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 	if data.GroupMode == "view" || data.GroupMode == "edit" {
 		groupID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
 		if err == nil && groupID > 0 {
-			selectedGroup, err := a.findStudentGroupByID(groupID)
+			selectedGroup, err := a.findStudentGroupByIDForDivisionIDs(groupID, divisionIDs)
 			if err == nil {
 				data.SelectedGroup = selectedGroup
 			}
@@ -72,13 +81,21 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 		groups []StudentGroup
 		err    error
 	)
+	divisionIDs := []int64(nil)
+	if !canViewAllDivisions(user) {
+		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
 
 	if userHasRole(user, "coach") &&
 		!userHasRole(user, "admin") &&
 		!userHasRole(user, "superadmin") {
-		groups, err = a.listStudentGroupsForCoach(user.ID)
+		groups, err = a.listStudentGroupsForCoachByDivisionIDs(user.ID, divisionIDs)
 	} else {
-		groups, err = a.listStudentGroups()
+		groups, err = a.listStudentGroupsByDivisionIDs(divisionIDs)
 	}
 
 	if err != nil {
@@ -86,25 +103,6 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	if !canViewAllDivisions(user) {
-		filteredGroups := make([]StudentGroup, 0, len(groups))
-		for _, group := range groups {
-			if group.TrainingProgramID <= 0 {
-				continue
-			}
-			program, err := a.findTrainingProgramByID(group.TrainingProgramID)
-			if err != nil {
-				log.Printf("find training programme for attendance group %d: %v", group.ID, err)
-				http.Error(w, "internal server error", http.StatusInternalServerError)
-				return
-			}
-			if userCanAccessDivision(user, program.DivisionID) {
-				filteredGroups = append(filteredGroups, group)
-			}
-		}
-		groups = filteredGroups
-	}
-
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Attendance"
 	data.Description = "Manage student attendance by group."
@@ -128,6 +126,12 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 	)
 
 	if err == nil && groupID > 0 {
+		if !canViewAllDivisions(user) {
+			groupDivisionID, divisionErr := a.findStudentGroupDivisionByID(groupID)
+			if divisionErr == nil && !a.requireDivisionAccessForDivision(w, r, user, groupDivisionID) {
+				return
+			}
+		}
 		var selectedGroup *StudentGroup
 
 		for i := range groups {
@@ -138,20 +142,6 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 		}
 
 		if selectedGroup != nil {
-			if selectedGroup.TrainingProgramID > 0 {
-				program, err := a.findTrainingProgramByID(selectedGroup.TrainingProgramID)
-				if err != nil {
-					log.Printf("find training programme for attendance selection: %v", err)
-					http.Error(w, "internal server error", http.StatusInternalServerError)
-					return
-				}
-				if !a.requireDivisionAccessForDivision(w, r, user, program.DivisionID) {
-					return
-				}
-			} else if user != nil && !canViewAllDivisions(user) {
-				a.writeDivisionForbidden(w, r, user)
-				return
-			}
 			data.SelectedGroup = selectedGroup
 			if len(selectedGroup.Sessions) > 0 {
 				data.GroupSessions = selectedGroup.Sessions
@@ -4842,6 +4832,33 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
 	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
 	sessions := studentGroupSessionsFromRequest(r)
+	currentUser, _ := a.currentUser(r.Context())
+	trainingProgram, err := a.findTrainingProgramByID(group.TrainingProgramID)
+	if err != nil {
+		a.setFlash(w, "Select a valid training programme.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, trainingProgram.DivisionID) {
+		return
+	}
+	availableCoaches, err := a.listCoachUsersDetailedByDivisionIDs([]int64{trainingProgram.DivisionID}, true)
+	if err != nil {
+		log.Printf("list scoped coaches for student group create: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	allowedCoachIDs := make(map[int64]struct{}, len(availableCoaches))
+	for _, coach := range availableCoaches {
+		allowedCoachIDs[coach.ID] = struct{}{}
+	}
+	for _, coachID := range coachIDs {
+		if _, ok := allowedCoachIDs[coachID]; !ok {
+			a.setFlash(w, "Selected staff must belong to the same division as the programme.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
+			return
+		}
+	}
 	if err := validateStudentGroup(group); err != nil {
 		a.setFlash(w, err.Error())
 		http.Redirect(w, r, target, http.StatusSeeOther)
@@ -4894,6 +4911,63 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
 	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
 	sessions := studentGroupSessionsFromRequest(r)
+	currentUser, _ := a.currentUser(r.Context())
+	existingGroup, err := a.findStudentGroupByID(groupID)
+	if err != nil {
+		a.setFlash(w, "Student group not found.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	if existingGroup.TrainingProgramID > 0 {
+		existingProgram, err := a.findTrainingProgramByID(existingGroup.TrainingProgramID)
+		if err != nil {
+			log.Printf("find existing training programme for student group update: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if !a.requireDivisionAccessForDivision(w, r, currentUser, existingProgram.DivisionID) {
+			return
+		}
+	}
+	trainingProgram, err := a.findTrainingProgramByID(group.TrainingProgramID)
+	if err != nil {
+		a.setFlash(w, "Select a valid training programme.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, trainingProgram.DivisionID) {
+		return
+	}
+	if existingGroup.TrainingProgramID > 0 {
+		existingProgram, err := a.findTrainingProgramByID(existingGroup.TrainingProgramID)
+		if err != nil {
+			log.Printf("find existing training programme division for student group update: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if existingProgram.DivisionID != trainingProgram.DivisionID {
+			a.setFlash(w, "Student groups cannot be moved between divisions.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
+			return
+		}
+	}
+	availableCoaches, err := a.listCoachUsersDetailedByDivisionIDs([]int64{trainingProgram.DivisionID}, true)
+	if err != nil {
+		log.Printf("list scoped coaches for student group update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	allowedCoachIDs := make(map[int64]struct{}, len(availableCoaches))
+	for _, coach := range availableCoaches {
+		allowedCoachIDs[coach.ID] = struct{}{}
+	}
+	for _, coachID := range coachIDs {
+		if _, ok := allowedCoachIDs[coachID]; !ok {
+			a.setFlash(w, "Selected staff must belong to the same division as the programme.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
+			return
+		}
+	}
 	if err := validateStudentGroup(group); err != nil {
 		a.setFlash(w, err.Error())
 		http.Redirect(w, r, target, http.StatusSeeOther)
@@ -4972,6 +5046,20 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
+	divisionIDs := []int64(nil)
+	if !canViewAllDivisions(currentUser) {
+		divisionIDs, err = a.scopedDivisionIDsForUser(currentUser, true)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if !canViewAllDivisions(currentUser) {
+		groupDivisionID, divisionErr := a.findStudentGroupDivisionByID(groupID)
+		if divisionErr == nil && !a.requireDivisionAccessForDivision(w, r, currentUser, groupDivisionID) {
+			return
+		}
+	}
 
 	if userHasRole(currentUser, "coach") &&
 		!userHasRole(currentUser, "admin") &&
@@ -5008,24 +5096,10 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	group, err := a.findStudentGroupByID(groupID)
+	group, err := a.findStudentGroupByIDForDivisionIDs(groupID, divisionIDs)
 	if err != nil {
 		a.setFlash(w, "Student group not found.")
 		http.Redirect(w, r, target, http.StatusSeeOther)
-		return
-	}
-	if group.TrainingProgramID > 0 {
-		program, err := a.findTrainingProgramByID(group.TrainingProgramID)
-		if err != nil {
-			log.Printf("find training programme for attendance save: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-		if !a.requireDivisionAccessForDivision(w, r, currentUser, program.DivisionID) {
-			return
-		}
-	} else if currentUser != nil && !canViewAllDivisions(currentUser) {
-		a.writeDivisionForbidden(w, r, currentUser)
 		return
 	}
 	session, err := a.findStudentGroupSessionByID(sessionID)
@@ -5102,16 +5176,26 @@ func (a *App) saveCoachAttendanceHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	coaches, err := a.listCoachUsersDetailed(false)
+	currentUser, _ := a.currentUser(r.Context())
+	divisionIDs := []int64(nil)
+	if !canViewAllDivisions(currentUser) {
+		divisionIDs, err = a.scopedDivisionIDsForUser(currentUser, true)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	coaches, err := a.listCoachUsersDetailedByDivisionIDs(divisionIDs, false)
 	if err != nil {
 		log.Printf("list active coaches for attendance: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	currentUser, _ := a.currentUser(r.Context())
 	records := make([]CoachAttendanceRecord, 0, len(coaches))
+	coachIDs := make([]int64, 0, len(coaches))
 	for _, coach := range coaches {
+		coachIDs = append(coachIDs, coach.ID)
 		records = append(records, CoachAttendanceRecord{
 			UserID:           coach.ID,
 			AttendanceDate:   attendanceDate,
@@ -5121,7 +5205,7 @@ func (a *App) saveCoachAttendanceHandler(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
-	if err := a.replaceCoachAttendanceRecords(attendanceDate, records); err != nil {
+	if err := a.replaceCoachAttendanceRecordsByUserIDs(attendanceDate, coachIDs, records); err != nil {
 		log.Printf("save coach attendance: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return

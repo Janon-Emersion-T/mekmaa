@@ -13,7 +13,16 @@ import (
 
 func (a *App) coachManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	coaches, err := a.listCoachUsersDetailed(true)
+	divisionIDs := []int64(nil)
+	var err error
+	if !canViewAllDivisions(user) {
+		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	coaches, err := a.listCoachUsersDetailedByDivisionIDs(divisionIDs, true)
 	if err != nil {
 		log.Printf("list coaches: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -29,7 +38,11 @@ func (a *App) coachManagementHandler(w http.ResponseWriter, r *http.Request) {
 		selectedDate = time.Now().Format("2006-01-02")
 	}
 
-	records, err := a.listCoachAttendanceRecords(selectedDate)
+	coachIDs := make([]int64, 0, len(coaches))
+	for _, coach := range coaches {
+		coachIDs = append(coachIDs, coach.ID)
+	}
+	records, err := a.listCoachAttendanceRecordsByUserIDs(selectedDate, coachIDs)
 	if err != nil {
 		log.Printf("list coach attendance: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -40,7 +53,9 @@ func (a *App) coachManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Title = "Coach Management"
 	data.Description = "Manage coaches and coach attendance."
 	data.Coaches = coaches
-	data.Games, _ = a.listGames(false)
+	if canViewAllDivisions(user) || userHasDivisionCode(user, divisionCodeSports) {
+		data.Games, _ = a.listGames(false)
+	}
 	for _, coach := range coaches {
 		if coach.CoachType == "main" {
 			data.AvailableCoaches = append(data.AvailableCoaches, coach)
@@ -82,7 +97,7 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 			}
 			filter.DivisionIDs = []int64{selectedDivision.ID}
 		} else {
-			divisionIDs, err := a.accessibleDivisionIDsForUser(user, true)
+			divisionIDs, err := a.scopedDivisionIDsForUser(user, true)
 			if err != nil {
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 				return
@@ -190,7 +205,7 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	var err error
 	enrollmentDivisionIDs := []int64(nil)
 	if !canViewAllDivisions(user) {
-		enrollmentDivisionIDs, err = a.accessibleDivisionIDsForUser(user, true)
+		enrollmentDivisionIDs, err = a.scopedDivisionIDsForUser(user, true)
 		if err != nil {
 			log.Printf("resolve enrollment divisions: %v", err)
 			http.Error(w, "internal server error", http.StatusInternalServerError)

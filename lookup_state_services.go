@@ -974,35 +974,7 @@ func listStudentEnrollmentLeavesTx(tx *sql.Tx, enrollmentID int64) ([]StudentEnr
 }
 
 func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
-	row := a.db.QueryRow(`
-		SELECT sg.id, sg.name, sg.code, sg.description, COALESCE(sg.training_program_id, 0), COALESCE(tp.name, ''), sg.created_at
-		FROM student_groups sg
-		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
-		WHERE sg.id = ?
-	`, groupID)
-
-	var group StudentGroup
-	if err := row.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.TrainingProgramID, &group.TrainingProgramName, &group.CreatedAt); err != nil {
-		return nil, err
-	}
-	students, err := a.listStudentsForGroup(group.ID)
-	if err != nil {
-		return nil, err
-	}
-	group.Students = students
-	group.StudentCount = len(students)
-	sessions, err := a.listStudentGroupSessions(group.ID)
-	if err != nil {
-		return nil, err
-	}
-	group.Sessions = sessions
-	coaches, err := a.listCoachesForGroup(group.ID)
-	if err != nil {
-		return nil, err
-	}
-	group.Coaches = coaches
-	group.CoachCount = len(coaches)
-	return &group, nil
+	return a.findStudentGroupByIDForDivisionIDs(groupID, nil)
 }
 
 func (a *App) findSpaceScheduleByID(scheduleID int64) (*SpaceSchedule, error) {

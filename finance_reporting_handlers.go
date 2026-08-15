@@ -219,7 +219,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	data.FinancePage = page
 	data.TodayDate = time.Now().Format("2006-01-02")
 	data.FinancePeriodLock, _ = a.currentFinancePeriodLock()
-	allowedDivisionIDs, err := a.accessibleDivisionIDsForUser(user, true)
+	allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
 	if err != nil {
 		return data, err
 	}
@@ -283,22 +283,18 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if needWorkflowOptions {
-		trainingPrograms, err := a.listTrainingPrograms(true)
+		programDivisionIDs := []int64(nil)
+		if selectedDivision != nil {
+			programDivisionIDs = []int64{selectedDivision.ID}
+		} else if !canViewAllDivisions(user) {
+			programDivisionIDs = allowedDivisionIDs
+		}
+		trainingPrograms, err := a.listTrainingProgramsByDivisionIDs(programDivisionIDs, true, true)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list training programs duration=%s err=%v", page, time.Since(started), err)
 			return data, err
 		}
-		filteredPrograms := make([]TrainingProgram, 0, len(trainingPrograms))
-		for _, program := range trainingPrograms {
-			if selectedDivision != nil && program.DivisionID != selectedDivision.ID {
-				continue
-			}
-			if !canViewAllDivisions(user) && !userCanAccessDivision(user, program.DivisionID) {
-				continue
-			}
-			filteredPrograms = append(filteredPrograms, program)
-		}
-		data.TrainingPrograms = filteredPrograms
+		data.TrainingPrograms = trainingPrograms
 		activities, err := a.listFinanceBookingActivities()
 		if err != nil {
 			log.Printf("finance %s load failed: op=list booking activities duration=%s err=%v", page, time.Since(started), err)
@@ -452,7 +448,13 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 
 	if needMonthlyRows {
 		paymentMonth := latestCollectiblePaymentMonth(time.Now())
-		monthlyRows, err := a.listStudentPaymentRows(paymentMonth)
+		rowDivisionIDs := []int64(nil)
+		if selectedDivision != nil {
+			rowDivisionIDs = []int64{selectedDivision.ID}
+		} else if !canViewAllDivisions(user) {
+			rowDivisionIDs = allowedDivisionIDs
+		}
+		monthlyRows, err := a.listStudentPaymentRowsByDivisionIDs(paymentMonth, rowDivisionIDs)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list monthly receivables duration=%s err=%v", page, time.Since(started), err)
 			return data, err
@@ -462,22 +464,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		data.PaymentMonthLabel = paymentMonthLabel(paymentMonth)
 		data.PaymentCollectionOpen = paymentMonthCollectible(paymentMonth, time.Now())
 		data.PaymentCollectionNotice = monthlyPaymentCollectionNotice(paymentMonth, time.Now())
-		pendingRows := pendingStudentPaymentRows(monthlyRows)
-		if selectedDivision != nil || !canViewAllDivisions(user) {
-			filteredRows := make([]StudentPaymentRow, 0, len(pendingRows))
-			for _, row := range pendingRows {
-				divisionID := row.Enrollment.DivisionID
-				if selectedDivision != nil && divisionID != selectedDivision.ID {
-					continue
-				}
-				if !canViewAllDivisions(user) && !userCanAccessDivision(user, divisionID) {
-					continue
-				}
-				filteredRows = append(filteredRows, row)
-			}
-			pendingRows = filteredRows
-		}
-		data.StudentPaymentRows = pendingRows
+		data.StudentPaymentRows = pendingStudentPaymentRows(monthlyRows)
 	}
 
 	if page == "receivables" {
@@ -781,7 +768,7 @@ func (a *App) financeExportHandler(w http.ResponseWriter, r *http.Request) {
 	filter.Page = 0
 	filter.Limit = 0
 	if user != nil && !canViewAllDivisions(user) {
-		allowedDivisionIDs, err := a.accessibleDivisionIDsForUser(user, true)
+		allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
 		if err != nil {
 			http.Error(w, "could not validate division scope", http.StatusInternalServerError)
 			return

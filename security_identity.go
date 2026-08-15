@@ -861,6 +861,10 @@ func (a *App) listUsersVisibleToManager(current *User) ([]User, error) {
 }
 
 func (a *App) listCoachUsersDetailed(includeInactive bool) ([]User, error) {
+	return a.listCoachUsersDetailedByDivisionIDs(nil, includeInactive)
+}
+
+func (a *App) listCoachUsersDetailedByDivisionIDs(divisionIDs []int64, includeInactive bool) ([]User, error) {
 	query := `
 		SELECT DISTINCT
 			u.id,
@@ -881,6 +885,8 @@ func (a *App) listCoachUsersDetailed(includeInactive bool) ([]User, error) {
 			ON ur.user_id = u.id
 		JOIN roles r
 			ON r.id = ur.role_id
+		LEFT JOIN user_divisions ud
+			ON ud.user_id = u.id
 		LEFT JOIN coach_profiles cp
 			ON cp.user_id = u.id
 		LEFT JOIN users parent
@@ -888,6 +894,10 @@ func (a *App) listCoachUsersDetailed(includeInactive bool) ([]User, error) {
 		WHERE r.name = 'coach'
 	`
 	args := []any{}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND ud.division_id IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
 	if !includeInactive {
 		query += ` AND COALESCE(cp.active, 1) = 1`
 	}
@@ -956,7 +966,11 @@ func (a *App) listCoachUsers() ([]User, error) {
 }
 
 func (a *App) listCoachAttendanceRecords(attendanceDate string) ([]CoachAttendanceRecord, error) {
-	rows, err := a.db.Query(`
+	return a.listCoachAttendanceRecordsByUserIDs(attendanceDate, nil)
+}
+
+func (a *App) listCoachAttendanceRecordsByUserIDs(attendanceDate string, userIDs []int64) ([]CoachAttendanceRecord, error) {
+	query := `
 		SELECT
 			id,
 			user_id,
@@ -968,8 +982,14 @@ func (a *App) listCoachAttendanceRecords(attendanceDate string) ([]CoachAttendan
 			updated_at
 		FROM coach_attendance_records
 		WHERE attendance_date = ?
-		ORDER BY user_id ASC, id ASC
-	`, attendanceDate)
+	`
+	args := []any{attendanceDate}
+	if placeholders, scopedArgs := int64ScopePlaceholders(userIDs); placeholders != "" {
+		query += ` AND user_id IN (` + placeholders + `)`
+		args = append(args, scopedArgs...)
+	}
+	query += ` ORDER BY user_id ASC, id ASC`
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -996,13 +1016,23 @@ func (a *App) listCoachAttendanceRecords(attendanceDate string) ([]CoachAttendan
 }
 
 func (a *App) replaceCoachAttendanceRecords(attendanceDate string, records []CoachAttendanceRecord) error {
+	return a.replaceCoachAttendanceRecordsByUserIDs(attendanceDate, nil, records)
+}
+
+func (a *App) replaceCoachAttendanceRecordsByUserIDs(attendanceDate string, userIDs []int64, records []CoachAttendanceRecord) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DELETE FROM coach_attendance_records WHERE attendance_date = ?`, attendanceDate); err != nil {
+	deleteQuery := `DELETE FROM coach_attendance_records WHERE attendance_date = ?`
+	deleteArgs := []any{attendanceDate}
+	if placeholders, scopedArgs := int64ScopePlaceholders(userIDs); placeholders != "" {
+		deleteQuery += ` AND user_id IN (` + placeholders + `)`
+		deleteArgs = append(deleteArgs, scopedArgs...)
+	}
+	if _, err := tx.Exec(deleteQuery, deleteArgs...); err != nil {
 		return err
 	}
 

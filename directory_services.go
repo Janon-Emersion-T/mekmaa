@@ -1300,12 +1300,23 @@ func (a *App) listPublishedEvents() ([]Event, error) {
 }
 
 func (a *App) listStudentGroups() ([]StudentGroup, error) {
-	rows, err := a.db.Query(`
+	return a.listStudentGroupsByDivisionIDs(nil)
+}
+
+func (a *App) listStudentGroupsByDivisionIDs(divisionIDs []int64) ([]StudentGroup, error) {
+	query := `
 		SELECT sg.id, sg.name, sg.code, sg.description, COALESCE(sg.training_program_id, 0), COALESCE(tp.name, ''), sg.created_at
 		FROM student_groups sg
 		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
-		ORDER BY sg.created_at DESC, sg.id DESC
-	`)
+		WHERE 1 = 1
+	`
+	args := []any{}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND COALESCE(tp.division_id, 0) IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
+	query += ` ORDER BY sg.created_at DESC, sg.id DESC`
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1352,7 +1363,11 @@ func (a *App) listStudentGroups() ([]StudentGroup, error) {
 }
 
 func (a *App) listStudentGroupsForCoach(userID int64) ([]StudentGroup, error) {
-	rows, err := a.db.Query(`
+	return a.listStudentGroupsForCoachByDivisionIDs(userID, nil)
+}
+
+func (a *App) listStudentGroupsForCoachByDivisionIDs(userID int64, divisionIDs []int64) ([]StudentGroup, error) {
+	query := `
 		SELECT
 			sg.id,
 			sg.name,
@@ -1366,8 +1381,14 @@ func (a *App) listStudentGroupsForCoach(userID int64) ([]StudentGroup, error) {
 		JOIN student_group_coaches sgc
 			ON sgc.group_id = sg.id
 		WHERE sgc.user_id = ?
-		ORDER BY sg.created_at DESC, sg.id DESC
-	`, userID)
+	`
+	args := []any{userID}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND COALESCE(tp.division_id, 0) IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
+	query += ` ORDER BY sg.created_at DESC, sg.id DESC`
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1445,6 +1466,55 @@ func (a *App) coachAssignedToGroup(
 	}
 
 	return assigned == 1, nil
+}
+
+func (a *App) findStudentGroupDivisionByID(groupID int64) (int64, error) {
+	var divisionID int64
+	err := a.db.QueryRow(`
+		SELECT COALESCE(tp.division_id, 0)
+		FROM student_groups sg
+		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
+		WHERE sg.id = ?
+	`, groupID).Scan(&divisionID)
+	return divisionID, err
+}
+
+func (a *App) findStudentGroupByIDForDivisionIDs(groupID int64, divisionIDs []int64) (*StudentGroup, error) {
+	query := `
+		SELECT sg.id, sg.name, sg.code, sg.description, COALESCE(sg.training_program_id, 0), COALESCE(tp.name, ''), sg.created_at
+		FROM student_groups sg
+		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
+		WHERE sg.id = ?
+	`
+	args := []any{groupID}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND COALESCE(tp.division_id, 0) IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
+	row := a.db.QueryRow(query, args...)
+
+	var group StudentGroup
+	if err := row.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.TrainingProgramID, &group.TrainingProgramName, &group.CreatedAt); err != nil {
+		return nil, err
+	}
+	students, err := a.listStudentsForGroup(group.ID)
+	if err != nil {
+		return nil, err
+	}
+	group.Students = students
+	group.StudentCount = len(students)
+	sessions, err := a.listStudentGroupSessions(group.ID)
+	if err != nil {
+		return nil, err
+	}
+	group.Sessions = sessions
+	coaches, err := a.listCoachesForGroup(group.ID)
+	if err != nil {
+		return nil, err
+	}
+	group.Coaches = coaches
+	group.CoachCount = len(coaches)
+	return &group, nil
 }
 
 func (a *App) listAttendanceRecords(groupID int64, sessionID int64, attendanceDate string) ([]AttendanceRecord, error) {

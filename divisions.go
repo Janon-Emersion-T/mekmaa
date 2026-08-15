@@ -457,6 +457,18 @@ func (a *App) accessibleDivisionIDsForUser(user *User, includeInactive bool) ([]
 	return divisionIDsFromDivisions(divisions), nil
 }
 
+func (a *App) scopedDivisionIDsForUser(user *User, includeInactive bool) ([]int64, error) {
+	if user == nil || canViewAllDivisions(user) {
+		return nil, nil
+	}
+	if len(user.DivisionIDs) > 0 {
+		ids := append([]int64(nil), user.DivisionIDs...)
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		return ids, nil
+	}
+	return a.accessibleDivisionIDsForUser(user, includeInactive)
+}
+
 func (a *App) requireDivisionAccessForDivision(w http.ResponseWriter, r *http.Request, user *User, divisionID int64) bool {
 	if user == nil {
 		return true

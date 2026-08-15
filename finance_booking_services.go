@@ -256,13 +256,17 @@ func applyFirstMonthEnrollmentDiscount(baseAmount float64, billingStart time.Tim
 }
 
 func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, error) {
+	return a.listStudentPaymentRowsByDivisionIDs(paymentMonth, nil)
+}
+
+func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionIDs []int64) ([]StudentPaymentRow, error) {
 	monthDate, err := parsePaymentMonth(paymentMonth)
 	if err != nil {
 		return nil, err
 	}
 	monthDays := monthDate.AddDate(0, 1, -1).Day()
 	monthEnd := monthDate.AddDate(0, 1, -1).Format("2006-01-02")
-	rows, err := a.db.Query(`
+	query := `
 		SELECT
 			payment_rows.enrollment_id,
 			payment_rows.admission_id,
@@ -304,7 +308,14 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 				ON tp.id = se.training_program_id
 			WHERE a.admission_date <= ?
 			  AND COALESCE(se.active, 1) = 1
+	`
+	args := []any{monthEnd}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND COALESCE(tp.division_id, 0) IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
 
+	query += `
 			UNION ALL
 
 			SELECT
@@ -336,6 +347,13 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			LEFT JOIN admission_pricing ap
 				ON ap.practice_type = a.practice_type
 			WHERE a.admission_date <= ?
+	`
+	args = append(args, monthEnd)
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND COALESCE(tp.division_id, 0) IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
+	query += `
 			  AND NOT EXISTS (
 				SELECT 1
 				FROM student_enrollments se
@@ -349,7 +367,8 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 			payment_rows.training_program_name ASC,
 			payment_rows.enrollment_id,
 			payment_rows.admission_id
-	`, monthEnd, monthEnd)
+	`
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +432,7 @@ func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, 
 		return nil, err
 	}
 
-	payments, err := a.listActiveStudentMonthlyPaymentsForMonth(paymentMonth)
+	payments, err := a.listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth, divisionIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -678,23 +697,37 @@ func studentMonthlyPaymentKey(admissionID, enrollmentID int64) string {
 }
 
 func (a *App) listActiveStudentMonthlyPaymentsForMonth(paymentMonth string) ([]StudentMonthlyPayment, error) {
-	rows, err := a.db.Query(`
+	return a.listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth, nil)
+}
+
+func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth string, divisionIDs []int64) ([]StudentMonthlyPayment, error) {
+	query := `
 		SELECT
-			id,
-			admission_id,
-			COALESCE(enrollment_id, 0),
-			payment_month,
-			amount,
-			payment_method,
-			finance_transaction_id,
-			COALESCE(collected_by_user_id, 0),
-			collected_at,
-			created_at
-		FROM student_monthly_payments
-		WHERE payment_month = ?
-		  AND COALESCE(voided, 0) = 0
-		ORDER BY collected_at ASC, id ASC
-	`, paymentMonth)
+			smp.id,
+			smp.admission_id,
+			COALESCE(smp.enrollment_id, 0),
+			smp.payment_month,
+			smp.amount,
+			smp.payment_method,
+			smp.finance_transaction_id,
+			COALESCE(smp.collected_by_user_id, 0),
+			smp.collected_at,
+			smp.created_at
+		FROM student_monthly_payments smp
+		LEFT JOIN student_enrollments se ON se.id = smp.enrollment_id
+		LEFT JOIN training_programs se_tp ON se_tp.id = se.training_program_id
+		LEFT JOIN admissions adm ON adm.id = smp.admission_id
+		LEFT JOIN training_programs adm_tp ON adm_tp.id = adm.training_program_id
+		WHERE smp.payment_month = ?
+		  AND COALESCE(smp.voided, 0) = 0
+	`
+	args := []any{paymentMonth}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND COALESCE(se_tp.division_id, adm_tp.division_id, 0) IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
+	query += ` ORDER BY smp.collected_at ASC, smp.id ASC`
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
