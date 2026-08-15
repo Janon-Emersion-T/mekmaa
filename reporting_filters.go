@@ -57,7 +57,7 @@ func reportPeriodFromRequest(r *http.Request) ReportPeriod {
 	}
 }
 
-func (a *App) buildOperationalReport(period ReportPeriod) (*OperationalReport, error) {
+func (a *App) buildOperationalReport(period ReportPeriod, divisionIDs []int64) (*OperationalReport, error) {
 	report := &OperationalReport{Period: period}
 	points := make(map[string]*ReportSeriesPoint)
 	start, _ := time.ParseInLocation("2006-01-02", period.Start, time.Local)
@@ -70,7 +70,11 @@ func (a *App) buildOperationalReport(period ReportPeriod) (*OperationalReport, e
 		points[report.Series[i].Date] = &report.Series[i]
 	}
 
-	transactions, err := a.listFinanceTransactionsFiltered(FinanceFilter{From: period.Start, To: period.End})
+	filter := FinanceFilter{From: period.Start, To: period.End}
+	if len(divisionIDs) > 0 {
+		filter.DivisionIDs = append([]int64(nil), divisionIDs...)
+	}
+	transactions, err := a.listFinanceTransactionsFiltered(filter)
 	if err != nil {
 		return nil, err
 	}
@@ -119,50 +123,54 @@ func (a *App) buildOperationalReport(period ReportPeriod) (*OperationalReport, e
 		return math.Abs(report.FinanceBreakdown[i].Amount) > math.Abs(report.FinanceBreakdown[j].Amount)
 	})
 
-	scheduleRows, err := a.db.Query(`
-		SELECT slot_date, slot_hour, entry_type, activity, quantity, status
-		FROM space_schedules
-		WHERE slot_date BETWEEN ? AND ?
-		ORDER BY slot_date, slot_hour, id
-	`, period.Start, period.End)
-	if err != nil {
-		return nil, err
-	}
 	bookingBreakdown := map[string]*ReportBreakdown{}
 	occupied := map[string]struct{}{}
-	for scheduleRows.Next() {
-		var slotDate, slotHour, entryType, activity, status string
-		var quantity int
-		if err := scheduleRows.Scan(&slotDate, &slotHour, &entryType, &activity, &quantity, &status); err != nil {
+	if allowed, err := a.scopeIncludesSportsDivision(divisionIDs); err != nil {
+		return nil, err
+	} else if allowed {
+		scheduleRows, err := a.db.Query(`
+			SELECT slot_date, slot_hour, entry_type, activity, quantity, status
+			FROM space_schedules
+			WHERE slot_date BETWEEN ? AND ?
+			ORDER BY slot_date, slot_hour, id
+		`, period.Start, period.End)
+		if err != nil {
+			return nil, err
+		}
+		for scheduleRows.Next() {
+			var slotDate, slotHour, entryType, activity, status string
+			var quantity int
+			if err := scheduleRows.Scan(&slotDate, &slotHour, &entryType, &activity, &quantity, &status); err != nil {
+				scheduleRows.Close()
+				return nil, err
+			}
+			if entryType == "booking" {
+				if status == "confirmed" {
+					report.Summary.ConfirmedBookings++
+					if point := points[slotDate]; point != nil {
+						point.Bookings++
+					}
+					item := bookingBreakdown[activity]
+					if item == nil {
+						item = &ReportBreakdown{Key: activity, Label: activityLabel(activity)}
+						bookingBreakdown[activity] = item
+					}
+					item.Count++
+				} else if status == "pending" {
+					report.Summary.PendingBookings++
+				}
+			}
+			if status == "confirmed" {
+				occupied[slotDate+"|"+slotHour] = struct{}{}
+			}
+		}
+		if err := scheduleRows.Err(); err != nil {
 			scheduleRows.Close()
 			return nil, err
 		}
-		if entryType == "booking" {
-			if status == "confirmed" {
-				report.Summary.ConfirmedBookings++
-				if point := points[slotDate]; point != nil {
-					point.Bookings++
-				}
-				item := bookingBreakdown[activity]
-				if item == nil {
-					item = &ReportBreakdown{Key: activity, Label: activityLabel(activity)}
-					bookingBreakdown[activity] = item
-				}
-				item.Count++
-			} else if status == "pending" {
-				report.Summary.PendingBookings++
-			}
+		if err := scheduleRows.Close(); err != nil {
+			return nil, err
 		}
-		if status == "confirmed" {
-			occupied[slotDate+"|"+slotHour] = struct{}{}
-		}
-	}
-	if err := scheduleRows.Err(); err != nil {
-		scheduleRows.Close()
-		return nil, err
-	}
-	if err := scheduleRows.Close(); err != nil {
-		return nil, err
 	}
 	for _, item := range bookingBreakdown {
 		report.BookingBreakdown = append(report.BookingBreakdown, *item)
@@ -176,12 +184,25 @@ func (a *App) buildOperationalReport(period ReportPeriod) (*OperationalReport, e
 		report.Summary.UtilizationRate = float64(report.Summary.OccupiedSlotHours) / float64(report.Summary.AvailableSlotHours) * 100
 	}
 
-	admissionRows, err := a.db.Query(`
+	admissionQuery := `
 		SELECT admission_date, COUNT(*)
 		FROM admissions
 		WHERE admission_date BETWEEN ? AND ?
-		GROUP BY admission_date
-	`, period.Start, period.End)
+	`
+	admissionArgs := []any{period.Start, period.End}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		admissionQuery = `
+			SELECT DATE(se.created_at), COUNT(*)
+			FROM student_enrollments se
+			JOIN training_programs tp ON tp.id = se.training_program_id
+			WHERE DATE(se.created_at) BETWEEN ? AND ?
+			  AND tp.division_id IN (` + placeholders + `)
+		`
+		admissionArgs = []any{period.Start, period.End}
+		admissionArgs = append(admissionArgs, scopeArgs...)
+	}
+	admissionQuery += ` GROUP BY 1`
+	admissionRows, err := a.db.Query(admissionQuery, admissionArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -205,12 +226,20 @@ func (a *App) buildOperationalReport(period ReportPeriod) (*OperationalReport, e
 		return nil, err
 	}
 
-	attendanceRows, err := a.db.Query(`
-		SELECT attendance_date, status, COUNT(*)
-		FROM attendance_records
-		WHERE attendance_date BETWEEN ? AND ?
-		GROUP BY attendance_date, status
-	`, period.Start, period.End)
+	attendanceQuery := `
+		SELECT ar.attendance_date, ar.status, COUNT(*)
+		FROM attendance_records ar
+		JOIN student_groups sg ON sg.id = ar.group_id
+		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
+		WHERE ar.attendance_date BETWEEN ? AND ?
+	`
+	attendanceArgs := []any{period.Start, period.End}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		attendanceQuery += ` AND tp.division_id IN (` + placeholders + `)`
+		attendanceArgs = append(attendanceArgs, scopeArgs...)
+	}
+	attendanceQuery += ` GROUP BY ar.attendance_date, ar.status`
+	attendanceRows, err := a.db.Query(attendanceQuery, attendanceArgs...)
 	if err != nil {
 		return nil, err
 	}

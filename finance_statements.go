@@ -117,12 +117,16 @@ func absMoney(value float64) float64 {
 	return value
 }
 
-func (a *App) buildFinanceProfitAndLoss(fromRaw, toRaw string) (*FinanceProfitAndLoss, error) {
+func (a *App) buildFinanceProfitAndLoss(fromRaw, toRaw string, divisionIDs []int64) (*FinanceProfitAndLoss, error) {
 	fromDate, toDate, previousFrom, previousTo, from, to, prevFrom, prevTo, err := financeProfitAndLossPeriod(fromRaw, toRaw, time.Now())
 	if err != nil {
 		return nil, err
 	}
-	transactions, err := a.listFinanceTransactions()
+	filter := FinanceFilter{}
+	if len(divisionIDs) > 0 {
+		filter.DivisionIDs = append([]int64(nil), divisionIDs...)
+	}
+	transactions, err := a.listFinanceTransactionsFiltered(filter)
 	if err != nil {
 		return nil, err
 	}
@@ -210,16 +214,20 @@ func (a *App) buildFinanceProfitAndLoss(fromRaw, toRaw string) (*FinanceProfitAn
 	return report, nil
 }
 
-func (a *App) buildFinanceBalanceSheet(asOfRaw string) (*FinanceBalanceSheet, error) {
+func (a *App) buildFinanceBalanceSheet(asOfRaw string, divisionIDs []int64) (*FinanceBalanceSheet, error) {
 	asOfDate, asOf, err := financeBalanceSheetAsOfDate(asOfRaw, time.Now())
 	if err != nil {
 		return nil, err
 	}
-	accounts, err := a.listFinanceAccounts(false)
+	accounts, err := a.listFinanceAccountsByDivisionIDs(divisionIDs, false)
 	if err != nil {
 		return nil, err
 	}
-	transactions, err := a.listFinanceTransactions()
+	filter := FinanceFilter{}
+	if len(divisionIDs) > 0 {
+		filter.DivisionIDs = append([]int64(nil), divisionIDs...)
+	}
+	transactions, err := a.listFinanceTransactionsFiltered(filter)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +310,7 @@ func (a *App) buildFinanceBalanceSheet(asOfRaw string) (*FinanceBalanceSheet, er
 		report.CurrentRatio = report.TotalAssets / report.TotalLiabilities
 	}
 
-	outstandingBookings, err := a.listOutstandingBookingFinancials()
+	outstandingBookings, err := a.listOutstandingBookingFinancialsByDivisionIDs(divisionIDs)
 	if err == nil {
 		for _, item := range outstandingBookings {
 			if item.OutstandingAmount > 0 {
@@ -312,7 +320,7 @@ func (a *App) buildFinanceBalanceSheet(asOfRaw string) (*FinanceBalanceSheet, er
 		report.MemoOutstandingBookingReceivables = normalizeMoney(report.MemoOutstandingBookingReceivables)
 	}
 	paymentMonth := latestCollectiblePaymentMonth(time.Now())
-	monthlyRows, err := a.listStudentPaymentRows(paymentMonth)
+	monthlyRows, err := a.listStudentPaymentRowsByDivisionIDs(paymentMonth, divisionIDs)
 	if err == nil {
 		for _, row := range monthlyRows {
 			if row.Payment == nil {
@@ -321,7 +329,7 @@ func (a *App) buildFinanceBalanceSheet(asOfRaw string) (*FinanceBalanceSheet, er
 		}
 		report.MemoCurrentMonthStudentDues = normalizeMoney(report.MemoCurrentMonthStudentDues)
 	}
-	referrals, err := a.listBookingReferrals()
+	referrals, err := a.listBookingReferralsByDivisionIDs(divisionIDs)
 	if err == nil {
 		for _, referral := range referrals {
 			if bookingReferralIsPayable(referral) {

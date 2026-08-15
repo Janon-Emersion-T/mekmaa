@@ -122,6 +122,17 @@ func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter Fin
 }
 
 func (a *App) listOutstandingBookingFinancials() ([]BookingFinancial, error) {
+	return a.listOutstandingBookingFinancialsByDivisionIDs(nil)
+}
+
+func (a *App) listOutstandingBookingFinancialsByDivisionIDs(divisionIDs []int64) ([]BookingFinancial, error) {
+	allowed, err := a.scopeIncludesSportsDivision(divisionIDs)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, nil
+	}
 	financials, err := a.listBookingFinancials()
 	if err != nil {
 		return nil, err
@@ -621,6 +632,17 @@ func (a *App) listReferralPartners(activeOnly bool) ([]ReferralPartner, error) {
 }
 
 func (a *App) listBookingReferrals() ([]BookingReferral, error) {
+	return a.listBookingReferralsByDivisionIDs(nil)
+}
+
+func (a *App) listBookingReferralsByDivisionIDs(divisionIDs []int64) ([]BookingReferral, error) {
+	allowed, err := a.scopeIncludesSportsDivision(divisionIDs)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, nil
+	}
 	rows, err := a.db.Query(`
 		SELECT br.id, br.schedule_id, br.partner_id, rp.name, rp.code, br.commission_amount,
 		       s.status, s.title, s.slot_date, br.paid, br.paid_at, br.payment_method,
@@ -936,6 +958,17 @@ func (a *App) listActiveSpaceSchedules() ([]SpaceSchedule, error) {
 }
 
 func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
+	return a.listPendingSpaceSchedulesByDivisionIDs(nil)
+}
+
+func (a *App) listPendingSpaceSchedulesByDivisionIDs(divisionIDs []int64) ([]SpaceSchedule, error) {
+	allowed, err := a.scopeIncludesSportsDivision(divisionIDs)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, nil
+	}
 	rows, err := a.db.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
@@ -991,6 +1024,17 @@ func (a *App) listPendingSpaceSchedules() ([]SpaceSchedule, error) {
 }
 
 func (a *App) countPendingSpaceSchedules() (int, error) {
+	return a.countPendingSpaceSchedulesByDivisionIDs(nil)
+}
+
+func (a *App) countPendingSpaceSchedulesByDivisionIDs(divisionIDs []int64) (int, error) {
+	allowed, err := a.scopeIncludesSportsDivision(divisionIDs)
+	if err != nil {
+		return 0, err
+	}
+	if !allowed {
+		return 0, nil
+	}
 	row := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM space_schedules
@@ -1004,6 +1048,17 @@ func (a *App) countPendingSpaceSchedules() (int, error) {
 }
 
 func (a *App) countHeldSpaceSchedules() (int, error) {
+	return a.countHeldSpaceSchedulesByDivisionIDs(nil)
+}
+
+func (a *App) countHeldSpaceSchedulesByDivisionIDs(divisionIDs []int64) (int, error) {
+	allowed, err := a.scopeIncludesSportsDivision(divisionIDs)
+	if err != nil {
+		return 0, err
+	}
+	if !allowed {
+		return 0, nil
+	}
 	row := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM space_schedules
@@ -1499,6 +1554,17 @@ func buildOneToOneBookingNotes(offering OneToOneOffering, sessions int, discount
 }
 
 func (a *App) countReschedulePendingSpaceSchedules() (int, error) {
+	return a.countReschedulePendingSpaceSchedulesByDivisionIDs(nil)
+}
+
+func (a *App) countReschedulePendingSpaceSchedulesByDivisionIDs(divisionIDs []int64) (int, error) {
+	allowed, err := a.scopeIncludesSportsDivision(divisionIDs)
+	if err != nil {
+		return 0, err
+	}
+	if !allowed {
+		return 0, nil
+	}
 	row := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM space_schedules

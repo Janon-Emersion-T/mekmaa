@@ -3048,7 +3048,7 @@ func TestBuildFinanceProfitAndLossAndBalanceSheet(t *testing.T) {
 		t.Fatalf("transfer: %v", err)
 	}
 
-	profitAndLoss, err := app.buildFinanceProfitAndLoss("2026-08-01", "2026-08-31")
+	profitAndLoss, err := app.buildFinanceProfitAndLoss("2026-08-01", "2026-08-31", nil)
 	if err != nil {
 		t.Fatalf("build profit and loss: %v", err)
 	}
@@ -3068,7 +3068,7 @@ func TestBuildFinanceProfitAndLossAndBalanceSheet(t *testing.T) {
 		t.Fatalf("profit and loss net profit = %.2f, want 250.00", profitAndLoss.NetProfit)
 	}
 
-	balanceSheet, err := app.buildFinanceBalanceSheet("2026-08-31")
+	balanceSheet, err := app.buildFinanceBalanceSheet("2026-08-31", nil)
 	if err != nil {
 		t.Fatalf("build balance sheet: %v", err)
 	}
@@ -6943,7 +6943,7 @@ func TestOperationalReportsAndCSVExport(t *testing.T) {
 	if period.Start != "2026-07-13" || period.End != "2026-07-19" {
 		t.Fatalf("unexpected weekly period: %#v", period)
 	}
-	report, err := app.buildOperationalReport(period)
+	report, err := app.buildOperationalReport(period, nil)
 	if err != nil {
 		t.Fatalf("build report: %v", err)
 	}
@@ -6961,6 +6961,12 @@ func TestOperationalReportsAndCSVExport(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
+	request = request.WithContext(context.WithValue(request.Context(), userContextKey, &User{
+		ID:          500,
+		Name:        "Superadmin",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"reports.view"},
+	}))
 	app.reportsExportHandler(recorder, request)
 	if recorder.Code != 200 {
 		t.Fatalf("unexpected export response: %d", recorder.Code)
@@ -7509,7 +7515,7 @@ func TestBuildFinanceSpecifiedLedgersGroupsCoreLedgers(t *testing.T) {
 		}
 	}
 
-	ledgers, from, to, err := app.buildFinanceSpecifiedLedgers("2026-08-01", "2026-08-31")
+	ledgers, from, to, err := app.buildFinanceSpecifiedLedgers("2026-08-01", "2026-08-31", nil)
 	if err != nil {
 		t.Fatalf("build specified ledgers: %v", err)
 	}
@@ -7578,7 +7584,7 @@ func TestBuildFinanceSpecifiedLedgersBankingUsesDebitCreditAssetView(t *testing.
 		t.Fatalf("create bank charge: %v", err)
 	}
 
-	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers("2026-08-01", "2026-08-31")
+	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers("2026-08-01", "2026-08-31", nil)
 	if err != nil {
 		t.Fatalf("build specified ledgers: %v", err)
 	}

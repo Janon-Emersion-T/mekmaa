@@ -480,6 +480,22 @@ func (a *App) requireDivisionAccessForDivision(w http.ResponseWriter, r *http.Re
 	return false
 }
 
+func (a *App) scopeIncludesSportsDivision(divisionIDs []int64) (bool, error) {
+	if len(divisionIDs) == 0 {
+		return true, nil
+	}
+	sportsID, err := divisionIDByCode(a.db, divisionCodeSports)
+	if err != nil {
+		return false, err
+	}
+	for _, divisionID := range divisionIDs {
+		if divisionID == sportsID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (a *App) requireSportsOperationalAccess(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, _ := a.currentUser(r.Context())

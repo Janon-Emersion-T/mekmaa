@@ -74,10 +74,31 @@ func (a *App) financeSpecifiedLedgerDetailHandler(
 		http.NotFound(w, r)
 		return
 	}
+	allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
+	if errors.Is(err, ErrForbiddenDivision) {
+		a.writeDivisionForbidden(w, r, user)
+		return
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	scopeDivisionIDs := []int64(nil)
+	if selectedDivision != nil {
+		scopeDivisionIDs = []int64{selectedDivision.ID}
+	} else if !canViewAllDivisions(user) {
+		scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
+	}
 
 	ledgers, from, to, err := a.buildFinanceSpecifiedLedgers(
 		strings.TrimSpace(r.URL.Query().Get("from")),
 		strings.TrimSpace(r.URL.Query().Get("to")),
+		scopeDivisionIDs,
 	)
 	if err != nil {
 		log.Printf("finance specified ledger detail: %v", err)
@@ -102,6 +123,10 @@ func (a *App) financeSpecifiedLedgerDetailHandler(
 		data.Title = selected.Title + " | Specified Ledger"
 		data.Description = selected.Description
 		data.FinancePage = "specified-ledgers"
+		data.SelectedDivision = selectedDivision
+		if selectedDivision != nil {
+			data.SelectedDivisionScope = selectedDivision.Slug
+		}
 		data.SelectedFinanceSpecifiedLedger = selected
 		data.FinanceSpecifiedLedgerFrom = from
 		data.FinanceSpecifiedLedgerTo = to
@@ -234,6 +259,12 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	if selectedDivision != nil {
 		data.SelectedDivision = selectedDivision
 		data.SelectedDivisionScope = selectedDivision.Slug
+	}
+	scopeDivisionIDs := []int64(nil)
+	if selectedDivision != nil {
+		scopeDivisionIDs = []int64{selectedDivision.ID}
+	} else if !canViewAllDivisions(user) {
+		scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
 	}
 	accountDivisionIDs := []int64(nil)
 	if selectedDivision != nil {
@@ -400,7 +431,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if needBookingFinancials {
-		bookingFinancials, err := a.listOutstandingBookingFinancials()
+		bookingFinancials, err := a.listOutstandingBookingFinancialsByDivisionIDs(scopeDivisionIDs)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list booking financials duration=%s err=%v", page, time.Since(started), err)
 			return data, err
@@ -415,7 +446,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if page == "profit-loss" {
-		report, err := a.buildFinanceProfitAndLoss(strings.TrimSpace(r.URL.Query().Get("from")), strings.TrimSpace(r.URL.Query().Get("to")))
+		report, err := a.buildFinanceProfitAndLoss(strings.TrimSpace(r.URL.Query().Get("from")), strings.TrimSpace(r.URL.Query().Get("to")), scopeDivisionIDs)
 		if err != nil {
 			log.Printf("finance %s load failed: op=build profit and loss duration=%s err=%v", page, time.Since(started), err)
 			return data, err
@@ -424,7 +455,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if page == "balance-sheet" {
-		report, err := a.buildFinanceBalanceSheet(strings.TrimSpace(r.URL.Query().Get("as_of")))
+		report, err := a.buildFinanceBalanceSheet(strings.TrimSpace(r.URL.Query().Get("as_of")), scopeDivisionIDs)
 		if err != nil {
 			log.Printf("finance %s load failed: op=build balance sheet duration=%s err=%v", page, time.Since(started), err)
 			return data, err
@@ -436,6 +467,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		ledgers, from, to, err := a.buildFinanceSpecifiedLedgers(
 			strings.TrimSpace(r.URL.Query().Get("from")),
 			strings.TrimSpace(r.URL.Query().Get("to")),
+			scopeDivisionIDs,
 		)
 		if err != nil {
 			log.Printf("finance %s load failed: op=build specified ledgers duration=%s err=%v", page, time.Since(started), err)
@@ -468,7 +500,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if page == "receivables" {
-		referrals, err := a.listBookingReferrals()
+		referrals, err := a.listBookingReferralsByDivisionIDs(scopeDivisionIDs)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list referral payables duration=%s err=%v", page, time.Since(started), err)
 			return data, err
@@ -809,12 +841,28 @@ func (a *App) financeExportHandler(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) reportsHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	if user != nil && !canViewAllDivisions(user) {
+	allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
+	if errors.Is(err, ErrForbiddenDivision) {
 		a.writeDivisionForbidden(w, r, user)
 		return
 	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	period := reportPeriodFromRequest(r)
-	report, err := a.buildOperationalReport(period)
+	scopeDivisionIDs := []int64(nil)
+	if selectedDivision != nil {
+		scopeDivisionIDs = []int64{selectedDivision.ID}
+	} else if !canViewAllDivisions(user) {
+		scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
+	}
+	report, err := a.buildOperationalReport(period, scopeDivisionIDs)
 	if err != nil {
 		log.Printf("build operational report: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -824,18 +872,38 @@ func (a *App) reportsHandler(w http.ResponseWriter, r *http.Request) {
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Reports"
 	data.Description = "Daily, weekly, and monthly performance reporting."
+	data.SelectedDivision = selectedDivision
+	if selectedDivision != nil {
+		data.SelectedDivisionScope = selectedDivision.Slug
+	}
 	data.Report = report
 	a.render(w, "reports", data, http.StatusOK)
 }
 
 func (a *App) reportsExportHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	if user != nil && !canViewAllDivisions(user) {
+	allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
+	if errors.Is(err, ErrForbiddenDivision) {
 		a.writeDivisionForbidden(w, r, user)
 		return
 	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	period := reportPeriodFromRequest(r)
-	report, err := a.buildOperationalReport(period)
+	scopeDivisionIDs := []int64(nil)
+	if selectedDivision != nil {
+		scopeDivisionIDs = []int64{selectedDivision.ID}
+	} else if !canViewAllDivisions(user) {
+		scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
+	}
+	report, err := a.buildOperationalReport(period, scopeDivisionIDs)
 	if err != nil {
 		http.Error(w, "could not export report", http.StatusInternalServerError)
 		return
@@ -938,13 +1006,7 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		paymentMonth = latestMonth
 	}
 
-	rows, err := a.listStudentPaymentRows(paymentMonth)
-	if err != nil {
-		log.Printf("list student payments: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, true)
+	selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
 	if err != nil {
 		if errors.Is(err, ErrForbiddenDivision) {
 			a.writeDivisionForbidden(w, r, user)
@@ -953,19 +1015,21 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	if selectedDivision != nil || (user != nil && !canViewAllDivisions(user)) {
-		filteredRows := make([]StudentPaymentRow, 0, len(rows))
-		for _, row := range rows {
-			divisionID := row.Enrollment.DivisionID
-			if selectedDivision != nil && divisionID != selectedDivision.ID {
-				continue
-			}
-			if user != nil && !canViewAllDivisions(user) && !userCanAccessDivision(user, divisionID) {
-				continue
-			}
-			filteredRows = append(filteredRows, row)
+	rowDivisionIDs := []int64(nil)
+	if selectedDivision != nil {
+		rowDivisionIDs = []int64{selectedDivision.ID}
+	} else if user != nil && !canViewAllDivisions(user) {
+		rowDivisionIDs, err = a.scopedDivisionIDsForUser(user, true)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
 		}
-		rows = filteredRows
+	}
+	rows, err := a.listStudentPaymentRowsByDivisionIDs(paymentMonth, rowDivisionIDs)
+	if err != nil {
+		log.Printf("list student payments: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
 
 	data := a.newTemplateData(w, r, user)

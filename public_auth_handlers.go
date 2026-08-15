@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -939,11 +940,33 @@ func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data.SetupWarnings = a.setupWarningsForUser(user)
 	if containsPermission(user.Permissions, "booking_requests.manage") || containsPermission(user.Permissions, "space_bookings.manage") {
-		requests, err := a.listPendingSpaceSchedules()
+		allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
+		if errors.Is(err, ErrForbiddenDivision) {
+			a.writeDivisionForbidden(w, r, user)
+			return
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		scopeDivisionIDs := []int64(nil)
+		if selectedDivision != nil {
+			scopeDivisionIDs = []int64{selectedDivision.ID}
+			data.SelectedDivision = selectedDivision
+			data.SelectedDivisionScope = selectedDivision.Slug
+		} else if !canViewAllDivisions(user) {
+			scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
+		}
+		requests, err := a.listPendingSpaceSchedulesByDivisionIDs(scopeDivisionIDs)
 		if err == nil {
-			pendingCount, _ := a.countPendingSpaceSchedules()
-			heldCount, _ := a.countHeldSpaceSchedules()
-			reschedulePendingCount, _ := a.countReschedulePendingSpaceSchedules()
+			pendingCount, _ := a.countPendingSpaceSchedulesByDivisionIDs(scopeDivisionIDs)
+			heldCount, _ := a.countHeldSpaceSchedulesByDivisionIDs(scopeDivisionIDs)
+			reschedulePendingCount, _ := a.countReschedulePendingSpaceSchedulesByDivisionIDs(scopeDivisionIDs)
 			data.PendingRequestCount = pendingCount
 			data.HeldRequestCount = heldCount
 			data.BookingReminders = buildBookingReminders(requests, now)

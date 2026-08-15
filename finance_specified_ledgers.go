@@ -264,6 +264,7 @@ func finalizeFinanceSpecifiedLedger(
 func (a *App) buildFinanceSpecifiedLedgers(
 	fromRaw,
 	toRaw string,
+	divisionIDs []int64,
 ) ([]FinanceSpecifiedLedger, string, string, error) {
 	fromDate, toDate, from, to, err := financeSpecifiedLedgerPeriod(
 		fromRaw,
@@ -273,7 +274,11 @@ func (a *App) buildFinanceSpecifiedLedgers(
 		return nil, "", "", err
 	}
 
-	transactions, err := a.listFinanceTransactions()
+	filter := FinanceFilter{}
+	if len(divisionIDs) > 0 {
+		filter.DivisionIDs = append([]int64(nil), divisionIDs...)
+	}
+	transactions, err := a.listFinanceTransactionsFiltered(filter)
 	if err != nil {
 		return nil, "", "", err
 	}
