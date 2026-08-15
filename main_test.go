@@ -5801,6 +5801,281 @@ func TestCreateEnrollmentHandlerRejectsDuplicateEnrollment(t *testing.T) {
 	}
 }
 
+func TestEnrollmentManagementHandlerScopesOperationalDataByDivision(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find kec division: %v", err)
+	}
+	chessID, err := divisionIDByCode(app.db, divisionCodeChess)
+	if err != nil {
+		t.Fatalf("find chess division: %v", err)
+	}
+
+	kecProgramID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     kecID,
+		Name:           "KEC Reading",
+		Activity:       "reading",
+		TrainingFormat: "group",
+		AdmissionFee:   1200,
+		MonthlyFee:     1800,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create kec training programme: %v", err)
+	}
+	chessProgramID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     chessID,
+		Name:           "Chess Elite",
+		Activity:       "chess",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     2200,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create chess training programme: %v", err)
+	}
+
+	kecAdmissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-KEC-ENR-001",
+		FullName:              "KEC Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2014-01-02",
+		Gender:                "female",
+		PracticeType:          "student",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian KEC",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771110001",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create kec admission: %v", err)
+	}
+	chessAdmissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-CHESS-ENR-001",
+		FullName:              "Chess Student",
+		AdmissionDate:         "2026-08-02",
+		DateOfBirth:           "2013-03-04",
+		Gender:                "male",
+		PracticeType:          "student",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian Chess",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771110002",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create chess admission: %v", err)
+	}
+
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       kecAdmissionID,
+		TrainingProgramID: kecProgramID,
+	}, false, "cash", 0); err != nil {
+		t.Fatalf("create kec enrollment: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       chessAdmissionID,
+		TrainingProgramID: chessProgramID,
+	}, false, "cash", 0); err != nil {
+		t.Fatalf("create chess enrollment: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/enrollments?admission_id="+strconv.FormatInt(kecAdmissionID, 10), nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          101,
+		Name:        "KEC Admin",
+		Roles:       []string{"admin"},
+		Permissions: []string{"students.manage"},
+		DivisionIDs: []int64{kecID},
+		Divisions:   []Division{{ID: kecID, Code: divisionCodeKEC, Slug: "kec", Name: "Kids Education Center", Active: true}},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.enrollmentManagementHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enrollment management status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "KEC Reading") {
+		t.Fatalf("expected KEC programme in scoped view, got %s", body)
+	}
+	if strings.Contains(body, "Chess Elite") {
+		t.Fatalf("did not expect chess programme in KEC-scoped view, got %s", body)
+	}
+}
+
+func TestEnrollmentManagementHandlerForbidsCrossDivisionEnrollmentIDAccess(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find kec division: %v", err)
+	}
+	chessID, err := divisionIDByCode(app.db, divisionCodeChess)
+	if err != nil {
+		t.Fatalf("find chess division: %v", err)
+	}
+
+	chessProgramID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     chessID,
+		Name:           "Chess Restricted",
+		Activity:       "chess",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     1500,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create chess training programme: %v", err)
+	}
+	chessAdmissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-CHESS-LOCK-001",
+		FullName:              "Locked Chess Student",
+		AdmissionDate:         "2026-08-03",
+		DateOfBirth:           "2015-05-06",
+		Gender:                "male",
+		PracticeType:          "student",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian Chess",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771110003",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create chess admission: %v", err)
+	}
+	chessEnrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       chessAdmissionID,
+		TrainingProgramID: chessProgramID,
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create chess enrollment: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/enrollments?action=view&id="+strconv.FormatInt(chessEnrollmentID, 10)+"&admission_id="+strconv.FormatInt(chessAdmissionID, 10), nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          102,
+		Name:        "KEC Admin",
+		Roles:       []string{"admin"},
+		Permissions: []string{"students.manage"},
+		DivisionIDs: []int64{kecID},
+		Divisions:   []Division{{ID: kecID, Code: divisionCodeKEC, Slug: "kec", Name: "Kids Education Center", Active: true}},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.enrollmentManagementHandler(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("cross-division enrollment access status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+func TestUpdateEnrollmentHandlerRejectsCrossDivisionMove(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find kec division: %v", err)
+	}
+	chessID, err := divisionIDByCode(app.db, divisionCodeChess)
+	if err != nil {
+		t.Fatalf("find chess division: %v", err)
+	}
+
+	kecProgramID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     kecID,
+		Name:           "KEC Starter",
+		Activity:       "reading",
+		TrainingFormat: "group",
+		AdmissionFee:   1100,
+		MonthlyFee:     1700,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create kec training programme: %v", err)
+	}
+	chessProgramID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     chessID,
+		Name:           "Chess Switch Target",
+		Activity:       "chess",
+		TrainingFormat: "group",
+		AdmissionFee:   1300,
+		MonthlyFee:     2100,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create chess training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-MOVE-001",
+		FullName:              "Move Block Student",
+		AdmissionDate:         "2026-08-04",
+		DateOfBirth:           "2014-04-04",
+		Gender:                "female",
+		PracticeType:          "student",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian Move",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771110004",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: kecProgramID,
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":          {"token"},
+		"enrollment_id":       {strconv.FormatInt(enrollmentID, 10)},
+		"training_program_id": {strconv.FormatInt(chessProgramID, 10)},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/enrollments/update", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          103,
+		Name:        "Multi Division Admin",
+		Roles:       []string{"admin"},
+		Permissions: []string{"students.manage"},
+		DivisionIDs: []int64{kecID, chessID},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.updateEnrollmentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("cross-division update status = %d, want %d body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != "/admin/enrollments?admission_id="+strconv.FormatInt(admissionID, 10)+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10) {
+		t.Fatalf("cross-division update redirect = %q", got)
+	}
+	updated, err := app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		t.Fatalf("reload enrollment: %v", err)
+	}
+	if updated.TrainingProgramID != kecProgramID {
+		t.Fatalf("expected enrollment to remain on original programme %d, got %d", kecProgramID, updated.TrainingProgramID)
+	}
+}
+
 func TestRunMigrationsHandlesLegacyAdmissionsWithoutQRCodeColumns(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+strings.ReplaceAll(fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), "/", "-")+"?mode=memory&cache=shared")
 	if err != nil {

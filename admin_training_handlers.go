@@ -187,19 +187,29 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	user, _ := a.currentUser(r.Context())
-	enrollments, err := a.listStudentEnrollments()
+	var err error
+	enrollmentDivisionIDs := []int64(nil)
+	if !canViewAllDivisions(user) {
+		enrollmentDivisionIDs, err = a.accessibleDivisionIDsForUser(user, true)
+		if err != nil {
+			log.Printf("resolve enrollment divisions: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	enrollments, err := a.listStudentEnrollmentsByDivisionIDs(enrollmentDivisionIDs)
 	if err != nil {
 		log.Printf("list student enrollments: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	admissions, err := a.listAdmissions()
+	admissions, err := a.listAdmissionIdentities()
 	if err != nil {
 		log.Printf("list admissions for enrollments: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	trainingPrograms, err := a.listTrainingPrograms(false)
+	trainingPrograms, err := a.listTrainingProgramsByDivisionIDs(enrollmentDivisionIDs, false, true)
 	if err != nil {
 		log.Printf("list training programmes for enrollments: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -212,37 +222,12 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	data.Enrollments = enrollments
 	data.Admissions = admissions
 	data.TrainingPrograms = trainingPrograms
-	if !canViewAllDivisions(user) {
-		filteredEnrollments := make([]StudentEnrollment, 0, len(enrollments))
-		for _, enrollment := range enrollments {
-			if userCanAccessDivision(user, enrollment.DivisionID) {
-				filteredEnrollments = append(filteredEnrollments, enrollment)
-			}
-		}
-		filteredAdmissions := make([]Admission, 0, len(admissions))
-		for _, admission := range admissions {
-			if a.admissionVisibleToUser(user, &admission) {
-				filteredAdmissions = append(filteredAdmissions, admission)
-			}
-		}
-		filteredPrograms := make([]TrainingProgram, 0, len(trainingPrograms))
-		for _, program := range trainingPrograms {
-			if userCanAccessDivision(user, program.DivisionID) && program.DivisionCode != divisionCodeCorporate {
-				filteredPrograms = append(filteredPrograms, program)
-			}
-		}
-		data.Enrollments = filteredEnrollments
-		data.Admissions = filteredAdmissions
-		data.TrainingPrograms = filteredPrograms
-	}
 
 	selectedAdmissionID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("admission_id")), 10, 64)
 	if selectedAdmissionID > 0 {
-		for i := range admissions {
-			if admissions[i].ID == selectedAdmissionID {
-				data.SelectedAdmission = &admissions[i]
-				break
-			}
+		selectedAdmission, err := a.findAdmissionIdentityByID(selectedAdmissionID)
+		if err == nil {
+			data.SelectedAdmission = selectedAdmission
 		}
 	}
 
@@ -254,12 +239,29 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	if data.EnrollmentMode == "view" || data.EnrollmentMode == "edit" {
 		enrollmentID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
 		if err == nil && enrollmentID > 0 {
-			selectedEnrollment, err := a.findStudentEnrollmentByID(enrollmentID)
+			if !canViewAllDivisions(user) {
+				divisionID, err := a.findStudentEnrollmentDivisionByID(enrollmentID)
+				if err != nil {
+					if !errors.Is(err, sql.ErrNoRows) {
+						log.Printf("find enrollment division for management: %v", err)
+						http.Error(w, "internal server error", http.StatusInternalServerError)
+						return
+					}
+				} else if !a.requireDivisionAccessForDivision(w, r, user, divisionID) {
+					return
+				}
+			}
+			selectedEnrollment, err := a.findStudentEnrollmentByIDForDivisionIDs(enrollmentID, enrollmentDivisionIDs)
 			if err == nil {
+				if data.SelectedAdmission != nil && data.SelectedAdmission.ID != selectedEnrollment.AdmissionID {
+					data.SelectedAdmission = nil
+				}
 				data.SelectedEnrollment = selectedEnrollment
 				if data.SelectedAdmission == nil {
-					selectedAdmission := selectedEnrollment.Student
-					data.SelectedAdmission = &selectedAdmission
+					selectedAdmission, admissionErr := a.findAdmissionIdentityByID(selectedEnrollment.AdmissionID)
+					if admissionErr == nil {
+						data.SelectedAdmission = selectedAdmission
+					}
 				}
 			}
 		}
@@ -287,6 +289,15 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := "/admin/enrollments?admission_id=" + strconv.FormatInt(admissionID, 10)
+	if _, err := a.findAdmissionIdentityByID(admissionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "student not found", http.StatusBadRequest)
+			return
+		}
+		log.Printf("find student identity for enrollment: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	trainingProgramID, err := parsePositiveInt64(r.FormValue("training_program_id"))
 	if err != nil {
 		http.Error(w, "select a valid training programme", http.StatusBadRequest)
@@ -485,6 +496,11 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.requireDivisionAccessForDivision(w, r, currentUser, trainingProgram.DivisionID) {
+		return
+	}
+	if trainingProgram.DivisionID != existing.DivisionID {
+		a.setFlash(w, "Enrollments cannot be moved between divisions.")
+		http.Redirect(w, r, target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 		return
 	}
 
