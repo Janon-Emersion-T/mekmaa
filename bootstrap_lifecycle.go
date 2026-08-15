@@ -646,6 +646,9 @@ ON court_closures(activity, active, closure_date)`,
 			return err
 		}
 	}
+	if err := migrateDivisions(db); err != nil {
+		return err
+	}
 
 	trainingProgramIDExists, err := tableHasColumn(
 		db,

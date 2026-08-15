@@ -3577,6 +3577,7 @@ func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	password := r.FormValue("password")
 	roles, err := a.normalizeExistingRoles(r.Form["roles"])
+	divisionIDs := normalizeDivisionIDs(r.Form["division_ids"])
 	verified := r.FormValue("verified") == "true"
 	if err != nil {
 		http.Error(w, "one or more selected roles are invalid", http.StatusBadRequest)
@@ -3597,12 +3598,18 @@ func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := a.createManagedUser(name, email, password, roles, verified); err != nil {
+	createdUser, err := a.createManagedUser(name, email, password, roles, verified)
+	if err != nil {
 		if errors.Is(err, ErrEmailTaken) {
 			http.Error(w, "email already exists", http.StatusConflict)
 			return
 		}
 		log.Printf("create managed user: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := a.replaceUserDivisions(createdUser.ID, divisionIDs); err != nil {
+		log.Printf("assign divisions to new user: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -3928,6 +3935,11 @@ func (a *App) updateRolesHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.replaceUserRoles(targetID, roles); err != nil {
 		log.Printf("replace roles: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := a.replaceUserDivisions(targetID, normalizeDivisionIDs(r.Form["division_ids"])); err != nil {
+		log.Printf("replace user divisions: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}

@@ -427,6 +427,9 @@ type User struct {
 	Name            string
 	Roles           []string
 	Permissions     []string
+	DivisionIDs     []int64
+	DivisionCodes   []string
+	Divisions       []Division
 	Verified        bool
 	Phone           string
 	Address         string
@@ -487,6 +490,9 @@ type Admission struct {
 	PaymentVoidedByUserName  string
 	PaymentVoidedAt          time.Time
 	CreatedAt                time.Time
+	DivisionIDs              []int64
+	DivisionCodes            []string
+	Divisions                []Division
 	TrainingProgramID        int64
 	TrainingProgramName      string
 	TrainingProgramIDs       []int64
@@ -502,6 +508,10 @@ type StudentEnrollment struct {
 	AdmissionID             int64
 	TrainingProgramID       int64
 	TrainingProgramName     string
+	DivisionID              int64
+	DivisionCode            string
+	DivisionName            string
+	Division                *Division
 	TrainingProgram         *TrainingProgram
 	Student                 Admission
 	FreeAdmission           bool
@@ -523,6 +533,9 @@ type FinanceTransaction struct {
 	ID                   int64
 	ReceiptNumber        string
 	ReferenceNumber      string
+	DivisionID           int64
+	DivisionCode         string
+	DivisionName         string
 	Category             string
 	ApprovalStatus       string
 	TransactionType      string
@@ -671,6 +684,8 @@ type BookingPaymentCollection struct {
 type FinanceFilter struct {
 	From                string
 	To                  string
+	DivisionID          int64
+	DivisionIDs         []int64
 	Direction           string
 	Category            string
 	Categories          []string
@@ -700,6 +715,7 @@ type FinanceFilter struct {
 
 type AdmissionsFilter struct {
 	Search    string
+	Division  string
 	Direction string
 	Page      int
 	Limit     int
@@ -1342,6 +1358,10 @@ type AdmissionPricing struct {
 type TrainingProgram struct {
 	ID             int64
 	GameID         int64
+	DivisionID     int64
+	DivisionCode   string
+	DivisionName   string
+	Division       *Division
 	Name           string
 	Activity       string
 	TrainingFormat string
@@ -1488,6 +1508,12 @@ type TemplateData struct {
 	Features                        []Feature
 	Users                           []User
 	Available                       []string
+	Divisions                       []Division
+	ActiveDivisions                 []Division
+	AvailableDivisions              []Division
+	SelectedDivision                *Division
+	DivisionScopeOptions            []DivisionScopeOption
+	SelectedDivisionScope           string
 	Roles                           []Role
 	Permissions                     []string
 	PermissionGroups                []PermissionGroup

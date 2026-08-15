@@ -17,6 +17,7 @@ import (
 type financeTransactionCreate struct {
 	ReceiptNumber    string
 	ReferenceNumber  string
+	DivisionID       int64
 	Category         string
 	ApprovalStatus   string
 	TransactionType  string
@@ -1013,16 +1014,21 @@ func insertFinanceTransactionTx(tx *sql.Tx, entry financeTransactionCreate) (int
 	if referenceNumber == "" {
 		referenceNumber = receiptNumber
 	}
+	divisionID, err := financeDivisionIDForEntryTx(tx, entry)
+	if err != nil {
+		return 0, err
+	}
 	result, err := tx.Exec(`
 		INSERT INTO finance_transactions (
-			receipt_number, reference_number, category, approval_status, transaction_type,
+			receipt_number, reference_number, division_id, category, approval_status, transaction_type,
 			reference_type, reference_id, source_type, source_id, finance_account_id,
 			transfer_group_id, person_name, description, notes, payment_method, amount,
 			recorded_by_user_id, approved_by_user_id, recorded_at, created_at, updated_at, approved_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		receiptNumber,
 		referenceNumber,
+		nullIfZero(divisionID),
 		strings.TrimSpace(entry.Category),
 		approvalStatus,
 		entry.TransactionType,

@@ -177,13 +177,42 @@ func (a *App) render(w http.ResponseWriter, name string, data TemplateData, stat
 
 func (a *App) newTemplateData(w http.ResponseWriter, r *http.Request, user *User) TemplateData {
 	csrfToken := a.ensureCSRFCookie(w, r)
-	return TemplateData{
+	data := TemplateData{
 		CurrentPath:   r.URL.Path,
 		User:          user,
 		CSRFToken:     csrfToken,
 		Flash:         a.consumeFlash(r),
 		OTPCodeLength: 6,
 	}
+	if a != nil && a.db != nil {
+		if divisions, err := a.listDivisions(false); err == nil {
+			data.Divisions = divisions
+			for _, division := range divisions {
+				if division.Active {
+					data.ActiveDivisions = append(data.ActiveDivisions, division)
+				}
+			}
+		}
+	}
+	if user != nil {
+		data.AvailableDivisions = append(data.AvailableDivisions, user.Divisions...)
+		if containsRole(user.Roles, "superadmin") {
+			data.DivisionScopeOptions = append(data.DivisionScopeOptions, DivisionScopeOption{
+				Key:   divisionScopeAll,
+				Label: "All Mekmaa",
+			})
+		}
+		for i := range user.Divisions {
+			division := user.Divisions[i]
+			data.DivisionScopeOptions = append(data.DivisionScopeOptions, DivisionScopeOption{
+				Key:        division.Slug,
+				Label:      division.Name,
+				DivisionID: division.ID,
+				Division:   &division,
+			})
+		}
+	}
+	return data
 }
 
 func (a *App) writeFormError(w http.ResponseWriter, r *http.Request, tmplName, title, message string, status int) {
@@ -347,6 +376,11 @@ func (a *App) userFromSessionToken(token string) (*User, error) {
 		return nil, err
 	}
 	user.Permissions = permissions
+	divisions, err := a.divisionsForUser(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	fillUserDivisions(&user, divisions)
 	return &user, nil
 }
 
@@ -406,6 +440,10 @@ func (a *App) createUser(name, email, password string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
+	divisions, err := a.divisionsForUser(userID)
+	if err != nil {
+		return nil, err
+	}
 	return &User{
 		ID:          userID,
 		Email:       email,
@@ -414,6 +452,7 @@ func (a *App) createUser(name, email, password string) (*User, error) {
 		Permissions: permissions,
 		Verified:    false,
 		CreatedAt:   time.Now().UTC(),
+		Divisions:   divisions,
 	}, nil
 }
 
@@ -718,6 +757,11 @@ func (a *App) findUserByID(userID int64) (*User, error) {
 		return nil, err
 	}
 	user.Permissions = permissions
+	divisions, err := a.divisionsForUser(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	fillUserDivisions(&user, divisions)
 	return &user, nil
 }
 
@@ -755,6 +799,11 @@ func (a *App) listUsers() ([]User, error) {
 			return nil, err
 		}
 		users[i].Roles = roles
+		divisions, err := a.divisionsForUser(users[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		fillUserDivisions(&users[i], divisions)
 	}
 
 	return users, nil

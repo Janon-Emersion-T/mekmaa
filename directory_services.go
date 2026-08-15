@@ -130,6 +130,17 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 		whereParts = append(whereParts, `(LOWER(COALESCE(a.student_id, '')) LIKE ? OR LOWER(COALESCE(a.full_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_contact_number, '')) LIKE ?)`)
 		args = append(args, searchLike, searchLike, searchLike, searchLike)
 	}
+	if strings.TrimSpace(filter.Division) != "" {
+		whereParts = append(whereParts, `EXISTS (
+			SELECT 1
+			FROM admission_training_programs atp_filter
+			JOIN training_programs tp_filter ON tp_filter.id = atp_filter.training_program_id
+			JOIN divisions d_filter ON d_filter.id = tp_filter.division_id
+			WHERE atp_filter.admission_id = a.id
+			  AND (LOWER(d_filter.slug) = LOWER(?) OR UPPER(d_filter.code) = UPPER(?))
+		)`)
+		args = append(args, filter.Division, filter.Division)
+	}
 
 	whereSQL := ""
 	if len(whereParts) > 0 {
@@ -290,10 +301,26 @@ func (a *App) populateAdmissionsTrainingPrograms(admissions []Admission) error {
 		}
 		admissions[index].TrainingPrograms = programs
 		admissions[index].TrainingProgramIDs = make([]int64, 0, len(programs))
+		admissions[index].DivisionIDs = admissions[index].DivisionIDs[:0]
+		admissions[index].DivisionCodes = admissions[index].DivisionCodes[:0]
+		admissions[index].Divisions = admissions[index].Divisions[:0]
+		seenDivisions := map[int64]struct{}{}
 		names := make([]string, 0, len(programs))
 		for _, program := range programs {
 			admissions[index].TrainingProgramIDs = append(admissions[index].TrainingProgramIDs, program.ID)
 			names = append(names, program.Name)
+			if program.DivisionID > 0 {
+				if _, ok := seenDivisions[program.DivisionID]; !ok {
+					seenDivisions[program.DivisionID] = struct{}{}
+					admissions[index].DivisionIDs = append(admissions[index].DivisionIDs, program.DivisionID)
+					admissions[index].DivisionCodes = append(admissions[index].DivisionCodes, program.DivisionCode)
+					admissions[index].Divisions = append(admissions[index].Divisions, Division{
+						ID:   program.DivisionID,
+						Code: program.DivisionCode,
+						Name: program.DivisionName,
+					})
+				}
+			}
 		}
 		if len(names) > 0 {
 			admissions[index].TrainingProgramNames = strings.Join(names, ", ")
@@ -320,6 +347,9 @@ func (a *App) listTrainingProgramsForAdmissions(admissionIDs []int64) (map[int64
 			atp.admission_id,
 			tp.id,
 			COALESCE(tp.game_id, 0),
+			COALESCE(tp.division_id, 0),
+			COALESCE(d.code, ''),
+			COALESCE(d.name, ''),
 			tp.name,
 			tp.activity,
 			tp.training_format,
@@ -332,6 +362,8 @@ func (a *App) listTrainingProgramsForAdmissions(admissionIDs []int64) (map[int64
 		FROM admission_training_programs atp
 		JOIN training_programs tp
 			ON tp.id = atp.training_program_id
+		LEFT JOIN divisions d
+			ON d.id = tp.division_id
 		WHERE atp.admission_id IN (%s)
 		ORDER BY atp.admission_id, tp.sort_order ASC, tp.name ASC, tp.id ASC
 	`, strings.Join(placeholders, ", "))
@@ -351,6 +383,9 @@ func (a *App) listTrainingProgramsForAdmissions(admissionIDs []int64) (map[int64
 			&admissionID,
 			&program.ID,
 			&program.GameID,
+			&program.DivisionID,
+			&program.DivisionCode,
+			&program.DivisionName,
 			&program.Name,
 			&program.Activity,
 			&program.TrainingFormat,
@@ -384,18 +419,22 @@ func (a *App) listTrainingProgramsByIDs(programIDs []int64) ([]TrainingProgram, 
 
 	rows, err := a.db.Query(fmt.Sprintf(`
 		SELECT
-			id,
-			COALESCE(game_id, 0),
-			name,
-			activity,
-			training_format,
-			admission_fee,
-			monthly_fee,
-			active,
-			sort_order,
-			created_at,
-			updated_at
+			training_programs.id,
+			COALESCE(training_programs.game_id, 0),
+			COALESCE(training_programs.division_id, 0),
+			COALESCE(d.code, ''),
+			COALESCE(d.name, ''),
+			training_programs.name,
+			training_programs.activity,
+			training_programs.training_format,
+			training_programs.admission_fee,
+			training_programs.monthly_fee,
+			training_programs.active,
+			training_programs.sort_order,
+			training_programs.created_at,
+			training_programs.updated_at
 		FROM training_programs
+		LEFT JOIN divisions d ON d.id = training_programs.division_id
 		WHERE id IN (%s)
 	`, strings.Join(placeholders, ", ")), args...)
 	if err != nil {
@@ -410,6 +449,9 @@ func (a *App) listTrainingProgramsByIDs(programIDs []int64) ([]TrainingProgram, 
 		if err := rows.Scan(
 			&program.ID,
 			&program.GameID,
+			&program.DivisionID,
+			&program.DivisionCode,
+			&program.DivisionName,
 			&program.Name,
 			&program.Activity,
 			&program.TrainingFormat,
@@ -470,6 +512,9 @@ func (a *App) listStudentEnrollments() ([]StudentEnrollment, error) {
 			se.admission_id,
 			se.training_program_id,
 			COALESCE(tp.name, ''),
+			COALESCE(tp.division_id, 0),
+			COALESCE(d.code, ''),
+			COALESCE(d.name, ''),
 			COALESCE(se.free_admission, 0),
 			COALESCE(se.free_monthly_fee, 0),
 			COALESCE(se.payment_collected, 0),
@@ -502,6 +547,8 @@ func (a *App) listStudentEnrollments() ([]StudentEnrollment, error) {
 			ON a.id = se.admission_id
 		JOIN training_programs tp
 			ON tp.id = se.training_program_id
+		LEFT JOIN divisions d
+			ON d.id = tp.division_id
 		ORDER BY a.full_name COLLATE NOCASE, tp.sort_order ASC, tp.name ASC, se.id ASC
 	`)
 	if err != nil {
@@ -522,6 +569,9 @@ func (a *App) listStudentEnrollments() ([]StudentEnrollment, error) {
 			&enrollment.AdmissionID,
 			&enrollment.TrainingProgramID,
 			&enrollment.TrainingProgramName,
+			&enrollment.DivisionID,
+			&enrollment.DivisionCode,
+			&enrollment.DivisionName,
 			&freeAdmission,
 			&freeMonthlyFee,
 			&paymentCollected,
@@ -657,6 +707,9 @@ func (a *App) findStudentEnrollmentByID(enrollmentID int64) (*StudentEnrollment,
 			se.admission_id,
 			se.training_program_id,
 			COALESCE(tp.name, ''),
+			COALESCE(tp.division_id, 0),
+			COALESCE(d.code, ''),
+			COALESCE(d.name, ''),
 			COALESCE(se.free_admission, 0),
 			COALESCE(se.free_monthly_fee, 0),
 			COALESCE(se.payment_collected, 0),
@@ -689,6 +742,8 @@ func (a *App) findStudentEnrollmentByID(enrollmentID int64) (*StudentEnrollment,
 			ON a.id = se.admission_id
 		JOIN training_programs tp
 			ON tp.id = se.training_program_id
+		LEFT JOIN divisions d
+			ON d.id = tp.division_id
 		WHERE se.id = ?
 	`, enrollmentID)
 
@@ -703,6 +758,9 @@ func (a *App) findStudentEnrollmentByID(enrollmentID int64) (*StudentEnrollment,
 		&enrollment.AdmissionID,
 		&enrollment.TrainingProgramID,
 		&enrollment.TrainingProgramName,
+		&enrollment.DivisionID,
+		&enrollment.DivisionCode,
+		&enrollment.DivisionName,
 		&freeAdmission,
 		&freeMonthlyFee,
 		&paymentCollected,
@@ -2455,25 +2513,29 @@ func listPricingRulesQuery(queryer sqlQueryer) ([]PricingRule, error) {
 func (a *App) listTrainingPrograms(includeInactive bool) ([]TrainingProgram, error) {
 	query := `
 		SELECT
-			id,
-			COALESCE(game_id, 0),
-			name,
-			activity,
-			training_format,
-			admission_fee,
-			monthly_fee,
-			active,
-			sort_order,
-			created_at,
-			updated_at
+			training_programs.id,
+			COALESCE(training_programs.game_id, 0),
+			COALESCE(training_programs.division_id, 0),
+			COALESCE(d.code, ''),
+			COALESCE(d.name, ''),
+			training_programs.name,
+			training_programs.activity,
+			training_programs.training_format,
+			training_programs.admission_fee,
+			training_programs.monthly_fee,
+			training_programs.active,
+			training_programs.sort_order,
+			training_programs.created_at,
+			training_programs.updated_at
 		FROM training_programs
+		LEFT JOIN divisions d ON d.id = training_programs.division_id
 	`
 
 	if !includeInactive {
-		query += ` WHERE active = 1`
+		query += ` WHERE training_programs.active = 1`
 	}
 
-	query += ` ORDER BY sort_order ASC, name ASC, id ASC`
+	query += ` ORDER BY training_programs.sort_order ASC, training_programs.name ASC, training_programs.id ASC`
 
 	rows, err := a.db.Query(query)
 	if err != nil {
@@ -2490,6 +2552,9 @@ func (a *App) listTrainingPrograms(includeInactive bool) ([]TrainingProgram, err
 		if err := rows.Scan(
 			&program.ID,
 			&program.GameID,
+			&program.DivisionID,
+			&program.DivisionCode,
+			&program.DivisionName,
 			&program.Name,
 			&program.Activity,
 			&program.TrainingFormat,
@@ -2517,19 +2582,23 @@ func (a *App) listTrainingPrograms(includeInactive bool) ([]TrainingProgram, err
 func (a *App) findTrainingProgramByID(programID int64) (*TrainingProgram, error) {
 	row := a.db.QueryRow(`
 		SELECT
-			id,
-			COALESCE(game_id, 0),
-			name,
-			activity,
-			training_format,
-			admission_fee,
-			monthly_fee,
-			active,
-			sort_order,
-			created_at,
-			updated_at
+			training_programs.id,
+			COALESCE(training_programs.game_id, 0),
+			COALESCE(training_programs.division_id, 0),
+			COALESCE(d.code, ''),
+			COALESCE(d.name, ''),
+			training_programs.name,
+			training_programs.activity,
+			training_programs.training_format,
+			training_programs.admission_fee,
+			training_programs.monthly_fee,
+			training_programs.active,
+			training_programs.sort_order,
+			training_programs.created_at,
+			training_programs.updated_at
 		FROM training_programs
-		WHERE id = ?
+		LEFT JOIN divisions d ON d.id = training_programs.division_id
+		WHERE training_programs.id = ?
 	`, programID)
 
 	var program TrainingProgram
@@ -2538,6 +2607,9 @@ func (a *App) findTrainingProgramByID(programID int64) (*TrainingProgram, error)
 	if err := row.Scan(
 		&program.ID,
 		&program.GameID,
+		&program.DivisionID,
+		&program.DivisionCode,
+		&program.DivisionName,
 		&program.Name,
 		&program.Activity,
 		&program.TrainingFormat,
@@ -2562,6 +2634,7 @@ func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
 	result, err := a.db.Exec(`
 		INSERT INTO training_programs (
 			game_id,
+			division_id,
 			name,
 			activity,
 			training_format,
@@ -2572,9 +2645,10 @@ func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
 			created_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		program.GameID,
+		nullIfZero(program.DivisionID),
 		program.Name,
 		program.Activity,
 		program.TrainingFormat,
@@ -2602,6 +2676,7 @@ func (a *App) updateTrainingProgram(program TrainingProgram) error {
 		UPDATE training_programs
 		SET
 			game_id = ?,
+			division_id = ?,
 			name = ?,
 			activity = ?,
 			training_format = ?,
@@ -2613,6 +2688,7 @@ func (a *App) updateTrainingProgram(program TrainingProgram) error {
 		WHERE id = ?
 	`,
 		program.GameID,
+		nullIfZero(program.DivisionID),
 		program.Name,
 		program.Activity,
 		program.TrainingFormat,

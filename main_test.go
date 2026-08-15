@@ -187,6 +187,157 @@ func newProductionReadinessTestApp(t *testing.T) *App {
 	return app
 }
 
+func TestDivisionSeedingIsIdempotentAndBackfillsPrograms(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf("seed divisions first pass: %v", err)
+	}
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf("seed divisions second pass: %v", err)
+	}
+
+	var divisionCount int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM divisions`).Scan(&divisionCount); err != nil {
+		t.Fatalf("count divisions: %v", err)
+	}
+	if divisionCount != 4 {
+		t.Fatalf("expected 4 seeded divisions, got %d", divisionCount)
+	}
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division id: %v", err)
+	}
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		GameID:         1,
+		DivisionID:     sportsID,
+		Name:           "Test Sports Programme",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training program: %v", err)
+	}
+
+	if _, err := app.db.Exec(`UPDATE training_programs SET division_id = NULL WHERE id = ?`, programID); err != nil {
+		t.Fatalf("clear training program division: %v", err)
+	}
+	if err := migrateDivisions(app.db); err != nil {
+		t.Fatalf("rerun division migration: %v", err)
+	}
+
+	var backfilledDivisionID int64
+	if err := app.db.QueryRow(`SELECT COALESCE(division_id, 0) FROM training_programs WHERE id = ?`, programID).Scan(&backfilledDivisionID); err != nil {
+		t.Fatalf("load backfilled division id: %v", err)
+	}
+	if backfilledDivisionID != sportsID {
+		t.Fatalf("expected program division backfill to %d, got %d", sportsID, backfilledDivisionID)
+	}
+}
+
+func TestAdmissionsFilterSupportsMultipleDivisionsWithoutDuplicatingStudent(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	chessID, err := divisionIDByCode(app.db, divisionCodeChess)
+	if err != nil {
+		t.Fatalf("find chess division: %v", err)
+	}
+
+	sportsProgramID, err := app.createTrainingProgram(TrainingProgram{
+		GameID:         1,
+		DivisionID:     sportsID,
+		Name:           "Sports Starter",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create sports program: %v", err)
+	}
+	chessProgramID, err := app.createTrainingProgram(TrainingProgram{
+		GameID:         1,
+		DivisionID:     chessID,
+		Name:           "Chess Beginner",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "one_to_one",
+		AdmissionFee:   1500,
+		MonthlyFee:     2500,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create chess program: %v", err)
+	}
+
+	admission := Admission{
+		StudentID:                "STD-MULTI-001",
+		FullName:                 "Arun Kumar",
+		AdmissionDate:            "2026-08-01",
+		DateOfBirth:              "2012-04-03",
+		Gender:                   "male",
+		PracticeType:             "group_practice",
+		Address:                  "Jaffna",
+		PassportNumber:           "P123456",
+		School:                   "Mekmaa School",
+		GuardianName:             "Parent Kumar",
+		GuardianRelationship:     "father",
+		GuardianContactNumber:    "0771234567",
+		GuardianAlternativePhone: "0771234568",
+		MedicalInformation:       "None",
+		TrainingProgramID:        sportsProgramID,
+		TrainingProgramIDs:       []int64{sportsProgramID},
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:         admissionID,
+		TrainingProgramID:   chessProgramID,
+		TrainingProgramName: "Chess Beginner",
+	}, false, "cash", 0); err != nil {
+		t.Fatalf("create chess enrollment: %v", err)
+	}
+
+	allAdmissions, total, err := app.listAdmissionsFiltered(AdmissionsFilter{Page: 1, Limit: 25, Direction: "asc"})
+	if err != nil {
+		t.Fatalf("list all admissions: %v", err)
+	}
+	if total != 1 || len(allAdmissions) != 1 {
+		t.Fatalf("expected one global admission row, got total=%d len=%d", total, len(allAdmissions))
+	}
+	if len(allAdmissions[0].Divisions) != 2 {
+		t.Fatalf("expected two divisions on admission, got %d", len(allAdmissions[0].Divisions))
+	}
+
+	chessAdmissions, total, err := app.listAdmissionsFiltered(AdmissionsFilter{Page: 1, Limit: 25, Direction: "asc", Division: "chess"})
+	if err != nil {
+		t.Fatalf("list chess admissions: %v", err)
+	}
+	if total != 1 || len(chessAdmissions) != 1 {
+		t.Fatalf("expected one chess admission row, got total=%d len=%d", total, len(chessAdmissions))
+	}
+
+	kecAdmissions, total, err := app.listAdmissionsFiltered(AdmissionsFilter{Page: 1, Limit: 25, Direction: "asc", Division: "kec"})
+	if err != nil {
+		t.Fatalf("list kec admissions: %v", err)
+	}
+	if total != 0 || len(kecAdmissions) != 0 {
+		t.Fatalf("expected no KEC admissions, got total=%d len=%d", total, len(kecAdmissions))
+	}
+}
+
 func renderTemplateToString(t *testing.T, templates map[string]*template.Template, name string, data TemplateData) string {
 	t.Helper()
 	var buf bytes.Buffer

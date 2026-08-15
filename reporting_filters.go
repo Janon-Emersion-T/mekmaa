@@ -277,6 +277,7 @@ func admissionsFilterFromRequest(r *http.Request) AdmissionsFilter {
 	)
 	filter := AdmissionsFilter{
 		Search:    strings.TrimSpace(r.URL.Query().Get("search")),
+		Division:  strings.TrimSpace(r.URL.Query().Get("division")),
 		Direction: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction"))),
 		Page:      page,
 		Limit:     limit,
@@ -326,6 +327,11 @@ func admissionsFilterPageURL(r *http.Request, filter AdmissionsFilter, page int)
 	} else {
 		query.Set("search", filter.Search)
 	}
+	if strings.TrimSpace(filter.Division) == "" {
+		query.Del("division")
+	} else {
+		query.Set("division", filter.Division)
+	}
 	return "/admin/admissions?" + query.Encode() + "#admissions-directory"
 }
 
@@ -338,6 +344,11 @@ func admissionsFilterBaseURL(r *http.Request, filter AdmissionsFilter) string {
 		query.Del("search")
 	} else {
 		query.Set("search", filter.Search)
+	}
+	if strings.TrimSpace(filter.Division) == "" {
+		query.Del("division")
+	} else {
+		query.Set("division", filter.Division)
 	}
 	encoded := query.Encode()
 	if encoded == "" {

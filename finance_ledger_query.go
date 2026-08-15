@@ -10,6 +10,9 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		SELECT ft.id,
 		       ft.receipt_number,
 		       COALESCE(ft.reference_number, ft.receipt_number),
+		       COALESCE(ft.division_id, 0),
+		       COALESCE(fd.code, ''),
+		       COALESCE(fd.name, ''),
 		       ft.category,
 		       COALESCE(ft.approval_status, 'approved'),
 		       COALESCE(ft.transaction_type, CASE WHEN ft.amount < 0 THEN 'expense' ELSE 'income' END),
@@ -54,6 +57,7 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		       COALESCE(ft.voided_by_user_id, 0),
 		       COALESCE(ft.void_reason, '')
 		FROM finance_transactions ft
+		LEFT JOIN divisions fd ON fd.id = ft.division_id
 		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
 		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
 		LEFT JOIN users au ON au.id = ft.approved_by_user_id
@@ -150,6 +154,15 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		for _, value := range filter.TrainingProgramIDs {
 			args = append(args, value)
 		}
+	}
+	if len(filter.DivisionIDs) > 0 {
+		query += ` AND ` + financeInt64InClause("COALESCE(ft.division_id, 0)", len(filter.DivisionIDs))
+		for _, value := range filter.DivisionIDs {
+			args = append(args, value)
+		}
+	} else if filter.DivisionID > 0 {
+		query += ` AND COALESCE(ft.division_id, 0) = ?`
+		args = append(args, filter.DivisionID)
 	}
 	if len(filter.BookingActivities) > 0 {
 		query += ` AND ` + financeStringInClause("LOWER(COALESCE(ss.activity, ''))", len(filter.BookingActivities))

@@ -104,6 +104,12 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		data.AdmissionsEnd = data.AdmissionsStart + len(admissions) - 1
 	}
 	data.TrainingPrograms = trainingPrograms
+	if filter.Division != "" {
+		if selectedDivision, err := a.findDivisionBySlugOrCode(filter.Division); err == nil {
+			data.SelectedDivision = selectedDivision
+			data.SelectedDivisionScope = selectedDivision.Slug
+		}
+	}
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -527,6 +533,7 @@ func (a *App) trainingProgramManagementHandler(
 	data.Description = "Manage training programmes and student fees."
 	data.TrainingPrograms = trainingPrograms
 	data.Games, _ = a.listGames(false)
+	data.ActiveDivisions, _ = a.listDivisions(true)
 
 	mode := strings.ToLower(
 		strings.TrimSpace(r.URL.Query().Get("action")),
@@ -837,6 +844,18 @@ func (a *App) trainingProgramFromRequest(
 	if err != nil {
 		return TrainingProgram{}, errors.New("valid game is required")
 	}
+	divisionID, err := parsePositiveInt64(r.FormValue("division_id"))
+	if err != nil {
+		return TrainingProgram{}, errors.New("valid division is required")
+	}
+	division, err := a.findDivisionByID(divisionID)
+	if err != nil {
+		return TrainingProgram{}, errors.New("selected division was not found")
+	}
+	if !division.Active {
+		return TrainingProgram{}, errors.New("selected division is inactive")
+	}
+
 	trainingFormat := strings.ToLower(
 		strings.TrimSpace(r.FormValue("training_format")),
 	)
@@ -872,6 +891,9 @@ func (a *App) trainingProgramFromRequest(
 
 	program := TrainingProgram{
 		GameID:         gameID,
+		DivisionID:     divisionID,
+		DivisionCode:   division.Code,
+		DivisionName:   division.Name,
 		Name:           name,
 		TrainingFormat: trainingFormat,
 		AdmissionFee:   admissionFee,

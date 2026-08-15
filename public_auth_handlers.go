@@ -1017,6 +1017,7 @@ func (a *App) userManagementHandler(w http.ResponseWriter, r *http.Request) {
 	data.Title = "User Management"
 	data.Description = "Manage users."
 	data.Users = users
+	data.ActiveDivisions, _ = a.listDivisions(true)
 	for _, role := range roles {
 		if isPrivilegedRole(role.Name) && !containsRole(user.Roles, "superadmin") {
 			continue
