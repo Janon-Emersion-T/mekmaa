@@ -570,6 +570,66 @@ func TestNewTemplateDataPreservesNonDivisionQueryFields(t *testing.T) {
 	}
 }
 
+func TestNewTemplateDataHidesDivisionSwitcherForSingleDivisionUser(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+	division, err := app.findDivisionByID(kecID)
+	if err != nil {
+		t.Fatalf("load KEC division: %v", err)
+	}
+	user := &User{
+		ID:          10,
+		Name:        "KEC User",
+		Roles:       []string{"admin"},
+		Permissions: []string{"dashboard.view"},
+	}
+	fillUserDivisions(user, []Division{*division})
+	data := app.newTemplateData(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/dashboard", nil), user)
+	if len(data.DivisionScopeOptions) != 0 {
+		t.Fatalf("expected no division switcher options for single-division user, got %#v", data.DivisionScopeOptions)
+	}
+	if data.SelectedDivisionScope != division.Slug {
+		t.Fatalf("selected division scope = %q, want %q", data.SelectedDivisionScope, division.Slug)
+	}
+}
+
+func TestCanViewAllDivisionsDoesNotGrantLegacyAdminGlobalScope(t *testing.T) {
+	user := &User{
+		ID:          11,
+		Name:        "Admin",
+		Roles:       []string{"admin"},
+		Permissions: []string{"dashboard.view", "finance.manage"},
+	}
+	if canViewAllDivisions(user) {
+		t.Fatal("plain admin without explicit elevation should not have global division scope")
+	}
+}
+
+func TestSidebarHidesSportsBookingModulesForNonSportsDivision(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	data := TemplateData{
+		Title:       "Dashboard",
+		CurrentPath: "/dashboard",
+		User: &User{
+			Name:          "KEC Staff",
+			Email:         "kec@example.com",
+			Roles:         []string{"admin"},
+			Permissions:   []string{"dashboard.view", "courts.manage", "space_bookings.manage", "pricing.manage", "booking_requests.manage"},
+			DivisionCodes: []string{divisionCodeKEC},
+		},
+	}
+	html := renderTemplateToString(t, templates, "dashboard", data)
+	if strings.Contains(html, "Booking Setup") || strings.Contains(html, "Booking Operations") {
+		t.Fatal("non-sports division user should not see sports booking navigation")
+	}
+}
+
 func financeAccountIDByName(t *testing.T, app *App, name string) int64 {
 	t.Helper()
 	accounts, err := app.listFinanceAccounts(false)

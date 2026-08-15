@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -46,7 +45,41 @@ func canViewAllDivisions(user *User) bool {
 	if containsPermission(user.Permissions, "finance.consolidated") {
 		return true
 	}
-	return len(user.DivisionIDs) == 0 && containsRole(user.Roles, "admin")
+	return false
+}
+
+func userCanSwitchOperationalDivision(user *User) bool {
+	if user == nil {
+		return false
+	}
+	if canViewAllDivisions(user) {
+		return true
+	}
+	return len(user.DivisionIDs) > 1
+}
+
+func userPrimaryDivision(user *User) *Division {
+	if user == nil || len(user.Divisions) == 0 {
+		return nil
+	}
+	division := user.Divisions[0]
+	return &division
+}
+
+func userHasDivisionCode(user *User, code string) bool {
+	if user == nil {
+		return false
+	}
+	for _, divisionCode := range user.DivisionCodes {
+		if strings.EqualFold(strings.TrimSpace(divisionCode), strings.TrimSpace(code)) {
+			return true
+		}
+	}
+	return false
+}
+
+func userCanAccessSportsSilo(user *User) bool {
+	return canViewAllDivisions(user) || userHasDivisionCode(user, divisionCodeSports)
 }
 
 func defaultDivisionSeeds() []Division {
@@ -382,8 +415,8 @@ func userDivisionScope(user *User) string {
 	if canViewAllDivisions(user) {
 		return divisionScopeAll
 	}
-	if len(user.DivisionIDs) == 1 {
-		return fmt.Sprintf("%d", user.DivisionIDs[0])
+	if primary := userPrimaryDivision(user); primary != nil {
+		return primary.Slug
 	}
 	return ""
 }
@@ -503,13 +536,13 @@ func (a *App) authorizedDivisionFilter(r *http.Request, raw string, allowAll boo
 	user, _ := a.currentUser(r.Context())
 	value := strings.TrimSpace(raw)
 	if value == "" || strings.EqualFold(value, divisionScopeAll) {
-		if allowAll && (user == nil || containsRole(user.Roles, "superadmin") || len(user.DivisionIDs) > 1) {
+		if allowAll && user != nil && canViewAllDivisions(user) {
 			return nil, nil
 		}
 		if user != nil && len(user.DivisionIDs) == 1 {
 			return a.findDivisionByID(user.DivisionIDs[0])
 		}
-		if allowAll && user != nil && len(user.DivisionIDs) > 1 {
+		if userCanSwitchOperationalDivision(user) && user != nil && len(user.DivisionIDs) > 1 {
 			return nil, nil
 		}
 		return nil, ErrForbiddenDivision

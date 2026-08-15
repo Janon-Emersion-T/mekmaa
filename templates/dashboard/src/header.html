@@ -14,7 +14,7 @@
     </div>
 
     <div class="flex items-center justify-between gap-3 sm:justify-end">
-	      {{if .DivisionScopeOptions}}
+	      {{if and .DivisionScopeOptions (userCanSwitchOperationalDivision .User)}}
 	      <form method="get" action="{{.CurrentPath}}" class="hidden sm:block">
 	        {{range .CurrentQueryFields}}
 	        <input type="hidden" name="{{.Key}}" value="{{.Value}}">

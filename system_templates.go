@@ -146,6 +146,15 @@ func buildTemplates() (map[string]*template.Template, error) {
 			}
 			return containsPermission(user.Permissions, permission)
 		},
+		"userHasDivisionCode": func(user *User, code string) bool {
+			return userHasDivisionCode(user, code)
+		},
+		"userCanAccessSportsSilo": func(user *User) bool {
+			return userCanAccessSportsSilo(user)
+		},
+		"userCanSwitchOperationalDivision": func(user *User) bool {
+			return userCanSwitchOperationalDivision(user)
+		},
 		"admissionSelected":                         admissionSelected,
 		"userSelected":                              userSelected,
 		"admissionAge":                              admissionAge,

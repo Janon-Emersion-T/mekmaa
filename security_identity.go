@@ -226,14 +226,16 @@ func (a *App) newTemplateData(w http.ResponseWriter, r *http.Request, user *User
 				Label: "All Mekmaa",
 			})
 		}
-		for i := range availableDivisions {
-			division := availableDivisions[i]
-			data.DivisionScopeOptions = append(data.DivisionScopeOptions, DivisionScopeOption{
-				Key:        division.Slug,
-				Label:      division.Name,
-				DivisionID: division.ID,
-				Division:   &division,
-			})
+		if userCanSwitchOperationalDivision(user) {
+			for i := range availableDivisions {
+				division := availableDivisions[i]
+				data.DivisionScopeOptions = append(data.DivisionScopeOptions, DivisionScopeOption{
+					Key:        division.Slug,
+					Label:      division.Name,
+					DivisionID: division.ID,
+					Division:   &division,
+				})
+			}
 		}
 	}
 	data.SelectedDivisionScope = strings.TrimSpace(r.URL.Query().Get("division"))
