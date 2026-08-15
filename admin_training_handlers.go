@@ -73,6 +73,28 @@ func (a *App) roleManagementHandler(w http.ResponseWriter, r *http.Request) {
 func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
 	filter := admissionsFilterFromRequest(r)
+	if !canViewAllDivisions(user) {
+		if filter.Division != "" {
+			selectedDivision, err := a.findDivisionBySlugOrCode(filter.Division)
+			if err != nil || !userCanAccessDivision(user, selectedDivision.ID) {
+				a.writeDivisionForbidden(w, r, user)
+				return
+			}
+			filter.DivisionIDs = []int64{selectedDivision.ID}
+		} else {
+			divisionIDs, err := a.accessibleDivisionIDsForUser(user, true)
+			if err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			filter.DivisionIDs = divisionIDs
+		}
+	} else if filter.Division != "" {
+		selectedDivision, err := a.findDivisionBySlugOrCode(filter.Division)
+		if err == nil {
+			filter.DivisionIDs = []int64{selectedDivision.ID}
+		}
+	}
 	admissions, totalAdmissions, err := a.listAdmissionsFiltered(filter)
 	if err != nil {
 		log.Printf("list admissions: %v", err)
@@ -190,6 +212,29 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	data.Enrollments = enrollments
 	data.Admissions = admissions
 	data.TrainingPrograms = trainingPrograms
+	if !canViewAllDivisions(user) {
+		filteredEnrollments := make([]StudentEnrollment, 0, len(enrollments))
+		for _, enrollment := range enrollments {
+			if userCanAccessDivision(user, enrollment.DivisionID) {
+				filteredEnrollments = append(filteredEnrollments, enrollment)
+			}
+		}
+		filteredAdmissions := make([]Admission, 0, len(admissions))
+		for _, admission := range admissions {
+			if a.admissionVisibleToUser(user, &admission) {
+				filteredAdmissions = append(filteredAdmissions, admission)
+			}
+		}
+		filteredPrograms := make([]TrainingProgram, 0, len(trainingPrograms))
+		for _, program := range trainingPrograms {
+			if userCanAccessDivision(user, program.DivisionID) && program.DivisionCode != divisionCodeCorporate {
+				filteredPrograms = append(filteredPrograms, program)
+			}
+		}
+		data.Enrollments = filteredEnrollments
+		data.Admissions = filteredAdmissions
+		data.TrainingPrograms = filteredPrograms
+	}
 
 	selectedAdmissionID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("admission_id")), 10, 64)
 	if selectedAdmissionID > 0 {
@@ -257,6 +302,10 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, trainingProgram.DivisionID) {
+		return
+	}
 
 	enrollment := StudentEnrollment{
 		AdmissionID:         admissionID,
@@ -271,7 +320,6 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentUser, _ := a.currentUser(r.Context())
 	collectPayment := r.FormValue("payment_collected") == "true" && !enrollment.FreeAdmission
 	paymentMethod := normalizePaymentMethod(r.FormValue("payment_method"))
 	if collectPayment && !validPaymentMethod(paymentMethod) {
@@ -338,8 +386,11 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	target = "/admin/enrollments?admission_id=" + strconv.FormatInt(enrollment.AdmissionID, 10)
 	currentUser, _ := a.currentUser(r.Context())
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, enrollment.DivisionID) {
+		return
+	}
+	target = "/admin/enrollments?admission_id=" + strconv.FormatInt(enrollment.AdmissionID, 10)
 	recordedByUserID := int64(0)
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
@@ -405,6 +456,10 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	currentUser, _ := a.currentUser(r.Context())
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, existing.DivisionID) {
+		return
+	}
 	target := "/admin/enrollments?admission_id=" + strconv.FormatInt(existing.AdmissionID, 10)
 	if !existing.Active {
 		a.setFlash(w, "Archived enrollments cannot be edited.")
@@ -427,6 +482,9 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("find training programme for enrollment update: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, trainingProgram.DivisionID) {
 		return
 	}
 
@@ -486,6 +544,10 @@ func (a *App) deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	target := "/admin/enrollments"
 	if enrollment, findErr := a.findStudentEnrollmentByID(enrollmentID); findErr == nil {
+		currentUser, _ := a.currentUser(r.Context())
+		if !a.requireDivisionAccessForDivision(w, r, currentUser, enrollment.DivisionID) {
+			return
+		}
 		target = "/admin/enrollments?admission_id=" + strconv.FormatInt(enrollment.AdmissionID, 10)
 	}
 
@@ -534,6 +596,32 @@ func (a *App) trainingProgramManagementHandler(
 	data.TrainingPrograms = trainingPrograms
 	data.Games, _ = a.listGames(false)
 	data.ActiveDivisions, _ = a.listDivisions(true)
+	if divisionSlug := strings.TrimSpace(r.URL.Query().Get("division")); divisionSlug != "" {
+		division, err := a.findDivisionBySlugOrCode(divisionSlug)
+		if err == nil {
+			if !a.requireDivisionAccessForDivision(w, r, user, division.ID) {
+				return
+			}
+			data.SelectedDivision = division
+			data.SelectedDivisionScope = division.Slug
+			filteredPrograms := make([]TrainingProgram, 0, len(data.TrainingPrograms))
+			for _, program := range data.TrainingPrograms {
+				if program.DivisionID == division.ID {
+					filteredPrograms = append(filteredPrograms, program)
+				}
+			}
+			data.TrainingPrograms = filteredPrograms
+		}
+	}
+	if !canViewAllDivisions(user) {
+		filteredPrograms := make([]TrainingProgram, 0, len(trainingPrograms))
+		for _, program := range trainingPrograms {
+			if userCanAccessDivision(user, program.DivisionID) {
+				filteredPrograms = append(filteredPrograms, program)
+			}
+		}
+		data.TrainingPrograms = filteredPrograms
+	}
 
 	mode := strings.ToLower(
 		strings.TrimSpace(r.URL.Query().Get("action")),
@@ -581,6 +669,9 @@ func (a *App) trainingProgramManagementHandler(
 		}
 
 		data.SelectedTrainingProgram = selectedProgram
+		if !a.requireDivisionAccessForDivision(w, r, user, selectedProgram.DivisionID) {
+			return
+		}
 	}
 
 	a.render(
@@ -619,6 +710,15 @@ func (a *App) createTrainingProgramHandler(
 			"/admin/training-programs?action=new",
 			http.StatusSeeOther,
 		)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	if program.DivisionCode == divisionCodeCorporate {
+		a.setFlash(w, "Corporate/shared cannot be used for student programmes.")
+		http.Redirect(w, r, "/admin/training-programs?action=new", http.StatusSeeOther)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, program.DivisionID) {
 		return
 	}
 
@@ -693,6 +793,23 @@ func (a *App) updateTrainingProgramHandler(
 	}
 
 	program.ID = programID
+	currentUser, _ := a.currentUser(r.Context())
+	existingProgram, err := a.findTrainingProgramByID(programID)
+	if err != nil {
+		http.Error(w, "training programme not found", http.StatusNotFound)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, existingProgram.DivisionID) {
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, program.DivisionID) {
+		return
+	}
+	if program.DivisionCode == divisionCodeCorporate {
+		a.setFlash(w, "Corporate/shared cannot be used for student programmes.")
+		http.Redirect(w, r, "/admin/training-programs?action=edit&id="+strconv.FormatInt(programID, 10), http.StatusSeeOther)
+		return
+	}
 
 	if err := a.updateTrainingProgram(program); err != nil {
 		log.Printf("update training programme: %v", err)
@@ -758,6 +875,15 @@ func (a *App) toggleTrainingProgramHandler(
 		http.Error(w, "invalid programme status", http.StatusBadRequest)
 		return
 	}
+	currentUser, _ := a.currentUser(r.Context())
+	program, err := a.findTrainingProgramByID(programID)
+	if err != nil {
+		http.Error(w, "training programme not found", http.StatusNotFound)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, program.DivisionID) {
+		return
+	}
 
 	if err := a.setTrainingProgramActive(programID, active); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -806,6 +932,15 @@ func (a *App) deleteTrainingProgramHandler(
 	programID, err := parsePositiveInt64(r.FormValue("id"))
 	if err != nil {
 		http.Error(w, "invalid training programme id", http.StatusBadRequest)
+		return
+	}
+	currentUser, _ := a.currentUser(r.Context())
+	program, err := a.findTrainingProgramByID(programID)
+	if err != nil {
+		http.Error(w, "training programme not found", http.StatusNotFound)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, program.DivisionID) {
 		return
 	}
 

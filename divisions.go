@@ -36,6 +36,19 @@ type DivisionScopeOption struct {
 	Division   *Division
 }
 
+func canViewAllDivisions(user *User) bool {
+	if user == nil {
+		return false
+	}
+	if containsRole(user.Roles, "superadmin") {
+		return true
+	}
+	if containsPermission(user.Permissions, "finance.consolidated") {
+		return true
+	}
+	return len(user.DivisionIDs) == 0 && containsRole(user.Roles, "admin")
+}
+
 func defaultDivisionSeeds() []Division {
 	return []Division{
 		{Code: divisionCodeSports, Slug: "sports", Name: "Indoor Sports", Description: "Indoor sports operations and programmes.", Active: true},
@@ -348,7 +361,7 @@ func userCanAccessDivision(user *User, divisionID int64) bool {
 	if user == nil {
 		return false
 	}
-	if containsRole(user.Roles, "superadmin") {
+	if canViewAllDivisions(user) {
 		return true
 	}
 	if divisionID <= 0 {
@@ -366,13 +379,124 @@ func userDivisionScope(user *User) string {
 	if user == nil {
 		return ""
 	}
-	if containsRole(user.Roles, "superadmin") {
+	if canViewAllDivisions(user) {
 		return divisionScopeAll
 	}
 	if len(user.DivisionIDs) == 1 {
 		return fmt.Sprintf("%d", user.DivisionIDs[0])
 	}
 	return ""
+}
+
+func (a *App) accessibleDivisionsForUser(user *User, includeInactive bool) ([]Division, error) {
+	if user == nil {
+		return nil, nil
+	}
+	if canViewAllDivisions(user) {
+		return a.listDivisions(!includeInactive)
+	}
+	divisions := user.Divisions
+	if len(divisions) == 0 {
+		divisions = nil
+		loaded, err := a.divisionsForUser(user.ID)
+		if err != nil {
+			return nil, err
+		}
+		divisions = loaded
+	}
+	if includeInactive {
+		return append([]Division(nil), divisions...), nil
+	}
+	filtered := make([]Division, 0, len(divisions))
+	for _, division := range divisions {
+		if division.Active {
+			filtered = append(filtered, division)
+		}
+	}
+	return filtered, nil
+}
+
+func (a *App) accessibleDivisionIDsForUser(user *User, includeInactive bool) ([]int64, error) {
+	divisions, err := a.accessibleDivisionsForUser(user, includeInactive)
+	if err != nil {
+		return nil, err
+	}
+	return divisionIDsFromDivisions(divisions), nil
+}
+
+func (a *App) requireDivisionAccessForDivision(w http.ResponseWriter, r *http.Request, user *User, divisionID int64) bool {
+	if user == nil {
+		return true
+	}
+	if userCanAccessDivision(user, divisionID) {
+		return true
+	}
+	a.writeDivisionForbidden(w, r, user)
+	return false
+}
+
+func (a *App) validateAssignableDivisionIDs(currentUser *User, rawIDs []int64) ([]Division, error) {
+	if len(rawIDs) == 0 {
+		return nil, nil
+	}
+	authorizedIDs, err := a.accessibleDivisionIDsForUser(currentUser, false)
+	if err != nil {
+		return nil, err
+	}
+	authorizedSet := map[int64]struct{}{}
+	for _, id := range authorizedIDs {
+		authorizedSet[id] = struct{}{}
+	}
+	validated := make([]Division, 0, len(rawIDs))
+	for _, divisionID := range rawIDs {
+		division, err := a.findDivisionByID(divisionID)
+		if err != nil {
+			return nil, err
+		}
+		if !division.Active {
+			return nil, errors.New("inactive divisions cannot be assigned")
+		}
+		if !canViewAllDivisions(currentUser) {
+			if _, ok := authorizedSet[divisionID]; !ok {
+				return nil, ErrForbiddenDivision
+			}
+		}
+		validated = append(validated, *division)
+	}
+	return validated, nil
+}
+
+func (a *App) resolveAuthorizedDivisionFromRequest(r *http.Request, allowAll bool) (*Division, error) {
+	return a.authorizedDivisionFilter(r, r.URL.Query().Get("division"), allowAll)
+}
+
+func (a *App) programDivisionAllowed(user *User, program *TrainingProgram) bool {
+	if program == nil {
+		return false
+	}
+	return userCanAccessDivision(user, program.DivisionID)
+}
+
+func (a *App) financeDivisionAllowed(user *User, transaction *FinanceTransaction) bool {
+	if transaction == nil {
+		return false
+	}
+	return userCanAccessDivision(user, transaction.DivisionID)
+}
+
+func (a *App) admissionVisibleToUser(user *User, admission *Admission) bool {
+	if admission == nil {
+		return false
+	}
+	if canViewAllDivisions(user) {
+		return true
+	}
+	for _, divisionID := range admission.DivisionIDs {
+		if userCanAccessDivision(user, divisionID) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) authorizedDivisionFilter(r *http.Request, raw string, allowAll bool) (*Division, error) {
@@ -403,6 +527,10 @@ func (a *App) authorizedDivisionFilter(r *http.Request, raw string, allowAll boo
 var ErrForbiddenDivision = errors.New("forbidden division")
 
 func (a *App) writeDivisionForbidden(w http.ResponseWriter, r *http.Request, user *User) {
+	if len(a.templates) == 0 {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Forbidden"
 	data.Description = "You do not have access to this division."

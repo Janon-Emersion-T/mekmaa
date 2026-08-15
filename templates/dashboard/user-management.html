@@ -265,6 +265,33 @@
               {{end}}
             </div>
           </fieldset>
+
+          <fieldset>
+            <legend class="text-sm font-semibold text-obsidian">
+              Assigned divisions
+            </legend>
+
+            <p class="mt-1 text-xs leading-5 text-slate/50">
+              Select the divisions this user can operate. Leave empty only for legacy/global administration patterns.
+            </p>
+
+            <div class="mt-3 flex flex-wrap gap-2.5">
+              {{range .AvailableDivisions}}
+              <label class="group relative cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="division_ids"
+                  value="{{.ID}}"
+                  class="peer sr-only"
+                />
+
+                <span class="inline-flex min-h-10 items-center gap-2 rounded-full border border-obsidian/10 bg-white px-4 py-2 text-sm font-medium text-slate shadow-sm transition group-hover:border-obsidian/25 peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud peer-focus-visible:ring-4 peer-focus-visible:ring-aqua/25">
+                  <span>{{.Name}}</span>
+                </span>
+              </label>
+              {{end}}
+            </div>
+          </fieldset>
         </div>
 
         <button
@@ -429,12 +456,43 @@
                   {{end}}
                 </div>
               </fieldset>
+
+              <fieldset class="min-w-0 xl:col-start-2">
+                <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <legend class="text-sm font-semibold text-obsidian">
+                    Assigned divisions
+                  </legend>
+
+                  <span class="text-xs text-slate/45">
+                    Division scope is enforced by the backend
+                  </span>
+                </div>
+
+                <div class="mt-3 flex flex-wrap gap-2">
+                  {{range $division := $.AvailableDivisions}}
+                  <label class="group/role relative {{if $canEditUser}}cursor-pointer{{else}}cursor-not-allowed opacity-55{{end}}">
+                    <input
+                      type="checkbox"
+                      name="division_ids"
+                      value="{{$division.ID}}"
+                      {{if containsInt64 $user.DivisionIDs $division.ID}}checked{{end}}
+                      {{if not $canEditUser}}disabled{{end}}
+                      class="peer sr-only"
+                    />
+
+                    <span class="inline-flex min-h-10 items-center gap-2 rounded-full border border-obsidian/10 bg-white px-3.5 py-2 text-sm font-medium text-slate shadow-sm transition group-hover/role:border-obsidian/25 peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud peer-focus-visible:ring-4 peer-focus-visible:ring-aqua/25">
+                      <span>{{$division.Name}}</span>
+                    </span>
+                  </label>
+                  {{end}}
+                </div>
+              </fieldset>
             </div>
           </div>
 
           <div class="flex flex-col gap-3 border-t border-slate/10 bg-white/55 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 lg:px-6">
             <p class="text-xs leading-5 text-slate/50">
-              Role changes affect the user's authorization permissions.
+              Role and division changes are applied together.
             </p>
 
             <button
@@ -457,7 +515,7 @@
                 />
               </svg>
 
-              {{if eq $.User.ID .ID}}Your account{{else if $targetPrivileged}}Protected account{{else}}Save roles{{end}}
+              {{if eq $.User.ID .ID}}Your account{{else if $targetPrivileged}}Protected account{{else}}Save access{{end}}
             </button>
           </div>
         </form>

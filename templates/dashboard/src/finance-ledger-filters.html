@@ -12,10 +12,22 @@
     <form id="ledger-filter-form" method="get" action="/admin/finance/ledger" class="grid gap-5">
 
       <section class="rounded-[1.5rem] border border-slate/10 bg-cloud/30 p-4 sm:p-5">
-        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+	        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+	          <label class="text-xs font-semibold text-slate/60">
+	            Division
+	            <select
+	              name="division_id"
+	              class="mt-2 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"
+	            >
+	              <option value="">All accessible divisions</option>
+	              {{range .AvailableDivisions}}
+	              <option value="{{.ID}}" {{if eq $.FinanceFilter.DivisionID .ID}}selected{{end}}>{{.Name}}</option>
+	              {{end}}
+	            </select>
+	          </label>
 
-          <label class="text-xs font-semibold text-slate/60">
-            From date
+	          <label class="text-xs font-semibold text-slate/60">
+	            From date
             <input
               type="date"
               name="from"

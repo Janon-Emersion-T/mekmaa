@@ -17,6 +17,8 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 	filter := FinanceFilter{
 		From:                strings.TrimSpace(query.Get("from")),
 		To:                  strings.TrimSpace(query.Get("to")),
+		DivisionID:          parseInt64Query(query.Get("division_id")),
+		DivisionIDs:         normalizeInt64FilterValues(query["division_id"]),
 		Direction:           strings.ToLower(strings.TrimSpace(query.Get("direction"))),
 		Categories:          normalizeStringFilterValues(query["category"], func(value string) string { return strings.ToLower(strings.TrimSpace(value)) }),
 		AccountIDs:          normalizeInt64FilterValues(query["account_id"]),
@@ -42,6 +44,9 @@ func financeFilterFromRequest(r *http.Request) FinanceFilter {
 	}
 	if len(filter.AccountIDs) == 1 {
 		filter.AccountID = filter.AccountIDs[0]
+	}
+	if len(filter.DivisionIDs) == 1 {
+		filter.DivisionID = filter.DivisionIDs[0]
 	}
 	if len(filter.TransactionTypes) == 1 {
 		filter.TransactionType = filter.TransactionTypes[0]
@@ -159,6 +164,9 @@ func financeFilterExportURL(filter FinanceFilter) string {
 	}
 	for _, value := range filter.AccountIDs {
 		query.Add("account_id", strconv.FormatInt(value, 10))
+	}
+	for _, value := range filter.DivisionIDs {
+		query.Add("division_id", strconv.FormatInt(value, 10))
 	}
 	for _, value := range filter.TransactionTypes {
 		query.Add("transaction_type", value)

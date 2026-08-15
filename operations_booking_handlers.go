@@ -86,6 +86,24 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	if !canViewAllDivisions(user) {
+		filteredGroups := make([]StudentGroup, 0, len(groups))
+		for _, group := range groups {
+			if group.TrainingProgramID <= 0 {
+				continue
+			}
+			program, err := a.findTrainingProgramByID(group.TrainingProgramID)
+			if err != nil {
+				log.Printf("find training programme for attendance group %d: %v", group.ID, err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			if userCanAccessDivision(user, program.DivisionID) {
+				filteredGroups = append(filteredGroups, group)
+			}
+		}
+		groups = filteredGroups
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Attendance"
@@ -120,6 +138,20 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 		}
 
 		if selectedGroup != nil {
+			if selectedGroup.TrainingProgramID > 0 {
+				program, err := a.findTrainingProgramByID(selectedGroup.TrainingProgramID)
+				if err != nil {
+					log.Printf("find training programme for attendance selection: %v", err)
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+				if !a.requireDivisionAccessForDivision(w, r, user, program.DivisionID) {
+					return
+				}
+			} else if user != nil && !canViewAllDivisions(user) {
+				a.writeDivisionForbidden(w, r, user)
+				return
+			}
 			data.SelectedGroup = selectedGroup
 			if len(selectedGroup.Sessions) > 0 {
 				data.GroupSessions = selectedGroup.Sessions
@@ -3597,6 +3629,14 @@ func (a *App) createManagedUserHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a superadmin can assign administrator roles", http.StatusForbidden)
 		return
 	}
+	if _, err := a.validateAssignableDivisionIDs(current, divisionIDs); err != nil {
+		if errors.Is(err, ErrForbiddenDivision) {
+			http.Error(w, "one or more divisions are not authorized", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "one or more divisions are invalid", http.StatusBadRequest)
+		return
+	}
 
 	createdUser, err := a.createManagedUser(name, email, password, roles, verified)
 	if err != nil {
@@ -3932,13 +3972,22 @@ func (a *App) updateRolesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a superadmin can manage administrator accounts", http.StatusForbidden)
 		return
 	}
+	divisionIDs := normalizeDivisionIDs(r.Form["division_ids"])
+	if _, err := a.validateAssignableDivisionIDs(current, divisionIDs); err != nil {
+		if errors.Is(err, ErrForbiddenDivision) {
+			http.Error(w, "one or more divisions are not authorized", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "one or more divisions are invalid", http.StatusBadRequest)
+		return
+	}
 
 	if err := a.replaceUserRoles(targetID, roles); err != nil {
 		log.Printf("replace roles: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	if err := a.replaceUserDivisions(targetID, normalizeDivisionIDs(r.Form["division_ids"])); err != nil {
+	if err := a.replaceUserDivisions(targetID, divisionIDs); err != nil {
 		log.Printf("replace user divisions: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -4422,6 +4471,20 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	currentUser, _ := a.currentUser(r.Context())
+	enrollment, err := a.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Enrollment not found.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
+			return
+		}
+		log.Printf("find enrollment for student payment collection: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, enrollment.DivisionID) {
+		return
+	}
 	recordedByUserID := int64(0)
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
@@ -4652,6 +4715,24 @@ func (a *App) voidStudentPaymentHandler(w http.ResponseWriter, r *http.Request) 
 	paymentID := parseInt64Query(r.FormValue("payment_id"))
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
 	redirectMonth := strings.TrimSpace(r.FormValue("payment_month"))
+	var divisionID int64
+	if err := a.db.QueryRow(`
+		SELECT COALESCE(tp.division_id, 0)
+		FROM student_monthly_payments smp
+		LEFT JOIN student_enrollments se ON se.id = smp.enrollment_id
+		LEFT JOIN training_programs tp ON tp.id = se.training_program_id
+		WHERE smp.id = ?
+	`, paymentID).Scan(&divisionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "student payment not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, divisionID) {
+		return
+	}
 	if err := a.voidStudentMonthlyPayment(paymentID, reason, currentUser.ID); err != nil {
 		a.setFlash(w, "Student payment could not be voided: "+err.Error())
 		target := "/admin/student-payments"
@@ -4921,6 +5002,20 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.setFlash(w, "Student group not found.")
 		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	if group.TrainingProgramID > 0 {
+		program, err := a.findTrainingProgramByID(group.TrainingProgramID)
+		if err != nil {
+			log.Printf("find training programme for attendance save: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if !a.requireDivisionAccessForDivision(w, r, currentUser, program.DivisionID) {
+			return
+		}
+	} else if currentUser != nil && !canViewAllDivisions(currentUser) {
+		a.writeDivisionForbidden(w, r, currentUser)
 		return
 	}
 	session, err := a.findStudentGroupSessionByID(sessionID)

@@ -338,6 +338,202 @@ func TestAdmissionsFilterSupportsMultipleDivisionsWithoutDuplicatingStudent(t *t
 	}
 }
 
+func TestCollectStudentPaymentHandlerRejectsUnauthorizedDivision(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		GameID:         1,
+		DivisionID:     sportsID,
+		Name:           "Sports Monthly",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     2500,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-DIV-PAY-001",
+		FullName:              "Scoped Payment Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000100",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":     {"token"},
+		"enrollment_id":  {strconv.FormatInt(enrollmentID, 10)},
+		"payment_month":  {"2026-07"},
+		"payment_method": {"cash"},
+		"amount":         {"2500"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/student-payments/collect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          91,
+		Name:        "KEC Finance",
+		Roles:       []string{"admin"},
+		Permissions: []string{"finance.manage"},
+		DivisionIDs: []int64{kecID},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.collectStudentPaymentHandler(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("student payment unauthorized status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+
+	var paymentCount int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM student_monthly_payments WHERE enrollment_id = ?`, enrollmentID).Scan(&paymentCount); err != nil {
+		t.Fatalf("count student monthly payments: %v", err)
+	}
+	if paymentCount != 0 {
+		t.Fatalf("expected no student payment rows, got %d", paymentCount)
+	}
+}
+
+func TestSaveAttendanceHandlerRejectsUnauthorizedDivision(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		GameID:         1,
+		DivisionID:     sportsID,
+		Name:           "Sports Attendance",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-DIV-ATT-001",
+		FullName:              "Scoped Attendance Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2011-02-02",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000101",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+	}, false, "cash", 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	if err := app.createStudentGroup(StudentGroup{
+		Name:              "Sports Group",
+		Code:              "SPORTS-G1",
+		TrainingProgramID: programID,
+	}, []int64{admissionID}, nil, []StudentGroupSession{{
+		Title:     "Monday Session",
+		DayOfWeek: "monday",
+		StartTime: "09:00",
+		EndTime:   "10:00",
+		Active:    true,
+	}}); err != nil {
+		t.Fatalf("create student group: %v", err)
+	}
+
+	groups, err := app.listStudentGroups()
+	if err != nil {
+		t.Fatalf("list student groups: %v", err)
+	}
+	var group StudentGroup
+	for _, item := range groups {
+		if item.Code == "SPORTS-G1" {
+			group = item
+			break
+		}
+	}
+	if group.ID == 0 || len(group.Sessions) == 0 {
+		t.Fatalf("expected sports group with session, got %#v", group)
+	}
+
+	form := url.Values{
+		"csrf_token":                          {"token"},
+		"group_id":                            {strconv.FormatInt(group.ID, 10)},
+		"session_id":                          {strconv.FormatInt(group.Sessions[0].ID, 10)},
+		"attendance_date":                     {"2026-08-10"},
+		fmt.Sprintf("status_%d", admissionID): {"present"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/attendance/save", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          92,
+		Name:        "KEC Staff",
+		Roles:       []string{"admin"},
+		Permissions: []string{"attendance.manage"},
+		DivisionIDs: []int64{kecID},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.saveAttendanceHandler(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("attendance unauthorized status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+
+	var attendanceCount int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM attendance_records WHERE group_id = ?`, group.ID).Scan(&attendanceCount); err != nil {
+		t.Fatalf("count attendance records: %v", err)
+	}
+	if attendanceCount != 0 {
+		t.Fatalf("expected no attendance records, got %d", attendanceCount)
+	}
+}
+
 func renderTemplateToString(t *testing.T, templates map[string]*template.Template, name string, data TemplateData) string {
 	t.Helper()
 	var buf bytes.Buffer

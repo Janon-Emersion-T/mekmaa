@@ -1527,6 +1527,10 @@ func (a *App) createManualFinanceTransactionForAccount(category, personName, des
 }
 
 func (a *App) createManualFinanceTransactionForAccountWithApproval(category, personName, description, notes string, accountID int64, amount float64, recordedAt time.Time, recordedByUserID int64, approvalStatus string) (int64, error) {
+	return a.createManualFinanceTransactionForAccountWithApprovalInDivision(category, personName, description, notes, accountID, amount, 0, recordedAt, recordedByUserID, approvalStatus)
+}
+
+func (a *App) createManualFinanceTransactionForAccountWithApprovalInDivision(category, personName, description, notes string, accountID int64, amount float64, divisionID int64, recordedAt time.Time, recordedByUserID int64, approvalStatus string) (int64, error) {
 	if err := validateFinanceRecordedAt(recordedAt, "transaction date"); err != nil {
 		return 0, err
 	}
@@ -1563,6 +1567,7 @@ func (a *App) createManualFinanceTransactionForAccountWithApproval(category, per
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    financeVoucherReference(prefix, recordedAt),
 		ReferenceNumber:  financeVoucherReference(prefix, recordedAt),
+		DivisionID:       divisionID,
 		Category:         category,
 		ApprovalStatus:   approvalStatus,
 		TransactionType:  transactionType,
@@ -1592,6 +1597,10 @@ func (a *App) createManualFinanceTransactionForAccountWithApproval(category, per
 }
 
 func (a *App) createManualFinanceTransaction(category, personName, description, paymentMethod string, amount float64, recordedAt time.Time, recordedByUserID int64) (int64, error) {
+	return a.createManualFinanceTransactionInDivision(category, personName, description, paymentMethod, amount, 0, recordedAt, recordedByUserID)
+}
+
+func (a *App) createManualFinanceTransactionInDivision(category, personName, description, paymentMethod string, amount float64, divisionID int64, recordedAt time.Time, recordedByUserID int64) (int64, error) {
 	if err := validateFinanceRecordedAt(recordedAt, "transaction date"); err != nil {
 		return 0, err
 	}
@@ -1618,6 +1627,7 @@ func (a *App) createManualFinanceTransaction(category, personName, description, 
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    financeVoucherReference(prefix, recordedAt),
 		ReferenceNumber:  financeVoucherReference(prefix, recordedAt),
+		DivisionID:       divisionID,
 		Category:         category,
 		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  transactionType,
@@ -2320,6 +2330,14 @@ func (a *App) createFinanceTransferHandler(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	currentUser, _ := a.currentUser(r.Context())
+	corporateDivisionID, err := divisionIDByCode(a.db, divisionCodeCorporate)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, corporateDivisionID) {
+		return
+	}
 	recordedBy := int64(0)
 	if currentUser != nil {
 		recordedBy = currentUser.ID
@@ -2607,6 +2625,9 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "finance transaction not found", http.StatusNotFound)
 		return
 	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, transaction.DivisionID) {
+		return
+	}
 	if !financeTransactionAllowsGeneralVoid(transaction) {
 		if transaction.OrphanedSource && financeTransactionRepairableOrphan(transaction) {
 			tx, err := a.db.Begin()
@@ -2677,6 +2698,24 @@ func (a *App) voidFinanceTransferHandler(w http.ResponseWriter, r *http.Request)
 	}
 	groupID := strings.TrimSpace(r.FormValue("group_id"))
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	var divisionID int64
+	if err := a.db.QueryRow(`
+		SELECT COALESCE(division_id, 0)
+		FROM finance_transactions
+		WHERE transfer_group_id = ?
+		ORDER BY id ASC
+		LIMIT 1
+	`, groupID).Scan(&divisionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "transfer not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, divisionID) {
+		return
+	}
 	if err := a.voidFinanceTransferGroup(groupID, reason, currentUser.ID); err != nil {
 		a.setFlash(w, "Transfer could not be voided: "+err.Error())
 		http.Redirect(w, r, "/admin/finance/transfers", http.StatusSeeOther)

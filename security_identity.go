@@ -195,15 +195,21 @@ func (a *App) newTemplateData(w http.ResponseWriter, r *http.Request, user *User
 		}
 	}
 	if user != nil {
-		data.AvailableDivisions = append(data.AvailableDivisions, user.Divisions...)
-		if containsRole(user.Roles, "superadmin") {
+		availableDivisions := append([]Division(nil), user.Divisions...)
+		if a != nil {
+			if accessible, err := a.accessibleDivisionsForUser(user, false); err == nil {
+				availableDivisions = accessible
+			}
+		}
+		data.AvailableDivisions = append(data.AvailableDivisions, availableDivisions...)
+		if canViewAllDivisions(user) {
 			data.DivisionScopeOptions = append(data.DivisionScopeOptions, DivisionScopeOption{
 				Key:   divisionScopeAll,
 				Label: "All Mekmaa",
 			})
 		}
-		for i := range user.Divisions {
-			division := user.Divisions[i]
+		for i := range availableDivisions {
+			division := availableDivisions[i]
 			data.DivisionScopeOptions = append(data.DivisionScopeOptions, DivisionScopeOption{
 				Key:        division.Slug,
 				Label:      division.Name,
@@ -211,6 +217,10 @@ func (a *App) newTemplateData(w http.ResponseWriter, r *http.Request, user *User
 				Division:   &division,
 			})
 		}
+	}
+	data.SelectedDivisionScope = strings.TrimSpace(r.URL.Query().Get("division"))
+	if data.SelectedDivisionScope == "" && user != nil {
+		data.SelectedDivisionScope = userDivisionScope(user)
 	}
 	return data
 }

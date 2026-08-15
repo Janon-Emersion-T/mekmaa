@@ -53,6 +53,8 @@ var (
 		"editor.access",
 		"users.manage",
 		"roles.manage",
+		"user_divisions.manage",
+		"divisions.manage",
 		"admissions.manage",
 		"coaches.manage",
 		"training_programs.manage",
@@ -63,6 +65,7 @@ var (
 		"booking_requests.manage",
 		"pricing.manage",
 		"finance.manage",
+		"finance.consolidated",
 		"reports.view",
 		"events.manage",
 	}
@@ -76,6 +79,8 @@ var permissionGroups = []PermissionGroup{
 	{Name: "Administration", Description: "High-trust identity and authorization controls.", Permissions: []PermissionDefinition{
 		{Key: "users.manage", Label: "Manage users", Description: "Create accounts and change user role assignments.", Sensitive: true},
 		{Key: "roles.manage", Label: "Manage roles", Description: "Create, update, and remove custom authorization roles.", Sensitive: true},
+		{Key: "user_divisions.manage", Label: "Manage user divisions", Description: "Assign which divisions each user may access.", Sensitive: true},
+		{Key: "divisions.manage", Label: "Manage divisions", Description: "Maintain division configuration and availability.", Sensitive: true},
 	}},
 	{Name: "Students", Description: "Student intake, training programmes, grouping, attendance, and billing operations.", Permissions: []PermissionDefinition{
 		{
@@ -128,6 +133,7 @@ var permissionGroups = []PermissionGroup{
 			Description: "Maintain facility booking rates and peak-hour pricing.",
 		},
 		{Key: "finance.manage", Label: "Manage finance", Description: "Manage payments, expenses, receipts, referrals, and exports."},
+		{Key: "finance.consolidated", Label: "View consolidated finance", Description: "Access cross-division and shared finance views."},
 		{Key: "reports.view", Label: "View and export reports", Description: "Open operational reports and export report data."},
 	}},
 	{Name: "Content", Description: "Public website content operations.", Permissions: []PermissionDefinition{
@@ -714,11 +720,12 @@ type FinanceFilter struct {
 }
 
 type AdmissionsFilter struct {
-	Search    string
-	Division  string
-	Direction string
-	Page      int
-	Limit     int
+	Search      string
+	Division    string
+	DivisionIDs []int64
+	Direction   string
+	Page        int
+	Limit       int
 }
 
 const (

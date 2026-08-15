@@ -40,8 +40,20 @@
       </p>
     </div>
 
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <div class="rounded-2xl border border-obsidian/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+	    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+	      <form method="get" action="/admin/training-programs" class="flex items-center gap-2 rounded-2xl border border-slate/10 bg-white/80 px-3 py-3 shadow-sm backdrop-blur">
+	        <input type="hidden" name="action" value="{{.TrainingProgramMode}}">
+	        {{if .SelectedTrainingProgram}}<input type="hidden" name="id" value="{{.SelectedTrainingProgram.ID}}">{{end}}
+	        <label class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/50">
+	          Division
+	        </label>
+	        <select name="division" onchange="this.form.submit()" class="h-10 rounded-xl border border-slate/10 bg-cloud px-3 text-sm text-obsidian outline-none focus:border-aqua">
+	          {{range .DivisionScopeOptions}}
+	          <option value="{{.Key}}" {{if eq $.SelectedDivisionScope .Key}}selected{{end}}>{{.Label}}</option>
+	          {{end}}
+	        </select>
+	      </form>
+	      <div class="rounded-2xl border border-obsidian/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
         <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/50">
           Programmes
         </p>
@@ -160,9 +172,32 @@
           />
         </div>
 
-        <div class="space-y-2">
-          <label
-            for="new-activity"
+	        <div class="space-y-2">
+	          <label
+	            for="new-division"
+	            class="block text-sm font-semibold text-obsidian"
+	          >
+	            Division
+	          </label>
+	
+	          <select
+	            id="new-division"
+	            name="division_id"
+	            required
+	            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+	          >
+	            <option value="">Select division</option>
+	            {{range .ActiveDivisions}}
+	            {{if ne .Code "CORPORATE"}}
+	            <option value="{{.ID}}" {{if and $.SelectedDivision (eq $.SelectedDivision.ID .ID)}}selected{{end}}>{{.Name}}</option>
+	            {{end}}
+	            {{end}}
+	          </select>
+	        </div>
+	
+	        <div class="space-y-2">
+	          <label
+	            for="new-activity"
             class="block text-sm font-semibold text-obsidian"
           >
             Activity or sport
@@ -401,9 +436,31 @@
           />
         </div>
 
-        <div class="space-y-2">
-          <label
-            for="edit-activity"
+	        <div class="space-y-2">
+	          <label
+	            for="edit-division"
+	            class="block text-sm font-semibold text-obsidian"
+	          >
+	            Division
+	          </label>
+	
+	          <select
+	            id="edit-division"
+	            name="division_id"
+	            required
+	            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+	          >
+	            {{range $.ActiveDivisions}}
+	            {{if ne .Code "CORPORATE"}}
+	            <option value="{{.ID}}" {{if eq $program.DivisionID .ID}}selected{{end}}>{{.Name}}</option>
+	            {{end}}
+	            {{end}}
+	          </select>
+	        </div>
+	
+	        <div class="space-y-2">
+	          <label
+	            for="edit-activity"
             class="block text-sm font-semibold text-obsidian"
           >
             Activity or sport
@@ -548,8 +605,17 @@
 
     {{else}}
 
-    <div class="grid gap-4 p-5 sm:grid-cols-2 sm:p-8 xl:grid-cols-4">
-      <div class="rounded-2xl border border-slate/10 bg-cloud/70 p-4">
+	    <div class="grid gap-4 p-5 sm:grid-cols-2 sm:p-8 xl:grid-cols-4">
+	      <div class="rounded-2xl border border-slate/10 bg-cloud/70 p-4">
+	        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">
+	          Division
+	        </p>
+	
+	        <p class="mt-2 font-semibold text-obsidian">
+	          {{$program.DivisionName}}
+	        </p>
+	      </div>
+	      <div class="rounded-2xl border border-slate/10 bg-cloud/70 p-4">
         <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">
           Activity
         </p>
@@ -614,9 +680,10 @@
     <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-slate/10">
         <thead class="bg-cloud/70">
-          <tr class="text-left text-xs font-bold uppercase tracking-[0.14em] text-slate/45">
-            <th class="px-5 py-4 sm:px-8">Programme</th>
-            <th class="px-5 py-4">Format</th>
+	          <tr class="text-left text-xs font-bold uppercase tracking-[0.14em] text-slate/45">
+	            <th class="px-5 py-4 sm:px-8">Programme</th>
+	            <th class="px-5 py-4">Division</th>
+	            <th class="px-5 py-4">Format</th>
             <th class="px-5 py-4">Admission fee</th>
             <th class="px-5 py-4">Monthly fee</th>
             <th class="px-5 py-4">Status</th>
@@ -635,9 +702,13 @@
               <p class="mt-1 text-xs capitalize text-slate/50">
                 {{gameNameFor $.Games .Activity}} · Order {{.SortOrder}}
               </p>
-            </td>
+	            </td>
+	
+	            <td class="whitespace-nowrap px-5 py-5 text-sm text-slate">
+	              {{.DivisionName}}
+	            </td>
 
-            <td class="whitespace-nowrap px-5 py-5 text-sm text-slate">
+	            <td class="whitespace-nowrap px-5 py-5 text-sm text-slate">
               {{if eq .TrainingFormat "one_to_one"}}
               One-to-one
               {{else}}

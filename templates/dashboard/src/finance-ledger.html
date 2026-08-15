@@ -16,12 +16,18 @@
           <input name="amount" type="number" min="0.01" step="0.01" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
         </label>
       </div>
-      <label class="text-xs font-medium text-slate/60">Account
-        <select name="account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-          {{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}} · {{financeAccountTypeLabel .AccountType}}</option>{{end}}
-        </select>
-      </label>
-      <label class="text-xs font-medium text-slate/60">Category
+	      <label class="text-xs font-medium text-slate/60">Account
+	        <select name="account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+	          {{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}} · {{financeAccountTypeLabel .AccountType}}</option>{{end}}
+	        </select>
+	      </label>
+	      <label class="text-xs font-medium text-slate/60">Division
+	        <select name="division_id" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+	          <option value="">Select division</option>
+	          {{range .AvailableDivisions}}<option value="{{.ID}}" {{if and $.SelectedDivision (eq $.SelectedDivision.ID .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
+	        </select>
+	      </label>
+	      <label class="text-xs font-medium text-slate/60">Category
         <select name="category" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
           {{range financeActiveCategoriesForDirection .FinanceCategories "expense"}}
           <option value="{{.Code}}">{{.Name}}</option>

@@ -1626,6 +1626,7 @@ func seedRoles(db *sql.DB) error {
 			"editor.access",
 			"users.manage",
 			"roles.manage",
+			"user_divisions.manage",
 			"admissions.manage",
 			"coaches.manage",
 			"training_programs.manage",

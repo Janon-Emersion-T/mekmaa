@@ -141,6 +141,25 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 		)`)
 		args = append(args, filter.Division, filter.Division)
 	}
+	if len(filter.DivisionIDs) > 0 {
+		placeholders := make([]string, 0, len(filter.DivisionIDs))
+		for _, divisionID := range filter.DivisionIDs {
+			if divisionID <= 0 {
+				continue
+			}
+			placeholders = append(placeholders, "?")
+			args = append(args, divisionID)
+		}
+		if len(placeholders) > 0 {
+			whereParts = append(whereParts, `EXISTS (
+				SELECT 1
+				FROM admission_training_programs atp_scope
+				JOIN training_programs tp_scope ON tp_scope.id = atp_scope.training_program_id
+				WHERE atp_scope.admission_id = a.id
+				  AND tp_scope.division_id IN (`+strings.Join(placeholders, ", ")+`)
+			)`)
+		}
+	}
 
 	whereSQL := ""
 	if len(whereParts) > 0 {
