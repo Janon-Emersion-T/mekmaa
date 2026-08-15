@@ -543,6 +543,33 @@ func renderTemplateToString(t *testing.T, templates map[string]*template.Templat
 	return buf.String()
 }
 
+func TestNewTemplateDataPreservesNonDivisionQueryFields(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	req := httptest.NewRequest(http.MethodGet, "/admin/student-payments?month=2026-07&division=chess&action=view&id=7", nil)
+
+	data := app.newTemplateData(httptest.NewRecorder(), req, nil)
+
+	if data.SelectedDivisionScope != "chess" {
+		t.Fatalf("selected division scope = %q, want %q", data.SelectedDivisionScope, "chess")
+	}
+	fields := make(map[string][]string)
+	for _, field := range data.CurrentQueryFields {
+		fields[field.Key] = append(fields[field.Key], field.Value)
+	}
+	if _, ok := fields["division"]; ok {
+		t.Fatal("division should not be duplicated in preserved query fields")
+	}
+	if got := strings.Join(fields["month"], ","); got != "2026-07" {
+		t.Fatalf("preserved month = %q, want %q", got, "2026-07")
+	}
+	if got := strings.Join(fields["action"], ","); got != "view" {
+		t.Fatalf("preserved action = %q, want %q", got, "view")
+	}
+	if got := strings.Join(fields["id"], ","); got != "7" {
+		t.Fatalf("preserved id = %q, want %q", got, "7")
+	}
+}
+
 func financeAccountIDByName(t *testing.T, app *App, name string) int64 {
 	t.Helper()
 	accounts, err := app.listFinanceAccounts(false)

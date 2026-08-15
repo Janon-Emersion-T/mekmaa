@@ -14,11 +14,14 @@
     </div>
 
     <div class="flex items-center justify-between gap-3 sm:justify-end">
-      {{if .DivisionScopeOptions}}
-      <form method="get" action="{{.CurrentPath}}" class="hidden sm:block">
-        <label class="block rounded-2xl border border-slate/10 bg-white px-3 py-2.5 text-left">
-          <span class="block text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-slate/45">Division</span>
-          <select name="division" onchange="this.form.submit()" class="mt-1 w-full border-0 bg-transparent p-0 text-sm font-medium text-obsidian outline-none">
+	      {{if .DivisionScopeOptions}}
+	      <form method="get" action="{{.CurrentPath}}" class="hidden sm:block">
+	        {{range .CurrentQueryFields}}
+	        <input type="hidden" name="{{.Key}}" value="{{.Value}}">
+	        {{end}}
+	        <label class="block rounded-2xl border border-slate/10 bg-white px-3 py-2.5 text-left">
+	          <span class="block text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-slate/45">Division</span>
+	          <select name="division" onchange="this.form.submit()" class="mt-1 w-full border-0 bg-transparent p-0 text-sm font-medium text-obsidian outline-none">
             {{range .DivisionScopeOptions}}
             <option value="{{.Key}}" {{if eq $.SelectedDivisionScope .Key}}selected{{end}}>{{.Label}}</option>
             {{end}}

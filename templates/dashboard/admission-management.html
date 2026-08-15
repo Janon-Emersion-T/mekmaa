@@ -538,7 +538,7 @@
     </div>
 
     <div class="border-b border-slate/10 px-5 py-5 sm:px-8">
-      <form method="get" action="/admin/admissions" class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,0.5fr))]">
+      <form method="get" action="/admin/admissions" class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,0.5fr))]">
         {{if .AdmissionMode}}
         <input type="hidden" name="action" value="{{.AdmissionMode}}" />
         {{end}}
@@ -576,6 +576,18 @@
         </label>
 
         <label class="block">
+          <span class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">Division</span>
+          <select
+            name="division"
+            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+          >
+            {{range .DivisionScopeOptions}}
+            <option value="{{.Key}}" {{if eq $.SelectedDivisionScope .Key}}selected{{end}}>{{.Label}}</option>
+            {{end}}
+          </select>
+        </label>
+
+        <label class="block">
           <span class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">Per page</span>
           <select
             name="limit"
@@ -588,7 +600,7 @@
           </select>
         </label>
 
-        <div class="flex flex-wrap items-end gap-3 xl:col-span-4 xl:justify-between">
+        <div class="flex flex-wrap items-end gap-3 xl:col-span-5 xl:justify-between">
           <div class="rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-3 text-sm text-slate/65">
             {{if gt .AdmissionsTotal 0}}
             Showing <span class="font-semibold text-obsidian">{{.AdmissionsStart}}-{{.AdmissionsEnd}}</span> of <span class="font-semibold text-obsidian">{{.AdmissionsTotal}}</span> students

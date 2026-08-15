@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -183,6 +184,23 @@ func (a *App) newTemplateData(w http.ResponseWriter, r *http.Request, user *User
 		CSRFToken:     csrfToken,
 		Flash:         a.consumeFlash(r),
 		OTPCodeLength: 6,
+	}
+	query := r.URL.Query()
+	queryKeys := make([]string, 0, len(query))
+	for key := range query {
+		if key == "division" {
+			continue
+		}
+		queryKeys = append(queryKeys, key)
+	}
+	sort.Strings(queryKeys)
+	for _, key := range queryKeys {
+		for _, value := range query[key] {
+			data.CurrentQueryFields = append(data.CurrentQueryFields, QueryField{
+				Key:   key,
+				Value: value,
+			})
+		}
 	}
 	if a != nil && a.db != nil {
 		if divisions, err := a.listDivisions(false); err == nil {

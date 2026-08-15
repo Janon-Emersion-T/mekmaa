@@ -1501,10 +1501,16 @@ type FAQItem struct {
 	Answer   string
 }
 
+type QueryField struct {
+	Key   string
+	Value string
+}
+
 type TemplateData struct {
 	Title                           string
 	Description                     string
 	CurrentPath                     string
+	CurrentQueryFields              []QueryField
 	User                            *User
 	Viewer                          *User
 	HideChrome                      bool
