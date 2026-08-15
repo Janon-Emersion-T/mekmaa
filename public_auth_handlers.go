@@ -976,10 +976,7 @@ func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) buildDashboardStats(user *User, selectedDivision *Division, divisionIDs []int64, now time.Time) []Stat {
-	stats := []Stat{
-		{Value: verifiedLabel(user.Verified), Label: "Session"},
-		{Value: strconv.Itoa(len(user.Roles)), Label: "Assigned roles"},
-	}
+	stats := make([]Stat, 0, 8)
 
 	admissions, totalStudents, err := a.listAdmissionsFiltered(AdmissionsFilter{
 		Page:        1,
@@ -1062,8 +1059,11 @@ func (a *App) buildDashboardStats(user *User, selectedDivision *Division, divisi
 		)
 	}
 
-	if len(stats) > 6 {
-		return stats[:6]
+	if len(stats) == 0 {
+		stats = append(stats,
+			Stat{Value: verifiedLabel(user.Verified), Label: "Session"},
+			Stat{Value: strconv.Itoa(len(user.Roles)), Label: "Assigned roles"},
+		)
 	}
 	return stats
 }

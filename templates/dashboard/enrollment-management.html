@@ -10,7 +10,7 @@
         <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Enrollment Manager</h1>
         <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/68">Start by selecting a student. From that student workspace you can review every enrollment, add a new programme, and manage finance-sensitive changes safely.</p>
       </div>
-      <a href="/admin/enrollments" class="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-obsidian transition hover:bg-cloud">Refresh student list</a>
+      <a href="{{scopedURL "/admin/enrollments" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-obsidian transition hover:bg-cloud">Refresh student list</a>
     </div>
   </div>
 
@@ -35,7 +35,7 @@
       <div class="mt-4 grid max-h-[42rem] gap-3 overflow-y-auto pr-1">
         {{range .Admissions}}
         <a
-          href="/admin/enrollments?admission_id={{.ID}}"
+          href="{{scopedURL (printf "/admin/enrollments?admission_id=%d" .ID) $.SelectedDivision $.SelectedDivisionScope}}"
           class="block rounded-[1.5rem] border {{if and $.SelectedAdmission (eq $.SelectedAdmission.ID .ID)}}border-aqua/50 bg-mint/40{{else}}border-slate/10 bg-cloud/45 hover:bg-white{{end}} px-4 py-4 transition"
           data-student-search-item
           data-student-search-text="{{.StudentID}} {{.FullName}} {{.School}}"
@@ -72,8 +72,8 @@
             </div>
           </div>
           <div class="flex flex-wrap gap-2">
-            <a href="/admin/enrollments?admission_id={{.SelectedAdmission.ID}}&action=student#student-enrollment-view" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Open enrollment view</a>
-            <a href="/admin/student-leaves?admission_id={{.SelectedAdmission.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800 transition hover:bg-sky-50">Manage leave</a>
+            <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d&action=student#student-enrollment-view" .SelectedAdmission.ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Open enrollment view</a>
+            <a href="{{scopedURL (printf "/admin/student-leaves?admission_id=%d" .SelectedAdmission.ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800 transition hover:bg-sky-50">Manage leave</a>
           </div>
         </div>
 
@@ -105,13 +105,18 @@
             <h3 class="mt-2 text-xl font-semibold text-obsidian">{{.SelectedEnrollment.TrainingProgramName}}</h3>
             <p class="mt-2 text-sm text-slate/60">Finance-sensitive fields are locked once admission payment has been collected.</p>
           </div>
-          <a href="/admin/enrollments?admission_id={{.SelectedAdmission.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Close</a>
+          <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d" .SelectedAdmission.ID) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Close</a>
         </div>
 
         {{if eq .EnrollmentMode "edit"}}
         <form action="/admin/enrollments/update" method="post" class="mt-6 space-y-4">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
           <input type="hidden" name="enrollment_id" value="{{.SelectedEnrollment.ID}}" />
+          {{if .SelectedDivision}}
+          <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />
+          {{else if eq .SelectedDivisionScope "all"}}
+          <input type="hidden" name="division" value="all" />
+          {{end}}
           <div class="grid gap-4 lg:grid-cols-2">
             <div class="space-y-2">
               <label class="block text-sm font-semibold text-obsidian">Student</label>
@@ -148,7 +153,7 @@
             </span>
           </label>
           <div class="flex flex-wrap justify-end gap-2">
-            <a href="/admin/enrollments?admission_id={{.SelectedAdmission.ID}}&action=view&id={{.SelectedEnrollment.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+            <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d&action=view&id=%d" .SelectedAdmission.ID .SelectedEnrollment.ID) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
             <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Save changes</button>
           </div>
         </form>
@@ -156,6 +161,11 @@
           <form action="/admin/enrollments/delete" method="post" onsubmit="return confirm('Delete this enrollment for {{.SelectedAdmission.FullName}} - {{.SelectedEnrollment.TrainingProgramName}}? This only works when no payment history exists.')">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
             <input type="hidden" name="enrollment_id" value="{{.SelectedEnrollment.ID}}" />
+            {{if .SelectedDivision}}
+            <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />
+            {{else if eq .SelectedDivisionScope "all"}}
+            <input type="hidden" name="division" value="all" />
+            {{end}}
             <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50">Delete enrollment</button>
           </form>
         </div>
@@ -179,9 +189,9 @@
           </div>
         </div>
         <div class="mt-5 flex flex-wrap gap-2">
-          <a href="/admin/enrollments?admission_id={{.SelectedAdmission.ID}}&action=edit&id={{.SelectedEnrollment.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+          <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d&action=edit&id=%d" .SelectedAdmission.ID .SelectedEnrollment.ID) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
           {{if .SelectedEnrollment.AdmissionPaymentPaid}}
-          <a href="/admin/finance/receipt?transaction_id={{.SelectedEnrollment.FinanceTransactionID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">View receipt</a>
+          <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .SelectedEnrollment.FinanceTransactionID) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">View receipt</a>
           {{end}}
         </div>
         {{end}}
@@ -197,6 +207,11 @@
         <form action="/admin/enrollments/create" method="post" class="mt-6 space-y-4">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
           <input type="hidden" name="admission_id" value="{{.SelectedAdmission.ID}}" />
+          {{if .SelectedDivision}}
+          <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />
+          {{else if eq .SelectedDivisionScope "all"}}
+          <input type="hidden" name="division" value="all" />
+          {{end}}
           <div class="space-y-2">
             <label class="block text-sm font-semibold text-obsidian">Student</label>
             <div class="flex h-12 items-center rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm text-slate/75">{{.SelectedAdmission.StudentID}} · {{.SelectedAdmission.FullName}}</div>
@@ -282,18 +297,23 @@
               </div>
 
               <div class="flex flex-wrap justify-end gap-2">
-                <a href="/admin/enrollments?admission_id={{$.SelectedAdmission.ID}}&action=view&id={{.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d&action=view&id=%d" $.SelectedAdmission.ID .ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
                 {{if .Active}}
-                <a href="/admin/enrollments?admission_id={{$.SelectedAdmission.ID}}&action=edit&id={{.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+                <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d&action=edit&id=%d" $.SelectedAdmission.ID .ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
                 {{end}}
                 {{if .AdmissionPaymentPaid}}
-                <a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">View receipt</a>
+                <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .FinanceTransactionID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">View receipt</a>
                 {{else if .FreeAdmission}}
                 <div class="inline-flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800">No fee required</div>
                 {{else if .Active}}
                 <form action="/admin/enrollments/collect-admission" method="post" onsubmit="return confirm('Collect the admission fee for {{$.SelectedAdmission.FullName}} - {{.TrainingProgramName}}?')">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="enrollment_id" value="{{.ID}}" />
+                  {{if $.SelectedDivision}}
+                  <input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}" />
+                  {{else if eq $.SelectedDivisionScope "all"}}
+                  <input type="hidden" name="division" value="all" />
+                  {{end}}
                   <select name="payment_method" class="h-11 rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua">
                     <option value="cash">Cash</option>
                     <option value="bank_transfer">Bank transfer</option>
@@ -306,6 +326,11 @@
                 <form action="/admin/enrollments/delete" method="post" onsubmit="return confirm('Delete this enrollment for {{$.SelectedAdmission.FullName}} - {{.TrainingProgramName}}? This only works when no payment history exists.')">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="enrollment_id" value="{{.ID}}" />
+                  {{if $.SelectedDivision}}
+                  <input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}" />
+                  {{else if eq $.SelectedDivisionScope "all"}}
+                  <input type="hidden" name="division" value="all" />
+                  {{end}}
                   <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50">{{if or .AdmissionPaymentPaid .FinanceTransactionID}}Archive{{else}}Delete{{end}}</button>
                 </form>
                 {{end}}

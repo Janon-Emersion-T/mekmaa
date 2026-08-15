@@ -543,6 +543,19 @@ func renderTemplateToString(t *testing.T, templates map[string]*template.Templat
 	return buf.String()
 }
 
+func statValue(stats []Stat, label string) string {
+	for _, stat := range stats {
+		if stat.Label == label {
+			return stat.Value
+		}
+	}
+	return ""
+}
+
+func hasStatLabel(stats []Stat, label string) bool {
+	return statValue(stats, label) != ""
+}
+
 func TestNewTemplateDataPreservesNonDivisionQueryFields(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	req := httptest.NewRequest(http.MethodGet, "/admin/student-payments?month=2026-07&division=chess&action=view&id=7", nil)
@@ -1930,7 +1943,7 @@ func TestPublicBookingRequestRedirectsToStatusWhenCommunicationUnavailable(t *te
 	form := url.Values{
 		"csrf_token":      {"token"},
 		"entry_type":      {"booking"},
-		"slot_date":       {"2026-08-15"},
+		"slot_date":       {"2026-08-16"},
 		"slot_hour":       {"18:00"},
 		"booking_option":  {"badminton:1"},
 		"title":           {"Status Link Fallback"},
@@ -4472,7 +4485,7 @@ func TestSaveAttendanceHandlerRejectsMismatchedSessionDate(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected redirect for mismatched session date, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("Location"); got != "/admin/attendance?group_id="+strconv.FormatInt(group.ID, 10)+"&session_id="+strconv.FormatInt(group.Sessions[0].ID, 10)+"&date=2026-08-11" {
+	if got := rec.Header().Get("Location"); got != "/admin/attendance?date=2026-08-11&group_id="+strconv.FormatInt(group.ID, 10)+"&session_id="+strconv.FormatInt(group.Sessions[0].ID, 10) {
 		t.Fatalf("attendance redirect = %q", got)
 	}
 	flashFound := false
@@ -4493,6 +4506,7 @@ func TestCollectEnrollmentAdmissionPaymentHandlerRedirectsOnMissingEnrollment(t 
 	form := url.Values{
 		"csrf_token":    {"token"},
 		"enrollment_id": {"999999"},
+		"division":      {"kec"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/admin/enrollments/collect-admission", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -4505,7 +4519,7 @@ func TestCollectEnrollmentAdmissionPaymentHandlerRedirectsOnMissingEnrollment(t 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("collect enrollment admission status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
-	if got := rec.Header().Get("Location"); got != "/admin/enrollments" {
+	if got := rec.Header().Get("Location"); got != "/admin/enrollments?division=kec" {
 		t.Fatalf("collect enrollment admission redirect = %q", got)
 	}
 	flashFound := false
@@ -4517,6 +4531,247 @@ func TestCollectEnrollmentAdmissionPaymentHandlerRedirectsOnMissingEnrollment(t 
 	}
 	if !flashFound {
 		t.Fatal("expected flash cookie for missing enrollment")
+	}
+}
+
+func TestWithQueryHelpersPreserveExistingParameters(t *testing.T) {
+	if got := withDivisionQuery("/admin/student-payments", "kec"); got != "/admin/student-payments?division=kec" {
+		t.Fatalf("withDivisionQuery simple = %q", got)
+	}
+	if got := withMonthQuery("/admin/student-payments", "2026-08"); got != "/admin/student-payments?month=2026-08" {
+		t.Fatalf("withMonthQuery simple = %q", got)
+	}
+	if got := withMonthQuery(withDivisionQuery("/admin/student-payments", "kec-north"), "2026-08"); got != "/admin/student-payments?division=kec-north&month=2026-08" {
+		t.Fatalf("combined division/month = %q", got)
+	}
+	if got := withDivisionQuery("/admin/student-payments?month=2026-08&action=view", "chess"); got != "/admin/student-payments?action=view&division=chess&month=2026-08" {
+		t.Fatalf("withDivisionQuery existing params = %q", got)
+	}
+	if got := withMonthQuery("/admin/student-payments?division=sports&action=view", "2026-07"); got != "/admin/student-payments?action=view&division=sports&month=2026-07" {
+		t.Fatalf("withMonthQuery existing params = %q", got)
+	}
+}
+
+func TestCollectStudentPaymentHandlerPreservesDivisionAndMonthOnRedirect(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	form := url.Values{
+		"csrf_token":     {"token"},
+		"enrollment_id":  {"123"},
+		"payment_month":  {"2026-12"},
+		"payment_method": {"cash"},
+		"amount":         {"2500"},
+		"division":       {"kec"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/student-payments/collect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	rec := httptest.NewRecorder()
+
+	app.collectStudentPaymentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("student payment redirect status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	if got := rec.Header().Get("Location"); got != "/admin/student-payments?division=kec&month=2026-12" {
+		t.Fatalf("student payment redirect = %q", got)
+	}
+}
+
+func TestSaveAttendanceHandlerPreservesDivisionOnValidationRedirect(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		GameID:         1,
+		DivisionID:     sportsID,
+		Name:           "Sports Attendance Redirect",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create programme: %v", err)
+	}
+	if err := app.createStudentGroup(
+		StudentGroup{Name: "Sports Group", Code: "SG-RED", TrainingProgramID: programID},
+		nil,
+		nil,
+		[]StudentGroupSession{{Title: "Monday Session", DayOfWeek: "monday", StartTime: "09:00", EndTime: "10:00", Active: true}},
+	); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	groups, err := app.listStudentGroups()
+	if err != nil {
+		t.Fatalf("list groups: %v", err)
+	}
+	var group StudentGroup
+	for _, item := range groups {
+		if item.Code == "SG-RED" {
+			group = item
+			break
+		}
+	}
+	if len(group.Sessions) == 0 {
+		t.Fatal("expected seeded group session")
+	}
+
+	form := url.Values{
+		"csrf_token":      {"token"},
+		"group_id":        {strconv.FormatInt(group.ID, 10)},
+		"session_id":      {strconv.FormatInt(group.Sessions[0].ID, 10)},
+		"attendance_date": {"2026-08-11"},
+		"division":        {"sports"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/attendance/save", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+
+	app.saveAttendanceHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("attendance redirect status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	expected := "/admin/attendance?date=2026-08-11&division=sports&group_id=" + strconv.FormatInt(group.ID, 10) + "&session_id=" + strconv.FormatInt(group.Sessions[0].ID, 10)
+	if got := rec.Header().Get("Location"); got != expected {
+		t.Fatalf("attendance redirect = %q, want %q", got, expected)
+	}
+}
+
+func TestBuildDashboardStatsRespectsDivisionScopeForSharedStudent(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+	sportsDivision, err := app.findDivisionByID(sportsID)
+	if err != nil {
+		t.Fatalf("load sports division: %v", err)
+	}
+	kecDivision, err := app.findDivisionByID(kecID)
+	if err != nil {
+		t.Fatalf("load kec division: %v", err)
+	}
+	sportsProgramID, err := app.createTrainingProgram(TrainingProgram{
+		GameID:         1,
+		DivisionID:     sportsID,
+		Name:           "Sports KPI Programme",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2200,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create sports programme: %v", err)
+	}
+	kecProgramID, err := app.createTrainingProgram(TrainingProgram{
+		GameID:         1,
+		DivisionID:     kecID,
+		Name:           "KEC KPI Class",
+		Activity:       "badminton",
+		TrainingFormat: "group",
+		AdmissionFee:   1200,
+		MonthlyFee:     1800,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create kec programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-KPI-001",
+		FullName:              "Shared KPI Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2012-02-01",
+		Gender:                "female",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Parent",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771234567",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{AdmissionID: admissionID, TrainingProgramID: sportsProgramID}, false, "cash", 0); err != nil {
+		t.Fatalf("create sports enrollment: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{AdmissionID: admissionID, TrainingProgramID: kecProgramID}, false, "cash", 0); err != nil {
+		t.Fatalf("create kec enrollment: %v", err)
+	}
+
+	user := &User{ID: 500, Name: "Superadmin", Roles: []string{"superadmin"}, Permissions: []string{"dashboard.view"}, Verified: true}
+	allStats := app.buildDashboardStats(user, nil, nil, time.Date(2026, 8, 15, 10, 0, 0, 0, time.Local))
+	if got := statValue(allStats, "Active students"); got != "1" {
+		t.Fatalf("global active students = %q, want %q", got, "1")
+	}
+	if got := statValue(allStats, "Active enrollments"); got != "2" {
+		t.Fatalf("global active enrollments = %q, want %q", got, "2")
+	}
+
+	sportsStats := app.buildDashboardStats(user, sportsDivision, []int64{sportsID}, time.Date(2026, 8, 15, 10, 0, 0, 0, time.Local))
+	if got := statValue(sportsStats, "Active students"); got != "1" {
+		t.Fatalf("sports active students = %q, want %q", got, "1")
+	}
+	if got := statValue(sportsStats, "Active enrollments"); got != "1" {
+		t.Fatalf("sports active enrollments = %q, want %q", got, "1")
+	}
+	if !hasStatLabel(sportsStats, "Pending bookings") {
+		t.Fatalf("expected sports booking metric in %#v", sportsStats)
+	}
+
+	kecStats := app.buildDashboardStats(user, kecDivision, []int64{kecID}, time.Date(2026, 8, 15, 10, 0, 0, 0, time.Local))
+	if got := statValue(kecStats, "Active students"); got != "1" {
+		t.Fatalf("kec active students = %q, want %q", got, "1")
+	}
+	if got := statValue(kecStats, "Active enrollments"); got != "1" {
+		t.Fatalf("kec active enrollments = %q, want %q", got, "1")
+	}
+	if hasStatLabel(kecStats, "Pending bookings") {
+		t.Fatalf("did not expect booking metric in KEC stats: %#v", kecStats)
+	}
+	if got := statValue(kecStats, "Classes"); got != "1" {
+		t.Fatalf("kec classes stat = %q, want %q", got, "1")
+	}
+}
+
+func TestReportsTemplatePreservesDivisionScopeLinks(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	body := renderTemplateToString(t, templates, "reports", TemplateData{
+		User:                  &User{Name: "Admin", Email: "admin@example.com", Roles: []string{"superadmin"}, Permissions: []string{"reports.view"}},
+		Title:                 "Reports",
+		SelectedDivision:      &Division{ID: 2, Code: divisionCodeKEC, Slug: "kec", Name: "Kids Education Center"},
+		SelectedDivisionScope: "kec",
+		Report: &OperationalReport{
+			Period: ReportPeriod{
+				Kind:         "day",
+				Anchor:       "2026-08-15",
+				Label:        "Saturday, August 15, 2026",
+				PreviousDate: "2026-08-14",
+				NextDate:     "2026-08-16",
+			},
+		},
+	})
+	if !strings.Contains(body, "/admin/reports/export?date=2026-08-15&amp;division=kec&amp;period=day") {
+		t.Fatalf("expected scoped export link in %s", body)
+	}
+	if !strings.Contains(body, "/admin/reports?date=2026-08-14&amp;division=kec&amp;period=day") {
+		t.Fatalf("expected scoped previous-period link in %s", body)
 	}
 }
 

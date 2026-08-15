@@ -149,7 +149,7 @@
               <p class="mt-1 text-xs uppercase tracking-[0.14em] text-emerald-800/60">{{if .Payment}}{{paymentMethodLabel .Payment.PaymentMethod}}{{end}} · {{len .Payments}} collection{{if ne (len .Payments) 1}}s{{end}}</p>
             </div>
             <div class="flex gap-2">
-              {{if .Payment}}<a href="/admin/finance/receipt?transaction_id={{.Payment.FinanceTransactionID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">Latest receipt</a>{{end}}
+              {{if .Payment}}<a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .Payment.FinanceTransactionID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">Latest receipt</a>{{end}}
               {{if gt .OutstandingAmount 0.0}}<div class="inline-flex h-11 items-center justify-center rounded-2xl border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-900">Due {{money .OutstandingAmount}}</div>{{end}}
             </div>
           </div>

@@ -348,6 +348,9 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	if !a.requireDivisionAccessForDivision(w, r, currentUser, trainingProgram.DivisionID) {
 		return
 	}
+	if division := strings.TrimSpace(r.FormValue("division")); division != "" {
+		target = withDivisionQuery(target, division)
+	}
 
 	enrollment := StudentEnrollment{
 		AdmissionID:         admissionID,
@@ -390,7 +393,7 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if collectPayment && financeTransactionID > 0 {
-		http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(financeTransactionID, 10), http.StatusSeeOther)
+		http.Redirect(w, r, withDivisionQuery("/admin/finance/receipt?transaction_id="+strconv.FormatInt(financeTransactionID, 10), strings.TrimSpace(r.FormValue("division"))), http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, "Enrollment created.")
@@ -410,6 +413,9 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
+	}
+	if division := strings.TrimSpace(r.FormValue("division")); division != "" {
+		target = withDivisionQuery(target, division)
 	}
 	enrollmentID, err := parsePositiveInt64(r.FormValue("enrollment_id"))
 	if err != nil {
@@ -433,6 +439,9 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 		return
 	}
 	target = "/admin/enrollments?admission_id=" + strconv.FormatInt(enrollment.AdmissionID, 10)
+	if division := strings.TrimSpace(r.FormValue("division")); division != "" {
+		target = withDivisionQuery(target, division)
+	}
 	recordedByUserID := int64(0)
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
@@ -464,7 +473,7 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+	http.Redirect(w, r, withDivisionQuery("/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), strings.TrimSpace(r.FormValue("division"))), http.StatusSeeOther)
 }
 
 func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {

@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"html/template"
-	"net/url"
 	"os"
 	"strings"
 )
@@ -523,19 +522,11 @@ func scopedURL(raw string, selectedDivision *Division, selectedScope string) str
 	if selectedDivision == nil && !strings.EqualFold(strings.TrimSpace(selectedScope), divisionScopeAll) {
 		return target
 	}
-	parsed, err := url.Parse(target)
-	if err != nil {
-		return target
-	}
-	query := parsed.Query()
-	if query.Get("division") != "" {
-		return parsed.String()
-	}
 	if selectedDivision != nil {
-		query.Set("division", selectedDivision.Slug)
-	} else if strings.EqualFold(strings.TrimSpace(selectedScope), divisionScopeAll) {
-		query.Set("division", divisionScopeAll)
+		return withDivisionQuery(target, selectedDivision.Slug)
 	}
-	parsed.RawQuery = query.Encode()
-	return parsed.String()
+	if strings.EqualFold(strings.TrimSpace(selectedScope), divisionScopeAll) {
+		return withDivisionQuery(target, divisionScopeAll)
+	}
+	return target
 }

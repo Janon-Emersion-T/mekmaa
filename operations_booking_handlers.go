@@ -4434,7 +4434,7 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if redirectTarget := strings.TrimSpace(r.FormValue("division")); redirectTarget != "" {
-		target = scopedFinanceRedirect(target, redirectTarget)
+		target = withDivisionQuery(target, redirectTarget)
 	}
 
 	enrollmentID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("enrollment_id")), 10, 64)
@@ -4452,24 +4452,24 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 	if paymentMonth > time.Now().Format("2006-01") {
 		a.setFlash(w, "Payments cannot be collected for a future month.")
-		http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
+		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
 	if !paymentMonthCollectible(paymentMonth, time.Now()) {
 		a.setFlash(w, monthlyPaymentCollectionNotice(paymentMonth, time.Now()))
-		http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
+		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
 	amount, amountErr := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
 	if amountErr != nil {
 		a.setFlash(w, "Enter a valid payment amount.")
-		http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
+		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
 	if !validPaymentMethod(paymentMethod) {
 		a.setFlash(w, "Select a valid payment method.")
-		http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
+		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
 
@@ -4496,17 +4496,17 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		if errors.Is(err, ErrStudentPaymentAlreadyCollected) {
 			a.setFlash(w, "That enrollment payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")
-			http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
+			http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, ErrStudentNotAdmittedForMonth) {
 			a.setFlash(w, err.Error())
-			http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
+			http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, ErrMonthlyFeeNotConfigured) {
 			a.setFlash(w, err.Error())
-			http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
+			http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, ErrStudentLeaveCoversMonth) {
@@ -4524,27 +4524,6 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
-}
-
-func scopedFinanceRedirect(basePath string, values ...string) string {
-	parsed, err := url.Parse(basePath)
-	if err != nil {
-		return basePath
-	}
-	query := parsed.Query()
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if strings.Count(value, "-") == 1 && len(value) == len("2006-01") {
-			query.Set("month", value)
-			continue
-		}
-		query.Set("division", value)
-	}
-	parsed.RawQuery = query.Encode()
-	return parsed.String()
 }
 
 func (a *App) studentLeaveManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -5108,6 +5087,9 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
+	if division := strings.TrimSpace(r.FormValue("division")); division != "" {
+		target = withDivisionQuery(target, division)
+	}
 
 	groupID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("group_id")), 10, 64)
 	if err != nil || groupID <= 0 {
@@ -5150,19 +5132,19 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("session_id")), 10, 64)
 	if err != nil || sessionID <= 0 {
 		a.setFlash(w, "Select a valid session.")
-		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10), http.StatusSeeOther)
+		http.Redirect(w, r, withQueryValue(target, "group_id", strconv.FormatInt(groupID, 10)), http.StatusSeeOther)
 		return
 	}
 	parsedAttendanceDate, err := time.Parse("2006-01-02", attendanceDate)
 	if err != nil {
 		a.setFlash(w, "Select a valid attendance date.")
-		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10), http.StatusSeeOther)
+		http.Redirect(w, r, withQueryValue(withQueryValue(target, "group_id", strconv.FormatInt(groupID, 10)), "session_id", strconv.FormatInt(sessionID, 10)), http.StatusSeeOther)
 		return
 	}
 	today := time.Now().Format("2006-01-02")
 	if parsedAttendanceDate.Format("2006-01-02") > today {
 		a.setFlash(w, "Attendance date cannot be in the future.")
-		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10), http.StatusSeeOther)
+		http.Redirect(w, r, withQueryValue(withQueryValue(target, "group_id", strconv.FormatInt(groupID, 10)), "session_id", strconv.FormatInt(sessionID, 10)), http.StatusSeeOther)
 		return
 	}
 
@@ -5175,12 +5157,13 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := a.findStudentGroupSessionByID(sessionID)
 	if err != nil || session.GroupID != groupID {
 		a.setFlash(w, "Session not found.")
-		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10), http.StatusSeeOther)
+		http.Redirect(w, r, withQueryValue(target, "group_id", strconv.FormatInt(groupID, 10)), http.StatusSeeOther)
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(session.DayOfWeek)) != weekdayNameForDate(parsedAttendanceDate) {
 		a.setFlash(w, "Attendance date does not match the selected session day.")
-		http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
+		redirectTo := withQueryValue(withQueryValue(withQueryValue(target, "group_id", strconv.FormatInt(groupID, 10)), "session_id", strconv.FormatInt(sessionID, 10)), "date", attendanceDate)
+		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
 
@@ -5217,7 +5200,8 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		message = fmt.Sprintf("Attendance saved. %d student(s) exceeded the 8-session monthly limit.", len(warnings))
 	}
 	a.setFlash(w, message)
-	http.Redirect(w, r, target+"?group_id="+strconv.FormatInt(groupID, 10)+"&session_id="+strconv.FormatInt(sessionID, 10)+"&date="+url.QueryEscape(attendanceDate), http.StatusSeeOther)
+	redirectTo := withQueryValue(withQueryValue(withQueryValue(target, "group_id", strconv.FormatInt(groupID, 10)), "session_id", strconv.FormatInt(sessionID, 10)), "date", attendanceDate)
+	http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 }
 
 func (a *App) saveCoachAttendanceHandler(w http.ResponseWriter, r *http.Request) {
