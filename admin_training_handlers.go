@@ -116,7 +116,7 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	trainingPrograms, err := a.listTrainingPrograms(true)
+	trainingPrograms, err := a.listTrainingProgramsByDivisionIDs(filter.DivisionIDs, true, false)
 	if err != nil {
 		log.Printf("list training programmes for admissions: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -155,9 +155,12 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 	if data.AdmissionMode == "view" || data.AdmissionMode == "edit" {
 		admissionID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
 		if err == nil && admissionID > 0 {
-			selectedAdmission, err := a.findAdmissionByID(admissionID)
+			selectedAdmission, err := a.findAdmissionIdentityByIDForDivisionIDs(admissionID, filter.DivisionIDs)
 			if err == nil {
 				data.SelectedAdmission = selectedAdmission
+			} else if errors.Is(err, sql.ErrNoRows) && !canViewAllDivisions(user) {
+				a.writeDivisionForbidden(w, r, user)
+				return
 			}
 		}
 	}
@@ -170,14 +173,27 @@ func (a *App) studentIDCardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user, _ := a.currentUser(r.Context())
 	admissionID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
 	if err != nil || admissionID <= 0 {
 		http.Error(w, "invalid admission id", http.StatusBadRequest)
 		return
 	}
 
-	admission, err := a.findAdmissionByID(admissionID)
+	divisionIDs := []int64(nil)
+	if !canViewAllDivisions(user) {
+		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	admission, err := a.findAdmissionIdentityByIDForDivisionIDs(admissionID, divisionIDs)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) && !canViewAllDivisions(user) {
+			a.writeDivisionForbidden(w, r, user)
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "student not found", http.StatusNotFound)
 			return
@@ -187,7 +203,7 @@ func (a *App) studentIDCardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := a.newTemplateData(w, r, nil)
+	data := a.newTemplateData(w, r, user)
 	data.Title = "Student ID"
 	data.Description = "Printable student identity card."
 	data.HideChrome = true

@@ -86,6 +86,22 @@ func hydrateAdmissionIdentityBooleans(admission *Admission, freeAdmission, freeM
 	}
 }
 
+func sanitizeAdmissionIdentity(admission *Admission) {
+	if admission == nil {
+		return
+	}
+	admission.FreeAdmission = false
+	admission.FreeMonthlyFee = false
+	admission.PaymentCollected = false
+	admission.PaymentCollectedAt = time.Time{}
+	admission.AdmissionPaymentAmount = 0
+	admission.FinanceTransactionID = 0
+	admission.PaymentVoidReason = ""
+	admission.PaymentVoidedByUserID = 0
+	admission.PaymentVoidedByUserName = ""
+	admission.PaymentVoidedAt = time.Time{}
+}
+
 func (a *App) listAdmissionIdentities() ([]Admission, error) {
 	rows, err := a.db.Query(`
 		SELECT
@@ -162,6 +178,7 @@ func (a *App) listAdmissionIdentities() ([]Admission, error) {
 			return nil, err
 		}
 		hydrateAdmissionIdentityBooleans(&admission, freeAdmission, freeMonthlyFee, paymentCollected, paymentCollectedAt)
+		sanitizeAdmissionIdentity(&admission)
 		admissions = append(admissions, admission)
 	}
 	return admissions, rows.Err()
@@ -234,7 +251,103 @@ func (a *App) findAdmissionIdentityByID(admissionID int64) (*Admission, error) {
 		return nil, err
 	}
 	hydrateAdmissionIdentityBooleans(&admission, freeAdmission, freeMonthlyFee, paymentCollected, paymentCollectedAt)
+	sanitizeAdmissionIdentity(&admission)
 	return &admission, nil
+}
+
+func (a *App) listAdmissionIdentitiesByIDs(admissionIDs []int64) ([]Admission, error) {
+	if len(admissionIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, 0, len(admissionIDs))
+	args := make([]any, 0, len(admissionIDs))
+	for _, admissionID := range admissionIDs {
+		if admissionID <= 0 {
+			continue
+		}
+		placeholders = append(placeholders, "?")
+		args = append(args, admissionID)
+	}
+	if len(placeholders) == 0 {
+		return nil, nil
+	}
+	rows, err := a.db.Query(`
+		SELECT
+			a.id,
+			a.student_id,
+			a.full_name,
+			COALESCE(a.admission_date, ''),
+			a.date_of_birth,
+			a.gender,
+			a.practice_type,
+			COALESCE(a.address, ''),
+			COALESCE(a.passport_number, ''),
+			COALESCE(a.school, ''),
+			COALESCE(a.guardian_name, ''),
+			COALESCE(a.guardian_relationship, ''),
+			COALESCE(a.guardian_contact_number, ''),
+			COALESCE(a.guardian_alternative_contact_number, ''),
+			COALESCE(a.medical_information, ''),
+			COALESCE(a.photo_path, ''),
+			COALESCE(a.qr_code_path, ''),
+			COALESCE(a.qr_code_value, ''),
+			COALESCE(a.free_admission, 0),
+			COALESCE(a.free_monthly_fee, 0),
+			COALESCE(a.payment_collected, 0),
+			a.payment_collected_at,
+			COALESCE(a.admission_payment_amount, 0),
+			COALESCE(a.finance_transaction_id, 0),
+			a.created_at
+		FROM admissions a
+		WHERE a.id IN (`+strings.Join(placeholders, ", ")+`)
+		ORDER BY LOWER(COALESCE(a.student_id, '')) ASC, a.created_at ASC, a.id ASC
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	admissions := make([]Admission, 0, len(admissionIDs))
+	for rows.Next() {
+		var admission Admission
+		var freeAdmission int
+		var freeMonthlyFee int
+		var paymentCollected int
+		var paymentCollectedAt sql.NullTime
+		if err := rows.Scan(
+			&admission.ID,
+			&admission.StudentID,
+			&admission.FullName,
+			&admission.AdmissionDate,
+			&admission.DateOfBirth,
+			&admission.Gender,
+			&admission.PracticeType,
+			&admission.Address,
+			&admission.PassportNumber,
+			&admission.School,
+			&admission.GuardianName,
+			&admission.GuardianRelationship,
+			&admission.GuardianContactNumber,
+			&admission.GuardianAlternativePhone,
+			&admission.MedicalInformation,
+			&admission.PhotoPath,
+			&admission.QRCodePath,
+			&admission.QRCodeValue,
+			&freeAdmission,
+			&freeMonthlyFee,
+			&paymentCollected,
+			&paymentCollectedAt,
+			&admission.AdmissionPaymentAmount,
+			&admission.FinanceTransactionID,
+			&admission.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		hydrateAdmissionIdentityBooleans(&admission, freeAdmission, freeMonthlyFee, paymentCollected, paymentCollectedAt)
+		sanitizeAdmissionIdentity(&admission)
+		admissions = append(admissions, admission)
+	}
+	return admissions, rows.Err()
 }
 
 func (a *App) listAdmissions() ([]Admission, error) {
@@ -513,7 +626,7 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
-	if err := a.populateAdmissionsTrainingPrograms(admissions); err != nil {
+	if err := a.populateAdmissionsTrainingProgramsByDivisionIDs(admissions, filter.DivisionIDs); err != nil {
 		return nil, 0, err
 	}
 
@@ -521,6 +634,10 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 }
 
 func (a *App) populateAdmissionsTrainingPrograms(admissions []Admission) error {
+	return a.populateAdmissionsTrainingProgramsByDivisionIDs(admissions, nil)
+}
+
+func (a *App) populateAdmissionsTrainingProgramsByDivisionIDs(admissions []Admission, divisionIDs []int64) error {
 	if len(admissions) == 0 {
 		return nil
 	}
@@ -536,7 +653,7 @@ func (a *App) populateAdmissionsTrainingPrograms(admissions []Admission) error {
 		}
 	}
 
-	assignments, err := a.listTrainingProgramsForAdmissions(admissionIDs)
+	assignments, err := a.listTrainingProgramsForAdmissionsByDivisionIDs(admissionIDs, divisionIDs)
 	if err != nil {
 		return err
 	}
@@ -578,6 +695,10 @@ func (a *App) populateAdmissionsTrainingPrograms(admissions []Admission) error {
 }
 
 func (a *App) listTrainingProgramsForAdmissions(admissionIDs []int64) (map[int64][]TrainingProgram, error) {
+	return a.listTrainingProgramsForAdmissionsByDivisionIDs(admissionIDs, nil)
+}
+
+func (a *App) listTrainingProgramsForAdmissionsByDivisionIDs(admissionIDs []int64, divisionIDs []int64) (map[int64][]TrainingProgram, error) {
 	if len(admissionIDs) == 0 {
 		return map[int64][]TrainingProgram{}, nil
 	}
@@ -612,8 +733,12 @@ func (a *App) listTrainingProgramsForAdmissions(admissionIDs []int64) (map[int64
 		LEFT JOIN divisions d
 			ON d.id = tp.division_id
 		WHERE atp.admission_id IN (%s)
-		ORDER BY atp.admission_id, tp.sort_order ASC, tp.name ASC, tp.id ASC
 	`, strings.Join(placeholders, ", "))
+	if scopePlaceholders, scopeArgs := int64ScopePlaceholders(divisionIDs); scopePlaceholders != "" {
+		query += ` AND tp.division_id IN (` + scopePlaceholders + `)`
+		args = append(args, scopeArgs...)
+	}
+	query += ` ORDER BY atp.admission_id, tp.sort_order ASC, tp.name ASC, tp.id ASC`
 
 	rows, err := a.db.Query(query, args...)
 	if err != nil {
@@ -650,6 +775,22 @@ func (a *App) listTrainingProgramsForAdmissions(admissionIDs []int64) (map[int64
 	}
 
 	return assignments, rows.Err()
+}
+
+func (a *App) findAdmissionIdentityByIDForDivisionIDs(admissionID int64, divisionIDs []int64) (*Admission, error) {
+	admission, err := a.findAdmissionIdentityByID(admissionID)
+	if err != nil {
+		return nil, err
+	}
+	scopedAdmissions := []Admission{*admission}
+	if err := a.populateAdmissionsTrainingProgramsByDivisionIDs(scopedAdmissions, divisionIDs); err != nil {
+		return nil, err
+	}
+	admission = &scopedAdmissions[0]
+	if len(normalizeScopedDivisionIDs(divisionIDs)) > 0 && len(admission.DivisionIDs) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return admission, nil
 }
 
 func (a *App) listTrainingProgramsByIDs(programIDs []int64) ([]TrainingProgram, error) {

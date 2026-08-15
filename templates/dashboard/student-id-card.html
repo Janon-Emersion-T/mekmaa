@@ -9,7 +9,7 @@
       <p class="mt-2 text-sm text-slate/60">Portrait format with student identity, photo, QR, and both Mekmaa logos.</p>
     </div>
     <div class="flex gap-3">
-      <a href="/admin/admissions?action=view&id={{.SelectedAdmission.ID}}#admission-view" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/15 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">
+      <a href="/admin/students?action=view&id={{.SelectedAdmission.ID}}#admission-view" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/15 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">
         Back
       </a>
       <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">
@@ -64,7 +64,7 @@
             <p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.DateOfBirth}}</p>
           </div>
           <div>
-            <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">Admission</p>
+            <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">Student Since</p>
             <p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.AdmissionDate}}</p>
           </div>
         </div>

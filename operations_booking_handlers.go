@@ -4530,15 +4530,33 @@ func (a *App) studentLeaveManagementHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	user, _ := a.currentUser(r.Context())
-	admissions, err := a.listAdmissions()
+	divisionIDs := []int64(nil)
+	var err error
+	if !canViewAllDivisions(user) {
+		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	allEnrollments, err := a.listStudentEnrollmentsByDivisionIDs(divisionIDs)
 	if err != nil {
-		log.Printf("list admissions for student leaves: %v", err)
+		log.Printf("list student enrollments for student leaves: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	allEnrollments, err := a.listStudentEnrollments()
+	admissionIDs := make([]int64, 0, len(allEnrollments))
+	seenAdmissionIDs := map[int64]struct{}{}
+	for _, enrollment := range allEnrollments {
+		if _, ok := seenAdmissionIDs[enrollment.AdmissionID]; ok {
+			continue
+		}
+		seenAdmissionIDs[enrollment.AdmissionID] = struct{}{}
+		admissionIDs = append(admissionIDs, enrollment.AdmissionID)
+	}
+	admissions, err := a.listAdmissionIdentitiesByIDs(admissionIDs)
 	if err != nil {
-		log.Printf("list student enrollments for student leaves: %v", err)
+		log.Printf("list admissions for student leaves: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -4552,11 +4570,12 @@ func (a *App) studentLeaveManagementHandler(w http.ResponseWriter, r *http.Reque
 	selectedEnrollmentID := parseInt64Query(r.URL.Query().Get("enrollment_id"))
 
 	if admissionID > 0 {
-		for i := range admissions {
-			if admissions[i].ID == admissionID {
-				data.SelectedAdmission = &admissions[i]
-				break
-			}
+		selectedAdmission, err := a.findAdmissionIdentityByIDForDivisionIDs(admissionID, divisionIDs)
+		if err == nil {
+			data.SelectedAdmission = selectedAdmission
+		} else if errors.Is(err, sql.ErrNoRows) && !canViewAllDivisions(user) {
+			a.writeDivisionForbidden(w, r, user)
+			return
 		}
 	}
 
