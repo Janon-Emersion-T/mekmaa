@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"html/template"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -155,6 +156,15 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"userCanSwitchOperationalDivision": func(user *User) bool {
 			return userCanSwitchOperationalDivision(user)
 		},
+		"workspaceName":                          workspaceName,
+		"workspaceSummary":                       workspaceSummary,
+		"workspaceOperationsLabel":               workspaceOperationsLabel,
+		"workspaceProgramLabel":                  workspaceProgramLabel,
+		"workspaceStaffLabel":                    workspaceStaffLabel,
+		"workspaceGroupLabel":                    workspaceGroupLabel,
+		"workspaceRegistrationFeeLabel":          workspaceRegistrationFeeLabel,
+		"workspaceMonthlyFeeLabel":               workspaceMonthlyFeeLabel,
+		"scopedURL":                              scopedURL,
 		"admissionSelected":                         admissionSelected,
 		"userSelected":                              userSelected,
 		"admissionAge":                              admissionAge,
@@ -362,4 +372,170 @@ func buildTemplates() (map[string]*template.Template, error) {
 		templates[page] = tmpl
 	}
 	return templates, nil
+}
+
+func workspaceContextDivision(user *User, selectedDivision *Division, selectedScope string) *Division {
+	if selectedDivision != nil {
+		return selectedDivision
+	}
+	if strings.EqualFold(strings.TrimSpace(selectedScope), divisionScopeAll) {
+		return nil
+	}
+	return userPrimaryDivision(user)
+}
+
+func workspaceName(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		if canViewAllDivisions(user) {
+			return "All Mekmaa"
+		}
+		return "Mekmaa Workspace"
+	}
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeSports:
+		return "Indoor Sports"
+	case divisionCodeKEC:
+		return "Kids Education Center"
+	case divisionCodeChess:
+		return "Chess Academy"
+	case divisionCodeCorporate:
+		return "Mekmaa Corporate / Shared"
+	default:
+		if strings.TrimSpace(division.Name) != "" {
+			return division.Name
+		}
+		return "Mekmaa Workspace"
+	}
+}
+
+func workspaceSummary(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		if canViewAllDivisions(user) {
+			return "Consolidated operational view across every authorized division."
+		}
+		return "Operational workspace."
+	}
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeSports:
+		return "Court bookings, sports training, coaching, and sports finance."
+	case divisionCodeKEC:
+		return "Classes, student enrollments, teachers, fees, and education operations."
+	case divisionCodeChess:
+		return "Chess classes, student development, coaches, fees, and academy operations."
+	case divisionCodeCorporate:
+		return "Shared finance, oversight, and cross-division administration."
+	default:
+		return "Operational workspace."
+	}
+}
+
+func workspaceOperationsLabel(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		return "Student Operations"
+	}
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeKEC:
+		return "Education Operations"
+	case divisionCodeChess:
+		return "Chess Operations"
+	case divisionCodeSports:
+		return "Training Operations"
+	default:
+		return "Student Operations"
+	}
+}
+
+func workspaceProgramLabel(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		return "Programmes"
+	}
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeKEC, divisionCodeChess:
+		return "Classes"
+	default:
+		return "Programmes"
+	}
+}
+
+func workspaceStaffLabel(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		return "Staff"
+	}
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeKEC:
+		return "Teachers"
+	case divisionCodeSports, divisionCodeChess:
+		return "Coaches"
+	default:
+		return "Staff"
+	}
+}
+
+func workspaceGroupLabel(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		return "Student Groups"
+	}
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeKEC, divisionCodeChess:
+		return "Batches"
+	default:
+		return "Student Groups"
+	}
+}
+
+func workspaceRegistrationFeeLabel(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		return "Registration Fees"
+	}
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeKEC:
+		return "Registration Fees"
+	default:
+		return "Admission Fees"
+	}
+}
+
+func workspaceMonthlyFeeLabel(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		return "Monthly Fees"
+	}
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeKEC:
+		return "Monthly Fees"
+	default:
+		return "Monthly Fees"
+	}
+}
+
+func scopedURL(raw string, selectedDivision *Division, selectedScope string) string {
+	target := strings.TrimSpace(raw)
+	if target == "" {
+		return ""
+	}
+	if selectedDivision == nil && !strings.EqualFold(strings.TrimSpace(selectedScope), divisionScopeAll) {
+		return target
+	}
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return target
+	}
+	query := parsed.Query()
+	if query.Get("division") != "" {
+		return parsed.String()
+	}
+	if selectedDivision != nil {
+		query.Set("division", selectedDivision.Slug)
+	} else if strings.EqualFold(strings.TrimSpace(selectedScope), divisionScopeAll) {
+		query.Set("division", divisionScopeAll)
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }

@@ -27,16 +27,16 @@
           />
         </svg>
 
-        <span class="text-obsidian">Training Manager</span>
+        <span class="text-obsidian">{{workspaceProgramLabel .User .SelectedDivision .SelectedDivisionScope}}</span>
       </div>
 
       <h1 class="mt-2 text-3xl font-semibold tracking-tight text-obsidian sm:text-4xl">
-        Training Manager
+        {{workspaceProgramLabel .User .SelectedDivision .SelectedDivisionScope}}
       </h1>
 
       <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/65 sm:text-base">
-        Create and manage training programmes, admission fees, monthly fees,
-        display order, and availability for new student admissions.
+        Create and manage your active programme catalog, registration fees, monthly fees,
+        display order, and active availability for new enrollments.
       </p>
     </div>
 
@@ -54,9 +54,7 @@
 	        </select>
 	      </form>
 	      <div class="rounded-2xl border border-obsidian/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
-        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/50">
-          Programmes
-        </p>
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/50">{{workspaceProgramLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
 
         <p class="mt-1 text-2xl font-semibold text-obsidian">
           {{len .TrainingPrograms}}
@@ -83,7 +81,7 @@
           />
         </svg>
 
-        Add programme
+        Add {{if eq (workspaceProgramLabel .User .SelectedDivision .SelectedDivisionScope) "Classes"}}class{{else}}programme{{end}}
       </a>
       {{end}}
     </div>

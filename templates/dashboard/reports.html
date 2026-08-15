@@ -21,7 +21,7 @@
       </div>
       <div data-report-actions class="flex flex-col gap-2 sm:flex-row">
         <button type="button" onclick="window.print()" class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-5 text-sm font-bold text-cloud transition hover:bg-white/15">Print / PDF</button>
-        <a href="/admin/reports/export?period={{.Report.Period.Kind}}&date={{.Report.Period.Anchor}}" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-aqua px-5 text-sm font-bold text-obsidian transition hover:bg-white">
+        <a href="{{scopedURL (printf "/admin/reports/export?period=%s&date=%s" .Report.Period.Kind .Report.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-aqua px-5 text-sm font-bold text-obsidian transition hover:bg-white">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3v9m-4-4 4 4 4-4M4 16h12" stroke-linecap="round" stroke-linejoin="round"/></svg>
           Export full CSV
         </a>
@@ -32,20 +32,25 @@
   <section data-report-controls class="rounded-[1.5rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-5">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
       <div class="grid grid-cols-3 gap-1 rounded-2xl bg-cloud p-1">
-        <a href="/admin/reports?period=day&date={{.Report.Period.Anchor}}" class="{{if eq .Report.Period.Kind "day"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Daily</a>
-        <a href="/admin/reports?period=week&date={{.Report.Period.Anchor}}" class="{{if eq .Report.Period.Kind "week"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Weekly</a>
-        <a href="/admin/reports?period=month&date={{.Report.Period.Anchor}}" class="{{if eq .Report.Period.Kind "month"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Monthly</a>
+        <a href="{{scopedURL (printf "/admin/reports?period=day&date=%s" .Report.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="{{if eq .Report.Period.Kind "day"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Daily</a>
+        <a href="{{scopedURL (printf "/admin/reports?period=week&date=%s" .Report.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="{{if eq .Report.Period.Kind "week"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Weekly</a>
+        <a href="{{scopedURL (printf "/admin/reports?period=month&date=%s" .Report.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="{{if eq .Report.Period.Kind "month"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Monthly</a>
       </div>
       <div class="flex items-center gap-2">
-        <a href="/admin/reports?period={{.Report.Period.Kind}}&date={{.Report.Period.PreviousDate}}" aria-label="Previous period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
+        <a href="{{scopedURL (printf "/admin/reports?period=%s&date=%s" .Report.Period.Kind .Report.Period.PreviousDate) .SelectedDivision .SelectedDivisionScope}}" aria-label="Previous period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12.5 4.5-5.5 5.5 5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
         <form method="get" action="/admin/reports" class="flex min-w-0 flex-1 gap-2">
           <input type="hidden" name="period" value="{{.Report.Period.Kind}}">
+          {{if .SelectedDivision}}
+          <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}">
+          {{else if eq .SelectedDivisionScope "all"}}
+          <input type="hidden" name="division" value="all">
+          {{end}}
           <input type="date" name="date" value="{{.Report.Period.Anchor}}" class="h-11 min-w-0 flex-1 rounded-2xl border border-slate/10 bg-cloud px-3 text-sm font-medium outline-none focus:border-aqua">
           <button class="h-11 rounded-2xl bg-obsidian px-4 text-xs font-bold text-cloud">View</button>
         </form>
-        <a href="/admin/reports?period={{.Report.Period.Kind}}&date={{.Report.Period.NextDate}}" aria-label="Next period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
+        <a href="{{scopedURL (printf "/admin/reports?period=%s&date=%s" .Report.Period.Kind .Report.Period.NextDate) .SelectedDivision .SelectedDivisionScope}}" aria-label="Next period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
       </div>
@@ -107,7 +112,7 @@
       <div class="mt-5 grid grid-cols-2 gap-3">
         <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">Confirmed bookings</p><p class="mt-2 text-2xl font-semibold">{{.Report.Summary.ConfirmedBookings}}</p></div>
         <div class="rounded-2xl bg-amber-50 p-4"><p class="text-xs text-amber-800/60">Awaiting review</p><p class="mt-2 text-2xl font-semibold text-amber-950">{{.Report.Summary.PendingBookings}}</p></div>
-        <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">New admissions</p><p class="mt-2 text-2xl font-semibold">{{.Report.Summary.NewAdmissions}}</p></div>
+        <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">New enrollments</p><p class="mt-2 text-2xl font-semibold">{{.Report.Summary.NewAdmissions}}</p></div>
         <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">Student payments</p><p class="mt-2 text-2xl font-semibold">{{.Report.Summary.StudentPayments}}</p></div>
       </div>
       <dl class="mt-4 divide-y divide-slate/10 rounded-2xl border border-slate/10 px-4">

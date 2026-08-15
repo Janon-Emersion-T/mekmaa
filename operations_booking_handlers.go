@@ -4433,6 +4433,9 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
+	if redirectTarget := strings.TrimSpace(r.FormValue("division")); redirectTarget != "" {
+		target = scopedFinanceRedirect(target, redirectTarget)
+	}
 
 	enrollmentID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("enrollment_id")), 10, 64)
 	if err != nil || enrollmentID <= 0 {
@@ -4449,24 +4452,24 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 	if paymentMonth > time.Now().Format("2006-01") {
 		a.setFlash(w, "Payments cannot be collected for a future month.")
-		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+		http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
 	if !paymentMonthCollectible(paymentMonth, time.Now()) {
 		a.setFlash(w, monthlyPaymentCollectionNotice(paymentMonth, time.Now()))
-		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+		http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
 	amount, amountErr := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
 	if amountErr != nil {
 		a.setFlash(w, "Enter a valid payment amount.")
-		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+		http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
 	if !validPaymentMethod(paymentMethod) {
 		a.setFlash(w, "Select a valid payment method.")
-		http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+		http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
 
@@ -4493,17 +4496,17 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		if errors.Is(err, ErrStudentPaymentAlreadyCollected) {
 			a.setFlash(w, "That enrollment payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")
-			http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+			http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, ErrStudentNotAdmittedForMonth) {
 			a.setFlash(w, err.Error())
-			http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+			http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, ErrMonthlyFeeNotConfigured) {
 			a.setFlash(w, err.Error())
-			http.Redirect(w, r, target+"?month="+url.QueryEscape(paymentMonth), http.StatusSeeOther)
+			http.Redirect(w, r, scopedFinanceRedirect(target, paymentMonth), http.StatusSeeOther)
 			return
 		}
 		if errors.Is(err, ErrStudentLeaveCoversMonth) {
@@ -4521,6 +4524,27 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	http.Redirect(w, r, "/admin/finance/receipt?transaction_id="+strconv.FormatInt(transactionID, 10), http.StatusSeeOther)
+}
+
+func scopedFinanceRedirect(basePath string, values ...string) string {
+	parsed, err := url.Parse(basePath)
+	if err != nil {
+		return basePath
+	}
+	query := parsed.Query()
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if strings.Count(value, "-") == 1 && len(value) == len("2006-01") {
+			query.Set("month", value)
+			continue
+		}
+		query.Set("division", value)
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func (a *App) studentLeaveManagementHandler(w http.ResponseWriter, r *http.Request) {

@@ -43,7 +43,7 @@
     <article class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Collection month</p>
       <p class="mt-3 text-2xl font-semibold text-obsidian">{{.PaymentMonthLabel}}</p>
-      <a href="/admin/training-programs" class="mt-2 inline-block text-xs font-semibold text-slate/55 underline decoration-aqua decoration-2 underline-offset-4">
+      <a href="{{scopedURL "/admin/training-programs" .SelectedDivision .SelectedDivisionScope}}" class="mt-2 inline-block text-xs font-semibold text-slate/55 underline decoration-aqua decoration-2 underline-offset-4">
   Manage training fees
 </a>
     </article>
@@ -159,6 +159,11 @@
               <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
               <input type="hidden" name="enrollment_id" value="{{.Enrollment.ID}}" />
               <input type="hidden" name="payment_month" value="{{$.PaymentMonth}}" />
+              {{if $.SelectedDivision}}
+              <input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}" />
+              {{else if eq $.SelectedDivisionScope "all"}}
+              <input type="hidden" name="division" value="all" />
+              {{end}}
               <select name="payment_method" class="h-11 min-w-0 rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua">
                 <option value="cash">Cash in hand</option>
                 <option value="bank_transfer">Bank transfer</option>
@@ -183,6 +188,11 @@
               <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
               <input type="hidden" name="enrollment_id" value="{{.Enrollment.ID}}" />
               <input type="hidden" name="payment_month" value="{{$.PaymentMonth}}" />
+              {{if $.SelectedDivision}}
+              <input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}" />
+              {{else if eq $.SelectedDivisionScope "all"}}
+              <input type="hidden" name="division" value="all" />
+              {{end}}
               <select name="payment_method" class="h-11 min-w-0 flex-1 rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua">
                 <option value="cash">Cash in hand</option>
                 <option value="bank_transfer">Bank transfer</option>
@@ -192,7 +202,7 @@
               <button type="submit" {{if or (eq .MonthlyFee 0.0) (not $.PaymentCollectionOpen)}}disabled{{end}} {{if eq .MonthlyFee 0.0}}title="Configure this monthly fee in Training Manager first"{{else if not $.PaymentCollectionOpen}}title="{{$.PaymentCollectionNotice}}"{{end}} class="h-11 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate disabled:cursor-not-allowed disabled:opacity-35">Collect payment</button>
             </form>
             {{if gt .Enrollment.ID 0}}
-            <a href="/admin/student-leaves?admission_id={{.Admission.ID}}&enrollment_id={{.Enrollment.ID}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800 transition hover:bg-sky-50">View leave</a>
+            <a href="{{scopedURL (printf "/admin/student-leaves?admission_id=%d&enrollment_id=%d" .Admission.ID .Enrollment.ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800 transition hover:bg-sky-50">View leave</a>
             {{end}}
           </div>
           {{end}}

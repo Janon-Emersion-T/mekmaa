@@ -933,19 +933,14 @@ func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Dashboard"
 	data.Description = "Authenticated user dashboard."
-	data.Stats = []Stat{
-		{Value: strconv.FormatInt(user.ID, 10), Label: "User ID"},
-		{Value: strings.Join(user.Roles, ", "), Label: "Assigned roles"},
-		{Value: verifiedLabel(user.Verified), Label: "Email status"},
-	}
 	data.SetupWarnings = a.setupWarningsForUser(user)
-	if containsPermission(user.Permissions, "booking_requests.manage") || containsPermission(user.Permissions, "space_bookings.manage") {
-		allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-		selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
+	allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
+	if err != nil {
+		allowedDivisionIDs = nil
+	}
+	var selectedDivision *Division
+	if divisionValue := strings.TrimSpace(r.URL.Query().Get("division")); divisionValue != "" || canViewAllDivisions(user) || len(user.DivisionIDs) > 0 {
+		selectedDivision, err = a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
 		if errors.Is(err, ErrForbiddenDivision) {
 			a.writeDivisionForbidden(w, r, user)
 			return
@@ -954,14 +949,18 @@ func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
-		scopeDivisionIDs := []int64(nil)
-		if selectedDivision != nil {
-			scopeDivisionIDs = []int64{selectedDivision.ID}
-			data.SelectedDivision = selectedDivision
-			data.SelectedDivisionScope = selectedDivision.Slug
-		} else if !canViewAllDivisions(user) {
-			scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
-		}
+	}
+	scopeDivisionIDs := []int64(nil)
+	if selectedDivision != nil {
+		scopeDivisionIDs = []int64{selectedDivision.ID}
+		data.SelectedDivision = selectedDivision
+		data.SelectedDivisionScope = selectedDivision.Slug
+	} else if !canViewAllDivisions(user) {
+		scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
+	}
+
+	data.Stats = a.buildDashboardStats(user, selectedDivision, scopeDivisionIDs, now)
+	if containsPermission(user.Permissions, "booking_requests.manage") || containsPermission(user.Permissions, "space_bookings.manage") {
 		requests, err := a.listPendingSpaceSchedulesByDivisionIDs(scopeDivisionIDs)
 		if err == nil {
 			pendingCount, _ := a.countPendingSpaceSchedulesByDivisionIDs(scopeDivisionIDs)
@@ -974,6 +973,117 @@ func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.render(w, "dashboard", data, http.StatusOK)
+}
+
+func (a *App) buildDashboardStats(user *User, selectedDivision *Division, divisionIDs []int64, now time.Time) []Stat {
+	stats := []Stat{
+		{Value: verifiedLabel(user.Verified), Label: "Session"},
+		{Value: strconv.Itoa(len(user.Roles)), Label: "Assigned roles"},
+	}
+
+	admissions, totalStudents, err := a.listAdmissionsFiltered(AdmissionsFilter{
+		Page:        1,
+		Limit:       1,
+		Direction:   "asc",
+		DivisionIDs: append([]int64(nil), divisionIDs...),
+	})
+	_ = admissions
+	if err == nil {
+		stats = append(stats, Stat{Value: strconv.Itoa(totalStudents), Label: "Active students"})
+	}
+
+	enrollments, err := a.listStudentEnrollmentsByDivisionIDs(divisionIDs)
+	if err == nil {
+		activeEnrollments := 0
+		for _, enrollment := range enrollments {
+			if enrollment.Active {
+				activeEnrollments++
+			}
+		}
+		stats = append(stats, Stat{Value: strconv.Itoa(activeEnrollments), Label: "Active enrollments"})
+	}
+
+	programs, err := a.listTrainingProgramsByDivisionIDs(divisionIDs, false, true)
+	if err == nil {
+		stats = append(stats, Stat{Value: strconv.Itoa(len(programs)), Label: workspaceProgramLabel(user, selectedDivision, "")})
+	}
+
+	attendanceCount, err := a.countAttendanceEntriesByDivisionIDs(now.Format("2006-01-02"), divisionIDs)
+	if err == nil {
+		stats = append(stats, Stat{Value: strconv.Itoa(attendanceCount), Label: "Attendance today"})
+	}
+
+	paymentMonth := latestCollectiblePaymentMonth(now)
+	paymentRows, err := a.listStudentPaymentRowsByDivisionIDs(paymentMonth, divisionIDs)
+	if err == nil {
+		outstanding := 0.0
+		for _, row := range paymentRows {
+			if row.OutstandingAmount > 0.004 {
+				outstanding += row.OutstandingAmount
+				continue
+			}
+			if row.CollectedAmount+0.004 < row.MonthlyFee {
+				outstanding += row.MonthlyFee - row.CollectedAmount
+			}
+		}
+		stats = append(stats, Stat{Value: money(outstanding), Label: "Outstanding fees"})
+	}
+
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
+	monthEnd := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
+	transactions, err := a.listFinanceTransactionsFiltered(FinanceFilter{
+		From:        monthStart,
+		To:          monthEnd,
+		DivisionIDs: append([]int64(nil), divisionIDs...),
+	})
+	if err == nil {
+		income := 0.0
+		expense := 0.0
+		for _, transaction := range transactions {
+			if !financeTransactionPosted(transaction) {
+				continue
+			}
+			if transaction.Amount >= 0 {
+				income += transaction.Amount
+			} else {
+				expense += -transaction.Amount
+			}
+		}
+		stats = append(stats, Stat{Value: money(income), Label: "Income this month"})
+		stats = append(stats, Stat{Value: money(expense), Label: "Expenses this month"})
+	}
+
+	if allowed, err := a.scopeIncludesSportsDivision(divisionIDs); err == nil && allowed {
+		pendingCount, _ := a.countPendingSpaceSchedulesByDivisionIDs(divisionIDs)
+		heldCount, _ := a.countHeldSpaceSchedulesByDivisionIDs(divisionIDs)
+		stats = append(stats,
+			Stat{Value: strconv.Itoa(pendingCount), Label: "Pending bookings"},
+			Stat{Value: strconv.Itoa(heldCount), Label: "Held bookings"},
+		)
+	}
+
+	if len(stats) > 6 {
+		return stats[:6]
+	}
+	return stats
+}
+
+func (a *App) countAttendanceEntriesByDivisionIDs(attendanceDate string, divisionIDs []int64) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM attendance_records ar
+		JOIN student_groups sg ON sg.id = ar.group_id
+		JOIN training_programs tp ON tp.id = sg.training_program_id
+		WHERE ar.attendance_date = ?
+	`
+	args := []any{attendanceDate}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND tp.division_id IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
+	var count int
+	err := a.db.QueryRow(query, args...).Scan(&count)
+	return count, err
 }
 
 func verifiedLabel(verified bool) string {

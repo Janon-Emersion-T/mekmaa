@@ -8,7 +8,7 @@
         </svg>
       </button>
       <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate/50">Authenticated area</p>
+        <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate/50">{{workspaceName .User .SelectedDivision .SelectedDivisionScope}}</p>
         <h1 class="truncate text-lg font-semibold sm:text-2xl">{{.Title}}</h1>
       </div>
     </div>
@@ -20,7 +20,7 @@
 	        <input type="hidden" name="{{.Key}}" value="{{.Value}}">
 	        {{end}}
 	        <label class="block rounded-2xl border border-slate/10 bg-white px-3 py-2.5 text-left">
-	          <span class="block text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-slate/45">Division</span>
+	          <span class="block text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-slate/45">Workspace</span>
 	          <select name="division" onchange="this.form.submit()" class="mt-1 w-full border-0 bg-transparent p-0 text-sm font-medium text-obsidian outline-none">
             {{range .DivisionScopeOptions}}
             <option value="{{.Key}}" {{if eq $.SelectedDivisionScope .Key}}selected{{end}}>{{.Label}}</option>
