@@ -4683,8 +4683,35 @@ func (a *App) voidAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
+	enrollmentID := parseInt64Query(r.FormValue("enrollment_id"))
 	admissionID := parseInt64Query(r.FormValue("admission_id"))
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	if enrollmentID > 0 {
+		enrollmentDivisionIDs, err := a.scopedDivisionIDsForUser(currentUser, true)
+		if err != nil {
+			log.Printf("load scoped divisions for enrollment payment void: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		enrollment, err := a.findStudentEnrollmentByIDForDivisionIDs(enrollmentID, enrollmentDivisionIDs)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			log.Printf("find enrollment for payment void: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if err := a.voidEnrollmentAdmissionPayment(enrollmentID, reason, currentUser.ID); err != nil {
+			a.setFlash(w, "Admission payment could not be voided: "+err.Error())
+			http.Redirect(w, r, "/admin/enrollments?admission_id="+strconv.FormatInt(enrollment.AdmissionID, 10), http.StatusSeeOther)
+			return
+		}
+		a.setFlash(w, "Admission payment was voided.")
+		http.Redirect(w, r, "/admin/enrollments?admission_id="+strconv.FormatInt(enrollment.AdmissionID, 10), http.StatusSeeOther)
+		return
+	}
 	if err := a.voidAdmissionPayment(admissionID, reason, currentUser.ID); err != nil {
 		a.setFlash(w, "Admission payment could not be voided: "+err.Error())
 		http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)

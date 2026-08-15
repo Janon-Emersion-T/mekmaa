@@ -1560,6 +1560,8 @@ func financeVoidWorkflowMessage(transaction *FinanceTransaction) string {
 		return "Void booking income from the booking payment workflow so the booking balance stays synchronized."
 	case "admission":
 		return "Void admission income from the admission payment workflow so the admission record stays synchronized."
+	case "student_enrollment":
+		return "Void registration income from the enrollment workflow so the enrollment fee state stays synchronized."
 	case "student_monthly_payment":
 		return "Void monthly income from the student payment workflow so the monthly payment record stays synchronized."
 	case "booking_referral_payment":
@@ -1591,6 +1593,12 @@ func financeTransactionSourceExistsQuery(queryer sqlQueryer, transaction *Financ
 			return false, err
 		}
 		return count > 0, nil
+	case "student_enrollment":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM student_enrollments WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
 	case "student_monthly_payment":
 		var count int
 		if err := queryer.QueryRow(`SELECT COUNT(*) FROM student_monthly_payments WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
@@ -1616,7 +1624,7 @@ func financeTransactionSourceExistsQuery(queryer sqlQueryer, transaction *Financ
 
 func financeTransactionRepairableOrphan(transaction *FinanceTransaction) bool {
 	switch transaction.SourceType {
-	case "admission", "student_monthly_payment":
+	case "admission", "student_enrollment", "student_monthly_payment":
 		return true
 	default:
 		return false
@@ -1633,6 +1641,18 @@ func financeTransactionNeedsLedgerRepairQuery(queryer sqlQueryer, transaction *F
 		if err := queryer.QueryRow(`
 			SELECT COUNT(*)
 			FROM admissions
+			WHERE id = ?
+			  AND payment_collected = 1
+			  AND COALESCE(finance_transaction_id, 0) = ?
+		`, transaction.SourceID, transaction.ID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count == 0, nil
+	case "student_enrollment":
+		var count int
+		if err := queryer.QueryRow(`
+			SELECT COUNT(*)
+			FROM student_enrollments
 			WHERE id = ?
 			  AND payment_collected = 1
 			  AND COALESCE(finance_transaction_id, 0) = ?
@@ -1663,8 +1683,10 @@ func populateFinanceTransactionVoidStates(ctx context.Context, db *sql.DB, trans
 	}
 
 	admissionIDs := make([]int64, 0)
+	enrollmentIDs := make([]int64, 0)
 	monthlyPaymentIDs := make([]int64, 0)
 	admissionSeen := make(map[int64]bool)
+	enrollmentSeen := make(map[int64]bool)
 	monthlySeen := make(map[int64]bool)
 
 	for i := range transactions {
@@ -1679,6 +1701,11 @@ func populateFinanceTransactionVoidStates(ctx context.Context, db *sql.DB, trans
 				admissionSeen[transactions[i].SourceID] = true
 				admissionIDs = append(admissionIDs, transactions[i].SourceID)
 			}
+		case "student_enrollment":
+			if !enrollmentSeen[transactions[i].SourceID] {
+				enrollmentSeen[transactions[i].SourceID] = true
+				enrollmentIDs = append(enrollmentIDs, transactions[i].SourceID)
+			}
 		case "student_monthly_payment":
 			if !monthlySeen[transactions[i].SourceID] {
 				monthlySeen[transactions[i].SourceID] = true
@@ -1688,6 +1715,10 @@ func populateFinanceTransactionVoidStates(ctx context.Context, db *sql.DB, trans
 	}
 
 	admissionState, err := loadAdmissionLedgerRepairState(ctx, db, admissionIDs)
+	if err != nil {
+		return err
+	}
+	enrollmentState, err := loadEnrollmentLedgerRepairState(ctx, db, enrollmentIDs)
 	if err != nil {
 		return err
 	}
@@ -1704,6 +1735,9 @@ func populateFinanceTransactionVoidStates(ctx context.Context, db *sql.DB, trans
 		switch transactions[i].SourceType {
 		case "admission":
 			state, ok := admissionState[transactions[i].SourceID]
+			needsRepair = !ok || !state.PaymentCollected || state.FinanceTransactionID != transactions[i].ID
+		case "student_enrollment":
+			state, ok := enrollmentState[transactions[i].SourceID]
 			needsRepair = !ok || !state.PaymentCollected || state.FinanceTransactionID != transactions[i].ID
 		case "student_monthly_payment":
 			state, ok := monthlyState[transactions[i].SourceID]
@@ -1748,6 +1782,47 @@ func loadAdmissionLedgerRepairState(ctx context.Context, db *sql.DB, admissionID
 			return nil, err
 		}
 		state[id] = admissionLedgerRepairState{
+			FinanceTransactionID: financeTransactionID,
+			PaymentCollected:     paymentCollected == 1,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+type enrollmentLedgerRepairState struct {
+	FinanceTransactionID int64
+	PaymentCollected     bool
+}
+
+func loadEnrollmentLedgerRepairState(ctx context.Context, db *sql.DB, enrollmentIDs []int64) (map[int64]enrollmentLedgerRepairState, error) {
+	state := make(map[int64]enrollmentLedgerRepairState, len(enrollmentIDs))
+	if len(enrollmentIDs) == 0 {
+		return state, nil
+	}
+	query, args := int64INClause(`
+		SELECT id, COALESCE(finance_transaction_id, 0), COALESCE(payment_collected, 0)
+		FROM student_enrollments
+		WHERE id IN (%s)
+	`, enrollmentIDs)
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			id                   int64
+			financeTransactionID int64
+			paymentCollected     int
+		)
+		if err := rows.Scan(&id, &financeTransactionID, &paymentCollected); err != nil {
+			return nil, err
+		}
+		state[id] = enrollmentLedgerRepairState{
 			FinanceTransactionID: financeTransactionID,
 			PaymentCollected:     paymentCollected == 1,
 		}
@@ -1809,6 +1884,183 @@ func int64INClause(template string, values []int64) (string, []any) {
 	return fmt.Sprintf(template, strings.Join(placeholders, ",")), args
 }
 
+func syncLegacyAdmissionPaymentVoidStateTx(tx *sql.Tx, admissionID int64, financeTransactionID int64, reason string, voidedByUserID int64, now time.Time) error {
+	if admissionID <= 0 {
+		return nil
+	}
+	if financeTransactionID > 0 {
+		if _, err := tx.Exec(`
+			UPDATE admissions
+			SET payment_collected = 0,
+			    payment_collected_at = NULL,
+			    admission_payment_amount = 0,
+			    finance_transaction_id = NULL,
+			    payment_void_reason = ?,
+			    payment_voided_by_user_id = ?,
+			    payment_voided_at = ?,
+			    updated_at = ?
+			WHERE id = ?
+			  AND COALESCE(finance_transaction_id, 0) = ?
+		`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, now, admissionID, financeTransactionID); err != nil {
+			return err
+		}
+		return nil
+	}
+	_, err := tx.Exec(`
+		UPDATE admissions
+		SET payment_void_reason = CASE
+				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN ?
+				ELSE payment_void_reason
+			END,
+		    payment_voided_by_user_id = CASE
+				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN ?
+				ELSE payment_voided_by_user_id
+			END,
+		    payment_voided_at = CASE
+				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN ?
+				ELSE payment_voided_at
+			END,
+		    updated_at = CASE
+				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN ?
+				ELSE updated_at
+			END
+		WHERE id = ?
+	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, now, admissionID)
+	return err
+}
+
+func resolveEnrollmentAdmissionPaymentByAdmissionTx(tx *sql.Tx, admissionID int64) (*StudentEnrollment, error) {
+	var legacyFinanceTransactionID int64
+	if err := tx.QueryRow(`
+		SELECT COALESCE(finance_transaction_id, 0)
+		FROM admissions
+		WHERE id = ?
+	`, admissionID).Scan(&legacyFinanceTransactionID); err != nil {
+		return nil, err
+	}
+
+	if legacyFinanceTransactionID > 0 {
+		var enrollmentID int64
+		err := tx.QueryRow(`
+			SELECT se.id
+			FROM student_enrollments se
+			WHERE se.admission_id = ?
+			  AND COALESCE(se.payment_collected, 0) = 1
+			  AND COALESCE(se.finance_transaction_id, 0) = ?
+			ORDER BY se.id
+			LIMIT 1
+		`, admissionID, legacyFinanceTransactionID).Scan(&enrollmentID)
+		if err == nil {
+			return findStudentEnrollmentByIDTx(tx, enrollmentID)
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+
+	rows, err := tx.Query(`
+		SELECT se.id
+		FROM student_enrollments se
+		WHERE se.admission_id = ?
+		  AND COALESCE(se.payment_collected, 0) = 1
+		ORDER BY se.id
+	`, admissionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var matchedEnrollmentID int64
+	matchCount := 0
+	for rows.Next() {
+		var enrollmentID int64
+		if err := rows.Scan(&enrollmentID); err != nil {
+			return nil, err
+		}
+		matchedEnrollmentID = enrollmentID
+		matchCount++
+		if matchCount > 1 {
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if matchCount == 0 {
+		return nil, sql.ErrNoRows
+	}
+	if matchCount > 1 {
+		return nil, errors.New("multiple enrollment registration payments are linked to this student; void from the enrollment workflow")
+	}
+	return findStudentEnrollmentByIDTx(tx, matchedEnrollmentID)
+}
+
+func voidStudentEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment *StudentEnrollment, reason string, voidedByUserID int64) error {
+	if enrollment == nil {
+		return errors.New("enrollment payment was not found")
+	}
+	if !enrollment.AdmissionPaymentPaid {
+		var priorVoidCount int
+		if err := tx.QueryRow(`
+			SELECT COUNT(*)
+			FROM finance_transactions
+			WHERE source_type = 'student_enrollment'
+			  AND source_id = ?
+			  AND category = 'admission_payment'
+			  AND voided_at IS NOT NULL
+		`, enrollment.ID).Scan(&priorVoidCount); err != nil {
+			return err
+		}
+		if priorVoidCount > 0 {
+			return errors.New("enrollment payment has already been voided")
+		}
+		return errors.New("enrollment payment has not been collected")
+	}
+
+	now := time.Now().UTC()
+	if _, err := tx.Exec(`
+		UPDATE student_enrollments
+		SET payment_collected = 0,
+		    payment_collected_at = NULL,
+		    admission_payment_amount = 0,
+		    finance_transaction_id = NULL,
+		    updated_at = ?
+		WHERE id = ? AND payment_collected = 1
+	`, now, enrollment.ID); err != nil {
+		return err
+	}
+	if enrollment.FinanceTransactionID > 0 {
+		if err := voidFinanceTransactionTx(tx, enrollment.FinanceTransactionID, reason, voidedByUserID); err != nil {
+			return err
+		}
+	}
+	return syncLegacyAdmissionPaymentVoidStateTx(tx, enrollment.AdmissionID, enrollment.FinanceTransactionID, reason, voidedByUserID, now)
+}
+
+func (a *App) voidEnrollmentAdmissionPayment(enrollmentID int64, reason string, voidedByUserID int64) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("void reason is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	enrollment, err := findStudentEnrollmentByIDTx(tx, enrollmentID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("enrollment payment was not found")
+		}
+		return err
+	}
+	if err := voidStudentEnrollmentAdmissionPaymentTx(tx, enrollment, reason, voidedByUserID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
@@ -1819,6 +2071,17 @@ func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUse
 		return err
 	}
 	defer tx.Rollback()
+
+	enrollment, err := resolveEnrollmentAdmissionPaymentByAdmissionTx(tx, admissionID)
+	if err == nil {
+		if err := voidStudentEnrollmentAdmissionPaymentTx(tx, enrollment, reason, voidedByUserID); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 
 	var financeTransactionID int64
 	var paymentCollected int

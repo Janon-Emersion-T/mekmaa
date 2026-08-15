@@ -3302,6 +3302,93 @@ func TestGeneralFinanceVoidAllowsBrokenAdmissionLinkageRepair(t *testing.T) {
 	}
 }
 
+func TestGeneralFinanceVoidAllowsBrokenEnrollmentRegistrationLinkageRepair(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	user := &User{ID: 7, Name: "Finance", Roles: []string{"superadmin"}, Permissions: []string{"finance.manage"}}
+
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find kec division: %v", err)
+	}
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     kecID,
+		Name:           "KEC Broken Registration",
+		Activity:       "reading",
+		TrainingFormat: "group",
+		AdmissionFee:   1800,
+		MonthlyFee:     1900,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-ENR-BROKEN-001",
+		FullName:              "Broken Enrollment Link Student",
+		AdmissionDate:         "2026-08-02",
+		DateOfBirth:           "2012-09-10",
+		Gender:                "male",
+		PracticeType:          "student",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0770000099",
+	}, false, "cash", user.ID)
+	if err != nil {
+		t.Fatalf("create shared student: %v", err)
+	}
+	enrollmentID, transactionID, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+	}, true, "cash", user.ID)
+	if err != nil {
+		t.Fatalf("create paid enrollment: %v", err)
+	}
+
+	if _, err := app.db.Exec(`
+		UPDATE student_enrollments
+		SET payment_collected = 0,
+		    payment_collected_at = NULL,
+		    admission_payment_amount = 0,
+		    finance_transaction_id = NULL,
+		    updated_at = ?
+		WHERE id = ?
+	`, time.Now().UTC(), enrollmentID); err != nil {
+		t.Fatalf("break enrollment linkage: %v", err)
+	}
+
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("load broken enrollment transaction: %v", err)
+	}
+	if !transaction.GeneralVoidAllowed || !transaction.OrphanedSource {
+		t.Fatalf("broken enrollment linkage should be ledger-repairable: %#v", transaction)
+	}
+
+	form := url.Values{
+		"transaction_id": {strconv.FormatInt(transactionID, 10)},
+		"void_reason":    {"broken enrollment linkage repair"},
+		"csrf_token":     {"token"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/finance/transactions/void", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.voidFinanceTransactionHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("broken enrollment-link repair redirect status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	transaction, err = app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("reload repaired finance transaction: %v", err)
+	}
+	if !transaction.Voided {
+		t.Fatalf("broken enrollment-link finance transaction should be voided: %#v", transaction)
+	}
+}
+
 func TestFinanceTransactionVoidStateKeepsValidMonthlyPaymentLinked(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	if _, err := app.db.Exec(`UPDATE admission_pricing SET price = 1500, monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
@@ -3524,6 +3611,115 @@ func TestSourceLevelVoidWorkflowsSynchronizeLedger(t *testing.T) {
 	}
 	if studentVoided != 1 {
 		t.Fatal("student monthly payment row should be marked voided")
+	}
+}
+
+func TestAdmissionVoidResolvesEnrollmentOwnedRegistrationPayment(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	userID := int64(17)
+
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find kec division: %v", err)
+	}
+	chessID, err := divisionIDByCode(app.db, divisionCodeChess)
+	if err != nil {
+		t.Fatalf("find chess division: %v", err)
+	}
+
+	kecProgramID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     kecID,
+		Name:           "KEC Registration Paid",
+		Activity:       "reading",
+		TrainingFormat: "group",
+		AdmissionFee:   2000,
+		MonthlyFee:     1800,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create kec training programme: %v", err)
+	}
+	chessProgramID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     chessID,
+		Name:           "Chess Registration Unpaid",
+		Activity:       "chess",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     2200,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create chess training programme: %v", err)
+	}
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-ENR-VOID-001",
+		FullName:              "Enrollment Void Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2013-04-05",
+		Gender:                "female",
+		PracticeType:          "student",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771111234",
+	}, false, "cash", userID)
+	if err != nil {
+		t.Fatalf("create shared student: %v", err)
+	}
+
+	paidEnrollmentID, transactionID, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: kecProgramID,
+	}, true, "cash", userID)
+	if err != nil {
+		t.Fatalf("create paid enrollment: %v", err)
+	}
+	unpaidEnrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: chessProgramID,
+	}, false, "cash", userID)
+	if err != nil {
+		t.Fatalf("create unpaid enrollment: %v", err)
+	}
+
+	if err := app.voidAdmissionPayment(admissionID, "entered twice", userID); err != nil {
+		t.Fatalf("void enrollment-owned registration payment: %v", err)
+	}
+
+	paidEnrollment, err := app.findStudentEnrollmentByID(paidEnrollmentID)
+	if err != nil {
+		t.Fatalf("reload paid enrollment: %v", err)
+	}
+	if paidEnrollment.AdmissionPaymentPaid {
+		t.Fatalf("paid enrollment should be cleared after void: %#v", paidEnrollment)
+	}
+	if paidEnrollment.FinanceTransactionID != 0 {
+		t.Fatalf("paid enrollment finance transaction should be cleared, got %d", paidEnrollment.FinanceTransactionID)
+	}
+
+	unpaidEnrollment, err := app.findStudentEnrollmentByID(unpaidEnrollmentID)
+	if err != nil {
+		t.Fatalf("reload unpaid enrollment: %v", err)
+	}
+	if unpaidEnrollment.AdmissionPaymentPaid {
+		t.Fatalf("unpaid enrollment should remain unpaid: %#v", unpaidEnrollment)
+	}
+
+	admissionRow, err := app.findAdmissionByID(admissionID)
+	if err != nil {
+		t.Fatalf("reload student identity row: %v", err)
+	}
+	if admissionRow.PaymentCollected {
+		t.Fatalf("shared student record should not become globally paid: %#v", admissionRow)
+	}
+
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("reload registration transaction: %v", err)
+	}
+	if !transaction.Voided {
+		t.Fatalf("enrollment-owned registration transaction should be voided: %#v", transaction)
 	}
 }
 
