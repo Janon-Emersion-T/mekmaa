@@ -235,6 +235,20 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		data.SelectedDivision = selectedDivision
 		data.SelectedDivisionScope = selectedDivision.Slug
 	}
+	accountDivisionIDs := []int64(nil)
+	if selectedDivision != nil {
+		accountDivisionIDs = []int64{selectedDivision.ID}
+	} else if !canViewAllDivisions(user) {
+		if len(allowedDivisionIDs) == 1 {
+			accountDivisionIDs = append(accountDivisionIDs, allowedDivisionIDs[0])
+		} else if primary := userPrimaryDivision(user); primary != nil {
+			accountDivisionIDs = []int64{primary.ID}
+			if data.SelectedDivision == nil {
+				data.SelectedDivision = primary
+				data.SelectedDivisionScope = primary.Slug
+			}
+		}
+	}
 
 	needOperationalSummary := page == "ledger" || page == "specified-ledgers" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "profit-loss" || page == "balance-sheet"
 	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "balance-sheet"
@@ -251,7 +265,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 
 	if needAccounts {
 		activeOnly := page != "accounts" && page != "balance-sheet"
-		accounts, err := a.listFinanceAccounts(activeOnly)
+		accounts, err := a.listFinanceAccountsByDivisionIDs(accountDivisionIDs, activeOnly)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list finance accounts duration=%s err=%v", page, time.Since(started), err)
 			return data, err
@@ -355,6 +369,19 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 			if err != nil {
 				log.Printf("finance ledger load failed: op=find finance account duration=%s account_id=%d err=%v", time.Since(started), filter.AccountID, err)
 				return data, err
+			}
+			if len(accountDivisionIDs) > 0 {
+				allowed := false
+				for _, divisionID := range accountDivisionIDs {
+					if divisionID == account.DivisionID {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					a.writeDivisionForbidden(w, r, user)
+					return data, ErrForbiddenDivision
+				}
 			}
 			data.SelectedFinanceAccount = account
 			statement, err := a.buildFinanceStatement(filter.AccountID, filter.From, filter.To)

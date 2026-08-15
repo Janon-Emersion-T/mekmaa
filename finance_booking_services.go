@@ -2937,7 +2937,16 @@ func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment Student
 	if !validPaymentMethod(paymentMethod) {
 		return 0, errors.New("invalid payment method")
 	}
-	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
+	divisionID, err := financeDivisionIDForEntryTx(tx, financeTransactionCreate{
+		ReferenceType: "student_enrollment",
+		ReferenceID:   enrollment.ID,
+		SourceType:    "student_enrollment",
+		SourceID:      enrollment.ID,
+	})
+	if err != nil {
+		return 0, err
+	}
+	account, err := findFinanceAccountForPaymentMethodTx(tx, divisionID, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
@@ -3577,7 +3586,16 @@ func (a *App) payReferralCommission(referralID int64, paymentMethod string, reco
 
 	now := time.Now().UTC()
 	receiptNumber := fmt.Sprintf("REF-%s-%06d", now.Format("20060102150405"), referral.ID)
-	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
+	divisionID, err := financeDivisionIDForEntryTx(tx, financeTransactionCreate{
+		ReferenceType: "booking_referral",
+		ReferenceID:   referral.ID,
+		SourceType:    "booking_referral_payment",
+		SourceID:      referral.ID,
+	})
+	if err != nil {
+		return 0, err
+	}
+	account, err := findFinanceAccountForPaymentMethodTx(tx, divisionID, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
@@ -3778,7 +3796,14 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 	if err != nil {
 		return 0, err
 	}
-	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
+	divisionID, err := financeDivisionIDForEntryTx(tx, financeTransactionCreate{
+		ReferenceType: "space_schedule",
+		ReferenceID:   scheduleID,
+	})
+	if err != nil {
+		return 0, err
+	}
+	account, err := findFinanceAccountForPaymentMethodTx(tx, divisionID, paymentMethod)
 	if err != nil {
 		return 0, err
 	}

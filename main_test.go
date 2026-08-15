@@ -630,9 +630,13 @@ func TestSidebarHidesSportsBookingModulesForNonSportsDivision(t *testing.T) {
 	}
 }
 
-func financeAccountIDByName(t *testing.T, app *App, name string) int64 {
+func financeAccountIDByDivisionAndName(t *testing.T, app *App, divisionCode, name string) int64 {
 	t.Helper()
-	accounts, err := app.listFinanceAccounts(false)
+	divisionID, err := divisionIDByCode(app.db, divisionCode)
+	if err != nil {
+		t.Fatalf("lookup %s division: %v", divisionCode, err)
+	}
+	accounts, err := app.listFinanceAccountsByDivisionIDs([]int64{divisionID}, false)
 	if err != nil {
 		t.Fatalf("list finance accounts: %v", err)
 	}
@@ -643,6 +647,11 @@ func financeAccountIDByName(t *testing.T, app *App, name string) int64 {
 	}
 	t.Fatalf("finance account %q not found", name)
 	return 0
+}
+
+func financeAccountIDByName(t *testing.T, app *App, name string) int64 {
+	t.Helper()
+	return financeAccountIDByDivisionAndName(t, app, divisionCodeSports, name)
 }
 
 func financeAccountBalanceByName(t *testing.T, app *App, name string) float64 {
@@ -2587,8 +2596,8 @@ func TestFinanceSystemAccountsAreCreatedOnce(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM finance_accounts WHERE LOWER(name) IN ('cash in hand', 'main bank account')`).Scan(&count); err != nil {
 		t.Fatalf("count finance accounts: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("expected exactly 2 required finance accounts, got %d", count)
+	if count != 8 {
+		t.Fatalf("expected exactly 8 required per-division finance accounts, got %d", count)
 	}
 }
 
@@ -2938,7 +2947,11 @@ func TestOpeningBalanceMetadataSyncsOnVoidAndReplacement(t *testing.T) {
 
 func TestUpdateFinanceAccountRejectsRenamingWhenHistoryExists(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
-	accountID, err := app.createFinanceAccount("CASH-900", "Tournament Wallet", financeAccountTypeCash, "Temporary collections", 0)
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("lookup sports division: %v", err)
+	}
+	accountID, err := app.createFinanceAccount(sportsID, "CASH-900", "Tournament Wallet", financeAccountTypeCash, "Temporary collections", 0)
 	if err != nil {
 		t.Fatalf("create finance account: %v", err)
 	}
@@ -2959,8 +2972,12 @@ func TestUpdateFinanceAccountRejectsRenamingWhenHistoryExists(t *testing.T) {
 
 func TestDeleteFinanceAccountAllowsOnlyUnlinkedAccounts(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("lookup sports division: %v", err)
+	}
 
-	deletableID, err := app.createFinanceAccount("CASH-910", "Delete Me", financeAccountTypeCash, "Unused", 0)
+	deletableID, err := app.createFinanceAccount(sportsID, "CASH-910", "Delete Me", financeAccountTypeCash, "Unused", 0)
 	if err != nil {
 		t.Fatalf("create deletable finance account: %v", err)
 	}
@@ -2971,7 +2988,7 @@ func TestDeleteFinanceAccountAllowsOnlyUnlinkedAccounts(t *testing.T) {
 		t.Fatal("expected deleted finance account lookup to fail")
 	}
 
-	linkedID, err := app.createFinanceAccount("CASH-911", "Keep Me", financeAccountTypeCash, "Linked", 0)
+	linkedID, err := app.createFinanceAccount(sportsID, "CASH-911", "Keep Me", financeAccountTypeCash, "Linked", 0)
 	if err != nil {
 		t.Fatalf("create linked finance account: %v", err)
 	}

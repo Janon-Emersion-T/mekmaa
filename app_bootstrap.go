@@ -596,6 +596,9 @@ type FinanceCategory struct {
 
 type FinanceAccount struct {
 	ID              int64
+	DivisionID      int64
+	DivisionCode    string
+	DivisionName    string
 	AccountCode     string
 	Name            string
 	AccountType     string

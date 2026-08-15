@@ -621,9 +621,9 @@ func financeDivisionIDForEntryTx(tx *sql.Tx, entry financeTransactionCreate) (in
 			WHERE smp.id = ?
 		`, entry.SourceID)
 	}
-	code := divisionCodeCorporate
-	if entry.ReferenceType == "admission" || entry.ReferenceType == "student_enrollment" || entry.SourceType == "student_monthly_payment" {
-		code = divisionCodeSports
+	code := divisionCodeSports
+	if entry.ReferenceType == "finance_transfer" || entry.SourceType == "finance_transfer" {
+		code = divisionCodeCorporate
 	}
 	return divisionIDByCodeTx(tx, code)
 }

@@ -175,49 +175,376 @@ func financeAccountTone(accountType string) string {
 	return "border-emerald-100 bg-emerald-50"
 }
 
+func financeSystemAccountCode(divisionCode, accountType string) string {
+	divisionCode = strings.ToUpper(strings.TrimSpace(divisionCode))
+	switch accountType {
+	case financeAccountTypeBank:
+		return divisionCode + "-BANK-001"
+	default:
+		return divisionCode + "-CASH-001"
+	}
+}
+
+func financeSystemAccountDescription(divisionName, accountType string) string {
+	if strings.TrimSpace(divisionName) == "" {
+		divisionName = "Mekmaa"
+	}
+	if accountType == financeAccountTypeBank {
+		return fmt.Sprintf("Primary bank balance for %s.", divisionName)
+	}
+	return fmt.Sprintf("Physical cash currently held by %s.", divisionName)
+}
+
+func loadOperationalDivisionsTx(tx *sql.Tx) ([]Division, error) {
+	rows, err := tx.Query(`
+		SELECT id, code, slug, name, COALESCE(description, ''), COALESCE(active, 1), created_at, updated_at
+		FROM divisions
+		WHERE UPPER(code) IN (?, ?, ?, ?)
+		ORDER BY name ASC, id ASC
+	`, divisionCodeSports, divisionCodeKEC, divisionCodeChess, divisionCodeCorporate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var divisions []Division
+	for rows.Next() {
+		var division Division
+		var active int
+		if err := rows.Scan(&division.ID, &division.Code, &division.Slug, &division.Name, &division.Description, &active, &division.CreatedAt, &division.UpdatedAt); err != nil {
+			return nil, err
+		}
+		division.Active = active == 1
+		divisions = append(divisions, division)
+	}
+	return divisions, rows.Err()
+}
+
+func loadDivisionByIDQuery(queryer sqlQueryer, divisionID int64) (*Division, error) {
+	row := queryer.QueryRow(`
+		SELECT id, code, slug, name, COALESCE(description, ''), COALESCE(active, 1), created_at, updated_at
+		FROM divisions
+		WHERE id = ?
+	`, divisionID)
+	var division Division
+	var active int
+	if err := row.Scan(&division.ID, &division.Code, &division.Slug, &division.Name, &division.Description, &active, &division.CreatedAt, &division.UpdatedAt); err != nil {
+		return nil, err
+	}
+	division.Active = active == 1
+	return &division, nil
+}
+
+func ensureFinanceDivisionTables(db *sql.DB) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS divisions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			code TEXT NOT NULL UNIQUE,
+			slug TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			active INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_divisions (
+			user_id INTEGER NOT NULL,
+			division_id INTEGER NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY (user_id, division_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_divisions_division_user ON user_divisions(division_id, user_id)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return seedDivisions(db)
+}
+
 func ensureFinanceSystemAccountsTx(tx *sql.Tx) error {
 	now := time.Now().UTC()
-	required := []FinanceAccount{
-		{Name: financeAccountCashInHand, AccountCode: "CASH-001", AccountType: financeAccountTypeCash, Description: "Physical cash currently held by Mekmaa.", IsSystem: true, IsActive: true},
-		{Name: financeAccountMainBank, AccountCode: "BANK-001", AccountType: financeAccountTypeBank, Description: "Primary business bank balance.", IsSystem: true, IsActive: true},
+	divisions, err := loadOperationalDivisionsTx(tx)
+	if err != nil {
+		return err
 	}
-	for _, account := range required {
-		var existingID int64
-		err := tx.QueryRow(`SELECT id FROM finance_accounts WHERE LOWER(name) = LOWER(?) LIMIT 1`, account.Name).Scan(&existingID)
-		if err == nil {
-			if _, updateErr := tx.Exec(`
-				UPDATE finance_accounts
-				SET account_code = COALESCE(NULLIF(account_code, ''), ?),
-				    account_type = COALESCE(NULLIF(account_type, ''), ?),
-				    description = CASE WHEN TRIM(COALESCE(description, '')) = '' THEN ? ELSE description END,
-				    is_system = 1,
-				    is_active = 1,
-				    updated_at = ?
-				WHERE id = ?
-			`, account.AccountCode, account.AccountType, account.Description, now, existingID); updateErr != nil {
-				return updateErr
+	for _, division := range divisions {
+		required := []FinanceAccount{
+			{DivisionID: division.ID, DivisionCode: division.Code, DivisionName: division.Name, Name: financeAccountCashInHand, AccountCode: financeSystemAccountCode(division.Code, financeAccountTypeCash), AccountType: financeAccountTypeCash, Description: financeSystemAccountDescription(division.Name, financeAccountTypeCash), IsSystem: true, IsActive: true},
+			{DivisionID: division.ID, DivisionCode: division.Code, DivisionName: division.Name, Name: financeAccountMainBank, AccountCode: financeSystemAccountCode(division.Code, financeAccountTypeBank), AccountType: financeAccountTypeBank, Description: financeSystemAccountDescription(division.Name, financeAccountTypeBank), IsSystem: true, IsActive: true},
+		}
+		for _, account := range required {
+			var existingID int64
+			err := tx.QueryRow(`
+				SELECT id
+				FROM finance_accounts
+				WHERE division_id = ? AND LOWER(name) = LOWER(?)
+				LIMIT 1
+			`, account.DivisionID, account.Name).Scan(&existingID)
+			if err == nil {
+				if _, updateErr := tx.Exec(`
+					UPDATE finance_accounts
+					SET account_code = COALESCE(NULLIF(account_code, ''), ?),
+					    account_type = COALESCE(NULLIF(account_type, ''), ?),
+					    description = CASE WHEN TRIM(COALESCE(description, '')) = '' THEN ? ELSE description END,
+					    is_system = 1,
+					    is_active = 1,
+					    updated_at = ?
+					WHERE id = ?
+				`, account.AccountCode, account.AccountType, account.Description, now, existingID); updateErr != nil {
+					return updateErr
+				}
+				continue
 			}
-			continue
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if _, err := tx.Exec(`
-			INSERT INTO finance_accounts (
-				account_code, name, account_type, description, opening_balance, is_system, is_active,
-				created_at, updated_at, created_by_user_id, updated_by_user_id
-			) VALUES (?, ?, ?, ?, 0, 1, 1, ?, ?, NULL, NULL)
-		`, account.AccountCode, account.Name, account.AccountType, account.Description, now, now); err != nil {
-			return err
+			if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if _, err := tx.Exec(`
+				INSERT INTO finance_accounts (
+					division_id, account_code, name, account_type, description, opening_balance, is_system, is_active,
+					created_at, updated_at, created_by_user_id, updated_by_user_id
+				) VALUES (?, ?, ?, ?, ?, 0, 1, 1, ?, ?, NULL, NULL)
+			`, account.DivisionID, account.AccountCode, account.Name, account.AccountType, account.Description, now, now); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
+func ensureFinanceAccountForDivisionTx(tx *sql.Tx, account *FinanceAccount, divisionID int64) (int64, error) {
+	if account == nil {
+		return 0, errors.New("finance account is required")
+	}
+	if divisionID <= 0 {
+		return 0, errors.New("finance account division is required")
+	}
+	if account.DivisionID == divisionID {
+		return account.ID, nil
+	}
+	existing, err := findFinanceAccountByNameTx(tx, divisionID, account.Name)
+	if err == nil {
+		return existing.ID, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	division, err := loadDivisionByIDQuery(tx, divisionID)
+	if err != nil {
+		return 0, err
+	}
+	accountCode := account.AccountCode
+	if account.IsSystem {
+		accountCode = financeSystemAccountCode(division.Code, account.AccountType)
+	}
+	now := time.Now().UTC()
+	result, err := tx.Exec(`
+		INSERT INTO finance_accounts (
+			division_id, account_code, name, account_type, description, opening_balance, is_system, is_active,
+			created_at, updated_at, created_by_user_id, updated_by_user_id
+		) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+	`,
+		divisionID,
+		accountCode,
+		account.Name,
+		account.AccountType,
+		account.Description,
+		boolToInt(account.IsSystem),
+		boolToInt(account.IsActive),
+		now,
+		now,
+		nullIfZero(account.CreatedByUserID),
+		nullIfZero(account.UpdatedByUserID),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func migrateFinanceAccountOwnershipTx(tx *sql.Tx) error {
+	sportsID, err := divisionIDByCodeTx(tx, divisionCodeSports)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		UPDATE finance_accounts
+		SET division_id = (
+			SELECT MIN(ft.division_id)
+			FROM finance_transactions ft
+			WHERE ft.finance_account_id = finance_accounts.id
+			  AND COALESCE(ft.division_id, 0) > 0
+			GROUP BY ft.finance_account_id
+			HAVING COUNT(DISTINCT ft.division_id) = 1
+		)
+		WHERE COALESCE(division_id, 0) <= 0
+	`); err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(`
+		SELECT fa.id, COALESCE(fa.division_id, 0), fa.account_code, fa.name, fa.account_type, fa.description, fa.opening_balance,
+		       fa.is_system, fa.is_active, COALESCE(fa.created_by_user_id, 0), COALESCE(fa.updated_by_user_id, 0), fa.created_at, fa.updated_at
+		FROM finance_accounts fa
+		WHERE COALESCE(fa.division_id, 0) <= 0
+		  AND EXISTS (
+			SELECT 1
+			FROM finance_transactions ft
+			WHERE ft.finance_account_id = fa.id
+			  AND COALESCE(ft.division_id, 0) > 0
+			GROUP BY ft.finance_account_id
+			HAVING COUNT(DISTINCT ft.division_id) > 1
+		  )
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var account FinanceAccount
+		var isSystem, isActive int
+		if err := rows.Scan(
+			&account.ID, &account.DivisionID, &account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
+			&isSystem, &isActive, &account.CreatedByUserID, &account.UpdatedByUserID, &account.CreatedAt, &account.UpdatedAt,
+		); err != nil {
+			return err
+		}
+		account.IsSystem = isSystem == 1
+		account.IsActive = isActive == 1
+
+		distinctRows, err := tx.Query(`
+			SELECT DISTINCT division_id
+			FROM finance_transactions
+			WHERE finance_account_id = ?
+			  AND COALESCE(division_id, 0) > 0
+			ORDER BY division_id ASC
+		`, account.ID)
+		if err != nil {
+			return err
+		}
+		var divisionIDs []int64
+		for distinctRows.Next() {
+			var divisionID int64
+			if err := distinctRows.Scan(&divisionID); err != nil {
+				distinctRows.Close()
+				return err
+			}
+			divisionIDs = append(divisionIDs, divisionID)
+		}
+		if err := distinctRows.Err(); err != nil {
+			distinctRows.Close()
+			return err
+		}
+		distinctRows.Close()
+		if len(divisionIDs) == 0 {
+			continue
+		}
+
+		keepDivisionID := divisionIDs[0]
+		for _, divisionID := range divisionIDs {
+			if divisionID == sportsID {
+				keepDivisionID = divisionID
+				break
+			}
+		}
+		if _, err := tx.Exec(`UPDATE finance_accounts SET division_id = ? WHERE id = ?`, keepDivisionID, account.ID); err != nil {
+			return err
+		}
+		account.DivisionID = keepDivisionID
+
+		for _, divisionID := range divisionIDs {
+			if divisionID == keepDivisionID {
+				continue
+			}
+			targetAccountID, err := ensureFinanceAccountForDivisionTx(tx, &account, divisionID)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`
+				UPDATE finance_transactions
+				SET finance_account_id = ?
+				WHERE finance_account_id = ?
+				  AND division_id = ?
+			`, targetAccountID, account.ID, divisionID); err != nil {
+				return err
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`
+		UPDATE finance_transactions
+		SET division_id = (
+			SELECT fa.division_id
+			FROM finance_accounts fa
+			WHERE fa.id = finance_transactions.finance_account_id
+		)
+		WHERE COALESCE(division_id, 0) <= 0
+		  AND COALESCE(finance_account_id, 0) > 0
+	`); err != nil {
+		return err
+	}
+
+	mismatchRows, err := tx.Query(`
+		SELECT ft.id, ft.division_id,
+		       fa.id, fa.division_id, fa.account_code, fa.name, fa.account_type, fa.description, fa.opening_balance,
+		       fa.is_system, fa.is_active, COALESCE(fa.created_by_user_id, 0), COALESCE(fa.updated_by_user_id, 0), fa.created_at, fa.updated_at
+		FROM finance_transactions ft
+		JOIN finance_accounts fa ON fa.id = ft.finance_account_id
+		WHERE COALESCE(ft.division_id, 0) > 0
+		  AND COALESCE(fa.division_id, 0) > 0
+		  AND ft.division_id <> fa.division_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer mismatchRows.Close()
+
+	for mismatchRows.Next() {
+		var transactionID int64
+		var divisionID int64
+		var account FinanceAccount
+		var isSystem, isActive int
+		if err := mismatchRows.Scan(
+			&transactionID, &divisionID,
+			&account.ID, &account.DivisionID, &account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
+			&isSystem, &isActive, &account.CreatedByUserID, &account.UpdatedByUserID, &account.CreatedAt, &account.UpdatedAt,
+		); err != nil {
+			return err
+		}
+		account.IsSystem = isSystem == 1
+		account.IsActive = isActive == 1
+		targetAccountID, err := ensureFinanceAccountForDivisionTx(tx, &account, divisionID)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE finance_transactions SET finance_account_id = ? WHERE id = ?`, targetAccountID, transactionID); err != nil {
+			return err
+		}
+	}
+	if err := mismatchRows.Err(); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`UPDATE finance_accounts SET division_id = ? WHERE COALESCE(division_id, 0) <= 0`, sportsID); err != nil {
+		return err
+	}
+	return nil
+}
+
 func migrateFinanceCashbook(db *sql.DB) error {
+	if err := ensureFinanceDivisionTables(db); err != nil {
+		return err
+	}
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS finance_accounts (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			division_id INTEGER,
 			account_code TEXT NOT NULL DEFAULT '',
 			name TEXT NOT NULL,
 			account_type TEXT NOT NULL,
@@ -230,7 +557,6 @@ func migrateFinanceCashbook(db *sql.DB) error {
 			created_by_user_id INTEGER,
 			updated_by_user_id INTEGER
 		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_name_ci ON finance_accounts(LOWER(name))`,
 		`CREATE INDEX IF NOT EXISTS idx_finance_accounts_type_active ON finance_accounts(account_type, is_active)`,
 		`CREATE TABLE IF NOT EXISTS cash_reconciliations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -282,7 +608,9 @@ func migrateFinanceCashbook(db *sql.DB) error {
 		column string
 		stmt   string
 	}{
+		{"finance_accounts", "division_id", `ALTER TABLE finance_accounts ADD COLUMN division_id INTEGER`},
 		{"finance_accounts", "account_code", `ALTER TABLE finance_accounts ADD COLUMN account_code TEXT NOT NULL DEFAULT ''`},
+		{"finance_transactions", "division_id", `ALTER TABLE finance_transactions ADD COLUMN division_id INTEGER`},
 		{"finance_transactions", "finance_account_id", `ALTER TABLE finance_transactions ADD COLUMN finance_account_id INTEGER`},
 		{"finance_transactions", "approval_status", `ALTER TABLE finance_transactions ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'approved'`},
 		{"finance_transactions", "approved_by_user_id", `ALTER TABLE finance_transactions ADD COLUMN approved_by_user_id INTEGER`},
@@ -340,20 +668,35 @@ func migrateFinanceCashbook(db *sql.DB) error {
 			return err
 		}
 	}
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_finance_accounts_name_ci`,
+		`DROP INDEX IF EXISTS idx_finance_accounts_code_ci`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
 
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := migrateFinanceAccountOwnershipTx(tx); err != nil {
+		return err
+	}
 	if err := ensureFinanceSystemAccountsTx(tx); err != nil {
 		return err
 	}
-	var cashAccountID, bankAccountID int64
-	if err := tx.QueryRow(`SELECT id FROM finance_accounts WHERE LOWER(name) = LOWER(?) LIMIT 1`, financeAccountCashInHand).Scan(&cashAccountID); err != nil {
+	sportsID, err := divisionIDByCodeTx(tx, divisionCodeSports)
+	if err != nil {
 		return err
 	}
-	if err := tx.QueryRow(`SELECT id FROM finance_accounts WHERE LOWER(name) = LOWER(?) LIMIT 1`, financeAccountMainBank).Scan(&bankAccountID); err != nil {
+	var cashAccountID, bankAccountID int64
+	if err := tx.QueryRow(`SELECT id FROM finance_accounts WHERE division_id = ? AND LOWER(name) = LOWER(?) LIMIT 1`, sportsID, financeAccountCashInHand).Scan(&cashAccountID); err != nil {
+		return err
+	}
+	if err := tx.QueryRow(`SELECT id FROM finance_accounts WHERE division_id = ? AND LOWER(name) = LOWER(?) LIMIT 1`, sportsID, financeAccountMainBank).Scan(&bankAccountID); err != nil {
 		return err
 	}
 
@@ -560,7 +903,82 @@ func migrateFinanceCashbook(db *sql.DB) error {
 			return err
 		}
 	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_code_ci ON finance_accounts(UPPER(account_code)) WHERE TRIM(COALESCE(account_code, '')) <> ''`); err != nil {
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_finance_accounts_name_ci`,
+		`DROP INDEX IF EXISTS idx_finance_accounts_code_ci`,
+		`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_type_active ON finance_accounts(division_id, account_type, is_active, id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_division_name_ci ON finance_accounts(division_id, LOWER(name))`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_accounts_division_code_ci ON finance_accounts(division_id, UPPER(account_code)) WHERE TRIM(COALESCE(account_code, '')) <> ''`,
+		`CREATE INDEX IF NOT EXISTS idx_finance_transactions_division_account ON finance_transactions(division_id, finance_account_id, recorded_at DESC, id DESC)`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec(`UPDATE finance_accounts SET division_id = COALESCE(division_id, 0)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_name ON finance_accounts(division_id, name COLLATE NOCASE)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_code ON finance_accounts(division_id, account_code COLLATE NOCASE)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_cash_reconciliations_account_voided ON cash_reconciliations(finance_account_id, voided_at, reconciliation_date DESC)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_active ON finance_accounts(division_id, is_active, id)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_type_active ON finance_accounts(division_id, account_type, is_active)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_lookup ON finance_accounts(division_id, LOWER(name), UPPER(account_code))`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_system ON finance_accounts(division_id, is_system, is_active)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_transactions_account_division ON finance_transactions(finance_account_id, division_id, recorded_at DESC, id DESC)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_id ON finance_accounts(division_id, id)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_system_name ON finance_accounts(division_id, is_system, name COLLATE NOCASE)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_account_type ON finance_accounts(division_id, account_type, id)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_transactions_division_payment ON finance_transactions(division_id, payment_method, recorded_at DESC, id DESC)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_transactions_division_type_account ON finance_transactions(division_id, transaction_type, finance_account_id, recorded_at DESC, id DESC)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_created ON finance_accounts(division_id, created_at DESC, id DESC)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_updated ON finance_accounts(division_id, updated_at DESC, id DESC)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_description ON finance_accounts(division_id, description)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_opening ON finance_accounts(division_id, opening_balance)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_flags ON finance_accounts(division_id, is_system, is_active, account_type)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_name_id ON finance_accounts(division_id, name COLLATE NOCASE, id)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_code_id ON finance_accounts(division_id, account_code COLLATE NOCASE, id)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_type_name ON finance_accounts(division_id, account_type, name COLLATE NOCASE)`); err != nil {
 		return fmt.Errorf("create finance account code index: %w", err)
 	}
 	return nil
@@ -602,16 +1020,35 @@ func ensureFinanceSourceUniqueIndex(db *sql.DB, indexName string, sourceType str
 }
 
 func (a *App) listFinanceAccounts(activeOnly bool) ([]FinanceAccount, error) {
+	return a.listFinanceAccountsByDivisionIDs(nil, activeOnly)
+}
+
+func (a *App) listFinanceAccountsByDivisionIDs(divisionIDs []int64, activeOnly bool) ([]FinanceAccount, error) {
 	query := `
-		SELECT finance_accounts.id, account_code, name, account_type, description, opening_balance, is_system, is_active,
-		       COALESCE(created_by_user_id, 0), COALESCE(updated_by_user_id, 0), created_at, updated_at
+		SELECT finance_accounts.id, COALESCE(finance_accounts.division_id, 0), COALESCE(divisions.code, ''), COALESCE(divisions.name, ''),
+		       finance_accounts.account_code, finance_accounts.name, finance_accounts.account_type, finance_accounts.description, finance_accounts.opening_balance, finance_accounts.is_system, finance_accounts.is_active,
+		       COALESCE(finance_accounts.created_by_user_id, 0), COALESCE(finance_accounts.updated_by_user_id, 0), finance_accounts.created_at, finance_accounts.updated_at
 		FROM finance_accounts
+		LEFT JOIN divisions ON divisions.id = finance_accounts.division_id
 	`
+	var conditions []string
+	args := make([]any, 0, len(divisionIDs))
 	if activeOnly {
-		query += ` WHERE is_active = 1`
+		conditions = append(conditions, `is_active = 1`)
 	}
-	query += ` ORDER BY is_system DESC, account_type ASC, account_code COLLATE NOCASE ASC, name COLLATE NOCASE ASC, finance_accounts.id ASC`
-	rows, err := a.db.Query(query)
+	if len(divisionIDs) > 0 {
+		placeholders := make([]string, 0, len(divisionIDs))
+		for _, divisionID := range divisionIDs {
+			placeholders = append(placeholders, "?")
+			args = append(args, divisionID)
+		}
+		conditions = append(conditions, `finance_accounts.division_id IN (`+strings.Join(placeholders, ",")+`)`)
+	}
+	if len(conditions) > 0 {
+		query += ` WHERE ` + strings.Join(conditions, ` AND `)
+	}
+	query += ` ORDER BY divisions.name COLLATE NOCASE ASC, finance_accounts.is_system DESC, finance_accounts.account_type ASC, finance_accounts.account_code COLLATE NOCASE ASC, finance_accounts.name COLLATE NOCASE ASC, finance_accounts.id ASC`
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -621,7 +1058,8 @@ func (a *App) listFinanceAccounts(activeOnly bool) ([]FinanceAccount, error) {
 		var account FinanceAccount
 		var isSystem, isActive int
 		if err := rows.Scan(
-			&account.ID, &account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
+			&account.ID, &account.DivisionID, &account.DivisionCode, &account.DivisionName,
+			&account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
 			&isSystem, &isActive, &account.CreatedByUserID, &account.UpdatedByUserID, &account.CreatedAt, &account.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -635,15 +1073,18 @@ func (a *App) listFinanceAccounts(activeOnly bool) ([]FinanceAccount, error) {
 
 func findFinanceAccountByIDQuery(queryer sqlQueryer, accountID int64) (*FinanceAccount, error) {
 	row := queryer.QueryRow(`
-		SELECT finance_accounts.id, account_code, name, account_type, description, opening_balance, is_system, is_active,
-		       COALESCE(created_by_user_id, 0), COALESCE(updated_by_user_id, 0), created_at, updated_at
+		SELECT finance_accounts.id, COALESCE(finance_accounts.division_id, 0), COALESCE(divisions.code, ''), COALESCE(divisions.name, ''),
+		       finance_accounts.account_code, finance_accounts.name, finance_accounts.account_type, finance_accounts.description, finance_accounts.opening_balance, finance_accounts.is_system, finance_accounts.is_active,
+		       COALESCE(finance_accounts.created_by_user_id, 0), COALESCE(finance_accounts.updated_by_user_id, 0), finance_accounts.created_at, finance_accounts.updated_at
 		FROM finance_accounts
+		LEFT JOIN divisions ON divisions.id = finance_accounts.division_id
 		WHERE finance_accounts.id = ?
 	`, accountID)
 	var account FinanceAccount
 	var isSystem, isActive int
 	if err := row.Scan(
-		&account.ID, &account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
+		&account.ID, &account.DivisionID, &account.DivisionCode, &account.DivisionName,
+		&account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
 		&isSystem, &isActive, &account.CreatedByUserID, &account.UpdatedByUserID, &account.CreatedAt, &account.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -661,10 +1102,13 @@ func normalizeFinanceAccountName(name string) string {
 	return strings.TrimSpace(name)
 }
 
-func (a *App) createFinanceAccount(accountCode, name, accountType, description string, createdByUserID int64) (int64, error) {
+func (a *App) createFinanceAccount(divisionID int64, accountCode, name, accountType, description string, createdByUserID int64) (int64, error) {
 	name = normalizeFinanceAccountName(name)
 	accountCode = normalizeFinanceAccountCode(accountCode)
 	description = strings.TrimSpace(description)
+	if divisionID <= 0 {
+		return 0, errors.New("finance account division is required")
+	}
 	if name == "" {
 		return 0, errors.New("account name is required")
 	}
@@ -673,18 +1117,25 @@ func (a *App) createFinanceAccount(accountCode, name, accountType, description s
 	}
 	if accountCode == "" {
 		var count int
-		if err := a.db.QueryRow(`SELECT COUNT(*) FROM finance_accounts WHERE account_type = ?`, accountType).Scan(&count); err != nil {
+		if err := a.db.QueryRow(`SELECT COUNT(*) FROM finance_accounts WHERE division_id = ? AND account_type = ?`, divisionID, accountType).Scan(&count); err != nil {
 			return 0, err
 		}
-		accountCode = generateFinanceAccountCode(accountType, count)
+		if division, err := a.findDivisionByID(divisionID); err == nil {
+			accountCode = financeSystemAccountCode(division.Code, accountType)
+			if count > 0 {
+				accountCode = fmt.Sprintf("%s-%03d", strings.TrimSuffix(accountCode, "001"), count+1)
+			}
+		} else {
+			accountCode = generateFinanceAccountCode(accountType, count)
+		}
 	}
 	now := time.Now().UTC()
 	result, err := a.db.Exec(`
 		INSERT INTO finance_accounts (
-			account_code, name, account_type, description, opening_balance, is_system, is_active,
+			division_id, account_code, name, account_type, description, opening_balance, is_system, is_active,
 			created_at, updated_at, created_by_user_id, updated_by_user_id
-		) VALUES (?, ?, ?, ?, 0, 0, 1, ?, ?, ?, ?)
-	`, accountCode, name, accountType, description, now, now, nullIfZero(createdByUserID), nullIfZero(createdByUserID))
+		) VALUES (?, ?, ?, ?, ?, 0, 0, 1, ?, ?, ?, ?)
+	`, divisionID, accountCode, name, accountType, description, now, now, nullIfZero(createdByUserID), nullIfZero(createdByUserID))
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			return 0, errors.New("a finance account with that name or code already exists")
@@ -807,18 +1258,22 @@ func (a *App) deleteFinanceAccount(accountID int64) error {
 	return tx.Commit()
 }
 
-func findFinanceAccountByNameTx(tx *sql.Tx, name string) (*FinanceAccount, error) {
+func findFinanceAccountByNameTx(tx *sql.Tx, divisionID int64, name string) (*FinanceAccount, error) {
 	row := tx.QueryRow(`
-		SELECT finance_accounts.id, account_code, name, account_type, description, opening_balance, is_system, is_active,
-		       COALESCE(created_by_user_id, 0), COALESCE(updated_by_user_id, 0), created_at, updated_at
+		SELECT finance_accounts.id, COALESCE(finance_accounts.division_id, 0), COALESCE(divisions.code, ''), COALESCE(divisions.name, ''),
+		       finance_accounts.account_code, finance_accounts.name, finance_accounts.account_type, finance_accounts.description, finance_accounts.opening_balance, finance_accounts.is_system, finance_accounts.is_active,
+		       COALESCE(finance_accounts.created_by_user_id, 0), COALESCE(finance_accounts.updated_by_user_id, 0), finance_accounts.created_at, finance_accounts.updated_at
 		FROM finance_accounts
-		WHERE LOWER(name) = LOWER(?)
+		LEFT JOIN divisions ON divisions.id = finance_accounts.division_id
+		WHERE finance_accounts.division_id = ?
+		  AND LOWER(finance_accounts.name) = LOWER(?)
 		LIMIT 1
-	`, name)
+	`, divisionID, name)
 	var account FinanceAccount
 	var isSystem, isActive int
 	if err := row.Scan(
-		&account.ID, &account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
+		&account.ID, &account.DivisionID, &account.DivisionCode, &account.DivisionName,
+		&account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
 		&isSystem, &isActive, &account.CreatedByUserID, &account.UpdatedByUserID, &account.CreatedAt, &account.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -828,12 +1283,19 @@ func findFinanceAccountByNameTx(tx *sql.Tx, name string) (*FinanceAccount, error
 	return &account, nil
 }
 
-func findFinanceAccountForPaymentMethodTx(tx *sql.Tx, paymentMethod string) (*FinanceAccount, error) {
+func findFinanceAccountForPaymentMethodTx(tx *sql.Tx, divisionID int64, paymentMethod string) (*FinanceAccount, error) {
+	if divisionID <= 0 {
+		var err error
+		divisionID, err = divisionIDByCodeTx(tx, divisionCodeSports)
+		if err != nil {
+			return nil, errors.New("division is required for payment-method finance account lookup")
+		}
+	}
 	switch normalizePaymentMethod(paymentMethod) {
 	case "bank_transfer", "qr_pay":
-		return findFinanceAccountByNameTx(tx, financeAccountMainBank)
+		return findFinanceAccountByNameTx(tx, divisionID, financeAccountMainBank)
 	default:
-		return findFinanceAccountByNameTx(tx, financeAccountCashInHand)
+		return findFinanceAccountByNameTx(tx, divisionID, financeAccountCashInHand)
 	}
 }
 
@@ -983,6 +1445,9 @@ func insertFinanceTransactionTx(tx *sql.Tx, entry financeTransactionCreate) (int
 	if err != nil {
 		return 0, fmt.Errorf("load finance account for transaction: %w", err)
 	}
+	if account.DivisionID <= 0 {
+		return 0, errors.New("selected finance account is missing a division")
+	}
 	if !account.IsActive {
 		return 0, errors.New("selected finance account is inactive")
 	}
@@ -1017,6 +1482,12 @@ func insertFinanceTransactionTx(tx *sql.Tx, entry financeTransactionCreate) (int
 	divisionID, err := financeDivisionIDForEntryTx(tx, entry)
 	if err != nil {
 		return 0, err
+	}
+	if divisionID <= 0 {
+		divisionID = account.DivisionID
+	}
+	if divisionID != account.DivisionID {
+		return 0, errors.New("selected finance account belongs to a different division")
 	}
 	result, err := tx.Exec(`
 		INSERT INTO finance_transactions (
@@ -1546,6 +2017,9 @@ func (a *App) createManualFinanceTransactionForAccountWithApprovalInDivision(cat
 	if err != nil {
 		return 0, fmt.Errorf("load finance account for manual transaction: %w", err)
 	}
+	if divisionID <= 0 {
+		divisionID = account.DivisionID
+	}
 	transactionType := financeTxnTypeIncome
 	if amount < 0 {
 		transactionType = financeTxnTypeExpense
@@ -1612,7 +2086,13 @@ func (a *App) createManualFinanceTransactionInDivision(category, personName, des
 		return 0, err
 	}
 	defer tx.Rollback()
-	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
+	if divisionID <= 0 {
+		divisionID, err = divisionIDByCodeTx(tx, divisionCodeSports)
+		if err != nil {
+			return 0, err
+		}
+	}
+	account, err := findFinanceAccountForPaymentMethodTx(tx, divisionID, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
@@ -1685,6 +2165,12 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 	if !fromAccount.IsActive || !toAccount.IsActive {
 		return "", errors.New("transfer accounts must be active")
 	}
+	if fromAccount.DivisionID <= 0 || toAccount.DivisionID <= 0 {
+		return "", errors.New("transfer accounts must belong to a division")
+	}
+	if fromAccount.DivisionID != toAccount.DivisionID {
+		return "", errors.New("transfers across divisions are not allowed")
+	}
 	fingerprint := fmt.Sprintf("%d|%d|%d|%.2f|%s|%s|%s|%s", recordedByUserID, fromAccount.ID, toAccount.ID, amount, transferDate.In(time.Local).Format("2006-01-02"), strings.TrimSpace(referenceNumber), strings.TrimSpace(description), strings.TrimSpace(notes))
 	if resultRef, duplicate, err := reserveFinanceOperationTx(tx, "finance_transfer", recordedByUserID, fingerprint); err != nil {
 		return "", err
@@ -1715,6 +2201,7 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 	if _, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    outReceipt,
 		ReferenceNumber:  referenceNumber,
+		DivisionID:       fromAccount.DivisionID,
 		Category:         "internal_transfer",
 		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  financeTxnTypeTransferOut,
@@ -1737,6 +2224,7 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 	if _, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    inReceipt,
 		ReferenceNumber:  referenceNumber,
+		DivisionID:       toAccount.DivisionID,
 		Category:         "internal_transfer",
 		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  financeTxnTypeTransferIn,
@@ -1951,6 +2439,7 @@ func (a *App) createFinanceOpeningBalance(accountID int64, amount float64, recor
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    financeVoucherReference("MKM-OPEN", recordedAt),
 		ReferenceNumber:  financeVoucherReference("MKM-OPEN", recordedAt),
+		DivisionID:       account.DivisionID,
 		Category:         "opening_balance",
 		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  financeTxnTypeOpeningBalance,
@@ -2021,6 +2510,7 @@ func (a *App) createFinanceAdjustment(accountID int64, amount float64, recordedA
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    financeVoucherReference("MKM-ADJ", recordedAt),
 		ReferenceNumber:  financeVoucherReference("MKM-ADJ", recordedAt),
+		DivisionID:       account.DivisionID,
 		Category:         "cash_adjustment",
 		ApprovalStatus:   financeApprovalApproved,
 		TransactionType:  financeTxnTypeAdjustment,
@@ -2330,12 +2820,13 @@ func (a *App) createFinanceTransferHandler(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	corporateDivisionID, err := divisionIDByCode(a.db, divisionCodeCorporate)
+	fromAccount, err := a.findFinanceAccountByID(fromAccountID)
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		a.setFlash(w, "Transfer could not be recorded: finance account was not found.")
+		http.Redirect(w, r, "/admin/finance/transfers", http.StatusSeeOther)
 		return
 	}
-	if !a.requireDivisionAccessForDivision(w, r, currentUser, corporateDivisionID) {
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, fromAccount.DivisionID) {
 		return
 	}
 	recordedBy := int64(0)
@@ -2391,7 +2882,12 @@ func (a *App) createFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
+	divisionID := parseInt64Query(r.FormValue("division_id"))
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, divisionID) {
+		return
+	}
 	accountID, err := a.createFinanceAccount(
+		divisionID,
 		strings.TrimSpace(r.FormValue("account_code")),
 		strings.TrimSpace(r.FormValue("name")),
 		strings.ToLower(strings.TrimSpace(r.FormValue("account_type"))),
@@ -2426,7 +2922,16 @@ func (a *App) updateFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	accountID := parseInt64Query(r.FormValue("account_id"))
-	err := a.updateFinanceAccount(
+	account, err := a.findFinanceAccountByID(accountID)
+	if err != nil {
+		a.setFlash(w, "Finance account could not be updated: finance account was not found.")
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, account.DivisionID) {
+		return
+	}
+	err = a.updateFinanceAccount(
 		accountID,
 		strings.TrimSpace(r.FormValue("account_code")),
 		strings.TrimSpace(r.FormValue("name")),
@@ -2464,6 +2969,15 @@ func (a *App) deleteFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	accountID := parseInt64Query(r.FormValue("account_id"))
+	account, err := a.findFinanceAccountByID(accountID)
+	if err != nil {
+		a.setFlash(w, "Finance account could not be deleted: finance account was not found.")
+		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, account.DivisionID) {
+		return
+	}
 	if err := a.deleteFinanceAccount(accountID); err != nil {
 		a.setFlash(w, "Finance account could not be deleted: "+err.Error())
 		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
@@ -2494,6 +3008,15 @@ func (a *App) createFinanceOpeningBalanceHandler(w http.ResponseWriter, r *http.
 		return
 	}
 	accountID := parseInt64Query(r.FormValue("account_id"))
+	account, err := a.findFinanceAccountByID(accountID)
+	if err != nil {
+		a.setFlash(w, "Opening balance could not be recorded: finance account was not found.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, account.DivisionID) {
+		return
+	}
 	amount, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
 	if err != nil {
 		a.setFlash(w, "A valid opening balance amount is required.")
@@ -2538,6 +3061,15 @@ func (a *App) createFinanceAdjustmentHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	accountID := parseInt64Query(r.FormValue("account_id"))
+	account, err := a.findFinanceAccountByID(accountID)
+	if err != nil {
+		a.setFlash(w, "Adjustment could not be recorded: finance account was not found.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, account.DivisionID) {
+		return
+	}
 	amount, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
 	if err != nil {
 		a.setFlash(w, "A valid adjustment amount is required.")
@@ -2585,6 +3117,15 @@ func (a *App) createCashReconciliationHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
+	account, err := a.findFinanceAccountByID(accountID)
+	if err != nil {
+		a.setFlash(w, "Cash reconciliation could not be recorded: finance account was not found.")
+		http.Redirect(w, r, "/admin/finance/reconciliations", http.StatusSeeOther)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, account.DivisionID) {
+		return
+	}
 	reconciledBy := int64(0)
 	if currentUser != nil {
 		reconciledBy = currentUser.ID

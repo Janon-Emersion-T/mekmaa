@@ -401,7 +401,16 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, payment
 	if !validPaymentMethod(paymentMethod) {
 		return 0, errors.New("invalid payment method")
 	}
-	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
+	divisionID, err := financeDivisionIDForEntryTx(tx, financeTransactionCreate{
+		ReferenceType: "admission",
+		ReferenceID:   admission.ID,
+		SourceType:    "admission",
+		SourceID:      admission.ID,
+	})
+	if err != nil {
+		return 0, err
+	}
+	account, err := findFinanceAccountForPaymentMethodTx(tx, divisionID, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
@@ -854,7 +863,15 @@ func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMont
 		return 0, errors.New("payment amount exceeds the outstanding balance")
 	}
 	now := time.Now().UTC()
-	account, err := findFinanceAccountForPaymentMethodTx(tx, paymentMethod)
+	divisionID, err := financeDivisionIDForEntryTx(tx, financeTransactionCreate{
+		ReferenceType: "admission",
+		ReferenceID:   admission.ID,
+		SourceType:    "student_monthly_payment",
+	})
+	if err != nil {
+		return 0, err
+	}
+	account, err := findFinanceAccountForPaymentMethodTx(tx, divisionID, paymentMethod)
 	if err != nil {
 		return 0, err
 	}
