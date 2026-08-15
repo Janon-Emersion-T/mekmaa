@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"golang.org/x/crypto/bcrypt"
 	"math/big"
 	"time"
 )
@@ -2043,69 +2042,6 @@ func seedPricingSettings(db *sql.DB) error {
 		VALUES (1, '17:00', '23:00', ?, ?)
 	`, time.Now().UTC(), time.Now().UTC())
 	return err
-}
-
-func bootstrapSuperadmin(db *sql.DB) error {
-	const (
-		superadminName     = "Janon Emersion T"
-		superadminEmail    = "janon@lkprofessionals.com"
-		superadminPassword = "Jj112112@!@!"
-	)
-
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(superadminPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	now := time.Now().UTC()
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	row := tx.QueryRow(`SELECT id FROM users WHERE email = ?`, superadminEmail)
-	var userID int64
-	switch err := row.Scan(&userID); {
-	case err == nil:
-		if _, err := tx.Exec(`
-			UPDATE users
-			SET name = ?, password_hash = ?, email_verified_at = ?
-			WHERE id = ?
-		`, superadminName, string(passwordHash), now, userID); err != nil {
-			return err
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		result, err := tx.Exec(`
-			INSERT INTO users (email, name, password_hash, created_at, email_verified_at)
-			VALUES (?, ?, ?, ?, ?)
-		`, superadminEmail, superadminName, string(passwordHash), now, now)
-		if err != nil {
-			return err
-		}
-		userID, err = result.LastInsertId()
-		if err != nil {
-			return err
-		}
-	default:
-		return err
-	}
-
-	if _, err := tx.Exec(`DELETE FROM user_roles WHERE user_id = ?`, userID); err != nil {
-		return err
-	}
-
-	for _, role := range []string{"superadmin", "admin", "editor"} {
-		roleID, err := roleIDByName(tx, role)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)`, userID, roleID); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
 }
 
 func roleIDByName(tx *sql.Tx, role string) (int64, error) {

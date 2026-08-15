@@ -1,14 +1,11 @@
 package main
 
 import (
-	"database/sql"
 	"log"
 	_ "modernc.org/sqlite"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
-	"time"
 )
 
 func main() {
@@ -16,110 +13,38 @@ func main() {
 		log.Printf("load .env: %v", err)
 	}
 
-	appEnv, err := parseAppEnvironment(os.Getenv("APP_ENV"))
+	deps, err := loadRuntimeDependencies()
 	if err != nil {
 		log.Fatal(err)
 	}
-	addr := envOrDefault("ADDR", ":8080")
-	dbPath, dbPathErrs := validateDatabasePath(appEnv, os.Getenv("DB_PATH"))
-	for _, errMsg := range dbPathErrs {
+	for _, errMsg := range deps.ConfigurationErrors {
 		log.Printf("startup configuration error: %s", errMsg)
 	}
-	if err := prepareDatabasePath(dbPath); err != nil {
-		log.Fatalf("prepare database path: %v", err)
-	}
-	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
-	uploadStorage, err := prepareUploadStorage(os.Getenv("UPLOAD_DIR"))
-	if err != nil {
-		log.Fatalf("prepare upload storage: %v", err)
-	}
-
-	smtpConfig := SMTPConfig{
-		Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
-		Port:     envOrDefault("SMTP_PORT", "587"),
-		Username: strings.TrimSpace(os.Getenv("SMTP_USER")),
-		Password: os.Getenv("SMTP_PASS"),
-		From:     strings.TrimSpace(os.Getenv("SMTP_FROM")),
-	}
-	if smtpConfig.From == "" {
-		smtpConfig.From = smtpConfig.Username
-	}
-	smtpConfig.Enabled = smtpConfig.Username != "" && smtpConfig.Password != "" && smtpConfig.From != ""
-
-	smsConfig := SMSConfig{
-		UserID:   envValue("SMS_USER_ID", "SMSLENZ_USER_ID"),
-		APIKey:   envValue("SMS_API_KEY", "SMSLENZ_API_KEY"),
-		SenderID: envValue("SMS_SENDER_ID", "SMSLENZ_SENDER_ID"),
-	}
-	smsConfig.Enabled = smsConfig.UserID != "" && smsConfig.APIKey != "" && smsConfig.SenderID != ""
-
-	bookingMessageSettings := BookingCommunicationSettings{
-		EmailEnabled: envOrDefault("BOOKING_EMAIL_ENABLED", "true") != "false",
-		SMSEnabled:   envOrDefault("BOOKING_SMS_ENABLED", "false") == "true" && smsConfig.Enabled,
-		ContactPhone: envOrDefault("MEKMAA_CONTACT_PHONE", "077 220 7297"),
-		ContactEmail: envOrDefault("MEKMAA_CONTACT_EMAIL", "mekmaa.jo@gmail.com"),
-		VenueName:    envOrDefault("MEKMAA_VENUE_NAME", "Mekmaa (Private Limited)"),
-		VenueAddress: envOrDefault("MEKMAA_VENUE_ADDRESS", "No. 64, Temple Road, Jaffna - 40000, Sri Lanka"),
-	}
-	if envOrDefault("BOOKING_SMS_ENABLED", "false") == "true" && !smsConfig.Enabled {
+	if envOrDefault("BOOKING_SMS_ENABLED", "false") == "true" && !deps.SMSConfig.Enabled {
 		log.Printf("startup booking SMS disabled: SMS credentials are incomplete")
 	}
-	tokenTTLDays, err := strconv.Atoi(envOrDefault("BOOKING_ACCESS_TOKEN_TTL_DAYS", "180"))
-	if err != nil || tokenTTLDays <= 0 {
-		tokenTTLDays = 180
-	}
-	bookingAccessSettings := BookingAccessSettings{
-		BaseURL:     envOrDefault("MEKMAA_PUBLIC_BASE_URL", "http://localhost:8080"),
-		TokenSecret: envOrDefault("BOOKING_ACCESS_TOKEN_SECRET", defaultBookingAccessTokenSecret),
-		TokenTTL:    time.Duration(tokenTTLDays) * 24 * time.Hour,
-	}
-	runtimeConfig := AppRuntimeConfig{
-		Env:           appEnv,
-		Addr:          addr,
-		DBPath:        dbPath,
-		UploadRoot:    uploadStorage.Root,
-		PublicBaseURL: bookingAccessSettings.BaseURL,
-		CookieSecure:  cookieSecure,
-	}
-
-	configErrs := validateRuntimeConfiguration(runtimeConfig, bookingMessageSettings, bookingAccessSettings, smtpConfig, smsConfig)
-	configErrs = append(configErrs, validateUploadPath(appEnv, uploadStorage.Root)...)
-	configErrs = append(configErrs, dbPathErrs...)
-	for _, errMsg := range configErrs {
-		log.Printf("startup configuration error: %s", errMsg)
-	}
-	if appEnv == appEnvProduction && len(configErrs) > 0 {
+	if deps.AppEnv == appEnvProduction && len(deps.ConfigurationErrors) > 0 {
 		log.Fatal("production startup validation failed")
 	}
 
-	db, err := sql.Open("sqlite", sqliteRuntimeDSN(dbPath))
+	db, err := openConfiguredDatabase(deps.RuntimeConfig.DBPath)
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		log.Fatal(err)
 	}
 	defer db.Close()
-	db.SetMaxOpenConns(8)
-	db.SetMaxIdleConns(4)
-	if err := enableSQLiteForeignKeys(db); err != nil {
-		log.Fatalf("enable sqlite foreign keys: %v", err)
+	if err := applyBootstrapData(db); err != nil {
+		log.Fatal(err)
 	}
-	if err := db.Ping(); err != nil {
-		log.Fatalf("ping database: %v", err)
-	}
-
-	if err := runMigrations(db); err != nil {
-		log.Fatalf("run migrations: %v", err)
-	}
-	if err := seedRoles(db); err != nil {
-		log.Fatalf("seed roles: %v", err)
-	}
-	if err := seedTrainingPrograms(db); err != nil {
-		log.Fatalf("seed training programmes: %v", err)
-	}
-	if err := seedFinanceCategories(db); err != nil {
-		log.Fatalf("seed finance categories: %v", err)
-	}
-	if err := bootstrapSuperadmin(db); err != nil {
-		log.Fatalf("bootstrap superadmin: %v", err)
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "seed-uat":
+			if err := runSeedUAT(db, deps.AppEnv); err != nil {
+				log.Fatal(err)
+			}
+			return
+		default:
+			log.Fatalf("unknown command: %s", os.Args[1])
+		}
 	}
 
 	templates, err := buildTemplates()
@@ -130,13 +55,13 @@ func main() {
 	app := &App{
 		db:              db,
 		templates:       templates,
-		cookieSecure:    cookieSecure,
-		smtp:            smtpConfig,
-		sms:             smsConfig,
-		uploads:         uploadStorage,
-		bookingMessages: bookingMessageSettings,
-		bookingAccess:   bookingAccessSettings,
-		runtimeConfig:   runtimeConfig,
+		cookieSecure:    deps.CookieSecure,
+		smtp:            deps.SMTPConfig,
+		sms:             deps.SMSConfig,
+		uploads:         deps.UploadStorage,
+		bookingMessages: deps.BookingMessages,
+		bookingAccess:   deps.BookingAccess,
+		runtimeConfig:   deps.RuntimeConfig,
 	}
 	unpricedOptions, err := app.listActiveUnpricedBookingOptions()
 	if err != nil {
@@ -150,20 +75,20 @@ func main() {
 	}
 	log.Printf(
 		"startup summary: env=%s addr=%s db_path=%s upload_path=%s public_base_url=%s cookie_secure=%t booking_email_enabled=%t booking_sms_enabled=%t active_unpriced_booking_options=%d",
-		runtimeConfig.Env,
-		runtimeConfig.Addr,
-		runtimeConfig.DBPath,
-		runtimeConfig.UploadRoot,
-		runtimeConfig.PublicBaseURL,
-		runtimeConfig.CookieSecure,
-		bookingMessageSettings.EmailEnabled,
-		bookingMessageSettings.SMSEnabled,
+		deps.RuntimeConfig.Env,
+		deps.RuntimeConfig.Addr,
+		deps.RuntimeConfig.DBPath,
+		deps.RuntimeConfig.UploadRoot,
+		deps.RuntimeConfig.PublicBaseURL,
+		deps.RuntimeConfig.CookieSecure,
+		deps.BookingMessages.EmailEnabled,
+		deps.BookingMessages.SMSEnabled,
 		len(unpricedOptions),
 	)
 
 	mux := http.NewServeMux()
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
-	registerUploadRoutes(mux, uploadStorage)
+	registerUploadRoutes(mux, deps.UploadStorage)
 	mux.HandleFunc("/health", app.healthHandler)
 	mux.HandleFunc("/ready", app.readyHandler)
 	mux.HandleFunc("/", app.homeHandler)
@@ -498,8 +423,8 @@ func main() {
 	mux.Handle("/admin/student-payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidStudentPaymentHandler), "finance.manage")))
 	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage", "space_bookings.manage", "booking_requests.manage")))
 
-	log.Printf("server listening on %s", addr)
-	if err := http.ListenAndServe(addr, app.securityHeaders(mux)); err != nil {
+	log.Printf("server listening on %s", deps.RuntimeConfig.Addr)
+	if err := http.ListenAndServe(deps.RuntimeConfig.Addr, app.securityHeaders(mux)); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -12,7 +12,7 @@ Target Go version: `1.26.5`
 - CSRF protection on all POST forms
 - role-based middleware for `customer`, `editor`, `coach`, `admin`, and `superadmin`
 - admin UI for assigning roles to users
-- seeded verified superadmin account
+- optional env-driven superadmin bootstrap
 
 ## Routes
 
@@ -31,7 +31,7 @@ Target Go version: `1.26.5`
 
 - Self-service registrations receive the `customer` role by default and must verify their email before signing in.
 - `coach` is a seeded system role with access to the dashboard and student attendance only.
-- A verified seeded superadmin account is created or updated on startup for platform control.
+- A verified superadmin account is created or updated only when `BOOTSTRAP_SUPERADMIN_EMAIL` and `BOOTSTRAP_SUPERADMIN_PASSWORD` are set.
 - `superadmin` can do everything `admin` can do.
 
 ## Environment variables
@@ -47,6 +47,9 @@ Core:
 - `COOKIE_SECURE`
 - `MEKMAA_PUBLIC_BASE_URL`
 - `BOOKING_ACCESS_TOKEN_SECRET`
+- `BOOTSTRAP_SUPERADMIN_NAME`
+- `BOOTSTRAP_SUPERADMIN_EMAIL`
+- `BOOTSTRAP_SUPERADMIN_PASSWORD`
 
 Communications:
 
@@ -66,6 +69,14 @@ Communications:
 ```bash
 go run .
 ```
+
+Local UAT seed:
+
+```bash
+go run . seed-uat
+```
+
+`seed-uat` is explicit, idempotent, and disabled in production. It upserts local Sports, KEC, Chess, Corporate, and Superadmin UAT accounts plus shared cross-division student data into the configured database without wiping existing records.
 
 ## Production Deployment
 
