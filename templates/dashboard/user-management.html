@@ -358,9 +358,10 @@
         {{$canEditUser := and (ne $.User.ID .ID) (or (hasRole $.User "superadmin") (not $targetPrivileged))}}
 
         <form
+          id="user-{{.ID}}"
           action="/admin/users/roles"
           method="post"
-          class="group overflow-hidden rounded-[1.5rem] border border-slate/10 bg-cloud/65 transition duration-200 hover:border-slate/20 hover:bg-cloud hover:shadow-[0_16px_45px_rgba(11,18,21,0.08)]"
+          class="group scroll-mt-24 overflow-hidden rounded-[1.5rem] border border-slate/10 bg-cloud/65 transition duration-200 hover:border-slate/20 hover:bg-cloud hover:shadow-[0_16px_45px_rgba(11,18,21,0.08)]"
         >
           <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
           <input type="hidden" name="user_id" value="{{.ID}}" />

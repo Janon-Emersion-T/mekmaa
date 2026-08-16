@@ -8904,8 +8904,6 @@ func TestBuildStaffDirectoryRowsKeepsUnassignedDivisionStaff(t *testing.T) {
 	}
 }
 
-/* tests */
-
 func TestBuildTemplatesIncludesStaffDirectory(t *testing.T) {
 	templates, err := buildTemplates()
 	if err != nil {
@@ -8919,5 +8917,97 @@ func TestBuildTemplatesIncludesStaffDirectory(t *testing.T) {
 
 	if tmpl == nil {
 		t.Fatal("staff-directory template is nil")
+	}
+}
+
+func TestHydrateStaffDirectoryUserDivisions(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf("seed divisions: %v", err)
+	}
+
+	user, err := app.createUser(
+		"Multi Division Staff",
+		"multi-division-staff@example.com",
+		"SecurePass123!",
+	)
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	kecID, err := divisionIDByCode(
+		app.db,
+		divisionCodeKEC,
+	)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+
+	chessID, err := divisionIDByCode(
+		app.db,
+		divisionCodeChess,
+	)
+	if err != nil {
+		t.Fatalf("find Chess division: %v", err)
+	}
+
+	now := time.Now().UTC()
+
+	for _, divisionID := range []int64{kecID, chessID} {
+		if _, err := app.db.Exec(`
+			INSERT INTO user_divisions (
+				user_id,
+				division_id,
+				created_at,
+				updated_at
+			)
+			VALUES (?, ?, ?, ?)
+		`, user.ID, divisionID, now, now); err != nil {
+			t.Fatalf(
+				"assign user division %d: %v",
+				divisionID,
+				err,
+			)
+		}
+	}
+
+	users := []User{*user}
+
+	if err := app.hydrateStaffDirectoryUserDivisions(
+		users,
+	); err != nil {
+		t.Fatalf(
+			"hydrate staff divisions: %v",
+			err,
+		)
+	}
+
+	if len(users[0].DivisionIDs) != 2 {
+		t.Fatalf(
+			"division ids = %#v, want 2 divisions",
+			users[0].DivisionIDs,
+		)
+	}
+
+	if !userHasDivisionCode(
+		&users[0],
+		divisionCodeKEC,
+	) {
+		t.Fatal("expected hydrated KEC membership")
+	}
+
+	if !userHasDivisionCode(
+		&users[0],
+		divisionCodeChess,
+	) {
+		t.Fatal("expected hydrated Chess membership")
+	}
+
+	if len(users[0].Divisions) != 2 {
+		t.Fatalf(
+			"hydrated divisions = %d, want 2",
+			len(users[0].Divisions),
+		)
 	}
 }

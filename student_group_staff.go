@@ -162,6 +162,97 @@ func (a *App) listAssignableGroupStaffByDivisionIDs(
 	return users, rows.Err()
 }
 
+func (a *App) hydrateStaffDirectoryUserDivisions(
+	users []User,
+) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	userIDs := make([]int64, 0, len(users))
+	indexByUserID := make(map[int64]int, len(users))
+
+	for index := range users {
+		userIDs = append(userIDs, users[index].ID)
+		indexByUserID[users[index].ID] = index
+
+		users[index].DivisionIDs = nil
+		users[index].DivisionCodes = nil
+		users[index].Divisions = nil
+	}
+
+	placeholders, args := int64ScopePlaceholders(userIDs)
+	if placeholders == "" {
+		return nil
+	}
+
+	rows, err := a.db.Query(`
+		SELECT
+			ud.user_id,
+			d.id,
+			COALESCE(d.code, ''),
+			COALESCE(d.slug, ''),
+			COALESCE(d.name, ''),
+			COALESCE(d.description, ''),
+			COALESCE(d.active, 1)
+		FROM user_divisions ud
+		JOIN divisions d
+			ON d.id = ud.division_id
+		WHERE ud.user_id IN (`+placeholders+`)
+		ORDER BY
+			LOWER(COALESCE(d.name, '')) ASC,
+			d.id ASC
+	`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			userID   int64
+			active   int
+			division Division
+		)
+
+		if err := rows.Scan(
+			&userID,
+			&division.ID,
+			&division.Code,
+			&division.Slug,
+			&division.Name,
+			&division.Description,
+			&active,
+		); err != nil {
+			return err
+		}
+
+		index, ok := indexByUserID[userID]
+		if !ok {
+			continue
+		}
+
+		division.Active = active == 1
+
+		users[index].DivisionIDs = append(
+			users[index].DivisionIDs,
+			division.ID,
+		)
+
+		users[index].DivisionCodes = append(
+			users[index].DivisionCodes,
+			division.Code,
+		)
+
+		users[index].Divisions = append(
+			users[index].Divisions,
+			division,
+		)
+	}
+
+	return rows.Err()
+}
+
 func groupStaffRoleSelected(
 	assignments []GroupStaffAssignment,
 	userID int64,

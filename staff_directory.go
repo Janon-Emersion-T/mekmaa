@@ -43,6 +43,20 @@ func (a *App) staffDirectoryHandler(
 		return
 	}
 
+	if err := a.hydrateStaffDirectoryUserDivisions(staff); err != nil {
+		log.Printf(
+			"hydrate staff directory divisions: %v",
+			err,
+		)
+
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
 	groups, err := a.listStudentGroupsByDivisionIDs(
 		divisionIDs,
 	)
