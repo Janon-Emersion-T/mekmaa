@@ -8642,3 +8642,70 @@ func TestWorkspaceGroupLowerTerminologyByDivision(t *testing.T) {
 		})
 	}
 }
+
+func TestTrainingProgramFromRequestAcceptsKECSubject(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf("seed divisions: %v", err)
+	}
+
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("division_id", strconv.FormatInt(kecID, 10))
+	form.Set("name", "Grade 6 Mathematics")
+	form.Set("activity", "Mathematics")
+	form.Set("training_format", "group")
+	form.Set("admission_fee", "1000")
+	form.Set("monthly_fee", "2500")
+	form.Set("sort_order", "10")
+	form.Set("active", "on")
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/admin/training-programs/create",
+		strings.NewReader(form.Encode()),
+	)
+	req.Header.Set(
+		"Content-Type",
+		"application/x-www-form-urlencoded",
+	)
+
+	if err := req.ParseForm(); err != nil {
+		t.Fatalf("parse form: %v", err)
+	}
+
+	program, err := app.trainingProgramFromRequest(req)
+	if err != nil {
+		t.Fatalf(
+			"trainingProgramFromRequest returned error: %v",
+			err,
+		)
+	}
+
+	if program.DivisionCode != divisionCodeKEC {
+		t.Fatalf(
+			"division code = %q, want %q",
+			program.DivisionCode,
+			divisionCodeKEC,
+		)
+	}
+
+	if program.Activity != "mathematics" {
+		t.Fatalf(
+			"activity = %q, want mathematics",
+			program.Activity,
+		)
+	}
+
+	if program.GameID != 0 {
+		t.Fatalf(
+			"KEC game id = %d, want 0",
+			program.GameID,
+		)
+	}
+}

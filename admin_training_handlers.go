@@ -764,13 +764,25 @@ func (a *App) createTrainingProgramHandler(
 		return
 	}
 
+	target := "/admin/training-programs?action=new"
+
+	if division := strings.TrimSpace(
+		r.FormValue("division"),
+	); division != "" {
+		target = withQueryValue(
+			target,
+			"division",
+			division,
+		)
+	}
+
 	program, err := a.trainingProgramFromRequest(r)
 	if err != nil {
 		a.setFlash(w, "Training programme could not be created: "+err.Error())
 		http.Redirect(
 			w,
 			r,
-			"/admin/training-programs?action=new",
+			target,
 			http.StatusSeeOther,
 		)
 		return
@@ -799,7 +811,7 @@ func (a *App) createTrainingProgramHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/training-programs?action=new",
+			target,
 			http.StatusSeeOther,
 		)
 		return
@@ -807,11 +819,23 @@ func (a *App) createTrainingProgramHandler(
 
 	a.setFlash(w, "Training programme created successfully.")
 
+	successTarget := "/admin/training-programs?action=view&id=" +
+		strconv.FormatInt(programID, 10)
+
+	if program.DivisionName != "" {
+		if division, err := a.findDivisionByID(program.DivisionID); err == nil {
+			successTarget = withQueryValue(
+				successTarget,
+				"division",
+				division.Slug,
+			)
+		}
+	}
+
 	http.Redirect(
 		w,
 		r,
-		"/admin/training-programs?action=view&id="+
-			strconv.FormatInt(programID, 10),
+		successTarget,
 		http.StatusSeeOther,
 	)
 }
