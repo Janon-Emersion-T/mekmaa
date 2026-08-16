@@ -15,7 +15,7 @@
           </h1>
 
           <p class="mt-3 max-w-xl text-sm leading-7 text-cloud/75 sm:text-base">
-            Enter the student's Mekmaa Student ID to review their complete saved attendance history across the groups available in this workspace.
+            Enter the student's Mekmaa Student ID to review their complete saved attendance history across the {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in this workspace.
           </p>
         </div>
 
@@ -68,7 +68,7 @@
         </h2>
 
         <p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-amber-900/70">
-          Check the Student ID and confirm that the student belongs to a group available in your current workspace.
+          Check the Student ID and confirm that the student belongs to a {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in your current workspace.
         </p>
       </div>
     </div>
@@ -183,7 +183,7 @@
 
             <div>
               <p class="text-sm font-semibold text-obsidian">
-                {{if .GroupName}}{{.GroupName}}{{else}}Group unavailable{{end}}
+                {{if .GroupName}}{{.GroupName}}{{else}}{{workspaceGroupSingularLabel $.User $.SelectedDivision $.SelectedDivisionScope}} unavailable{{end}}
               </p>
 
               <p class="mt-1 text-xs text-slate/55">

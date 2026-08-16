@@ -162,6 +162,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"workspaceStaffLabel":                       workspaceStaffLabel,
 		"workspaceGroupLabel":                       workspaceGroupLabel,
 		"workspaceGroupSingularLabel":               workspaceGroupSingularLabel,
+		"workspaceGroupSingularLowerLabel":          workspaceGroupSingularLowerLabel,
+		"workspaceGroupLowerLabel":                  workspaceGroupLowerLabel,
 		"workspaceGroupPath":                        workspaceGroupPath,
 		"workspaceRegistrationFeeLabel":             workspaceRegistrationFeeLabel,
 		"workspaceMonthlyFeeLabel":                  workspaceMonthlyFeeLabel,
@@ -505,6 +507,34 @@ func workspaceGroupSingularLabel(user *User, selectedDivision *Division, selecte
 	default:
 		return "Group"
 	}
+}
+
+func workspaceGroupSingularLowerLabel(
+	user *User,
+	selectedDivision *Division,
+	selectedScope string,
+) string {
+	return strings.ToLower(
+		workspaceGroupSingularLabel(
+			user,
+			selectedDivision,
+			selectedScope,
+		),
+	)
+}
+
+func workspaceGroupLowerLabel(
+	user *User,
+	selectedDivision *Division,
+	selectedScope string,
+) string {
+	return strings.ToLower(
+		workspaceGroupLabel(
+			user,
+			selectedDivision,
+			selectedScope,
+		),
+	)
 }
 
 func workspaceGroupPath(user *User, selectedDivision *Division, selectedScope string) string {

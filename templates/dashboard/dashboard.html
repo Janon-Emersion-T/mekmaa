@@ -147,15 +147,15 @@
             </a>
             {{end}}
             {{if hasPermission .User "student_groups.manage"}}
-            <a href="{{scopedURL "/admin/student-groups" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
+            <a href="{{scopedURL (workspaceGroupPath .User .SelectedDivision .SelectedDivisionScope) .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">{{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Organize students into active teaching and attendance groups.</p>
+              <p class="mt-2 text-sm leading-7 text-slate/72">Organize students into active {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}} for teaching, coaching, and attendance.</p>
             </a>
             {{end}}
             {{if hasPermission .User "attendance.manage"}}
             <a href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">Attendance</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Record daily attendance for students by group.</p>
+              <p class="mt-2 text-sm leading-7 text-slate/72">Record daily attendance for students by {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.</p>
             </a>
             {{end}}
             {{if hasPermission .User "space_bookings.manage"}}

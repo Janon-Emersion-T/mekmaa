@@ -8584,3 +8584,61 @@ func TestGroupStaffRoleSelected(t *testing.T) {
 		t.Fatal("coordinator must not be selected")
 	}
 }
+
+func TestWorkspaceGroupLowerTerminologyByDivision(t *testing.T) {
+	user := &User{}
+
+	tests := []struct {
+		code     string
+		singular string
+		plural   string
+	}{
+		{
+			code:     divisionCodeSports,
+			singular: "training group",
+			plural:   "training groups",
+		},
+		{
+			code:     divisionCodeKEC,
+			singular: "class",
+			plural:   "classes",
+		},
+		{
+			code:     divisionCodeChess,
+			singular: "batch",
+			plural:   "batches",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			division := &Division{
+				Code: tt.code,
+			}
+
+			if got := workspaceGroupSingularLowerLabel(
+				user,
+				division,
+				"",
+			); got != tt.singular {
+				t.Fatalf(
+					"singular = %q, want %q",
+					got,
+					tt.singular,
+				)
+			}
+
+			if got := workspaceGroupLowerLabel(
+				user,
+				division,
+				"",
+			); got != tt.plural {
+				t.Fatalf(
+					"plural = %q, want %q",
+					got,
+					tt.plural,
+				)
+			}
+		})
+	}
+}

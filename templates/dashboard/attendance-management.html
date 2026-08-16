@@ -8,7 +8,7 @@
         <div class="max-w-2xl">
           <p class="text-xs font-semibold uppercase tracking-[0.26em] text-aqua/80">Attendance Console</p>
           <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Run the whole sheet from one place.</h1>
-          <p class="mt-3 max-w-xl text-sm leading-7 text-cloud/78 sm:text-base">Open any group, bulk mark the roster, then fine-tune exceptions with notes before saving.</p>
+          <p class="mt-3 max-w-xl text-sm leading-7 text-cloud/78 sm:text-base">Open any {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}, bulk mark the roster, then fine-tune exceptions with notes before saving.</p>
         </div>
         <form action="/admin/attendance" method="get" class="grid gap-3 rounded-[1.75rem] border border-white/12 bg-white/10 p-4 backdrop-blur sm:grid-cols-[minmax(15rem,1fr)_minmax(15rem,1fr)_12rem_auto] sm:p-5" data-attendance-filter-form>
           {{if .SelectedDivision}}
@@ -17,7 +17,7 @@
           <input type="hidden" name="division" value="all">
           {{end}}
           <select name="group_id" class="h-12 rounded-2xl border border-white/12 bg-white/92 px-4 text-sm text-obsidian outline-none focus:border-aqua" data-group-select>
-            <option value="">Select group</option>
+            <option value="">Select {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}}</option>
             {{range .StudentGroups}}
             <option value="{{.ID}}" {{if and $.SelectedGroup (eq $.SelectedGroup.ID .ID)}}selected{{end}}>{{.Name}} · {{.Code}}</option>
             {{end}}
@@ -50,7 +50,7 @@
           </h2>
 
           <p class="mt-1 text-sm text-slate/55">
-            Reopen an existing attendance sheet without rebuilding the group, session and date selection.
+            Reopen an existing attendance sheet without rebuilding the {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}, session and date selection.
           </p>
         </div>
 
@@ -209,7 +209,7 @@
             Complete saved attendance record
           </h3>
           <p class="mt-1 text-sm text-slate/60">
-            History across every group currently available in your workspace scope.
+            History across every {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}} currently available in your workspace scope.
           </p>
         </div>
 
@@ -228,7 +228,7 @@
 
             <div>
               <p class="text-sm font-semibold text-obsidian">
-                {{if .GroupName}}{{.GroupName}}{{else}}Group unavailable{{end}}
+                {{if .GroupName}}{{.GroupName}}{{else}}{{workspaceGroupSingularLabel $.User $.SelectedDivision $.SelectedDivisionScope}} unavailable{{end}}
               </p>
 
               <p class="mt-1 text-xs text-slate/55">
@@ -296,7 +296,7 @@
         <div class="rounded-[1.75rem] border border-slate/8 bg-cloud/75 p-5">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">Active group</p>
+              <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">Active {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
               <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{.SelectedGroup.Name}}</h2>
               <p class="mt-2 text-sm text-slate/66">{{.SelectedGroup.Code}} · {{formatCalendarDate .AttendanceDate}}</p>
               {{if .SelectedGroup.TrainingProgramName}}
@@ -385,7 +385,7 @@
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-800/70">Admin notice</p>
             <h3 class="mt-2 text-lg font-semibold text-amber-950">Monthly session limit exceeded</h3>
-            <p class="mt-2 text-sm leading-6 text-amber-900/80">These students have already attended more than 8 sessions this month across all groups.</p>
+            <p class="mt-2 text-sm leading-6 text-amber-900/80">These students have already attended more than 8 sessions this month across all {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.</p>
           </div>
           <span class="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-900">{{len .AttendanceLimitWarnings}} alerts</span>
         </div>
@@ -409,11 +409,11 @@
             </p>
 
             <h3 class="mt-2 text-xl font-semibold text-obsidian">
-              Group attendance performance
+              {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}} attendance performance
             </h3>
 
             <p class="mt-1 text-sm text-slate/60">
-              Totals from every saved attendance sheet for this group.
+              Totals from every saved attendance sheet for this {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.
             </p>
           </div>
 
@@ -480,7 +480,7 @@
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Recent attendance dates</h3>
-            <p class="mt-1 text-xs text-slate/55">Jump back into an older sheet for this group.</p>
+            <p class="mt-1 text-xs text-slate/55">Jump back into an older sheet for this {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.</p>
           </div>
           <p class="text-xs text-slate/50">Today: {{formatCalendarDate .TodayDate}}</p>
         </div>
@@ -579,7 +579,7 @@
               </div>
             </div>
             {{else}}
-            <div class="rounded-2xl border border-dashed border-slate/15 bg-white/80 px-4 py-6 text-sm text-slate/58">No students in this group.</div>
+            <div class="rounded-2xl border border-dashed border-slate/15 bg-white/80 px-4 py-6 text-sm text-slate/58">No students in this {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.</div>
             {{end}}
           </div>
         </div>
