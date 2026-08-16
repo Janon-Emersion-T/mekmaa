@@ -8,7 +8,7 @@
         <h1 class="text-2xl font-semibold sm:text-3xl">{{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}</h1>
         <p class="mt-2 text-sm text-slate/70">Manage {{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}, student assignments, timetables, and staff assignments.</p>
       </div>
-      <a href="/admin/student-groups?action=new#group-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add new {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}}</a>
+      <a href="/admin/student-groups?action=new&division={{.SelectedDivisionScope}}#group-form" class="inline-flex items-center justify-center rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Add new {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}}</a>
     </div>
   </div>
 
@@ -16,10 +16,11 @@
   <div id="group-form" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-xl font-semibold sm:text-2xl">Add {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}}</h2>
-      <a href="/admin/student-groups" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+      <a href="/admin/student-groups?division={{.SelectedDivisionScope}}" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
     </div>
     <form action="/admin/student-groups/create" method="post" class="mt-6 space-y-6">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="hidden" name="division" value="{{.SelectedDivisionScope}}" />
       <div class="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
         <input type="text" name="name" placeholder="{{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}} Name" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
         <input type="text" name="code" placeholder="{{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}} Code" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
@@ -89,23 +90,41 @@
       </div>
 
       <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
-        <div class="flex items-center justify-between gap-3">
-          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign coaches</h3>
-          <p class="text-xs text-slate/55">{{len .AvailableCoaches}} available</p>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign staff</h3>
+            <p class="mt-1 text-xs text-slate/55">Choose a role only for staff who belong to this {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}}.</p>
+          </div>
+          <p class="text-xs text-slate/55">{{len .AvailableGroupStaff}} available</p>
         </div>
 
         <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {{range .AvailableCoaches}}
-          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
-            <input type="checkbox" name="coach_ids" value="{{.ID}}" class="mt-1" />
-            <span class="min-w-0">
-              <span class="block font-medium text-obsidian">{{.Name}}</span>
-              <span class="mt-1 block truncate text-xs text-slate/60">{{.Email}}</span>
-            </span>
-          </label>
+          {{range $index, $staff := .AvailableGroupStaff}}
+          <div class="rounded-2xl border border-slate/10 bg-white p-4">
+            <input type="hidden" name="staff_user_id" value="{{$staff.ID}}" />
+
+            <div class="min-w-0">
+              <p class="font-medium text-obsidian">{{$staff.Name}}</p>
+              <p class="mt-1 truncate text-xs text-slate/60">{{$staff.Email}}</p>
+            </div>
+
+            <label class="mt-4 block text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">
+              Assignment role
+            </label>
+
+            <select
+              name="staff_role"
+              class="mt-2 w-full rounded-2xl border border-slate/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-aqua"
+            >
+              <option value="">Not assigned</option>
+              {{range $.GroupStaffRoles}}
+              <option value="{{.Key}}">{{.Label}}</option>
+              {{end}}
+            </select>
+          </div>
           {{else}}
           <p class="text-sm text-slate/60">
-            No coach users are available. Assign the coach role through User Management first.
+            No active staff are assigned to this division. Assign staff to the division through User Management first.
           </p>
           {{end}}
         </div>
@@ -128,7 +147,7 @@
             <th class="px-5 py-4 font-medium">Programme</th>
             <th class="px-5 py-4 font-medium">Sessions</th>
             <th class="px-5 py-4 font-medium">Students</th>
-            <th class="px-5 py-4 font-medium">Coaches</th>
+            <th class="px-5 py-4 font-medium">Staff</th>
             <th class="px-5 py-4 font-medium">Preview</th>
             <th class="px-5 py-4 font-medium text-right sm:px-6">Actions</th>
           </tr>
@@ -145,11 +164,18 @@
             <td class="px-5 py-4 text-slate/75">{{len .Sessions}}</td>
             <td class="px-5 py-4 text-slate/75">{{.StudentCount}}</td>
             <td class="px-5 py-4 text-slate/75">
-              {{if .Coaches}}
-              {{range $index, $coach := .Coaches}}{{if lt $index 2}}<p>{{$coach.Name}}</p>{{end}}{{end}}
-              {{if gt .CoachCount 2}}<p class="mt-1 text-xs text-slate/55">+ {{sub .CoachCount 2}} more</p>{{end}}
+              {{if .AssignedStaff}}
+              {{range $index, $staff := .AssignedStaff}}
+                {{if lt $index 2}}
+                <div>
+                  <p>{{$staff.UserName}}</p>
+                  <p class="text-xs text-slate/50">{{$staff.RoleLabel}}</p>
+                </div>
+                {{end}}
+              {{end}}
+              {{if gt .StaffCount 2}}<p class="mt-1 text-xs text-slate/55">+ {{sub .StaffCount 2}} more</p>{{end}}
               {{else}}
-              <p>No coaches</p>
+              <p>No staff assigned</p>
               {{end}}
             </td>
             <td class="px-5 py-4 text-slate/75">
@@ -162,11 +188,12 @@
             </td>
             <td class="px-5 py-4 sm:px-6">
               <div class="flex min-w-[13rem] flex-wrap justify-end gap-2">
-                <a href="/admin/student-groups?action=view&id={{.ID}}#group-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
-                <a href="/admin/student-groups?action=edit&id={{.ID}}#group-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
+                <a href="/admin/student-groups?action=view&id={{.ID}}&division={{$.SelectedDivisionScope}}#group-view" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
+                <a href="/admin/student-groups?action=edit&id={{.ID}}&division={{$.SelectedDivisionScope}}#group-edit" class="rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-medium text-slate transition hover:border-aqua/40 hover:bg-cloud">Edit</a>
                 <form action="/admin/student-groups/delete" method="post">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="group_id" value="{{.ID}}" />
+                  <input type="hidden" name="division" value="{{$.SelectedDivisionScope}}" />
                   <button type="submit" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50">Delete</button>
                 </form>
               </div>
@@ -186,7 +213,7 @@
   <div id="group-view" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-xl font-semibold sm:text-2xl">{{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}} details</h2>
-      <a href="/admin/student-groups" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+      <a href="/admin/student-groups?division={{.SelectedDivisionScope}}" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
     </div>
     <div class="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
       <div class="space-y-4">
@@ -211,8 +238,8 @@
           <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedGroup.StudentCount}}</p>
         </div>
         <div class="rounded-2xl bg-cloud px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Coaches</p>
-          <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedGroup.CoachCount}}</p>
+          <p class="text-xs uppercase tracking-[0.2em] text-slate/55">Assigned staff</p>
+          <p class="mt-2 text-sm font-medium text-obsidian">{{.SelectedGroup.StaffCount}}</p>
         </div>
       </div>
       <div class="space-y-4">
@@ -231,15 +258,18 @@
         </div>
 
         <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
-          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assigned coaches</h3>
+          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assigned staff</h3>
           <div class="mt-4 space-y-3">
-            {{range .SelectedGroup.Coaches}}
+            {{range .SelectedGroup.AssignedStaff}}
             <div class="rounded-2xl bg-white px-4 py-3">
-              <p class="font-medium text-obsidian">{{.Name}}</p>
-              <p class="mt-1 text-sm text-slate/60">{{.Email}}</p>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="font-medium text-obsidian">{{.UserName}}</p>
+                <span class="rounded-full bg-cloud px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/60">{{.RoleLabel}}</span>
+              </div>
+              <p class="mt-1 text-sm text-slate/60">{{.UserEmail}}</p>
             </div>
             {{else}}
-            <p class="text-sm text-slate/60">No coaches assigned.</p>
+            <p class="text-sm text-slate/60">No staff assigned.</p>
             {{end}}
           </div>
         </div>
@@ -267,11 +297,12 @@
   <div id="group-edit" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-xl font-semibold sm:text-2xl">Edit group</h2>
-      <a href="/admin/student-groups" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
+      <a href="/admin/student-groups?division={{.SelectedDivisionScope}}" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
     </div>
     <form action="/admin/student-groups/update" method="post" class="mt-6 space-y-6">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
       <input type="hidden" name="group_id" value="{{.SelectedGroup.ID}}" />
+      <input type="hidden" name="division" value="{{.SelectedDivisionScope}}" />
       <div class="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
         <input type="text" name="name" value="{{.SelectedGroup.Name}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
         <input type="text" name="code" value="{{.SelectedGroup.Code}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-aqua" />
@@ -360,29 +391,44 @@
       </div>
 
       <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
-        <div class="flex items-center justify-between gap-3">
-          <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign coaches</h3>
-          <p class="text-xs text-slate/55">{{len .AvailableCoaches}} available</p>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assign staff</h3>
+            <p class="mt-1 text-xs text-slate/55">Update the operational responsibility of each assigned staff member.</p>
+          </div>
+          <p class="text-xs text-slate/55">{{len .AvailableGroupStaff}} available</p>
         </div>
 
         <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {{range .AvailableCoaches}}
-          <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">
-            <input
-              type="checkbox"
-              name="coach_ids"
-              value="{{.ID}}"
-              {{if userSelected $.SelectedGroup.Coaches .ID}}checked{{end}}
-              class="mt-1"
-            />
-            <span class="min-w-0">
-              <span class="block font-medium text-obsidian">{{.Name}}</span>
-              <span class="mt-1 block truncate text-xs text-slate/60">{{.Email}}</span>
-            </span>
-          </label>
+          {{range $index, $staff := .AvailableGroupStaff}}
+          <div class="rounded-2xl border border-slate/10 bg-white p-4">
+            <input type="hidden" name="staff_user_id" value="{{$staff.ID}}" />
+
+            <div class="min-w-0">
+              <p class="font-medium text-obsidian">{{$staff.Name}}</p>
+              <p class="mt-1 truncate text-xs text-slate/60">{{$staff.Email}}</p>
+            </div>
+
+            <label class="mt-4 block text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">
+              Assignment role
+            </label>
+
+            <select
+              name="staff_role"
+              class="mt-2 w-full rounded-2xl border border-slate/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-aqua"
+            >
+              <option value="">Not assigned</option>
+              {{range $.GroupStaffRoles}}
+              <option
+                value="{{.Key}}"
+                {{if groupStaffRoleSelected $.SelectedGroup.AssignedStaff $staff.ID .Key}}selected{{end}}
+              >{{.Label}}</option>
+              {{end}}
+            </select>
+          </div>
           {{else}}
           <p class="text-sm text-slate/60">
-            No coach users are available. Assign the coach role through User Management first.
+            No active staff are assigned to this division. Assign staff to the division through User Management first.
           </p>
           {{end}}
         </div>

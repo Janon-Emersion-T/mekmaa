@@ -32,6 +32,11 @@ type GroupStaffAssignmentInput struct {
 	PrimaryAssignment bool
 }
 
+type GroupStaffRoleOption struct {
+	Key   string
+	Label string
+}
+
 func normalizeGroupStaffRole(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
@@ -75,6 +80,145 @@ func allowedGroupStaffRolesForDivisionCode(code string) []string {
 	default:
 		return nil
 	}
+}
+
+func groupStaffRoleOptionsForDivisionCode(
+	divisionCode string,
+) []GroupStaffRoleOption {
+	roles := allowedGroupStaffRolesForDivisionCode(divisionCode)
+	options := make([]GroupStaffRoleOption, 0, len(roles))
+
+	for _, role := range roles {
+		label := groupStaffRoleLabel(role)
+		if label == "" {
+			continue
+		}
+
+		options = append(options, GroupStaffRoleOption{
+			Key:   role,
+			Label: label,
+		})
+	}
+
+	return options
+}
+
+func (a *App) listAssignableGroupStaffByDivisionIDs(
+	divisionIDs []int64,
+) ([]User, error) {
+	placeholders, args := int64ScopePlaceholders(divisionIDs)
+	if placeholders == "" {
+		return nil, nil
+	}
+
+	rows, err := a.db.Query(`
+		SELECT DISTINCT
+			u.id,
+			COALESCE(u.email, ''),
+			COALESCE(u.name, ''),
+			COALESCE(u.phone, ''),
+			COALESCE(u.address, ''),
+			COALESCE(u.specialties, ''),
+			COALESCE(u.notes, ''),
+			COALESCE(u.active, 1)
+		FROM users u
+		JOIN user_divisions ud
+			ON ud.user_id = u.id
+		WHERE ud.division_id IN (`+placeholders+`)
+		  AND COALESCE(u.active, 1) = 1
+		ORDER BY
+			LOWER(COALESCE(u.name, '')) ASC,
+			LOWER(COALESCE(u.email, '')) ASC,
+			u.id ASC
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]User, 0)
+
+	for rows.Next() {
+		var user User
+		var active int
+
+		if err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.Name,
+			&user.Phone,
+			&user.Address,
+			&user.Specialties,
+			&user.Notes,
+			&active,
+		); err != nil {
+			return nil, err
+		}
+
+		user.Active = active == 1
+		users = append(users, user)
+	}
+
+	return users, rows.Err()
+}
+
+func groupStaffRoleSelected(
+	assignments []GroupStaffAssignment,
+	userID int64,
+	role string,
+) bool {
+	role = normalizeGroupStaffRole(role)
+
+	for _, assignment := range assignments {
+		if assignment.UserID == userID &&
+			normalizeGroupStaffRole(assignment.AssignmentRole) == role {
+			return true
+		}
+	}
+
+	return false
+}
+
+func groupStaffUserAssigned(
+	assignments []GroupStaffAssignment,
+	userID int64,
+) bool {
+	for _, assignment := range assignments {
+		if assignment.UserID == userID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func legacyCoachIDsFromGroupStaff(
+	assignments []GroupStaffAssignmentInput,
+) []int64 {
+	seen := make(map[int64]struct{})
+	result := make([]int64, 0)
+
+	for _, assignment := range assignments {
+		role := normalizeGroupStaffRole(assignment.AssignmentRole)
+
+		if role != groupStaffRoleCoach &&
+			role != groupStaffRoleAssistantCoach {
+			continue
+		}
+
+		if assignment.UserID <= 0 {
+			continue
+		}
+
+		if _, exists := seen[assignment.UserID]; exists {
+			continue
+		}
+
+		seen[assignment.UserID] = struct{}{}
+		result = append(result, assignment.UserID)
+	}
+
+	return result
 }
 
 func validGroupStaffRoleForDivisionCode(divisionCode, role string) bool {
@@ -232,6 +376,15 @@ func (a *App) replaceStudentGroupStaff(
 		return err
 	}
 
+	// Keep the legacy coach relationship synchronized while Sports/Chess
+	// attendance authorization still reads student_group_coaches.
+	if _, err := tx.Exec(
+		`DELETE FROM student_group_coaches WHERE group_id = ?`,
+		groupID,
+	); err != nil {
+		return err
+	}
+
 	now := time.Now()
 
 	for _, assignment := range assignments {
@@ -258,6 +411,19 @@ func (a *App) replaceStudentGroupStaff(
 			now,
 			now,
 		); err != nil {
+			return err
+		}
+	}
+
+	for _, userID := range legacyCoachIDsFromGroupStaff(assignments) {
+		if _, err := tx.Exec(`
+			INSERT OR IGNORE INTO student_group_coaches (
+				group_id,
+				user_id,
+				created_at
+			)
+			VALUES (?, ?, ?)
+		`, groupID, userID, now); err != nil {
 			return err
 		}
 	}

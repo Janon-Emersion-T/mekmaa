@@ -168,6 +168,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"scopedURL":                                 scopedURL,
 		"admissionSelected":                         admissionSelected,
 		"userSelected":                              userSelected,
+		"groupStaffRoleSelected":                    groupStaffRoleSelected,
+		"groupStaffUserAssigned":                    groupStaffUserAssigned,
 		"admissionAge":                              admissionAge,
 		"attendanceCount":                           attendanceCount,
 		"attendanceRecordFor":                       attendanceRecordFor,

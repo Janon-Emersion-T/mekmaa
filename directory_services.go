@@ -1488,6 +1488,12 @@ func (a *App) listStudentGroupsByDivisionIDs(divisionIDs []int64) ([]StudentGrou
 		if err != nil {
 			return nil, err
 		}
+
+		assignedStaff, err := a.listStudentGroupStaff(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
 		sessions, err := a.listStudentGroupSessions(groups[i].ID)
 		if err != nil {
 			return nil, err
@@ -1497,6 +1503,8 @@ func (a *App) listStudentGroupsByDivisionIDs(divisionIDs []int64) ([]StudentGrou
 		groups[i].StudentCount = len(students)
 		groups[i].Coaches = coaches
 		groups[i].CoachCount = len(coaches)
+		groups[i].AssignedStaff = assignedStaff
+		groups[i].StaffCount = len(assignedStaff)
 		groups[i].Sessions = sessions
 	}
 
@@ -1573,6 +1581,12 @@ func (a *App) listStudentGroupsForCoachByDivisionIDs(userID int64, divisionIDs [
 		if err != nil {
 			return nil, err
 		}
+
+		assignedStaff, err := a.listStudentGroupStaff(groups[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
 		sessions, err := a.listStudentGroupSessions(groups[i].ID)
 		if err != nil {
 			return nil, err
@@ -1582,6 +1596,8 @@ func (a *App) listStudentGroupsForCoachByDivisionIDs(userID int64, divisionIDs [
 		groups[i].StudentCount = len(students)
 		groups[i].Coaches = coaches
 		groups[i].CoachCount = len(coaches)
+		groups[i].AssignedStaff = assignedStaff
+		groups[i].StaffCount = len(assignedStaff)
 		groups[i].Sessions = sessions
 	}
 
@@ -1653,8 +1669,17 @@ func (a *App) findStudentGroupByIDForDivisionIDs(groupID int64, divisionIDs []in
 	if err != nil {
 		return nil, err
 	}
+
+	assignedStaff, err := a.listStudentGroupStaff(group.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	group.Coaches = coaches
 	group.CoachCount = len(coaches)
+	group.AssignedStaff = assignedStaff
+	group.StaffCount = len(assignedStaff)
+
 	return &group, nil
 }
 

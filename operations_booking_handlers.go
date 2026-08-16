@@ -132,6 +132,16 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	assignableStaff, err := a.listAssignableGroupStaffByDivisionIDs(
+		divisionIDs,
+	)
+	if err != nil {
+		log.Printf("list assignable staff for student groups: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	trainingPrograms, err := a.listTrainingProgramsByDivisionIDs(divisionIDs, false, true)
 	if err != nil {
 		log.Printf("list training programmes for student groups: %v", err)
@@ -145,7 +155,15 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 	data.StudentGroups = groups
 	data.Admissions = admissions
 	data.AvailableCoaches = coaches
+	data.AvailableGroupStaff = assignableStaff
 	data.TrainingPrograms = trainingPrograms
+
+	if len(divisionIDs) == 1 {
+		if division, err := a.findDivisionByID(divisionIDs[0]); err == nil {
+			data.GroupStaffRoles =
+				groupStaffRoleOptionsForDivisionCode(division.Code)
+		}
+	}
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
 	case "new", "view", "edit":
@@ -4995,6 +5013,70 @@ func (a *App) deleteAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
 }
 
+func groupStaffAssignmentsFromRequest(r *http.Request) []GroupStaffAssignmentInput {
+	userIDs := r.Form["staff_user_id"]
+	roles := r.Form["staff_role"]
+	primaryValues := r.Form["staff_primary"]
+
+	primaryIndexes := make(map[int]struct{}, len(primaryValues))
+	for _, raw := range primaryValues {
+		index, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err == nil && index >= 0 {
+			primaryIndexes[index] = struct{}{}
+		}
+	}
+
+	count := len(userIDs)
+	if len(roles) < count {
+		count = len(roles)
+	}
+
+	assignments := make([]GroupStaffAssignmentInput, 0, count)
+
+	for i := 0; i < count; i++ {
+		userID, err := strconv.ParseInt(strings.TrimSpace(userIDs[i]), 10, 64)
+		if err != nil || userID <= 0 {
+			continue
+		}
+
+		role := normalizeGroupStaffRole(roles[i])
+		if role == "" {
+			continue
+		}
+
+		_, primary := primaryIndexes[i]
+
+		assignments = append(assignments, GroupStaffAssignmentInput{
+			UserID:            userID,
+			AssignmentRole:    role,
+			PrimaryAssignment: primary,
+		})
+	}
+
+	return assignments
+}
+
+func validateSubmittedGroupStaffUsers(
+	assignments []GroupStaffAssignmentInput,
+	available []User,
+) error {
+	allowed := make(map[int64]struct{}, len(available))
+
+	for _, user := range available {
+		allowed[user.ID] = struct{}{}
+	}
+
+	for _, assignment := range assignments {
+		if _, ok := allowed[assignment.UserID]; !ok {
+			return errors.New(
+				"selected staff must belong to the same division as the programme",
+			)
+		}
+	}
+
+	return nil
+}
+
 func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) {
 	target := "/admin/student-groups"
 	if r.Method != http.MethodPost {
@@ -5010,9 +5092,14 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if division := strings.TrimSpace(r.FormValue("division")); division != "" {
+		target = withDivisionQuery(target, division)
+	}
+
 	group := studentGroupFromRequest(r)
 	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
 	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
+	staffAssignments := groupStaffAssignmentsFromRequest(r)
 	sessions := studentGroupSessionsFromRequest(r)
 	currentUser, _ := a.currentUser(r.Context())
 	trainingProgram, err := a.findTrainingProgramByID(group.TrainingProgramID)
@@ -5041,6 +5128,41 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+
+	availableGroupStaff, err := a.listAssignableGroupStaffByDivisionIDs(
+		[]int64{trainingProgram.DivisionID},
+	)
+	if err != nil {
+		log.Printf("list assignable staff for student group create: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := validateSubmittedGroupStaffUsers(
+		staffAssignments,
+		availableGroupStaff,
+	); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+
+	division, err := a.findDivisionByID(trainingProgram.DivisionID)
+	if err != nil {
+		log.Printf("find division for student group create: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := validateGroupStaffAssignments(
+		division.Code,
+		staffAssignments,
+	); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+
 	if err := validateStudentGroup(group); err != nil {
 		a.setFlash(w, err.Error())
 		http.Redirect(w, r, target, http.StatusSeeOther)
@@ -5058,6 +5180,37 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		log.Printf("create student group: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	var createdGroupID int64
+	if err := a.db.QueryRow(`
+		SELECT id
+		FROM student_groups
+		WHERE UPPER(code) = UPPER(?)
+		ORDER BY id DESC
+		LIMIT 1
+	`, group.Code).Scan(&createdGroupID); err != nil {
+		log.Printf("find created student group for staff assignment: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := a.replaceStudentGroupStaff(
+		createdGroupID,
+		staffAssignments,
+	); err != nil {
+		log.Printf("replace student group staff after create: %v", err)
+
+		// Creation should not leave a partially configured group behind.
+		if cleanupErr := a.deleteStudentGroup(createdGroupID); cleanupErr != nil {
+			log.Printf(
+				"cleanup student group after staff assignment failure: %v",
+				cleanupErr,
+			)
+		}
+
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -5081,6 +5234,10 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if division := strings.TrimSpace(r.FormValue("division")); division != "" {
+		target = withDivisionQuery(target, division)
+	}
+
 	groupID, err := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
 	if err != nil || groupID <= 0 {
 		a.setFlash(w, "Select a valid student group.")
@@ -5092,6 +5249,7 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	group.ID = groupID
 	admissionIDs := normalizePositiveIDs(r.Form["admission_ids"])
 	coachIDs := normalizePositiveIDs(r.Form["coach_ids"])
+	staffAssignments := groupStaffAssignmentsFromRequest(r)
 	sessions := studentGroupSessionsFromRequest(r)
 	currentUser, _ := a.currentUser(r.Context())
 	existingGroup, err := a.findStudentGroupByID(groupID)
@@ -5150,6 +5308,41 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+
+	availableGroupStaff, err := a.listAssignableGroupStaffByDivisionIDs(
+		[]int64{trainingProgram.DivisionID},
+	)
+	if err != nil {
+		log.Printf("list assignable staff for student group update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := validateSubmittedGroupStaffUsers(
+		staffAssignments,
+		availableGroupStaff,
+	); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+
+	division, err := a.findDivisionByID(trainingProgram.DivisionID)
+	if err != nil {
+		log.Printf("find division for student group update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := validateGroupStaffAssignments(
+		division.Code,
+		staffAssignments,
+	); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+
 	if err := validateStudentGroup(group); err != nil {
 		a.setFlash(w, err.Error())
 		http.Redirect(w, r, target, http.StatusSeeOther)
@@ -5171,6 +5364,15 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if err := a.replaceStudentGroupStaff(
+		groupID,
+		staffAssignments,
+	); err != nil {
+		log.Printf("replace student group staff after update: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	a.setFlash(w, "Student group updated.")
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
@@ -5188,6 +5390,10 @@ func (a *App) deleteStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
+	}
+
+	if division := strings.TrimSpace(r.FormValue("division")); division != "" {
+		target = withDivisionQuery(target, division)
 	}
 
 	groupID, err := strconv.ParseInt(r.FormValue("group_id"), 10, 64)

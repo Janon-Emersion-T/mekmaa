@@ -8461,3 +8461,126 @@ func TestCreateKECTrainingProgramWithoutGame(t *testing.T) {
 		)
 	}
 }
+
+func TestGroupStaffRoleOptionsMatchDivisionRules(t *testing.T) {
+	tests := []struct {
+		division string
+		want     []string
+	}{
+		{
+			division: divisionCodeSports,
+			want: []string{
+				groupStaffRoleCoach,
+				groupStaffRoleAssistantCoach,
+			},
+		},
+		{
+			division: divisionCodeKEC,
+			want: []string{
+				groupStaffRoleTeacher,
+				groupStaffRoleAssistantTeacher,
+				groupStaffRoleCoordinator,
+			},
+		},
+		{
+			division: divisionCodeChess,
+			want: []string{
+				groupStaffRoleCoach,
+				groupStaffRoleAssistantCoach,
+				groupStaffRoleCoordinator,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.division, func(t *testing.T) {
+			options := groupStaffRoleOptionsForDivisionCode(tt.division)
+
+			if len(options) != len(tt.want) {
+				t.Fatalf(
+					"options length = %d, want %d",
+					len(options),
+					len(tt.want),
+				)
+			}
+
+			for i, expected := range tt.want {
+				if options[i].Key != expected {
+					t.Fatalf(
+						"option[%d] = %q, want %q",
+						i,
+						options[i].Key,
+						expected,
+					)
+				}
+
+				if options[i].Label == "" {
+					t.Fatalf(
+						"option[%d] has empty label",
+						i,
+					)
+				}
+			}
+		})
+	}
+}
+
+func TestLegacyCoachIDsFromGroupStaff(t *testing.T) {
+	assignments := []GroupStaffAssignmentInput{
+		{
+			UserID:         10,
+			AssignmentRole: groupStaffRoleCoach,
+		},
+		{
+			UserID:         11,
+			AssignmentRole: groupStaffRoleAssistantCoach,
+		},
+		{
+			UserID:         12,
+			AssignmentRole: groupStaffRoleTeacher,
+		},
+		{
+			UserID:         13,
+			AssignmentRole: groupStaffRoleCoordinator,
+		},
+		{
+			UserID:         10,
+			AssignmentRole: groupStaffRoleCoach,
+		},
+	}
+
+	got := legacyCoachIDsFromGroupStaff(assignments)
+
+	if len(got) != 2 {
+		t.Fatalf("legacy coach ids length = %d, want 2", len(got))
+	}
+
+	if got[0] != 10 || got[1] != 11 {
+		t.Fatalf("legacy coach ids = %#v, want [10 11]", got)
+	}
+}
+
+func TestGroupStaffRoleSelected(t *testing.T) {
+	assignments := []GroupStaffAssignment{
+		{
+			UserID:         42,
+			AssignmentRole: groupStaffRoleTeacher,
+		},
+	}
+
+	if !groupStaffRoleSelected(
+		assignments,
+		42,
+		groupStaffRoleTeacher,
+	) {
+		t.Fatal("expected teacher assignment to be selected")
+	}
+
+	if groupStaffRoleSelected(
+		assignments,
+		42,
+		groupStaffRoleCoordinator,
+	) {
+		t.Fatal("coordinator must not be selected")
+	}
+}

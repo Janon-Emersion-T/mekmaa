@@ -970,9 +970,16 @@ type StudentGroup struct {
 	Sessions            []StudentGroupSession
 	Students            []Admission
 	StudentCount        int
-	Coaches             []User
-	CoachCount          int
-	CreatedAt           time.Time
+
+	// Generic operational staff assignments.
+	AssignedStaff []GroupStaffAssignment
+	StaffCount    int
+
+	// Legacy compatibility for Sports coach attendance and existing flows.
+	Coaches    []User
+	CoachCount int
+
+	CreatedAt time.Time
 }
 
 type StudentGroupSession struct {
@@ -1553,6 +1560,8 @@ type TemplateData struct {
 	GroupSessions                   []StudentGroupSession
 	SelectedGroupSessionID          int64
 	AvailableCoaches                []User
+	AvailableGroupStaff             []User
+	GroupStaffRoles                 []GroupStaffRoleOption
 	Coaches                         []User
 	CoachAttendanceRecords          []CoachAttendanceRecord
 	AttendanceRecords               []AttendanceRecord
