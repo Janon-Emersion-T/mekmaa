@@ -8781,3 +8781,143 @@ func TestWorkspaceProgramLabelStaysNeutralAcrossDivisions(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildStaffDirectoryRowsMapsOperationalAssignments(t *testing.T) {
+	users := []User{
+		{
+			ID:     10,
+			Name:   "Teacher One",
+			Email:  "teacher@example.com",
+			Active: true,
+		},
+		{
+			ID:     11,
+			Name:   "Coordinator One",
+			Email:  "coordinator@example.com",
+			Active: true,
+		},
+	}
+
+	groups := []StudentGroup{
+		{
+			ID:   100,
+			Name: "Grade 6 Mathematics",
+			AssignedStaff: []GroupStaffAssignment{
+				{
+					UserID:            10,
+					AssignmentRole:    groupStaffRoleTeacher,
+					RoleLabel:         "Teacher",
+					PrimaryAssignment: true,
+				},
+				{
+					UserID:         11,
+					AssignmentRole: groupStaffRoleCoordinator,
+					RoleLabel:      "Coordinator",
+				},
+			},
+		},
+	}
+
+	rows := buildStaffDirectoryRows(users, groups)
+
+	if len(rows) != 2 {
+		t.Fatalf(
+			"staff rows = %d, want 2",
+			len(rows),
+		)
+	}
+
+	if rows[0].AssignmentCount != 1 {
+		t.Fatalf(
+			"teacher assignment count = %d, want 1",
+			rows[0].AssignmentCount,
+		)
+	}
+
+	if len(rows[0].Assignments) != 1 {
+		t.Fatalf(
+			"teacher assignments = %d, want 1",
+			len(rows[0].Assignments),
+		)
+	}
+
+	if rows[0].Assignments[0].GroupName != "Grade 6 Mathematics" {
+		t.Fatalf(
+			"group name = %q, want Grade 6 Mathematics",
+			rows[0].Assignments[0].GroupName,
+		)
+	}
+
+	if rows[0].Assignments[0].RoleLabel != "Teacher" {
+		t.Fatalf(
+			"role label = %q, want Teacher",
+			rows[0].Assignments[0].RoleLabel,
+		)
+	}
+
+	if !rows[0].Assignments[0].PrimaryAssignment {
+		t.Fatal("expected teacher assignment to be primary")
+	}
+
+	if rows[1].AssignmentCount != 1 {
+		t.Fatalf(
+			"coordinator assignment count = %d, want 1",
+			rows[1].AssignmentCount,
+		)
+	}
+}
+
+func TestBuildStaffDirectoryRowsKeepsUnassignedDivisionStaff(t *testing.T) {
+	users := []User{
+		{
+			ID:     20,
+			Name:   "Available Teacher",
+			Email:  "available@example.com",
+			Active: true,
+		},
+	}
+
+	rows := buildStaffDirectoryRows(
+		users,
+		nil,
+	)
+
+	if len(rows) != 1 {
+		t.Fatalf(
+			"staff rows = %d, want 1",
+			len(rows),
+		)
+	}
+
+	if rows[0].AssignmentCount != 0 {
+		t.Fatalf(
+			"assignment count = %d, want 0",
+			rows[0].AssignmentCount,
+		)
+	}
+
+	if len(rows[0].Assignments) != 0 {
+		t.Fatalf(
+			"assignments = %d, want 0",
+			len(rows[0].Assignments),
+		)
+	}
+}
+
+/* tests */
+
+func TestBuildTemplatesIncludesStaffDirectory(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	tmpl, ok := templates["staff-directory"]
+	if !ok {
+		t.Fatal("staff-directory template is not registered")
+	}
+
+	if tmpl == nil {
+		t.Fatal("staff-directory template is nil")
+	}
+}

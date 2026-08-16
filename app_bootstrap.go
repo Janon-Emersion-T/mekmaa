@@ -82,7 +82,7 @@ var permissionGroups = []PermissionGroup{
 		{Key: "user_divisions.manage", Label: "Manage user divisions", Description: "Assign which divisions each user may access.", Sensitive: true},
 		{Key: "divisions.manage", Label: "Manage divisions", Description: "Maintain division configuration and availability.", Sensitive: true},
 	}},
-	{Name: "Students", Description: "Student intake, training programmes, grouping, attendance, and billing operations.", Permissions: []PermissionDefinition{
+	{Name: "Students", Description: "Student intake, programmes, staff assignments, attendance, and billing operations.", Permissions: []PermissionDefinition{
 		{
 			Key:         "admissions.manage",
 			Label:       "Manage admissions",
@@ -90,8 +90,8 @@ var permissionGroups = []PermissionGroup{
 		},
 		{
 			Key:         "coaches.manage",
-			Label:       "Manage coaches",
-			Description: "Create, update, remove, and track coach attendance records.",
+			Label:       "Manage operational staff",
+			Description: "Access operational staff directories, assignments, and compatible coach administration.",
 		},
 		{
 			Key:         "training_programs.manage",
@@ -1562,6 +1562,7 @@ type TemplateData struct {
 	AvailableCoaches                []User
 	AvailableGroupStaff             []User
 	GroupStaffRoles                 []GroupStaffRoleOption
+	StaffDirectoryRows              []StaffDirectoryRow
 	Coaches                         []User
 	CoachAttendanceRecords          []CoachAttendanceRecord
 	AttendanceRecords               []AttendanceRecord

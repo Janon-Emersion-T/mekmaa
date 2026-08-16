@@ -430,3 +430,57 @@ func (a *App) replaceStudentGroupStaff(
 
 	return tx.Commit()
 }
+
+type StaffDirectoryAssignment struct {
+	GroupID           int64
+	GroupName         string
+	AssignmentRole    string
+	RoleLabel         string
+	PrimaryAssignment bool
+}
+
+type StaffDirectoryRow struct {
+	User            User
+	Assignments     []StaffDirectoryAssignment
+	AssignmentCount int
+}
+
+func buildStaffDirectoryRows(
+	users []User,
+	groups []StudentGroup,
+) []StaffDirectoryRow {
+	rows := make([]StaffDirectoryRow, 0, len(users))
+	indexByUserID := make(map[int64]int, len(users))
+
+	for _, user := range users {
+		indexByUserID[user.ID] = len(rows)
+
+		rows = append(rows, StaffDirectoryRow{
+			User: user,
+		})
+	}
+
+	for _, group := range groups {
+		for _, assignment := range group.AssignedStaff {
+			index, ok := indexByUserID[assignment.UserID]
+			if !ok {
+				continue
+			}
+
+			rows[index].Assignments = append(
+				rows[index].Assignments,
+				StaffDirectoryAssignment{
+					GroupID:           group.ID,
+					GroupName:         group.Name,
+					AssignmentRole:    assignment.AssignmentRole,
+					RoleLabel:         assignment.RoleLabel,
+					PrimaryAssignment: assignment.PrimaryAssignment,
+				},
+			)
+
+			rows[index].AssignmentCount++
+		}
+	}
+
+	return rows
+}
