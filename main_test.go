@@ -8297,3 +8297,85 @@ func TestWorkspaceProgramLabelRemainsProgrammes(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupStaffRolesByDivision(t *testing.T) {
+	tests := []struct {
+		name         string
+		divisionCode string
+		role         string
+		want         bool
+	}{
+		{"sports coach", divisionCodeSports, groupStaffRoleCoach, true},
+		{"sports assistant coach", divisionCodeSports, groupStaffRoleAssistantCoach, true},
+		{"sports teacher rejected", divisionCodeSports, groupStaffRoleTeacher, false},
+
+		{"kec teacher", divisionCodeKEC, groupStaffRoleTeacher, true},
+		{"kec assistant teacher", divisionCodeKEC, groupStaffRoleAssistantTeacher, true},
+		{"kec coordinator", divisionCodeKEC, groupStaffRoleCoordinator, true},
+		{"kec coach rejected", divisionCodeKEC, groupStaffRoleCoach, false},
+
+		{"chess coach", divisionCodeChess, groupStaffRoleCoach, true},
+		{"chess assistant coach", divisionCodeChess, groupStaffRoleAssistantCoach, true},
+		{"chess coordinator", divisionCodeChess, groupStaffRoleCoordinator, true},
+		{"chess teacher rejected", divisionCodeChess, groupStaffRoleTeacher, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := validGroupStaffRoleForDivisionCode(
+				tt.divisionCode,
+				tt.role,
+			)
+
+			if got != tt.want {
+				t.Fatalf(
+					"validGroupStaffRoleForDivisionCode(%q, %q) = %t, want %t",
+					tt.divisionCode,
+					tt.role,
+					got,
+					tt.want,
+				)
+			}
+		})
+	}
+}
+
+func TestValidateGroupStaffAssignmentsRejectsDuplicate(t *testing.T) {
+	err := validateGroupStaffAssignments(
+		divisionCodeKEC,
+		[]GroupStaffAssignmentInput{
+			{
+				UserID:         42,
+				AssignmentRole: groupStaffRoleTeacher,
+			},
+			{
+				UserID:         42,
+				AssignmentRole: groupStaffRoleTeacher,
+			},
+		},
+	)
+
+	if err == nil {
+		t.Fatal("expected duplicate staff assignment to be rejected")
+	}
+}
+
+func TestValidateGroupStaffAssignmentsAllowsMultipleRolesForSameUser(t *testing.T) {
+	err := validateGroupStaffAssignments(
+		divisionCodeKEC,
+		[]GroupStaffAssignmentInput{
+			{
+				UserID:         42,
+				AssignmentRole: groupStaffRoleTeacher,
+			},
+			{
+				UserID:         42,
+				AssignmentRole: groupStaffRoleCoordinator,
+			},
+		},
+	)
+
+	if err != nil {
+		t.Fatalf("expected multiple distinct roles for same user to be valid: %v", err)
+	}
+}
