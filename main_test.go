@@ -8709,3 +8709,47 @@ func TestTrainingProgramFromRequestAcceptsKECSubject(t *testing.T) {
 		)
 	}
 }
+
+func TestWorkspaceSummaryUsesChessBatchTerminology(t *testing.T) {
+	user := &User{}
+	division := &Division{
+		Code: divisionCodeChess,
+	}
+
+	got := workspaceSummary(user, division, "")
+
+	if strings.Contains(strings.ToLower(got), "chess classes") {
+		t.Fatalf(
+			"Chess workspace summary still uses class terminology: %q",
+			got,
+		)
+	}
+
+	if !strings.Contains(strings.ToLower(got), "chess batches") {
+		t.Fatalf(
+			"Chess workspace summary = %q, want batch terminology",
+			got,
+		)
+	}
+}
+
+func TestScopedTrainingProgramURLPreservesDivision(t *testing.T) {
+	division := &Division{
+		Slug: "kec",
+		Code: divisionCodeKEC,
+	}
+
+	got := scopedURL(
+		"/admin/training-programs",
+		division,
+		"",
+	)
+
+	if got != "/admin/training-programs?division=kec" {
+		t.Fatalf(
+			"scoped programme URL = %q, want %q",
+			got,
+			"/admin/training-programs?division=kec",
+		)
+	}
+}

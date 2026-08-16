@@ -429,7 +429,7 @@ func workspaceSummary(user *User, selectedDivision *Division, selectedScope stri
 	case divisionCodeKEC:
 		return "Classes, student enrollments, teachers, fees, and education operations."
 	case divisionCodeChess:
-		return "Chess classes, student development, coaches, fees, and academy operations."
+		return "Chess batches, student development, coaches, fees, and academy operations."
 	case divisionCodeCorporate:
 		return "Shared finance, oversight, and cross-division administration."
 	default:

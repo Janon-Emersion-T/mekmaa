@@ -81,7 +81,7 @@
           />
         </svg>
 
-        Add {{if eq (workspaceProgramLabel .User .SelectedDivision .SelectedDivisionScope) "Classes"}}class{{else}}programme{{end}}
+        Add programme
       </a>
       {{end}}
     </div>
@@ -100,7 +100,7 @@
         </p>
 
         <h2 class="mt-1 text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
-          Create a training programme
+          Create a programme
         </h2>
 
         <p class="mt-1 text-sm leading-6 text-slate/60">
@@ -109,7 +109,7 @@
       </div>
 
       <a
-        href="/admin/training-programs"
+        href="{{scopedURL "/admin/training-programs" .SelectedDivision .SelectedDivisionScope}}"
         class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
       >
         Cancel
@@ -161,7 +161,7 @@
           />
 
           <p class="text-xs leading-5 text-slate/50">
-            This is the public-facing name staff will see during admissions.
+            This is the programme name staff will see during enrollment and class or batch setup.
           </p>
         </div>
 
@@ -292,7 +292,7 @@
             for="new-training-format"
             class="block text-sm font-semibold text-obsidian"
           >
-            Training format
+            Delivery format
           </label>
 
           <select
@@ -301,7 +301,7 @@
             required
             class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
           >
-            <option value="">Select format</option>
+            <option value="">Select delivery format</option>
             <option value="one_to_one">One-to-one</option>
             <option value="group">Group</option>
           </select>
@@ -371,7 +371,7 @@
               </span>
 
               <span class="mt-0.5 block text-xs text-slate/50">
-                Allow this programme to be used for admissions.
+                Allow this programme to be used for new enrollments.
               </span>
             </span>
 
@@ -550,7 +550,7 @@
             for="edit-training-format"
             class="block text-sm font-semibold text-obsidian"
           >
-            Training format
+            Delivery format
           </label>
 
           <select
@@ -639,7 +639,7 @@
               </span>
 
               <span class="mt-0.5 block text-xs text-slate/50">
-                Allow this programme to be used for admissions.
+                Allow this programme to be used for new enrollments.
               </span>
             </span>
 
