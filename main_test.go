@@ -8379,3 +8379,85 @@ func TestValidateGroupStaffAssignmentsAllowsMultipleRolesForSameUser(t *testing.
 		t.Fatalf("expected multiple distinct roles for same user to be valid: %v", err)
 	}
 }
+
+func TestCreateKECTrainingProgramWithoutGame(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf("seed divisions: %v", err)
+	}
+
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		GameID:         0,
+		DivisionID:     kecID,
+		DivisionCode:   divisionCodeKEC,
+		Name:           "Grade 6 Mathematics",
+		Activity:       "mathematics",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     2500,
+		Active:         true,
+		SortOrder:      10,
+	})
+	if err != nil {
+		t.Fatalf("create KEC programme without game: %v", err)
+	}
+
+	var (
+		gameID     sql.NullInt64
+		divisionID int64
+		name       string
+		activity   string
+	)
+
+	if err := app.db.QueryRow(`
+		SELECT
+			game_id,
+			division_id,
+			name,
+			activity
+		FROM training_programs
+		WHERE id = ?
+	`, programID).Scan(
+		&gameID,
+		&divisionID,
+		&name,
+		&activity,
+	); err != nil {
+		t.Fatalf("load created KEC programme: %v", err)
+	}
+
+	if gameID.Valid && gameID.Int64 > 0 {
+		t.Fatalf(
+			"KEC programme game_id = %d, want NULL/no Sports game",
+			gameID.Int64,
+		)
+	}
+
+	if divisionID != kecID {
+		t.Fatalf(
+			"KEC programme division_id = %d, want %d",
+			divisionID,
+			kecID,
+		)
+	}
+
+	if name != "Grade 6 Mathematics" {
+		t.Fatalf(
+			"KEC programme name = %q, want Grade 6 Mathematics",
+			name,
+		)
+	}
+
+	if activity != "mathematics" {
+		t.Fatalf(
+			"KEC programme activity = %q, want mathematics",
+			activity,
+		)
+	}
+}

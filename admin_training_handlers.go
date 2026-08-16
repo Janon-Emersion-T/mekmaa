@@ -644,7 +644,6 @@ func (a *App) trainingProgramManagementHandler(
 	data.Title = "Training Manager"
 	data.Description = "Manage training programmes and student fees."
 	data.TrainingPrograms = trainingPrograms
-	data.Games, _ = a.listGames(false)
 	data.ActiveDivisions, _ = a.listDivisions(true)
 	if divisionSlug := strings.TrimSpace(r.URL.Query().Get("division")); divisionSlug != "" {
 		division, err := a.findDivisionBySlugOrCode(divisionSlug)
@@ -654,6 +653,14 @@ func (a *App) trainingProgramManagementHandler(
 			}
 			data.SelectedDivision = division
 			data.SelectedDivisionScope = division.Slug
+
+			if strings.EqualFold(
+				strings.TrimSpace(division.Code),
+				divisionCodeSports,
+			) {
+				data.Games, _ = a.listGames(false)
+			}
+
 			filteredPrograms := make([]TrainingProgram, 0, len(data.TrainingPrograms))
 			for _, program := range data.TrainingPrograms {
 				if program.DivisionID == division.ID {
@@ -663,6 +670,12 @@ func (a *App) trainingProgramManagementHandler(
 			data.TrainingPrograms = filteredPrograms
 		}
 	}
+	if data.SelectedDivision == nil &&
+		(canViewAllDivisions(user) ||
+			userHasDivisionCode(user, divisionCodeSports)) {
+		data.Games, _ = a.listGames(false)
+	}
+
 	if !canViewAllDivisions(user) {
 		filteredPrograms := make([]TrainingProgram, 0, len(trainingPrograms))
 		for _, program := range trainingPrograms {
@@ -1025,20 +1038,28 @@ func (a *App) trainingProgramFromRequest(
 	r *http.Request,
 ) (TrainingProgram, error) {
 	name := strings.TrimSpace(r.FormValue("name"))
-	gameID, err := parsePositiveInt64(r.FormValue("game_id"))
-	if err != nil {
-		return TrainingProgram{}, errors.New("valid game is required")
-	}
+
 	divisionID, err := parsePositiveInt64(r.FormValue("division_id"))
 	if err != nil {
 		return TrainingProgram{}, errors.New("valid division is required")
 	}
+
 	division, err := a.findDivisionByID(divisionID)
 	if err != nil {
 		return TrainingProgram{}, errors.New("selected division was not found")
 	}
+
 	if !division.Active {
 		return TrainingProgram{}, errors.New("selected division is inactive")
+	}
+
+	if strings.EqualFold(
+		strings.TrimSpace(division.Code),
+		divisionCodeCorporate,
+	) {
+		return TrainingProgram{}, errors.New(
+			"Corporate/shared cannot be used for student programmes",
+		)
 	}
 
 	trainingFormat := strings.ToLower(
@@ -1075,7 +1096,6 @@ func (a *App) trainingProgramFromRequest(
 	}
 
 	program := TrainingProgram{
-		GameID:         gameID,
 		DivisionID:     divisionID,
 		DivisionCode:   division.Code,
 		DivisionName:   division.Name,
@@ -1086,11 +1106,51 @@ func (a *App) trainingProgramFromRequest(
 		Active:         r.FormValue("active") == "on",
 		SortOrder:      sortOrder,
 	}
-	game, err := a.findGameByID(gameID)
-	if err != nil {
-		return TrainingProgram{}, errors.New("selected game was not found")
+
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeSports:
+		gameID, err := parsePositiveInt64(r.FormValue("game_id"))
+		if err != nil {
+			return TrainingProgram{}, errors.New(
+				"valid game is required",
+			)
+		}
+
+		game, err := a.findGameByID(gameID)
+		if err != nil {
+			return TrainingProgram{}, errors.New(
+				"selected game was not found",
+			)
+		}
+
+		program.GameID = gameID
+		program.Activity = normalizeTrainingActivity(game.Activity)
+
+	case divisionCodeKEC, divisionCodeChess:
+		activity := strings.TrimSpace(r.FormValue("activity"))
+		if activity == "" {
+			if strings.EqualFold(
+				division.Code,
+				divisionCodeKEC,
+			) {
+				return TrainingProgram{}, errors.New(
+					"subject is required",
+				)
+			}
+
+			return TrainingProgram{}, errors.New(
+				"programme focus is required",
+			)
+		}
+
+		program.GameID = 0
+		program.Activity = normalizeTrainingActivity(activity)
+
+	default:
+		return TrainingProgram{}, errors.New(
+			"unsupported programme division",
+		)
 	}
-	program.Activity = normalizeTrainingActivity(game.Activity)
 
 	if err := validateTrainingProgram(program); err != nil {
 		return TrainingProgram{}, err
@@ -1113,7 +1173,11 @@ func validateTrainingProgram(program TrainingProgram) error {
 	if program.Activity == "" {
 		return errors.New("activity is required")
 	}
-	if program.GameID <= 0 {
+
+	if strings.EqualFold(
+		strings.TrimSpace(program.DivisionCode),
+		divisionCodeSports,
+	) && program.GameID <= 0 {
 		return errors.New("game is required")
 	}
 

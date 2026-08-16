@@ -63,7 +63,7 @@
 
       {{if ne .TrainingProgramMode "new"}}
       <a
-        href="/admin/training-programs?action=new#training-program-form"
+        href="{{scopedURL "/admin/training-programs?action=new#training-program-form" .SelectedDivision .SelectedDivisionScope}}"
         class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-obsidian px-6 text-sm font-semibold text-cloud shadow-[0_12px_30px_rgba(11,18,21,0.22)] transition hover:-translate-y-0.5 hover:bg-slate hover:shadow-[0_16px_35px_rgba(11,18,21,0.26)] focus:outline-none focus:ring-4 focus:ring-aqua/30 active:translate-y-0"
       >
         <svg
@@ -193,30 +193,80 @@
 	          </select>
 	        </div>
 	
-	        <div class="space-y-2">
-	          <label
-	            for="new-activity"
-            class="block text-sm font-semibold text-obsidian"
-          >
-            Activity or sport
-          </label>
+        {{if .SelectedDivision}}
+          {{if eq .SelectedDivision.Code "SPORTS"}}
+          <div class="space-y-2">
+            <label
+              for="new-game"
+              class="block text-sm font-semibold text-obsidian"
+            >
+              Game / sport
+            </label>
 
-          <select
-            id="new-activity"
-            name="game_id"
-            required
-            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-          >
-            <option value="">Select game</option>
-            {{range .Games}}
-            <option value="{{.ID}}">{{.Name}}</option>
-            {{end}}
-          </select>
+            <select
+              id="new-game"
+              name="game_id"
+              required
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            >
+              <option value="">Select game</option>
+              {{range .Games}}
+              <option value="{{.ID}}">{{.Name}}</option>
+              {{end}}
+            </select>
 
-          <p class="text-xs leading-5 text-slate/50">
-            New activities can be entered directly without changing the code.
-          </p>
-        </div>
+            <p class="text-xs leading-5 text-slate/50">
+              Select the Indoor Sports game this programme belongs to.
+            </p>
+          </div>
+          {{else if eq .SelectedDivision.Code "KEC"}}
+          <div class="space-y-2">
+            <label
+              for="new-activity"
+              class="block text-sm font-semibold text-obsidian"
+            >
+              Subject
+            </label>
+
+            <input
+              id="new-activity"
+              type="text"
+              name="activity"
+              maxlength="60"
+              required
+              placeholder="Example: Mathematics"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+
+            <p class="text-xs leading-5 text-slate/50">
+              Enter the subject taught through this programme.
+            </p>
+          </div>
+          {{else if eq .SelectedDivision.Code "CHESS"}}
+          <div class="space-y-2">
+            <label
+              for="new-activity"
+              class="block text-sm font-semibold text-obsidian"
+            >
+              Programme focus
+            </label>
+
+            <input
+              id="new-activity"
+              type="text"
+              name="activity"
+              maxlength="60"
+              required
+              placeholder="Example: Beginner Chess"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+
+            <p class="text-xs leading-5 text-slate/50">
+              Enter the level or focus of this chess programme.
+            </p>
+          </div>
+          {{end}}
+        {{end}}
 
         <div class="space-y-2">
           <label
