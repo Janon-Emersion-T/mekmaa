@@ -87,6 +87,40 @@
             </div>
           </form>
         </div>
+
+        {{if eq .Status "confirmed"}}
+        <div class="mt-4 flex flex-col gap-3 rounded-[1.25rem] border border-orange-200 bg-orange-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-orange-700">
+              Customer did not attend?
+            </p>
+            <p class="mt-1 text-sm leading-6 text-orange-950/70">
+              Mark this booking as a no-show to void the outstanding receivable while preserving the booking and audit history.
+            </p>
+          </div>
+
+          <form
+            action="/admin/bookings/no-show"
+            method="post"
+            class="shrink-0"
+            onsubmit="return confirm('Mark this booking as a no-show and remove its outstanding amount from receivables?');"
+          >
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="schedule_id" value="{{.ScheduleID}}">
+            <input type="hidden" name="return_to" value="/admin/finance/receivables">
+            <input type="hidden" name="customer_message" value="">
+
+            <button
+              class="h-11 rounded-xl border border-orange-300 bg-white px-4 text-sm font-semibold text-orange-800 transition hover:bg-orange-100"
+            >
+              Mark no-show · Void receivable
+            </button>
+          </form>
+        </div>
+        {{else}}
+        </div>
+        {{end}}
+        </div>
       </article>
       {{else}}
       <div class="rounded-[1.4rem] border border-dashed border-emerald-200 bg-emerald-50 px-5 py-10 text-center">
