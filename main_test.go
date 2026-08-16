@@ -8189,3 +8189,108 @@ func TestNoShowLifecycleAllowsFutureConfirmedBookingRule(t *testing.T) {
 		t.Fatal("no-show booking must remain excluded from receivables")
 	}
 }
+
+func TestWorkspaceGroupTerminologyByDivision(t *testing.T) {
+	user := &User{}
+
+	tests := []struct {
+		name     string
+		division Division
+		plural   string
+		singular string
+		path     string
+	}{
+		{
+			name: "sports",
+			division: Division{
+				Code: divisionCodeSports,
+				Slug: "sports",
+			},
+			plural:   "Training Groups",
+			singular: "Training Group",
+			path:     "/admin/training-groups",
+		},
+		{
+			name: "kec",
+			division: Division{
+				Code: divisionCodeKEC,
+				Slug: "kec",
+			},
+			plural:   "Classes",
+			singular: "Class",
+			path:     "/admin/classes",
+		},
+		{
+			name: "chess",
+			division: Division{
+				Code: divisionCodeChess,
+				Slug: "chess",
+			},
+			plural:   "Batches",
+			singular: "Batch",
+			path:     "/admin/batches",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := workspaceGroupLabel(
+				user,
+				&tt.division,
+				tt.division.Slug,
+			); got != tt.plural {
+				t.Fatalf(
+					"workspaceGroupLabel = %q, want %q",
+					got,
+					tt.plural,
+				)
+			}
+
+			if got := workspaceGroupSingularLabel(
+				user,
+				&tt.division,
+				tt.division.Slug,
+			); got != tt.singular {
+				t.Fatalf(
+					"workspaceGroupSingularLabel = %q, want %q",
+					got,
+					tt.singular,
+				)
+			}
+
+			if got := workspaceGroupPath(
+				user,
+				&tt.division,
+				tt.division.Slug,
+			); got != tt.path {
+				t.Fatalf(
+					"workspaceGroupPath = %q, want %q",
+					got,
+					tt.path,
+				)
+			}
+		})
+	}
+}
+
+func TestWorkspaceProgramLabelRemainsProgrammes(t *testing.T) {
+	for _, code := range []string{
+		divisionCodeSports,
+		divisionCodeKEC,
+		divisionCodeChess,
+	} {
+		division := &Division{Code: code}
+
+		if got := workspaceProgramLabel(
+			&User{},
+			division,
+			"",
+		); got != "Programmes" {
+			t.Fatalf(
+				"workspaceProgramLabel(%s) = %q, want Programmes",
+				code,
+				got,
+			)
+		}
+	}
+}

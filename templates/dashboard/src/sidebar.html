@@ -76,8 +76,8 @@
         {{end}}
 
         {{if hasPermission .User "student_groups.manage"}}
-        <a href="{{scopedURL "/admin/student-groups" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/student-groups"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>{{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Batches</span>
+        <a href="{{scopedURL (workspaceGroupPath .User .SelectedDivision .SelectedDivisionScope) .SelectedDivision .SelectedDivisionScope}}" class="{{if or (isCurrentPath .CurrentPath "/admin/student-groups") (isCurrentPath .CurrentPath "/admin/training-groups") (isCurrentPath .CurrentPath "/admin/classes") (isCurrentPath .CurrentPath "/admin/batches")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>{{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Roster</span>
         </a>
         {{end}}
         {{if hasPermission .User "attendance.manage"}}

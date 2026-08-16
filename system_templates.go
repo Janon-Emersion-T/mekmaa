@@ -161,6 +161,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"workspaceProgramLabel":                     workspaceProgramLabel,
 		"workspaceStaffLabel":                       workspaceStaffLabel,
 		"workspaceGroupLabel":                       workspaceGroupLabel,
+		"workspaceGroupSingularLabel":               workspaceGroupSingularLabel,
+		"workspaceGroupPath":                        workspaceGroupPath,
 		"workspaceRegistrationFeeLabel":             workspaceRegistrationFeeLabel,
 		"workspaceMonthlyFeeLabel":                  workspaceMonthlyFeeLabel,
 		"scopedURL":                                 scopedURL,
@@ -449,16 +451,7 @@ func workspaceOperationsLabel(user *User, selectedDivision *Division, selectedSc
 }
 
 func workspaceProgramLabel(user *User, selectedDivision *Division, selectedScope string) string {
-	division := workspaceContextDivision(user, selectedDivision, selectedScope)
-	if division == nil {
-		return "Programmes"
-	}
-	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
-	case divisionCodeKEC, divisionCodeChess:
-		return "Classes"
-	default:
-		return "Programmes"
-	}
+	return "Programmes"
 }
 
 func workspaceStaffLabel(user *User, selectedDivision *Division, selectedScope string) string {
@@ -481,11 +474,52 @@ func workspaceGroupLabel(user *User, selectedDivision *Division, selectedScope s
 	if division == nil {
 		return "Student Groups"
 	}
+
 	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
-	case divisionCodeKEC, divisionCodeChess:
+	case divisionCodeSports:
+		return "Training Groups"
+	case divisionCodeKEC:
+		return "Classes"
+	case divisionCodeChess:
 		return "Batches"
 	default:
 		return "Student Groups"
+	}
+}
+
+func workspaceGroupSingularLabel(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		return "Group"
+	}
+
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeSports:
+		return "Training Group"
+	case divisionCodeKEC:
+		return "Class"
+	case divisionCodeChess:
+		return "Batch"
+	default:
+		return "Group"
+	}
+}
+
+func workspaceGroupPath(user *User, selectedDivision *Division, selectedScope string) string {
+	division := workspaceContextDivision(user, selectedDivision, selectedScope)
+	if division == nil {
+		return "/admin/student-groups"
+	}
+
+	switch strings.ToUpper(strings.TrimSpace(division.Code)) {
+	case divisionCodeSports:
+		return "/admin/training-groups"
+	case divisionCodeKEC:
+		return "/admin/classes"
+	case divisionCodeChess:
+		return "/admin/batches"
+	default:
+		return "/admin/student-groups"
 	}
 }
 

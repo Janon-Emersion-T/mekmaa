@@ -195,6 +195,9 @@ func main() {
 		),
 	)
 	mux.Handle("/admin/student-groups", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentGroupManagementHandler), "student_groups.manage")))
+	mux.Handle("/admin/training-groups", app.sessionMiddleware(app.requirePermission(app.studentGroupFriendlyHandler(divisionCodeSports), "student_groups.manage")))
+	mux.Handle("/admin/classes", app.sessionMiddleware(app.requirePermission(app.studentGroupFriendlyHandler(divisionCodeKEC), "student_groups.manage")))
+	mux.Handle("/admin/batches", app.sessionMiddleware(app.requirePermission(app.studentGroupFriendlyHandler(divisionCodeChess), "student_groups.manage")))
 	mux.Handle("/admin/student-groups/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentGroupHandler), "student_groups.manage")))
 	mux.Handle("/admin/student-groups/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateStudentGroupHandler), "student_groups.manage")))
 	mux.Handle("/admin/student-groups/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentGroupHandler), "student_groups.manage")))

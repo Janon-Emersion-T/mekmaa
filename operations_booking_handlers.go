@@ -13,9 +13,103 @@ import (
 	"time"
 )
 
+func (a *App) studentGroupDivisionScope(
+	w http.ResponseWriter,
+	r *http.Request,
+	user *User,
+) ([]int64, bool) {
+	operationalIDs, ok := a.requireOperationalDivisionScope(
+		w,
+		r,
+		user,
+	)
+	if !ok {
+		return nil, false
+	}
+
+	requested := strings.TrimSpace(
+		r.URL.Query().Get("division"),
+	)
+
+	if requested == "" ||
+		strings.EqualFold(requested, divisionScopeAll) {
+		return operationalIDs, true
+	}
+
+	division, err := a.findDivisionBySlugOrCode(requested)
+	if err != nil {
+		a.writeDivisionForbidden(w, r, user)
+		return nil, false
+	}
+
+	if strings.EqualFold(
+		strings.TrimSpace(division.Code),
+		divisionCodeCorporate,
+	) {
+		a.writeDivisionForbidden(w, r, user)
+		return nil, false
+	}
+
+	if !userCanAccessDivision(user, division.ID) {
+		a.writeDivisionForbidden(w, r, user)
+		return nil, false
+	}
+
+	return []int64{division.ID}, true
+}
+
+func (a *App) studentGroupFriendlyHandler(
+	divisionCode string,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		division, err := a.findDivisionBySlugOrCode(
+			divisionCode,
+		)
+		if err != nil {
+			http.Error(
+				w,
+				"division unavailable",
+				http.StatusNotFound,
+			)
+			return
+		}
+
+		requested := strings.TrimSpace(
+			r.URL.Query().Get("division"),
+		)
+
+		if requested != "" &&
+			!strings.EqualFold(requested, division.Slug) &&
+			!strings.EqualFold(requested, division.Code) {
+			http.Error(
+				w,
+				"friendly route does not match requested division",
+				http.StatusBadRequest,
+			)
+			return
+		}
+
+		clone := r.Clone(r.Context())
+
+		urlCopy := *r.URL
+		query := urlCopy.Query()
+		query.Set("division", division.Slug)
+		urlCopy.RawQuery = query.Encode()
+
+		clone.URL = &urlCopy
+
+		a.studentGroupManagementHandler(w, clone)
+	}
+}
+
 func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	divisionIDs, ok := a.requireOperationalDivisionScope(w, r, user)
+
+	divisionIDs, ok := a.studentGroupDivisionScope(
+		w,
+		r,
+		user,
+	)
 	if !ok {
 		return
 	}
