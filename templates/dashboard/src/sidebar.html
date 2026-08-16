@@ -84,6 +84,9 @@
         <a href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/attendance"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Attendance</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Daily</span>
         </a>
+        <a href="{{scopedURL "/admin/attendance/search" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/attendance/search"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Search Attendance</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Student</span>
+        </a>
         {{end}}
       </div>
     </div>

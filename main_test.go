@@ -8098,3 +8098,59 @@ func TestSummarizeStudentAttendanceHistory(t *testing.T) {
 		)
 	}
 }
+
+func TestFindAttendanceStudentByStudentID(t *testing.T) {
+	groups := []StudentGroup{
+		{
+			ID: 1,
+			Students: []Admission{
+				{
+					ID:        10,
+					StudentID: "MKM-0010",
+					FullName:  "Test Student",
+				},
+			},
+		},
+	}
+
+	student := findAttendanceStudentByStudentID(
+		groups,
+		"mkm-0010",
+	)
+
+	if student == nil {
+		t.Fatal("expected student to be found")
+	}
+
+	if student.ID != 10 {
+		t.Fatalf(
+			"student ID = %d, want 10",
+			student.ID,
+		)
+	}
+}
+
+func TestFindAttendanceStudentByStudentIDRejectsUnknownStudent(
+	t *testing.T,
+) {
+	groups := []StudentGroup{
+		{
+			ID: 1,
+			Students: []Admission{
+				{
+					ID:        10,
+					StudentID: "MKM-0010",
+				},
+			},
+		},
+	}
+
+	student := findAttendanceStudentByStudentID(
+		groups,
+		"MKM-9999",
+	)
+
+	if student != nil {
+		t.Fatal("expected unknown student not to be found")
+	}
+}

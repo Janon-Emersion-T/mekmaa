@@ -1563,6 +1563,9 @@ type TemplateData struct {
 	SelectedAttendanceStudent       *Admission
 	StudentAttendanceHistory        []StudentAttendanceHistoryRow
 	StudentAttendanceSummary        StudentAttendanceSummary
+	AttendanceSheets                []AttendanceSheetSummary
+	AttendanceSearchStudentID       string
+	AttendanceSearchNotFound        bool
 	Courts                          []Court
 	SelectedCourt                   *Court
 	CourtMode                       string

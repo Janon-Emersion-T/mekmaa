@@ -1,0 +1,240 @@
+{{define "attendance-search"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/90 shadow-sm sm:rounded-[2rem]">
+    <div class="bg-[linear-gradient(135deg,rgba(11,18,21,0.97)_0%,rgba(35,50,56,0.94)_52%,rgba(98,242,193,0.32)_100%)] px-5 py-6 text-cloud sm:px-8 sm:py-8">
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(32rem,1.1fr)] xl:items-end">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.26em] text-aqua/80">
+            Student Attendance
+          </p>
+
+          <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+            Search attendance by Student ID.
+          </h1>
+
+          <p class="mt-3 max-w-xl text-sm leading-7 text-cloud/75 sm:text-base">
+            Enter the student's Mekmaa Student ID to review their complete saved attendance history across the groups available in this workspace.
+          </p>
+        </div>
+
+        <form
+          action="/admin/attendance/search"
+          method="get"
+          class="rounded-[1.75rem] border border-white/12 bg-white/10 p-4 backdrop-blur sm:p-5"
+        >
+          {{if .SelectedDivision}}
+          <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}">
+          {{else if eq .SelectedDivisionScope "all"}}
+          <input type="hidden" name="division" value="all">
+          {{end}}
+
+          <label class="text-xs font-semibold uppercase tracking-[0.18em] text-cloud/60">
+            Student ID
+          </label>
+
+          <div class="mt-3 flex flex-col gap-3 sm:flex-row">
+            <input
+              type="text"
+              name="student_id"
+              value="{{.AttendanceSearchStudentID}}"
+              placeholder="Example: MKM-0001"
+              autocomplete="off"
+              required
+              class="h-12 min-w-0 flex-1 rounded-2xl border border-white/12 bg-white/95 px-4 text-sm font-medium text-obsidian outline-none placeholder:text-slate/35 focus:border-aqua"
+            >
+
+            <button
+              type="submit"
+              class="h-12 rounded-2xl bg-aqua px-6 text-sm font-semibold text-obsidian transition hover:bg-mint"
+            >
+              Search
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {{if .AttendanceSearchNotFound}}
+    <div class="p-5 sm:p-8">
+      <div class="rounded-[1.75rem] border border-amber-200 bg-amber-50 px-5 py-10 text-center">
+        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-800/70">
+          No student found
+        </p>
+
+        <h2 class="mt-3 text-xl font-semibold text-amber-950">
+          Student ID “{{.AttendanceSearchStudentID}}” was not found.
+        </h2>
+
+        <p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-amber-900/70">
+          Check the Student ID and confirm that the student belongs to a group available in your current workspace.
+        </p>
+      </div>
+    </div>
+    {{end}}
+
+    {{if .SelectedAttendanceStudent}}
+    <div class="space-y-6 p-5 sm:p-8">
+      <div class="rounded-[1.75rem] border border-slate/10 bg-cloud/70 p-5 sm:p-6">
+        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">
+          Student
+        </p>
+
+        <div class="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-2xl font-semibold text-obsidian">
+              {{.SelectedAttendanceStudent.FullName}}
+            </h2>
+
+            <p class="mt-2 text-sm font-semibold text-slate/65">
+              {{.SelectedAttendanceStudent.StudentID}}
+            </p>
+
+            {{if .SelectedAttendanceStudent.School}}
+            <p class="mt-1 text-sm text-slate/55">
+              {{.SelectedAttendanceStudent.School}}
+            </p>
+            {{end}}
+          </div>
+
+          <a
+            href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}"
+            class="inline-flex items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:text-obsidian"
+          >
+            Open daily attendance
+          </a>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <div class="rounded-2xl border border-slate/10 bg-white px-4 py-4 shadow-sm">
+          <p class="text-xs uppercase tracking-[0.16em] text-slate/50">Sessions</p>
+          <p class="mt-2 text-2xl font-semibold text-obsidian">
+            {{.StudentAttendanceSummary.TotalEntries}}
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-emerald-800/70">Present</p>
+          <p class="mt-2 text-2xl font-semibold text-emerald-900">
+            {{.StudentAttendanceSummary.PresentCount}}
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-rose-800/70">Absent</p>
+          <p class="mt-2 text-2xl font-semibold text-rose-900">
+            {{.StudentAttendanceSummary.AbsentCount}}
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-amber-800/70">Late</p>
+          <p class="mt-2 text-2xl font-semibold text-amber-900">
+            {{.StudentAttendanceSummary.LateCount}}
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-sky-800/70">Excused</p>
+          <p class="mt-2 text-2xl font-semibold text-sky-900">
+            {{.StudentAttendanceSummary.ExcusedCount}}
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-aqua/30 bg-aqua/10 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-slate/55">Attendance rate</p>
+          <p class="mt-2 text-2xl font-semibold text-obsidian">
+            {{printf "%.1f" .StudentAttendanceSummary.AttendanceRate}}%
+          </p>
+          <p class="mt-1 text-[11px] text-slate/45">
+            Excused excluded
+          </p>
+        </div>
+      </div>
+
+      <div class="overflow-hidden rounded-[1.75rem] border border-slate/10 bg-white shadow-sm">
+        <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">
+            Attendance history
+          </p>
+
+          <h3 class="mt-2 text-xl font-semibold text-obsidian">
+            Saved attendance record
+          </h3>
+        </div>
+
+        {{if .StudentAttendanceHistory}}
+        <div class="divide-y divide-slate/10">
+          {{range .StudentAttendanceHistory}}
+          <div class="grid gap-4 px-5 py-5 sm:px-6 lg:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_9rem] lg:items-center">
+            <div>
+              <p class="text-sm font-semibold text-obsidian">
+                {{formatCalendarDate .AttendanceDate}}
+              </p>
+
+              {{if .DivisionName}}
+              <p class="mt-1 text-xs text-slate/50">
+                {{.DivisionName}}
+              </p>
+              {{end}}
+            </div>
+
+            <div>
+              <p class="text-sm font-semibold text-obsidian">
+                {{if .GroupName}}{{.GroupName}}{{else}}Group unavailable{{end}}
+              </p>
+
+              <p class="mt-1 text-xs text-slate/55">
+                {{if .TrainingProgramName}}{{.TrainingProgramName}}{{else}}Programme unavailable{{end}}
+              </p>
+
+              {{if .SessionTitle}}
+              <p class="mt-1 text-xs text-slate/50">
+                {{.SessionTitle}}
+              </p>
+              {{end}}
+            </div>
+
+            <div>
+              {{if .Note}}
+              <p class="text-sm leading-6 text-slate/65">{{.Note}}</p>
+              {{else}}
+              <p class="text-sm text-slate/40">No note recorded</p>
+              {{end}}
+            </div>
+
+            <div class="lg:text-right">
+              {{if eq .Status "present"}}
+              <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-900">Present</span>
+              {{else if eq .Status "absent"}}
+              <span class="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-rose-900">Absent</span>
+              {{else if eq .Status "late"}}
+              <span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-900">Late</span>
+              {{else if eq .Status "excused"}}
+              <span class="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-sky-900">Excused</span>
+              {{else}}
+              <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate/70">{{.Status}}</span>
+              {{end}}
+            </div>
+          </div>
+          {{end}}
+        </div>
+        {{else}}
+        <div class="px-5 py-14 text-center">
+          <p class="font-semibold text-obsidian">
+            No attendance records yet.
+          </p>
+
+          <p class="mt-2 text-sm text-slate/55">
+            This student has not appeared in a saved attendance sheet yet.
+          </p>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+</section>
+{{end}}

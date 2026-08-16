@@ -72,36 +72,34 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
 
-	var (
-		groups []StudentGroup
-		err    error
+	groups, ok := a.attendanceGroupsForUser(
+		w,
+		r,
+		user,
 	)
-	divisionIDs := []int64(nil)
-	if !canViewAllDivisions(user) {
-		var ok bool
-		divisionIDs, ok = a.requireOperationalDivisionScope(w, r, user)
-		if !ok {
-			return
-		}
-	}
-
-	if userHasRole(user, "coach") &&
-		!userHasRole(user, "admin") &&
-		!userHasRole(user, "superadmin") {
-		groups, err = a.listStudentGroupsForCoachByDivisionIDs(user.ID, divisionIDs)
-	} else {
-		groups, err = a.listStudentGroupsByDivisionIDs(divisionIDs)
-	}
-
-	if err != nil {
-		log.Printf("list student groups for attendance: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	if !ok {
 		return
 	}
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Attendance"
 	data.Description = "Manage student attendance by group."
 	data.StudentGroups = groups
+
+	attendanceSheets, err := a.listAttendanceSheets(
+		attendanceGroupIDs(groups),
+		40,
+	)
+	if err != nil {
+		log.Printf("list saved attendance sheets: %v", err)
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+	data.AttendanceSheets = attendanceSheets
+
 	data.TodayDate = time.Now().Format("2006-01-02")
 	data.AttendanceDate = strings.TrimSpace(r.URL.Query().Get("date"))
 	if data.AttendanceDate == "" {
