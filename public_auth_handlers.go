@@ -1002,7 +1002,18 @@ func (a *App) buildDashboardStats(user *User, selectedDivision *Division, divisi
 
 	programs, err := a.listTrainingProgramsByDivisionIDs(divisionIDs, false, true)
 	if err == nil {
-		stats = append(stats, Stat{Value: strconv.Itoa(len(programs)), Label: workspaceProgramLabel(user, selectedDivision, "")})
+		stats = append(stats, Stat{
+			Value: strconv.Itoa(len(programs)),
+			Label: workspaceProgramLabel(user, selectedDivision, ""),
+		})
+	}
+
+	groups, err := a.listStudentGroupsByDivisionIDs(divisionIDs)
+	if err == nil {
+		stats = append(stats, Stat{
+			Value: strconv.Itoa(len(groups)),
+			Label: workspaceGroupLabel(user, selectedDivision, ""),
+		})
 	}
 
 	attendanceCount, err := a.countAttendanceEntriesByDivisionIDs(now.Format("2006-01-02"), divisionIDs)

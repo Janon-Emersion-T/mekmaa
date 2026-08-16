@@ -4742,8 +4742,11 @@ func TestBuildDashboardStatsRespectsDivisionScopeForSharedStudent(t *testing.T) 
 	if hasStatLabel(kecStats, "Pending bookings") {
 		t.Fatalf("did not expect booking metric in KEC stats: %#v", kecStats)
 	}
-	if got := statValue(kecStats, "Classes"); got != "1" {
-		t.Fatalf("kec classes stat = %q, want %q", got, "1")
+	if got := statValue(kecStats, "Programmes"); got != "1" {
+		t.Fatalf("kec programmes stat = %q, want %q", got, "1")
+	}
+	if got := statValue(kecStats, "Classes"); got != "0" {
+		t.Fatalf("kec classes stat = %q, want %q", got, "0")
 	}
 }
 
