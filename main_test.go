@@ -8178,3 +8178,14 @@ func TestBookingPaymentCollectibleStatusCancelled(t *testing.T) {
 		t.Fatal("cancelled booking collectible behaviour should remain unchanged")
 	}
 }
+
+func TestNoShowLifecycleAllowsFutureConfirmedBookingRule(t *testing.T) {
+	// No-show is an administrative outcome and may be applied to a confirmed
+	// booking before or after the scheduled slot. Completion remains time-gated.
+	//
+	// The core status eligibility must therefore not couple no-show to
+	// completion timing.
+	if bookingPaymentCollectibleStatus(bookingStatusNoShow) {
+		t.Fatal("no-show booking must remain excluded from receivables")
+	}
+}
