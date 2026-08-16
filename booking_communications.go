@@ -487,12 +487,17 @@ func (a *App) transitionManagedBookingStatus(
 		if strings.TrimSpace(cancellationReason) == "" {
 			return nil, 0, errors.New("cancellation reason is required")
 		}
-	case bookingStatusCompleted, bookingStatusNoShow:
+	case bookingStatusCompleted:
 		if schedule.Status != bookingStatusConfirmed {
 			return nil, 0, errors.New("only confirmed bookings can use this lifecycle action")
 		}
 		if start.After(nowLocal) {
-			return nil, 0, errors.New("future bookings cannot be marked with that status")
+			return nil, 0, errors.New("future bookings cannot be marked completed")
+		}
+
+	case bookingStatusNoShow:
+		if schedule.Status != bookingStatusConfirmed {
+			return nil, 0, errors.New("only confirmed bookings can be marked no-show")
 		}
 	}
 
