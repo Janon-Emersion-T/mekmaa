@@ -145,6 +145,37 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS student_group_staff (
+			group_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			assignment_role TEXT NOT NULL,
+			primary_assignment INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY (group_id, user_id, assignment_role),
+			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_group_staff_user
+			ON student_group_staff(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_student_group_staff_group
+			ON student_group_staff(group_id)`,
+		`INSERT OR IGNORE INTO student_group_staff (
+			group_id,
+			user_id,
+			assignment_role,
+			primary_assignment,
+			created_at,
+			updated_at
+		)
+		SELECT
+			group_id,
+			user_id,
+			'coach',
+			0,
+			created_at,
+			created_at
+		FROM student_group_coaches`,
 		`CREATE TABLE IF NOT EXISTS student_group_sessions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			group_id INTEGER NOT NULL,
