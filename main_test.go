@@ -8753,3 +8753,31 @@ func TestScopedTrainingProgramURLPreservesDivision(t *testing.T) {
 		)
 	}
 }
+
+func TestWorkspaceProgramLabelStaysNeutralAcrossDivisions(t *testing.T) {
+	user := &User{}
+
+	for _, code := range []string{
+		divisionCodeSports,
+		divisionCodeKEC,
+		divisionCodeChess,
+	} {
+		t.Run(code, func(t *testing.T) {
+			division := &Division{Code: code}
+
+			got := workspaceProgramLabel(
+				user,
+				division,
+				"",
+			)
+
+			if got != "Programmes" {
+				t.Fatalf(
+					"workspaceProgramLabel(%s) = %q, want Programmes",
+					code,
+					got,
+				)
+			}
+		})
+	}
+}

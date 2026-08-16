@@ -6,9 +6,9 @@
     <div class="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full border-[42px] border-aqua/10"></div>
     <div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
       <div class="max-w-3xl">
-        <p class="text-xs font-semibold uppercase tracking-[0.28em] text-aqua">Programme billing</p>
+        <p class="text-xs font-semibold uppercase tracking-[0.28em] text-aqua">Enrollment & fees</p>
         <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Enrollment Manager</h1>
-        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/68">Start by selecting a student. From that student workspace you can review every enrollment, add a new programme, and manage finance-sensitive changes safely.</p>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/68">Start by selecting a student. From that student workspace you can review every enrollment, add a programme, and manage finance-sensitive changes safely.</p>
       </div>
       <a href="{{scopedURL "/admin/enrollments" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-obsidian transition hover:bg-cloud">Refresh student list</a>
     </div>
@@ -123,7 +123,7 @@
               <div class="flex h-12 items-center rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm text-slate/75">{{.SelectedAdmission.StudentID}} · {{.SelectedAdmission.FullName}}</div>
             </div>
             <div class="space-y-2">
-              <label for="edit-enrollment-programme" class="block text-sm font-semibold text-obsidian">Training programme</label>
+              <label for="edit-enrollment-programme" class="block text-sm font-semibold text-obsidian">Programme</label>
               <select id="edit-enrollment-programme" name="training_program_id" required {{if .SelectedEnrollment.AdmissionPaymentPaid}}disabled{{end}} class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15 disabled:cursor-not-allowed disabled:bg-cloud/60 disabled:text-slate/55">
                 {{range .TrainingPrograms}}
                 <option value="{{.ID}}" {{if eq $.SelectedEnrollment.TrainingProgramID .ID}}selected{{end}}>{{.Name}} · Admission {{money .AdmissionFee}} · Monthly {{money .MonthlyFee}}</option>
@@ -139,7 +139,7 @@
             <input type="checkbox" name="free_admission" value="true" {{if .SelectedEnrollment.FreeAdmission}}checked{{end}} {{if .SelectedEnrollment.AdmissionPaymentPaid}}disabled{{end}} class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua disabled:cursor-not-allowed" />
             <span>
               <span class="block text-sm font-semibold text-obsidian">Free admission fee</span>
-              <span class="mt-1 block text-xs leading-5 text-slate/55">{{if .SelectedEnrollment.AdmissionPaymentPaid}}Locked because the admission fee receipt already exists.{{else}}No admission-fee receipt will be required for this programme enrollment.{{end}}</span>
+              <span class="mt-1 block text-xs leading-5 text-slate/55">{{if .SelectedEnrollment.AdmissionPaymentPaid}}Locked because the admission fee receipt already exists.{{else}}No admission-fee receipt will be required for this enrollment.{{end}}</span>
             </span>
           </label>
           {{if .SelectedEnrollment.AdmissionPaymentPaid}}
@@ -217,7 +217,7 @@
             <div class="flex h-12 items-center rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm text-slate/75">{{.SelectedAdmission.StudentID}} · {{.SelectedAdmission.FullName}}</div>
           </div>
           <div class="space-y-2">
-            <label for="enrollment-programme" class="block text-sm font-semibold text-obsidian">Training programme</label>
+            <label for="enrollment-programme" class="block text-sm font-semibold text-obsidian">Programme</label>
             <select id="enrollment-programme" name="training_program_id" required class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15">
               <option value="">Select programme</option>
               {{range .TrainingPrograms}}
@@ -229,7 +229,7 @@
             <input type="checkbox" name="free_admission" value="true" class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua" />
             <span>
               <span class="block text-sm font-semibold text-obsidian">Free admission fee</span>
-              <span class="mt-1 block text-xs leading-5 text-slate/55">No admission-fee receipt will be required for this programme enrollment.</span>
+              <span class="mt-1 block text-xs leading-5 text-slate/55">No admission-fee receipt will be required for this enrollment.</span>
             </span>
           </label>
           <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-cloud/45 p-4">

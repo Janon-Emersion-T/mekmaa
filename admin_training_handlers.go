@@ -243,7 +243,7 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Enrollment Manager"
-	data.Description = "Assign students to training programmes and collect programme-level fees."
+	data.Description = "Assign students to programmes and collect programme-level fees."
 	data.Enrollments = enrollments
 	data.Admissions = admissions
 	data.TrainingPrograms = trainingPrograms
