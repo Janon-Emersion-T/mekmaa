@@ -8154,3 +8154,27 @@ func TestFindAttendanceStudentByStudentIDRejectsUnknownStudent(
 		t.Fatal("expected unknown student not to be found")
 	}
 }
+
+func TestBookingPaymentCollectibleStatusNoShow(t *testing.T) {
+	if bookingPaymentCollectibleStatus(bookingStatusNoShow) {
+		t.Fatal("no-show booking must not remain collectible in receivables")
+	}
+}
+
+func TestBookingPaymentCollectibleStatusConfirmed(t *testing.T) {
+	if !bookingPaymentCollectibleStatus(bookingStatusConfirmed) {
+		t.Fatal("confirmed booking should remain collectible")
+	}
+}
+
+func TestBookingPaymentCollectibleStatusCompleted(t *testing.T) {
+	if !bookingPaymentCollectibleStatus(bookingStatusCompleted) {
+		t.Fatal("completed unpaid booking should remain collectible")
+	}
+}
+
+func TestBookingPaymentCollectibleStatusCancelled(t *testing.T) {
+	if !bookingPaymentCollectibleStatus(bookingStatusCancelled) {
+		t.Fatal("cancelled booking collectible behaviour should remain unchanged")
+	}
+}
