@@ -3628,6 +3628,9 @@ func (a *App) financeAccountStatementHandler(w http.ResponseWriter, r *http.Requ
 		http.Redirect(w, r, "/admin/finance/accounts", http.StatusSeeOther)
 		return
 	}
+	if !a.requireDivisionAccessForDivision(w, r, user, account.DivisionID) {
+		return
+	}
 	statement, err := a.buildFinanceStatement(accountID, strings.TrimSpace(r.URL.Query().Get("from")), strings.TrimSpace(r.URL.Query().Get("to")))
 	if err != nil {
 		a.setFlash(w, "Account statement could not be loaded.")

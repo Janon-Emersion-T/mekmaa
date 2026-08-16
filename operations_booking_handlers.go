@@ -15,14 +15,9 @@ import (
 
 func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	divisionIDs := []int64(nil)
-	var err error
-	if !canViewAllDivisions(user) {
-		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
+	divisionIDs, ok := a.requireOperationalDivisionScope(w, r, user)
+	if !ok {
+		return
 	}
 	groups, err := a.listStudentGroupsByDivisionIDs(divisionIDs)
 	if err != nil {
@@ -83,9 +78,9 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 	)
 	divisionIDs := []int64(nil)
 	if !canViewAllDivisions(user) {
-		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+		var ok bool
+		divisionIDs, ok = a.requireOperationalDivisionScope(w, r, user)
+		if !ok {
 			return
 		}
 	}
@@ -117,6 +112,59 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 		data.AttendanceDate = data.TodayDate
 	} else {
 		data.AttendanceDate = parsedDate.Format("2006-01-02")
+	}
+
+	attendanceAction := strings.ToLower(
+		strings.TrimSpace(r.URL.Query().Get("action")),
+	)
+
+	if attendanceAction == "student" {
+		admissionID := parseInt64Query(
+			r.URL.Query().Get("student_id"),
+		)
+
+		if admissionID <= 0 {
+			http.Error(
+				w,
+				"invalid student id",
+				http.StatusBadRequest,
+			)
+			return
+		}
+
+		student,
+			history,
+			summary,
+			studentErr := a.loadStudentAttendanceView(
+			groups,
+			admissionID,
+		)
+
+		if studentErr != nil {
+			if errors.Is(studentErr, sql.ErrNoRows) {
+				http.Error(
+					w,
+					"student not found in the available attendance scope",
+					http.StatusNotFound,
+				)
+				return
+			}
+
+			log.Printf(
+				"load student attendance history: %v",
+				studentErr,
+			)
+			http.Error(
+				w,
+				"internal server error",
+				http.StatusInternalServerError,
+			)
+			return
+		}
+
+		data.SelectedAttendanceStudent = student
+		data.StudentAttendanceHistory = history
+		data.StudentAttendanceSummary = summary
 	}
 
 	groupID, err := strconv.ParseInt(
@@ -4533,14 +4581,9 @@ func (a *App) studentLeaveManagementHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	user, _ := a.currentUser(r.Context())
-	divisionIDs := []int64(nil)
-	var err error
-	if !canViewAllDivisions(user) {
-		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
+	divisionIDs, ok := a.requireOperationalDivisionScope(w, r, user)
+	if !ok {
+		return
 	}
 	allEnrollments, err := a.listStudentEnrollmentsByDivisionIDs(divisionIDs)
 	if err != nil {
@@ -4709,10 +4752,8 @@ func (a *App) voidAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request
 	admissionID := parseInt64Query(r.FormValue("admission_id"))
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
 	if enrollmentID > 0 {
-		enrollmentDivisionIDs, err := a.scopedDivisionIDsForUser(currentUser, true)
-		if err != nil {
-			log.Printf("load scoped divisions for enrollment payment void: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+		enrollmentDivisionIDs, ok := a.requireOperationalDivisionScope(w, r, currentUser)
+		if !ok {
 			return
 		}
 		enrollment, err := a.findStudentEnrollmentByIDForDivisionIDs(enrollmentID, enrollmentDivisionIDs)
@@ -5098,13 +5139,9 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	divisionIDs := []int64(nil)
-	if !canViewAllDivisions(currentUser) {
-		divisionIDs, err = a.scopedDivisionIDsForUser(currentUser, true)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
+	divisionIDs, ok := a.requireOperationalDivisionScope(w, r, currentUser)
+	if !ok {
+		return
 	}
 	if !canViewAllDivisions(currentUser) {
 		groupDivisionID, divisionErr := a.findStudentGroupDivisionByID(groupID)
@@ -5231,13 +5268,9 @@ func (a *App) saveCoachAttendanceHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	currentUser, _ := a.currentUser(r.Context())
-	divisionIDs := []int64(nil)
-	if !canViewAllDivisions(currentUser) {
-		divisionIDs, err = a.scopedDivisionIDsForUser(currentUser, true)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
+	divisionIDs, ok := a.requireOperationalDivisionScope(w, r, currentUser)
+	if !ok {
+		return
 	}
 	coaches, err := a.listCoachUsersDetailedByDivisionIDs(divisionIDs, false)
 	if err != nil {

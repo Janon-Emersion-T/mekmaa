@@ -1,6 +1,9 @@
 .env
 
 app.db
+app.db-*
+database.db
 mekmaa3
+*.test
 data/uploads/
 backups/

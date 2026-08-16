@@ -201,7 +201,24 @@ func migrateDivisions(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	hasStudentMonthlyPaymentEnrollmentID, err := tableHasColumn(db, "student_monthly_payments", "enrollment_id")
+	if err != nil {
+		return err
+	}
 	if hasFinanceReferenceType && hasFinanceSourceType && hasFinanceReferenceID && hasFinanceSourceID {
+		monthlyPaymentDivisionClause := `NULL`
+		if hasStudentMonthlyPaymentEnrollmentID {
+			monthlyPaymentDivisionClause = `
+				(
+					SELECT tp.division_id
+					FROM student_monthly_payments smp
+					JOIN student_enrollments se ON se.id = smp.enrollment_id
+					JOIN training_programs tp ON tp.id = se.training_program_id
+					WHERE finance_transactions.source_type = 'student_monthly_payment'
+					  AND smp.id = finance_transactions.source_id
+				)
+			`
+		}
 		if _, err := db.Exec(`
 			UPDATE finance_transactions
 			SET division_id = COALESCE(
@@ -222,14 +239,7 @@ func migrateDivisions(db *sql.DB) error {
 					ORDER BY atp.created_at ASC, tp.id ASC
 					LIMIT 1
 				),
-				(
-					SELECT tp.division_id
-					FROM student_monthly_payments smp
-					JOIN student_enrollments se ON se.id = smp.enrollment_id
-					JOIN training_programs tp ON tp.id = se.training_program_id
-					WHERE finance_transactions.source_type = 'student_monthly_payment'
-					  AND smp.id = finance_transactions.source_id
-				),
+				`+monthlyPaymentDivisionClause+`,
 				CASE
 					WHEN finance_transactions.reference_type IN ('space_schedule', 'booking_referral', 'booking_payment_collection')
 						OR finance_transactions.source_type IN ('space_schedule', 'booking_referral', 'booking_payment_collection', 'finance_transfer')
@@ -467,6 +477,47 @@ func (a *App) scopedDivisionIDsForUser(user *User, includeInactive bool) ([]int6
 		return ids, nil
 	}
 	return a.accessibleDivisionIDsForUser(user, includeInactive)
+}
+
+func (a *App) scopedOperationalDivisionIDsForUser(user *User, includeInactive bool) ([]int64, error) {
+	if user == nil || canViewAllDivisions(user) {
+		return nil, nil
+	}
+	if len(user.DivisionIDs) == 0 {
+		return nil, nil
+	}
+	divisions, err := a.accessibleDivisionsForUser(user, includeInactive)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(divisions))
+	for _, division := range divisions {
+		if strings.EqualFold(strings.TrimSpace(division.Code), divisionCodeCorporate) {
+			continue
+		}
+		ids = append(ids, division.ID)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
+}
+
+func (a *App) requireOperationalDivisionScope(w http.ResponseWriter, r *http.Request, user *User) ([]int64, bool) {
+	if user == nil || canViewAllDivisions(user) {
+		return nil, true
+	}
+	if len(user.DivisionIDs) == 0 {
+		return nil, true
+	}
+	divisionIDs, err := a.scopedOperationalDivisionIDsForUser(user, true)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return nil, false
+	}
+	if len(divisionIDs) == 0 {
+		a.writeDivisionForbidden(w, r, user)
+		return nil, false
+	}
+	return divisionIDs, true
 }
 
 func (a *App) requireDivisionAccessForDivision(w http.ResponseWriter, r *http.Request, user *User, divisionID int64) bool {

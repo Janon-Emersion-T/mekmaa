@@ -1560,6 +1560,9 @@ type TemplateData struct {
 	RecentDates                     []string
 	AttendanceSummary               AttendanceSummary
 	AttendanceLimitWarnings         []AttendanceLimitWarning
+	SelectedAttendanceStudent       *Admission
+	StudentAttendanceHistory        []StudentAttendanceHistoryRow
+	StudentAttendanceSummary        StudentAttendanceSummary
 	Courts                          []Court
 	SelectedCourt                   *Court
 	CourtMode                       string

@@ -594,6 +594,9 @@ func findStudentEnrollmentByIDTx(tx *sql.Tx, enrollmentID int64) (*StudentEnroll
 			se.admission_id,
 			se.training_program_id,
 			COALESCE(tp.name, ''),
+			COALESCE(tp.division_id, 0),
+			COALESCE(d.code, ''),
+			COALESCE(d.name, ''),
 			COALESCE(se.free_admission, 0),
 			COALESCE(se.free_monthly_fee, 0),
 			COALESCE(se.payment_collected, 0),
@@ -626,6 +629,8 @@ func findStudentEnrollmentByIDTx(tx *sql.Tx, enrollmentID int64) (*StudentEnroll
 			ON a.id = se.admission_id
 		JOIN training_programs tp
 			ON tp.id = se.training_program_id
+		LEFT JOIN divisions d
+			ON d.id = tp.division_id
 		WHERE se.id = ?
 	`, enrollmentID)
 
@@ -640,6 +645,9 @@ func findStudentEnrollmentByIDTx(tx *sql.Tx, enrollmentID int64) (*StudentEnroll
 		&enrollment.AdmissionID,
 		&enrollment.TrainingProgramID,
 		&enrollment.TrainingProgramName,
+		&enrollment.DivisionID,
+		&enrollment.DivisionCode,
+		&enrollment.DivisionName,
 		&freeAdmission,
 		&freeMonthlyFee,
 		&paymentCollected,
@@ -863,13 +871,19 @@ func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMont
 		return 0, errors.New("payment amount exceeds the outstanding balance")
 	}
 	now := time.Now().UTC()
-	divisionID, err := financeDivisionIDForEntryTx(tx, financeTransactionCreate{
-		ReferenceType: "admission",
-		ReferenceID:   admission.ID,
-		SourceType:    "student_monthly_payment",
-	})
-	if err != nil {
-		return 0, err
+	divisionID := int64(0)
+	if enrollment != nil {
+		divisionID = enrollment.DivisionID
+	}
+	if divisionID <= 0 {
+		divisionID, err = financeDivisionIDForEntryTx(tx, financeTransactionCreate{
+			ReferenceType: "admission",
+			ReferenceID:   admission.ID,
+			SourceType:    "student_monthly_payment",
+		})
+		if err != nil {
+			return 0, err
+		}
 	}
 	account, err := findFinanceAccountForPaymentMethodTx(tx, divisionID, paymentMethod)
 	if err != nil {
@@ -883,6 +897,7 @@ func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMont
 	}
 	receiptNumber := fmt.Sprintf("STU-%s-%06d-%s", strings.ReplaceAll(paymentMonth, "-", ""), referenceID, now.Format("150405"))
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
+		DivisionID:       divisionID,
 		ReceiptNumber:    receiptNumber,
 		ReferenceNumber:  receiptNumber,
 		Category:         "student_monthly_payment",

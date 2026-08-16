@@ -98,12 +98,8 @@ func loadRuntimeDependencies() (runtimeDependencies, error) {
 	configErrs = append(configErrs, validateUploadPath(appEnv, uploadStorage.Root)...)
 	configErrs = append(configErrs, dbPathErrs...)
 
-	bootstrapSeed, err := loadBootstrapSuperadminSeed()
-	if err != nil {
+	if _, err := loadBootstrapSuperadminSeed(); err != nil {
 		return runtimeDependencies{}, err
-	}
-	if appEnv == appEnvProduction && bootstrapSeed == nil {
-		configErrs = append(configErrs, "BOOTSTRAP_SUPERADMIN_EMAIL and BOOTSTRAP_SUPERADMIN_PASSWORD are required in production")
 	}
 
 	return runtimeDependencies{

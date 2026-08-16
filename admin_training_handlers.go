@@ -13,14 +13,9 @@ import (
 
 func (a *App) coachManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	divisionIDs := []int64(nil)
-	var err error
-	if !canViewAllDivisions(user) {
-		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
+	divisionIDs, ok := a.requireOperationalDivisionScope(w, r, user)
+	if !ok {
+		return
 	}
 	coaches, err := a.listCoachUsersDetailedByDivisionIDs(divisionIDs, true)
 	if err != nil {
@@ -89,20 +84,28 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 	user, _ := a.currentUser(r.Context())
 	filter := admissionsFilterFromRequest(r)
 	if !canViewAllDivisions(user) {
+		operationalDivisionIDs, ok := a.requireOperationalDivisionScope(w, r, user)
+		if !ok {
+			return
+		}
 		if filter.Division != "" {
 			selectedDivision, err := a.findDivisionBySlugOrCode(filter.Division)
-			if err != nil || !userCanAccessDivision(user, selectedDivision.ID) {
+			allowed := false
+			if err == nil {
+				for _, divisionID := range operationalDivisionIDs {
+					if divisionID == selectedDivision.ID {
+						allowed = true
+						break
+					}
+				}
+			}
+			if err != nil || !allowed {
 				a.writeDivisionForbidden(w, r, user)
 				return
 			}
 			filter.DivisionIDs = []int64{selectedDivision.ID}
 		} else {
-			divisionIDs, err := a.scopedDivisionIDsForUser(user, true)
-			if err != nil {
-				http.Error(w, "internal server error", http.StatusInternalServerError)
-				return
-			}
-			filter.DivisionIDs = divisionIDs
+			filter.DivisionIDs = operationalDivisionIDs
 		}
 	} else if filter.Division != "" {
 		selectedDivision, err := a.findDivisionBySlugOrCode(filter.Division)
@@ -180,13 +183,9 @@ func (a *App) studentIDCardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	divisionIDs := []int64(nil)
-	if !canViewAllDivisions(user) {
-		divisionIDs, err = a.scopedDivisionIDsForUser(user, true)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
+	divisionIDs, ok := a.requireOperationalDivisionScope(w, r, user)
+	if !ok {
+		return
 	}
 	admission, err := a.findAdmissionIdentityByIDForDivisionIDs(admissionID, divisionIDs)
 	if err != nil {
@@ -219,14 +218,9 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 
 	user, _ := a.currentUser(r.Context())
 	var err error
-	enrollmentDivisionIDs := []int64(nil)
-	if !canViewAllDivisions(user) {
-		enrollmentDivisionIDs, err = a.scopedDivisionIDsForUser(user, true)
-		if err != nil {
-			log.Printf("resolve enrollment divisions: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
+	enrollmentDivisionIDs, ok := a.requireOperationalDivisionScope(w, r, user)
+	if !ok {
+		return
 	}
 	enrollments, err := a.listStudentEnrollmentsByDivisionIDs(enrollmentDivisionIDs)
 	if err != nil {

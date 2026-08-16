@@ -255,7 +255,8 @@ func runSeedUAT(db *sql.DB, env AppEnvironment) error {
 		return err
 	}
 
-	log.Printf("seed-uat complete: shared_student=%s password=%s", uatSharedStudentID, uatDefaultPassword)
+	log.Printf("seed-uat complete: shared_student=%s", uatSharedStudentID)
+	log.Printf("seed-uat default password configured for local UAT accounts")
 	log.Printf("seed-uat accounts: superadmin+uat@mekmaa.local sports-admin+uat@mekmaa.local kec-admin+uat@mekmaa.local chess-admin+uat@mekmaa.local corporate-finance+uat@mekmaa.local")
 	return nil
 }

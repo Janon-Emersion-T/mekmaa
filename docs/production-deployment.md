@@ -24,6 +24,9 @@ Core:
 - `MEKMAA_PUBLIC_BASE_URL=https://mekmaa.com`
 - `BOOKING_ACCESS_TOKEN_SECRET=<long-random-secret>`
 - `BOOKING_ACCESS_TOKEN_TTL_DAYS=180`
+- `BOOTSTRAP_SUPERADMIN_NAME=<optional>`
+- `BOOTSTRAP_SUPERADMIN_EMAIL=<optional>`
+- `BOOTSTRAP_SUPERADMIN_PASSWORD=<optional>`
 
 Booking communications:
 
@@ -63,6 +66,8 @@ The app also checks:
 - upload directory writability
 - SQLite foreign keys
 - required booking communication credentials when a channel is enabled
+
+Superadmin bootstrap is optional. If `BOOTSTRAP_SUPERADMIN_EMAIL` and `BOOTSTRAP_SUPERADMIN_PASSWORD` are both set, startup creates or updates that verified privileged account. If they are omitted, startup does not create one automatically.
 
 ## Booking Pricing Before Launch
 
@@ -208,6 +213,35 @@ Do not overwrite the live database before the backup passes `scripts/restore-che
 4. Watch startup logs for validation failures or pricing warnings
 5. Check `/health`
 6. Check `/ready`
+
+## Release Checklist
+
+1. Confirm the source revision to deploy.
+2. Back up the production SQLite database.
+3. Back up the current Mekmaa binary and runtime configuration.
+4. Build the release binary.
+5. Copy the production database to a staging or temporary path.
+6. Run the new binary against the copied database and let migrations/bootstrap complete.
+7. Verify the migrated copy before touching production.
+8. Stop the Mekmaa service only when ready to cut over.
+9. Deploy the new binary.
+10. Start Mekmaa.
+11. Check `/health`.
+12. Check `/ready`.
+13. Run a Sports smoke check.
+14. Run a KEC smoke check.
+15. Run a Chess smoke check.
+16. Run a finance sanity check.
+17. Roll back if any critical failure appears.
+
+## Rollback Checklist
+
+1. Stop Mekmaa.
+2. Restore the previous Mekmaa binary.
+3. Restore the production database backup if migrations or live writes require reversal.
+4. Restart Mekmaa.
+5. Check `/health`.
+6. Check `/ready`.
 
 ## Post-Deployment Smoke Tests
 

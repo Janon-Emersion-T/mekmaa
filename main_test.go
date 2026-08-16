@@ -8055,3 +8055,46 @@ func TestBuildFinanceSpecifiedLedgersBankingUsesDebitCreditAssetView(t *testing.
 		t.Fatalf("unexpected bank charges ledger: %#v", bankCharges)
 	}
 }
+
+func TestSummarizeStudentAttendanceHistory(t *testing.T) {
+	history := []StudentAttendanceHistoryRow{
+		{Status: "present"},
+		{Status: "present"},
+		{Status: "late"},
+		{Status: "absent"},
+		{Status: "excused"},
+	}
+
+	summary := summarizeStudentAttendanceHistory(history)
+
+	if summary.TotalEntries != 5 {
+		t.Fatalf("TotalEntries = %d, want 5", summary.TotalEntries)
+	}
+
+	if summary.PresentCount != 2 {
+		t.Fatalf("PresentCount = %d, want 2", summary.PresentCount)
+	}
+
+	if summary.AbsentCount != 1 {
+		t.Fatalf("AbsentCount = %d, want 1", summary.AbsentCount)
+	}
+
+	if summary.LateCount != 1 {
+		t.Fatalf("LateCount = %d, want 1", summary.LateCount)
+	}
+
+	if summary.ExcusedCount != 1 {
+		t.Fatalf("ExcusedCount = %d, want 1", summary.ExcusedCount)
+	}
+
+	if summary.AttendedCount != 3 {
+		t.Fatalf("AttendedCount = %d, want 3", summary.AttendedCount)
+	}
+
+	if summary.AttendanceRate != 75 {
+		t.Fatalf(
+			"AttendanceRate = %.2f, want 75",
+			summary.AttendanceRate,
+		)
+	}
+}

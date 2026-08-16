@@ -31,7 +31,7 @@ Target Go version: `1.26.5`
 
 - Self-service registrations receive the `customer` role by default and must verify their email before signing in.
 - `coach` is a seeded system role with access to the dashboard and student attendance only.
-- A verified superadmin account is created or updated only when `BOOTSTRAP_SUPERADMIN_EMAIL` and `BOOTSTRAP_SUPERADMIN_PASSWORD` are set.
+- A verified superadmin account is created or updated only when `BOOTSTRAP_SUPERADMIN_EMAIL` and `BOOTSTRAP_SUPERADMIN_PASSWORD` are explicitly set.
 - `superadmin` can do everything `admin` can do.
 
 ## Environment variables
