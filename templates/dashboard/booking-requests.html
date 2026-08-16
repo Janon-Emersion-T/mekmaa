@@ -368,7 +368,7 @@
                   </div>
                   <div class="mt-3 grid gap-2">
                     {{range bookingCommunicationsFor $.BookingCommunications .ID}}
-                    <div class="rounded-lg border px-3 py-2 {{bookingCommunicationStatusTone .}}">
+                    <div class="rounded-lg border px-3 py-2 {{bookingCommunicationStatusTone .Status}}">
                       <div class="flex flex-wrap items-center justify-between gap-2">
                         <p class="text-[0.58rem] font-bold uppercase tracking-wider">{{bookingCommunicationEventLabel .}}</p>
                         <span class="rounded-full bg-white/80 px-2 py-0.5 text-[0.52rem] font-bold uppercase tracking-wider">{{.Channel}}</span>
