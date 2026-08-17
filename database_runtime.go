@@ -206,6 +206,17 @@ func (a *App) queryRowTxDB(
 	)
 }
 
+func (a *App) queryTxDB(
+	tx *sql.Tx,
+	query string,
+	args ...any,
+) (*sql.Rows, error) {
+	return tx.Query(
+		a.dbQuery(query),
+		args...,
+	)
+}
+
 func (a *App) execTxDB(
 	tx *sql.Tx,
 	query string,

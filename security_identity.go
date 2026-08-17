@@ -633,7 +633,7 @@ func (a *App) updateCoach(coach User) error {
 		return sql.ErrNoRows
 	}
 
-	isCoach, err := userHasRoleTx(tx, coach.ID, "coach")
+	isCoach, err := a.userHasRoleTx(tx, coach.ID, "coach")
 	if err != nil {
 		return err
 	}
@@ -661,7 +661,7 @@ func (a *App) deleteCoach(coachID int64) error {
 	}
 	defer tx.Rollback()
 
-	roles, err := rolesForUserTx(tx, coachID)
+	roles, err := a.rolesForUserTx(tx, coachID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -1086,7 +1086,7 @@ func upsertCoachProfileTx(tx *sql.Tx, userID int64, coach User) error {
 	if coachType == "main" {
 		parentCoachID = 0
 	}
-	_, err := tx.Exec(`
+	_, err := a.execTxDB(tx, `
 		INSERT INTO coach_profiles (
 			user_id,
 			phone,
@@ -1148,8 +1148,8 @@ func (a *App) rolesForUser(userID int64) ([]string, error) {
 	return roles, rows.Err()
 }
 
-func rolesForUserTx(tx *sql.Tx, userID int64) ([]string, error) {
-	rows, err := tx.Query(`
+func (a *App) rolesForUserTx(tx *sql.Tx, userID int64) ([]string, error) {
+	rows, err := a.queryTxDB(tx, `
 		SELECT r.name
 		FROM users u
 		JOIN user_roles ur ON ur.user_id = u.id
@@ -1175,7 +1175,7 @@ func rolesForUserTx(tx *sql.Tx, userID int64) ([]string, error) {
 	}
 	if len(roles) == 0 {
 		var exists int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM users WHERE id = ?`, userID).Scan(&exists); err != nil {
+		if err := a.queryRowTxDB(tx, `SELECT COUNT(*) FROM users WHERE id = ?`, userID).Scan(&exists); err != nil {
 			return nil, err
 		}
 		if exists == 0 {
@@ -1185,9 +1185,9 @@ func rolesForUserTx(tx *sql.Tx, userID int64) ([]string, error) {
 	return roles, nil
 }
 
-func userHasRoleTx(tx *sql.Tx, userID int64, roleName string) (bool, error) {
+func (a *App) userHasRoleTx(tx *sql.Tx, userID int64, roleName string) (bool, error) {
 	var count int
-	err := tx.QueryRow(`
+	err := a.queryRowTxDB(tx, `
 		SELECT COUNT(*)
 		FROM user_roles ur
 		JOIN roles r ON r.id = ur.role_id
