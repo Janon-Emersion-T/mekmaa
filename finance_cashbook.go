@@ -1048,7 +1048,7 @@ func (a *App) listFinanceAccountsByDivisionIDs(divisionIDs []int64, activeOnly b
 		query += ` WHERE ` + strings.Join(conditions, ` AND `)
 	}
 	query += ` ORDER BY divisions.name , finance_accounts.is_system DESC, finance_accounts.account_type ASC, finance_accounts.account_code , finance_accounts.name , finance_accounts.id ASC`
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1117,7 +1117,7 @@ func (a *App) createFinanceAccount(divisionID int64, accountCode, name, accountT
 	}
 	if accountCode == "" {
 		var count int
-		if err := a.db.QueryRow(`SELECT COUNT(*) FROM finance_accounts WHERE division_id = ? AND account_type = ?`, divisionID, accountType).Scan(&count); err != nil {
+		if err := a.queryRowDB(`SELECT COUNT(*) FROM finance_accounts WHERE division_id = ? AND account_type = ?`, divisionID, accountType).Scan(&count); err != nil {
 			return 0, err
 		}
 		if division, err := a.findDivisionByID(divisionID); err == nil {
@@ -1130,7 +1130,7 @@ func (a *App) createFinanceAccount(divisionID int64, accountCode, name, accountT
 		}
 	}
 	now := time.Now().UTC()
-	result, err := a.db.Exec(`
+	result, err := a.execDB(`
 		INSERT INTO finance_accounts (
 			division_id, account_code, name, account_type, description, opening_balance, is_system, is_active,
 			created_at, updated_at, created_by_user_id, updated_by_user_id
@@ -1315,7 +1315,7 @@ func financeAccountBalanceTx(tx *sql.Tx, accountID int64) (float64, error) {
 
 func (a *App) financeAccountBalance(accountID int64) (float64, error) {
 	var balance float64
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT COALESCE(SUM(amount), 0)
 		FROM finance_transactions
 		WHERE finance_account_id = ?
@@ -2571,7 +2571,7 @@ func (a *App) voidFinanceTransferGroup(groupID string, reason string, voidedByUs
 }
 
 func (a *App) listFinanceTransfers() ([]FinanceTransfer, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			ft.transfer_group_id AS transfer_group_id,
 			ft.reference_number AS reference_number,
@@ -2894,9 +2894,9 @@ func (a *App) listCashReconciliations(limit int) ([]CashReconciliation, error) {
 	var rows *sql.Rows
 	var err error
 	if limit > 0 {
-		rows, err = a.db.Query(query+` LIMIT ?`, limit)
+		rows, err = a.queryDB(query+` LIMIT ?`, limit)
 	} else {
-		rows, err = a.db.Query(query)
+		rows, err = a.queryDB(query)
 	}
 	if err != nil {
 		return nil, err
@@ -2923,7 +2923,7 @@ func (a *App) listCashReconciliations(limit int) ([]CashReconciliation, error) {
 }
 
 func (a *App) lastCashReconciliationForAccount(accountID int64) (*CashReconciliation, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT cr.id, cr.finance_account_id, fa.name, cr.reconciliation_date, cr.expected_balance,
 		       cr.counted_balance, cr.difference, cr.notes, cr.status,
 		       COALESCE(cr.reconciled_by_user_id, 0), COALESCE(u.name, ''),
@@ -2970,7 +2970,7 @@ func (a *App) buildFinanceStatement(accountID int64, from, to string) (*financeS
 		openingQuery += ` AND SUBSTR(TRIM(CAST(recorded_at AS TEXT)), 1, 10) < ?`
 		args = append(args, from)
 	}
-	if err := a.db.QueryRow(openingQuery, args...).Scan(&statement.OpeningBalance); err != nil {
+	if err := a.queryRowDB(openingQuery, args...).Scan(&statement.OpeningBalance); err != nil {
 		return nil, err
 	}
 	filter := FinanceFilter{From: from, To: to, AccountID: accountID}
@@ -3112,7 +3112,7 @@ func (a *App) createFinanceTransferHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var transactionID int64
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT id
 		FROM finance_transactions
 		WHERE transfer_group_id = ?
@@ -3503,7 +3503,7 @@ func (a *App) voidFinanceTransferHandler(w http.ResponseWriter, r *http.Request)
 	groupID := strings.TrimSpace(r.FormValue("group_id"))
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
 	var divisionID int64
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT COALESCE(division_id, 0)
 		FROM finance_transactions
 		WHERE transfer_group_id = ?

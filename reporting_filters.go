@@ -128,7 +128,7 @@ func (a *App) buildOperationalReport(period ReportPeriod, divisionIDs []int64) (
 	if allowed, err := a.scopeIncludesSportsDivision(divisionIDs); err != nil {
 		return nil, err
 	} else if allowed {
-		scheduleRows, err := a.db.Query(`
+		scheduleRows, err := a.queryDB(`
 			SELECT slot_date, slot_hour, entry_type, activity, quantity, status
 			FROM space_schedules
 			WHERE slot_date BETWEEN ? AND ?
@@ -202,7 +202,7 @@ func (a *App) buildOperationalReport(period ReportPeriod, divisionIDs []int64) (
 		admissionArgs = append(admissionArgs, scopeArgs...)
 	}
 	admissionQuery += ` GROUP BY 1`
-	admissionRows, err := a.db.Query(admissionQuery, admissionArgs...)
+	admissionRows, err := a.queryDB(admissionQuery, admissionArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +239,7 @@ func (a *App) buildOperationalReport(period ReportPeriod, divisionIDs []int64) (
 		attendanceArgs = append(attendanceArgs, scopeArgs...)
 	}
 	attendanceQuery += ` GROUP BY ar.attendance_date, ar.status`
-	attendanceRows, err := a.db.Query(attendanceQuery, attendanceArgs...)
+	attendanceRows, err := a.queryDB(attendanceQuery, attendanceArgs...)
 	if err != nil {
 		return nil, err
 	}

@@ -796,7 +796,7 @@ func (a *App) findUserByID(userID int64) (*User, error) {
 }
 
 func (a *App) listUsers() ([]User, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT id, email, name, email_verified_at, created_at
 		FROM users
 		ORDER BY created_at ASC
@@ -908,7 +908,7 @@ func (a *App) listCoachUsersDetailedByDivisionIDs(divisionIDs []int64, includeIn
 			u.id ASC
 	`
 
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -989,7 +989,7 @@ func (a *App) listCoachAttendanceRecordsByUserIDs(attendanceDate string, userIDs
 		args = append(args, scopedArgs...)
 	}
 	query += ` ORDER BY user_id ASC, id ASC`
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1197,7 +1197,7 @@ func userHasRoleTx(tx *sql.Tx, userID int64, roleName string) (bool, error) {
 }
 
 func (a *App) listRoles() ([]Role, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT r.id, r.name, COUNT(ur.user_id)
 		FROM roles r
 		LEFT JOIN user_roles ur ON ur.role_id = r.id
@@ -1237,7 +1237,7 @@ func (a *App) listRoles() ([]Role, error) {
 
 func (a *App) findRoleByID(roleID int64) (*Role, error) {
 	var role Role
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT r.id, r.name, COUNT(ur.user_id)
 		FROM roles r
 		LEFT JOIN user_roles ur ON ur.role_id = r.id
@@ -1257,7 +1257,7 @@ func (a *App) findRoleByID(roleID int64) (*Role, error) {
 
 func (a *App) userHasRole(userID int64, roleName string) (bool, error) {
 	var count int
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT COUNT(*)
 		FROM user_roles ur
 		JOIN roles r ON r.id = ur.role_id
@@ -1291,7 +1291,7 @@ func (a *App) permissionsForUser(userID int64) ([]string, error) {
 }
 
 func (a *App) permissionsForRole(roleID int64) ([]string, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT permission
 		FROM role_permissions
 		WHERE role_id = ?

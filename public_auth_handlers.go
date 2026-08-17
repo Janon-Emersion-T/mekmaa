@@ -144,7 +144,7 @@ func (a *App) checkDatabaseReadiness() error {
 	if a.runtimeConfig.DBDriver == databaseDriverSQLite {
 		var foreignKeys int
 
-		if err := a.db.QueryRow(
+		if err := a.queryRowDB(
 			`PRAGMA foreign_keys`,
 		).Scan(&foreignKeys); err != nil {
 			return err
@@ -159,7 +159,7 @@ func (a *App) checkDatabaseReadiness() error {
 
 	var one int
 
-	if err := a.db.QueryRow(
+	if err := a.queryRowDB(
 		`SELECT 1`,
 	).Scan(&one); err != nil {
 		return err
@@ -187,7 +187,7 @@ func (a *App) checkMigrationReadiness() error {
 
 		switch a.runtimeConfig.DBDriver {
 		case databaseDriverPostgres:
-			err = a.db.QueryRow(`
+			err = a.queryRowDB(`
 				SELECT COUNT(*)
 				FROM information_schema.tables
 				WHERE table_schema = 'public'
@@ -196,7 +196,7 @@ func (a *App) checkMigrationReadiness() error {
 			`, tableName).Scan(&count)
 
 		case databaseDriverSQLite:
-			err = a.db.QueryRow(`
+			err = a.queryRowDB(`
 				SELECT COUNT(*)
 				FROM sqlite_master
 				WHERE type = 'table'
@@ -1169,7 +1169,7 @@ func (a *App) countAttendanceEntriesByDivisionIDs(attendanceDate string, divisio
 		args = append(args, scopeArgs...)
 	}
 	var count int
-	err := a.db.QueryRow(query, args...).Scan(&count)
+	err := a.queryRowDB(query, args...).Scan(&count)
 	return count, err
 }
 
