@@ -2,8 +2,11 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func applyPostgresBootstrapData(db *sql.DB) error {
@@ -11,8 +14,38 @@ func applyPostgresBootstrapData(db *sql.DB) error {
 		return fmt.Errorf("seed PostgreSQL roles: %w", err)
 	}
 
+	if err := seedPostgresDivisions(db); err != nil {
+		return fmt.Errorf("seed PostgreSQL divisions: %w", err)
+	}
+
+	if err := seedPostgresTrainingPrograms(db); err != nil {
+		return fmt.Errorf("seed PostgreSQL training programmes: %w", err)
+	}
+
+	if err := seedPostgresFinanceCategories(db); err != nil {
+		return fmt.Errorf("seed PostgreSQL finance categories: %w", err)
+	}
+
 	if err := seedPostgresCoreBookingData(db); err != nil {
 		return fmt.Errorf("seed PostgreSQL booking configuration: %w", err)
+	}
+
+	bootstrapSeed, err := loadBootstrapSuperadminSeed()
+	if err != nil {
+		return fmt.Errorf(
+			"load PostgreSQL superadmin bootstrap: %w",
+			err,
+		)
+	}
+
+	if err := bootstrapPostgresSuperadmin(
+		db,
+		bootstrapSeed,
+	); err != nil {
+		return fmt.Errorf(
+			"bootstrap PostgreSQL superadmin: %w",
+			err,
+		)
 	}
 
 	return nil
@@ -364,4 +397,277 @@ func seedPostgresCoreBookingData(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func seedPostgresDivisions(db *sql.DB) error {
+	now := time.Now().UTC()
+
+	for _, division := range defaultDivisionSeeds() {
+		if _, err := db.Exec(`
+			INSERT INTO divisions (
+				code,
+				slug,
+				name,
+				description,
+				active,
+				created_at,
+				updated_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $6)
+			ON CONFLICT (code)
+			DO UPDATE SET
+				slug = CASE
+					WHEN TRIM(COALESCE(divisions.slug, '')) = ''
+					THEN EXCLUDED.slug
+					ELSE divisions.slug
+				END,
+				name = CASE
+					WHEN TRIM(COALESCE(divisions.name, '')) = ''
+					THEN EXCLUDED.name
+					ELSE divisions.name
+				END,
+				description = CASE
+					WHEN TRIM(COALESCE(divisions.description, '')) = ''
+					THEN EXCLUDED.description
+					ELSE divisions.description
+				END,
+				updated_at = EXCLUDED.updated_at
+		`,
+			division.Code,
+			division.Slug,
+			division.Name,
+			division.Description,
+			boolToInt(division.Active),
+			now,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func seedPostgresFinanceCategories(db *sql.DB) error {
+	now := time.Now().UTC()
+
+	for _, category := range defaultFinanceCategories() {
+		if _, err := db.Exec(`
+			INSERT INTO finance_categories (
+				code,
+				name,
+				direction,
+				active,
+				created_at,
+				updated_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $5)
+			ON CONFLICT (code)
+			DO UPDATE SET
+				name = EXCLUDED.name,
+				direction = EXCLUDED.direction,
+				active = EXCLUDED.active,
+				updated_at = EXCLUDED.updated_at
+		`,
+			category.Code,
+			category.Name,
+			category.Direction,
+			boolToInt(category.Active),
+			now,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func seedPostgresTrainingPrograms(db *sql.DB) error {
+	now := time.Now().UTC()
+
+	programs := []TrainingProgram{
+		{
+			Name:           "1 to 1 Cricket Practice",
+			Activity:       "cricket",
+			TrainingFormat: "one_to_one",
+			SortOrder:      10,
+		},
+		{
+			Name:           "Group Practice - Cricket",
+			Activity:       "cricket",
+			TrainingFormat: "group",
+			SortOrder:      20,
+		},
+		{
+			Name:           "1 to 1 Zumba Practice",
+			Activity:       "zumba",
+			TrainingFormat: "one_to_one",
+			SortOrder:      30,
+		},
+		{
+			Name:           "Group Practice - Zumba",
+			Activity:       "zumba",
+			TrainingFormat: "group",
+			SortOrder:      40,
+		},
+		{
+			Name:           "1 to 1 Badminton Practice",
+			Activity:       "badminton",
+			TrainingFormat: "one_to_one",
+			SortOrder:      50,
+		},
+		{
+			Name:           "Group Practice - Badminton",
+			Activity:       "badminton",
+			TrainingFormat: "group",
+			SortOrder:      60,
+		},
+	}
+
+	for _, program := range programs {
+		if _, err := db.Exec(`
+			INSERT INTO training_programs (
+				name,
+				activity,
+				training_format,
+				admission_fee,
+				monthly_fee,
+				active,
+				sort_order,
+				created_at,
+				updated_at
+			)
+			VALUES (
+				$1, $2, $3,
+				0, 0, 1,
+				$4, $5, $5
+			)
+			ON CONFLICT (activity, training_format)
+			DO NOTHING
+		`,
+			program.Name,
+			program.Activity,
+			program.TrainingFormat,
+			program.SortOrder,
+			now,
+		); err != nil {
+			return fmt.Errorf(
+				"seed training programme %q: %w",
+				program.Name,
+				err,
+			)
+		}
+	}
+
+	return nil
+}
+
+func bootstrapPostgresSuperadmin(
+	db *sql.DB,
+	seed *superadminBootstrapSeed,
+) error {
+	if seed == nil {
+		return nil
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword(
+		[]byte(seed.Password),
+		bcrypt.DefaultCost,
+	)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var userID int64
+
+	err = tx.QueryRow(`
+		SELECT id
+		FROM users
+		WHERE email = $1
+	`, seed.Email).Scan(&userID)
+
+	switch {
+	case err == nil:
+		if _, err := tx.Exec(`
+			UPDATE users
+			SET name = $1,
+			    password_hash = $2,
+			    email_verified_at = $3
+			WHERE id = $4
+		`,
+			seed.Name,
+			string(passwordHash),
+			now,
+			userID,
+		); err != nil {
+			return err
+		}
+
+	case errors.Is(err, sql.ErrNoRows):
+		if err := tx.QueryRow(`
+			INSERT INTO users (
+				email,
+				name,
+				password_hash,
+				created_at,
+				email_verified_at
+			)
+			VALUES ($1, $2, $3, $4, $4)
+			RETURNING id
+		`,
+			seed.Email,
+			seed.Name,
+			string(passwordHash),
+			now,
+		).Scan(&userID); err != nil {
+			return err
+		}
+
+	default:
+		return err
+	}
+
+	if _, err := tx.Exec(`
+		DELETE FROM user_roles
+		WHERE user_id = $1
+	`, userID); err != nil {
+		return err
+	}
+
+	for _, role := range []string{
+		"superadmin",
+		"admin",
+		"editor",
+	} {
+		var roleID int64
+
+		if err := tx.QueryRow(`
+			SELECT id
+			FROM roles
+			WHERE name = $1
+		`, role).Scan(&roleID); err != nil {
+			return err
+		}
+
+		if _, err := tx.Exec(`
+			INSERT INTO user_roles (
+				user_id,
+				role_id
+			)
+			VALUES ($1, $2)
+			ON CONFLICT (user_id, role_id)
+			DO NOTHING
+		`, userID, roleID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
