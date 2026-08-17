@@ -200,7 +200,7 @@ func (a *App) queryContextDB(
 	query string,
 	args ...any,
 ) (*sql.Rows, error) {
-	return a.queryContextDB(
+	return a.db.QueryContext(
 		ctx,
 		a.dbQuery(query),
 		args...,
@@ -212,7 +212,7 @@ func (a *App) queryRowContextDB(
 	query string,
 	args ...any,
 ) *sql.Row {
-	return a.queryRowContextDB(
+	return a.db.QueryRowContext(
 		ctx,
 		a.dbQuery(query),
 		args...,
@@ -224,7 +224,7 @@ func (a *App) execContextDB(
 	query string,
 	args ...any,
 ) (sql.Result, error) {
-	return a.execContextDB(
+	return a.db.ExecContext(
 		ctx,
 		a.dbQuery(query),
 		args...,
