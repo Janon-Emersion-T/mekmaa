@@ -213,7 +213,7 @@ func buildBookingAttentionStats(reminders []BookingReminder, pendingCount int, h
 }
 
 func (a *App) expireOverdueBookingRequests(now time.Time) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT id
 		FROM space_schedules
 		WHERE entry_type = 'booking'

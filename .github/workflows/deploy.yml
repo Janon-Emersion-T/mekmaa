@@ -15,8 +15,54 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate application
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mekmaa_ci
+          POSTGRES_USER: mekmaa_ci
+          POSTGRES_PASSWORD: mekmaa-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mekmaa_ci -d mekmaa_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build -o /tmp/mekmaa .
+
+      - name: Verify PostgreSQL connection
+        env:
+          MEKMAA_TEST_DATABASE_URL: postgres://mekmaa_ci:mekmaa-ci-password@127.0.0.1:5432/mekmaa_ci?sslmode=disable
+        run: |
+          go test \
+            -run '^TestPostgresConnectionWhenConfigured$' \
+            -count=1 \
+            -v
+
   deploy:
     name: Deploy to VPS
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -53,20 +99,22 @@ jobs:
             "${VPS_USER}@${VPS_HOST}" \
             "sudo /usr/local/sbin/deploy-mekmaa"
 
-      - name: Verify website
+      - name: Verify production readiness
         run: |
           STATUS="$(
             curl \
               --silent \
-              --output /dev/null \
+              --output /tmp/mekmaa-ready.json \
               --write-out '%{http_code}' \
-              --max-time 15 \
-              https://mekmaa.com/about
+              --max-time 20 \
+              https://mekmaa.com/ready
           )"
 
+          cat /tmp/mekmaa-ready.json || true
+
           if [ "$STATUS" != "200" ]; then
-            echo "Website returned HTTP $STATUS"
+            echo "Production readiness returned HTTP $STATUS"
             exit 1
           fi
 
-          echo "Mekmaa is online."
+          echo "Mekmaa production readiness passed."
