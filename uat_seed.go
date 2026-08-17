@@ -518,7 +518,7 @@ func ensureSharedUATAdmission(app *App, programIDs []int64) (int64, error) {
 		return 0, err
 	}
 
-	if err := syncAdmissionTrainingProgramsTx(tx, admissionID, programIDs, now); err != nil {
+	if err := syncAdmissionTrainingProgramsTx(tx, databaseDriverSQLite, admissionID, programIDs, now); err != nil {
 		return 0, err
 	}
 	return admissionID, tx.Commit()

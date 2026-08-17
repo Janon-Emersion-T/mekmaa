@@ -2767,21 +2767,44 @@ func (a *App) updateAdmission(admission Admission) error {
 	return nil
 }
 
-func syncAdmissionTrainingProgramsTx(tx *sql.Tx, admissionID int64, programIDs []int64, createdAt time.Time) error {
-	if _, err := tx.Exec(`DELETE FROM admission_training_programs WHERE admission_id = ?`, admissionID); err != nil {
+func syncAdmissionTrainingProgramsTx(
+	tx *sql.Tx,
+	driver DatabaseDriver,
+	admissionID int64,
+	programIDs []int64,
+	createdAt time.Time,
+) error {
+	if _, err := tx.Exec(
+		rebindDatabaseQuery(
+			driver,
+			`DELETE FROM admission_training_programs WHERE admission_id = ?`,
+		),
+		admissionID,
+	); err != nil {
 		return err
 	}
+
 	for _, programID := range programIDs {
-		if _, err := tx.Exec(`
-			INSERT INTO admission_training_programs (
-				admission_id,
-				training_program_id,
-				created_at
-			) VALUES (?, ?, ?)
-		`, admissionID, programID, createdAt); err != nil {
+		if _, err := tx.Exec(
+			rebindDatabaseQuery(
+				driver,
+				`
+					INSERT INTO admission_training_programs (
+						admission_id,
+						training_program_id,
+						created_at
+					)
+					VALUES (?, ?, ?)
+				`,
+			),
+			admissionID,
+			programID,
+			createdAt,
+		); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -3098,7 +3121,7 @@ func (a *App) createAdmissionWithOptionalPayment(
 
 	now := time.Now().UTC()
 
-	result, err := tx.Exec(`
+	insertQuery := `
 		INSERT INTO admissions (
 			student_id,
 			full_name,
@@ -3131,7 +3154,9 @@ func (a *App) createAdmissionWithOptionalPayment(
 			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 			?, ?, ?, ?, ?, ?, ?, ?
 		)
-	`,
+	`
+
+	insertArgs := []any{
 		admission.StudentID,
 		admission.FullName,
 		admission.AdmissionDate,
@@ -3158,18 +3183,38 @@ func (a *App) createAdmissionWithOptionalPayment(
 		nil,
 		now,
 		now,
-	)
-	if err != nil {
-		return 0, 0, err
 	}
 
-	admissionID, err := result.LastInsertId()
-	if err != nil {
-		return 0, 0, err
+	var admissionID int64
+
+	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		err = tx.QueryRow(
+			rebindDatabaseQuery(
+				databaseDriverPostgres,
+				insertQuery+" RETURNING id",
+			),
+			insertArgs...,
+		).Scan(&admissionID)
+		if err != nil {
+			return 0, 0, err
+		}
+	} else {
+		result, execErr := tx.Exec(
+			insertQuery,
+			insertArgs...,
+		)
+		if execErr != nil {
+			return 0, 0, execErr
+		}
+
+		admissionID, err = result.LastInsertId()
+		if err != nil {
+			return 0, 0, err
+		}
 	}
 
 	admission.ID = admissionID
-	if err := syncAdmissionTrainingProgramsTx(tx, admissionID, admission.TrainingProgramIDs, now); err != nil {
+	if err := syncAdmissionTrainingProgramsTx(tx, a.runtimeConfig.DBDriver, admissionID, admission.TrainingProgramIDs, now); err != nil {
 		return 0, 0, err
 	}
 
