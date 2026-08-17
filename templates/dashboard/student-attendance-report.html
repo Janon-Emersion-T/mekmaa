@@ -1,0 +1,565 @@
+{{define "student-attendance-report"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+
+<style>
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-card {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+}
+</style>
+
+<section class="mx-auto w-full max-w-[1600px] space-y-6 pb-10">
+
+  <header class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+
+    <div class="max-w-3xl">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-aqua-700">
+        {{workspaceName .User .SelectedDivision .SelectedDivisionScope}}
+      </p>
+
+      <h1 class="mt-2 text-3xl font-semibold tracking-tight text-obsidian sm:text-4xl">
+        Student Attendance Report
+      </h1>
+
+      <p class="mt-2 text-sm leading-6 text-slate/65 sm:text-base">
+        Monthly attendance across
+        {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.
+      </p>
+
+    </div>
+
+
+    <div class="no-print flex flex-wrap gap-2">
+
+      <a
+        href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}"
+        class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+      >
+        Attendance Console
+      </a>
+
+      <button
+        type="button"
+        onclick="window.print()"
+        class="inline-flex h-11 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"
+      >
+        Print report
+      </button>
+
+    </div>
+
+  </header>
+
+
+  <!-- FILTERS -->
+
+  <section class="no-print rounded-[1.75rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+
+    <form
+      method="get"
+      action="/admin/attendance/report"
+      class="grid gap-4 lg:grid-cols-[12rem_minmax(15rem,1fr)_minmax(15rem,1fr)_auto]"
+    >
+
+      {{if .SelectedDivision}}
+      <input
+        type="hidden"
+        name="division"
+        value="{{.SelectedDivision.Slug}}"
+      />
+      {{else if eq .SelectedDivisionScope "all"}}
+      <input
+        type="hidden"
+        name="division"
+        value="all"
+      />
+      {{end}}
+
+
+      <div>
+
+        <label
+          for="student-attendance-month"
+          class="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate/50"
+        >
+          Month
+        </label>
+
+        <input
+          id="student-attendance-month"
+          type="month"
+          name="month"
+          value="{{.StudentAttendanceReportMonth}}"
+          class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm text-obsidian outline-none focus:border-aqua"
+        />
+
+      </div>
+
+
+      <div>
+
+        <label
+          for="student-attendance-group"
+          class="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate/50"
+        >
+          {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}}
+        </label>
+
+        <select
+          id="student-attendance-group"
+          name="group_id"
+          class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm text-obsidian outline-none focus:border-aqua"
+        >
+
+          <option value="">
+            All {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}}
+          </option>
+
+          {{range .StudentGroups}}
+          <option
+            value="{{.ID}}"
+            {{if eq $.StudentAttendanceReportGroupID .ID}}selected{{end}}
+          >
+            {{.Name}} · {{.Code}}
+          </option>
+          {{end}}
+
+        </select>
+
+      </div>
+
+
+      <div>
+
+        <label
+          for="student-attendance-search"
+          class="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate/50"
+        >
+          Student
+        </label>
+
+        <input
+          id="student-attendance-search"
+          type="search"
+          name="student"
+          value="{{.StudentAttendanceReportQuery}}"
+          placeholder="Student ID or name"
+          class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm text-obsidian outline-none focus:border-aqua"
+        />
+
+      </div>
+
+
+      <div class="flex items-end">
+
+        <button
+          type="submit"
+          class="h-12 w-full rounded-2xl bg-aqua px-6 text-sm font-semibold text-obsidian transition hover:bg-mint lg:w-auto"
+        >
+          Apply
+        </button>
+
+      </div>
+
+    </form>
+
+
+    <div class="mt-4 flex justify-end">
+
+      <a
+        href="{{scopedURL (printf "/admin/attendance/report?month=%s&group_id=%d&student=%s&format=csv" .StudentAttendanceReportMonth .StudentAttendanceReportGroupID .StudentAttendanceReportQuery) .SelectedDivision .SelectedDivisionScope}}"
+        class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+      >
+        Export CSV
+      </a>
+
+    </div>
+
+  </section>
+
+
+  <!-- SUMMARY -->
+
+  <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+
+    <article class="print-card rounded-[1.5rem] border border-slate/10 bg-white p-5 shadow-sm">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate/45">
+        Students
+      </p>
+
+      <p class="mt-2 text-3xl font-semibold text-obsidian">
+        {{.StudentAttendanceReportSummary.StudentCount}}
+      </p>
+
+    </article>
+
+
+    <article class="print-card rounded-[1.5rem] border border-slate/10 bg-white p-5 shadow-sm">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate/45">
+        {{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}
+      </p>
+
+      <p class="mt-2 text-3xl font-semibold text-obsidian">
+        {{.StudentAttendanceReportSummary.GroupCount}}
+      </p>
+
+    </article>
+
+
+    <article class="print-card rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-5">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-emerald-700/70">
+        Present
+      </p>
+
+      <p class="mt-2 text-3xl font-semibold text-emerald-900">
+        {{.StudentAttendanceReportSummary.PresentCount}}
+      </p>
+
+    </article>
+
+
+    <article class="print-card rounded-[1.5rem] border border-rose-200 bg-rose-50 p-5">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-rose-700/70">
+        Absent
+      </p>
+
+      <p class="mt-2 text-3xl font-semibold text-rose-900">
+        {{.StudentAttendanceReportSummary.AbsentCount}}
+      </p>
+
+    </article>
+
+
+    <article class="print-card rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-amber-700/70">
+        Late
+      </p>
+
+      <p class="mt-2 text-3xl font-semibold text-amber-900">
+        {{.StudentAttendanceReportSummary.LateCount}}
+      </p>
+
+    </article>
+
+
+    <article class="print-card rounded-[1.5rem] border border-sky-200 bg-sky-50 p-5">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-sky-700/70">
+        Excused
+      </p>
+
+      <p class="mt-2 text-3xl font-semibold text-sky-900">
+        {{.StudentAttendanceReportSummary.ExcusedCount}}
+      </p>
+
+    </article>
+
+
+    <article class="print-card rounded-[1.5rem] border border-aqua/30 bg-aqua/10 p-5">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate/55">
+        Attendance
+      </p>
+
+      <p class="mt-2 text-3xl font-semibold text-obsidian">
+        {{printf "%.1f%%" .StudentAttendanceReportSummary.AttendancePercentage}}
+      </p>
+
+    </article>
+
+  </section>
+
+
+  <!-- GROUP BREAKDOWN -->
+
+  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-7">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">
+        Group breakdown
+      </p>
+
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">
+        {{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}
+      </h2>
+
+    </div>
+
+
+    <div class="overflow-x-auto">
+
+      <table class="w-full min-w-[900px] border-collapse text-left">
+
+        <thead class="bg-cloud/70">
+
+          <tr class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">
+
+            <th class="px-5 py-4 sm:px-7">
+              {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}}
+            </th>
+
+            <th class="px-4 py-4 text-center">
+              Students
+            </th>
+
+            <th class="px-4 py-4 text-center">
+              Present
+            </th>
+
+            <th class="px-4 py-4 text-center">
+              Absent
+            </th>
+
+            <th class="px-4 py-4 text-center">
+              Late
+            </th>
+
+            <th class="px-4 py-4 text-center">
+              Excused
+            </th>
+
+            <th class="px-5 py-4 text-center sm:px-7">
+              Attendance
+            </th>
+
+          </tr>
+
+        </thead>
+
+
+        <tbody class="divide-y divide-slate/8">
+
+          {{range .StudentAttendanceGroupReportRows}}
+
+          <tr class="transition hover:bg-cloud/40">
+
+            <td class="px-5 py-4 sm:px-7">
+
+              <p class="font-semibold text-obsidian">
+                {{.GroupName}}
+              </p>
+
+              <p class="mt-1 text-xs text-slate/55">
+                {{.GroupCode}} · {{.TrainingProgramName}}
+              </p>
+
+            </td>
+
+            <td class="px-4 py-4 text-center font-semibold text-obsidian">
+              {{.StudentCount}}
+            </td>
+
+            <td class="px-4 py-4 text-center font-semibold text-emerald-700">
+              {{.PresentCount}}
+            </td>
+
+            <td class="px-4 py-4 text-center font-semibold text-rose-700">
+              {{.AbsentCount}}
+            </td>
+
+            <td class="px-4 py-4 text-center font-semibold text-amber-700">
+              {{.LateCount}}
+            </td>
+
+            <td class="px-4 py-4 text-center font-semibold text-sky-700">
+              {{.ExcusedCount}}
+            </td>
+
+            <td class="px-5 py-4 text-center sm:px-7">
+
+              <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-3 py-1 text-sm font-semibold text-obsidian">
+                {{printf "%.1f%%" .AttendancePercentage}}
+              </span>
+
+            </td>
+
+          </tr>
+
+          {{else}}
+
+          <tr>
+            <td
+              colspan="7"
+              class="px-6 py-12 text-center text-sm text-slate/55"
+            >
+              No attendance data is available for the selected scope.
+            </td>
+          </tr>
+
+          {{end}}
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+  </section>
+
+
+  <!-- STUDENT BREAKDOWN -->
+
+  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-7">
+
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">
+        Student breakdown
+      </p>
+
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">
+        Monthly attendance by student
+      </h2>
+
+      <p class="mt-1 text-sm text-slate/55">
+        Present and Late count as attended. Excused sessions do not reduce attendance percentage.
+      </p>
+
+    </div>
+
+
+    <div class="overflow-x-auto">
+
+      <table class="w-full min-w-[1100px] border-collapse text-left">
+
+        <thead class="bg-cloud/70">
+
+          <tr class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">
+
+            <th class="px-5 py-4 sm:px-7">
+              Student
+            </th>
+
+            <th class="px-4 py-4">
+              {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}}
+            </th>
+
+            <th class="px-4 py-4 text-center">
+              Present
+            </th>
+
+            <th class="px-4 py-4 text-center">
+              Absent
+            </th>
+
+            <th class="px-4 py-4 text-center">
+              Late
+            </th>
+
+            <th class="px-4 py-4 text-center">
+              Excused
+            </th>
+
+            <th class="px-5 py-4 text-center sm:px-7">
+              Attendance
+            </th>
+
+          </tr>
+
+        </thead>
+
+
+        <tbody class="divide-y divide-slate/8">
+
+          {{range .StudentAttendanceReportRows}}
+
+          <tr class="transition hover:bg-cloud/40">
+
+            <td class="px-5 py-4 sm:px-7">
+
+              <p class="font-semibold text-obsidian">
+                {{.Admission.FullName}}
+              </p>
+
+              <p class="mt-1 text-xs text-slate/55">
+                {{.Admission.StudentID}}
+              </p>
+
+            </td>
+
+
+            <td class="px-4 py-4">
+
+              <p class="text-sm font-semibold text-obsidian">
+                {{.GroupName}}
+              </p>
+
+              <p class="mt-1 text-xs text-slate/55">
+                {{.TrainingProgramName}}
+              </p>
+
+            </td>
+
+
+            <td class="px-4 py-4 text-center font-semibold text-emerald-700">
+              {{.PresentCount}}
+            </td>
+
+
+            <td class="px-4 py-4 text-center font-semibold text-rose-700">
+              {{.AbsentCount}}
+            </td>
+
+
+            <td class="px-4 py-4 text-center font-semibold text-amber-700">
+              {{.LateCount}}
+            </td>
+
+
+            <td class="px-4 py-4 text-center font-semibold text-sky-700">
+              {{.ExcusedCount}}
+            </td>
+
+
+            <td class="px-5 py-4 text-center sm:px-7">
+
+              <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-3 py-1 text-sm font-semibold text-obsidian">
+                {{printf "%.1f%%" .AttendancePercentage}}
+              </span>
+
+            </td>
+
+          </tr>
+
+          {{else}}
+
+          <tr>
+            <td
+              colspan="7"
+              class="px-6 py-12 text-center text-sm text-slate/55"
+            >
+              No students match the selected filters.
+            </td>
+          </tr>
+
+          {{end}}
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+  </section>
+
+</section>
+
+{{end}}

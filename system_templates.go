@@ -331,6 +331,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"student-group-management":       "templates/dashboard/student-group-management.html",
 		"attendance-management":          "templates/dashboard/attendance-management.html",
 		"attendance-search":              "templates/dashboard/attendance-search.html",
+		"student-attendance-report":      "templates/dashboard/student-attendance-report.html",
 		"court-management":               "templates/dashboard/court-management.html",
 		"games-management":               "templates/dashboard/games-management.html",
 		"one-to-one-management":          "templates/dashboard/one-to-one-management.html",

@@ -10110,3 +10110,314 @@ func TestBuildTemplatesIncludesStaffAttendanceReport(
 		)
 	}
 }
+
+func TestNormalizeStudentAttendanceMonthRejectsFuture(
+	t *testing.T,
+) {
+	future :=
+		time.Now().
+			AddDate(0, 1, 0).
+			Format("2006-01")
+
+	if _, err :=
+		normalizeStudentAttendanceMonth(
+			future,
+		); err == nil {
+
+		t.Fatal(
+			"expected future student attendance month to be rejected",
+		)
+	}
+}
+
+func TestStudentAttendanceMonthBounds(
+	t *testing.T,
+) {
+	start, end, err :=
+		studentAttendanceMonthBounds(
+			"2026-08",
+		)
+
+	if err != nil {
+		t.Fatalf(
+			"month bounds: %v",
+			err,
+		)
+	}
+
+	if start != "2026-08-01" {
+		t.Fatalf(
+			"start = %q",
+			start,
+		)
+	}
+
+	if end != "2026-09-01" {
+		t.Fatalf(
+			"end = %q",
+			end,
+		)
+	}
+}
+
+func TestBuildStudentAttendanceReportRows(
+	t *testing.T,
+) {
+	groups := []StudentGroup{
+		{
+			ID:                  10,
+			Name:                "Grade 6 Mathematics",
+			Code:                "G6-MATH",
+			TrainingProgramName: "Mathematics",
+			Students: []Admission{
+				{
+					ID:        100,
+					StudentID: "STU-100",
+					FullName:  "Student One",
+				},
+				{
+					ID:        200,
+					StudentID: "STU-200",
+					FullName:  "Student Two",
+				},
+			},
+		},
+	}
+
+	history := []StudentAttendanceHistoryRow{
+		{
+			AdmissionID: 100,
+			GroupID:     10,
+			Status:      "present",
+		},
+		{
+			AdmissionID: 100,
+			GroupID:     10,
+			Status:      "late",
+		},
+		{
+			AdmissionID: 100,
+			GroupID:     10,
+			Status:      "absent",
+		},
+		{
+			AdmissionID: 100,
+			GroupID:     10,
+			Status:      "excused",
+		},
+	}
+
+	rows :=
+		buildStudentAttendanceReportRows(
+			groups,
+			history,
+		)
+
+	if len(rows) != 2 {
+		t.Fatalf(
+			"rows = %d, want 2",
+			len(rows),
+		)
+	}
+
+	first := rows[0]
+
+	if first.PresentCount != 1 ||
+		first.LateCount != 1 ||
+		first.AbsentCount != 1 ||
+		first.ExcusedCount != 1 {
+
+		t.Fatalf(
+			"unexpected attendance totals: %#v",
+			first,
+		)
+	}
+
+	if first.EligibleSessions != 3 {
+		t.Fatalf(
+			"eligible sessions = %d, want 3",
+			first.EligibleSessions,
+		)
+	}
+
+	if first.AttendedCount != 2 {
+		t.Fatalf(
+			"attended = %d, want 2",
+			first.AttendedCount,
+		)
+	}
+
+	if first.AttendancePercentage < 66.6 ||
+		first.AttendancePercentage > 66.7 {
+
+		t.Fatalf(
+			"attendance percentage = %.4f",
+			first.AttendancePercentage,
+		)
+	}
+
+	if rows[1].TotalEntries != 0 {
+		t.Fatalf(
+			"student without attendance total = %d, want 0",
+			rows[1].TotalEntries,
+		)
+	}
+}
+
+func TestBuildStudentAttendanceGroupReportRows(
+	t *testing.T,
+) {
+	groups := []StudentGroup{
+		{
+			ID:                  10,
+			Name:                "Batch A",
+			Code:                "A",
+			TrainingProgramName: "Programme A",
+		},
+	}
+
+	rows := []StudentAttendanceReportRow{
+		{
+			GroupID:          10,
+			PresentCount:     2,
+			AbsentCount:      1,
+			LateCount:        1,
+			ExcusedCount:     1,
+			EligibleSessions: 4,
+			AttendedCount:    3,
+			TotalEntries:     5,
+		},
+		{
+			GroupID:          10,
+			PresentCount:     1,
+			AbsentCount:      1,
+			EligibleSessions: 2,
+			AttendedCount:    1,
+			TotalEntries:     2,
+		},
+	}
+
+	report :=
+		buildStudentAttendanceGroupReportRows(
+			groups,
+			rows,
+		)
+
+	if len(report) != 1 {
+		t.Fatalf(
+			"group rows = %d, want 1",
+			len(report),
+		)
+	}
+
+	if report[0].StudentCount != 2 {
+		t.Fatalf(
+			"student count = %d, want 2",
+			report[0].StudentCount,
+		)
+	}
+
+	if report[0].EligibleSessions != 6 {
+		t.Fatalf(
+			"eligible sessions = %d, want 6",
+			report[0].EligibleSessions,
+		)
+	}
+
+	if report[0].AttendedCount != 4 {
+		t.Fatalf(
+			"attended = %d, want 4",
+			report[0].AttendedCount,
+		)
+	}
+}
+
+func TestFilterStudentAttendanceReportRows(
+	t *testing.T,
+) {
+	rows := []StudentAttendanceReportRow{
+		{
+			GroupID: 10,
+			Admission: Admission{
+				StudentID: "KEC-001",
+				FullName:  "Anita Kumar",
+			},
+		},
+		{
+			GroupID: 20,
+			Admission: Admission{
+				StudentID: "CHESS-002",
+				FullName:  "David Raj",
+			},
+		},
+	}
+
+	filtered :=
+		filterStudentAttendanceReportRows(
+			rows,
+			10,
+			"anita",
+		)
+
+	if len(filtered) != 1 {
+		t.Fatalf(
+			"filtered rows = %d, want 1",
+			len(filtered),
+		)
+	}
+
+	if filtered[0].Admission.StudentID !=
+		"KEC-001" {
+
+		t.Fatalf(
+			"student = %q",
+			filtered[0].Admission.StudentID,
+		)
+	}
+}
+
+func TestStudentAttendanceGroupInScope(
+	t *testing.T,
+) {
+	groups := []StudentGroup{
+		{ID: 10},
+	}
+
+	if !studentAttendanceGroupInScope(
+		groups,
+		10,
+	) {
+		t.Fatal(
+			"expected group 10 to be in scope",
+		)
+	}
+
+	if studentAttendanceGroupInScope(
+		groups,
+		20,
+	) {
+		t.Fatal(
+			"group 20 must not be in scope",
+		)
+	}
+}
+
+func TestBuildTemplatesIncludesStudentAttendanceReport(
+	t *testing.T,
+) {
+	templates, err :=
+		buildTemplates()
+
+	if err != nil {
+		t.Fatalf(
+			"build templates: %v",
+			err,
+		)
+	}
+
+	if templates["student-attendance-report"] == nil {
+		t.Fatal(
+			"student-attendance-report template is not registered",
+		)
+	}
+}
