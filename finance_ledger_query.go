@@ -268,7 +268,7 @@ func (a *App) listFinanceBookingActivities() ([]CourtActivity, error) {
 func (a *App) countFinanceTransactions(ctx context.Context, filter FinanceFilter) (int, error) {
 	query, args := financeTransactionsBaseQuery(filter)
 	var count int
-	if err := a.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (`+query+`) AS finance_transaction_count`, args...).Scan(&count); err != nil {
+	if err := a.queryRowContextDB(ctx, `SELECT COUNT(*) FROM (`+query+`) AS finance_transaction_count`, args...).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil

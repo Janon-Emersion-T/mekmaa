@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -189,6 +190,42 @@ func (a *App) execDB(
 	args ...any,
 ) (sql.Result, error) {
 	return a.db.Exec(
+		a.dbQuery(query),
+		args...,
+	)
+}
+
+func (a *App) queryContextDB(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (*sql.Rows, error) {
+	return a.queryContextDB(
+		ctx,
+		a.dbQuery(query),
+		args...,
+	)
+}
+
+func (a *App) queryRowContextDB(
+	ctx context.Context,
+	query string,
+	args ...any,
+) *sql.Row {
+	return a.queryRowContextDB(
+		ctx,
+		a.dbQuery(query),
+		args...,
+	)
+}
+
+func (a *App) execContextDB(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (sql.Result, error) {
+	return a.execContextDB(
+		ctx,
 		a.dbQuery(query),
 		args...,
 	)

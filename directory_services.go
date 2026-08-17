@@ -947,7 +947,7 @@ func (a *App) listStudentEnrollmentsByDivisionIDs(divisionIDs []int64) ([]Studen
 		query += ` WHERE tp.division_id IN (` + placeholders + `)`
 		args = append(args, scopedArgs...)
 	}
-	query += ` ORDER BY a.full_LOWER(name), tp.sort_order ASC, tp.name ASC, se.id ASC`
+	query += ` ORDER BY LOWER(a.full_name), tp.sort_order ASC, tp.name ASC, se.id ASC`
 	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err

@@ -253,7 +253,7 @@ func (a *App) findFinanceTransactionByID(transactionID int64) (*FinanceTransacti
 }
 
 func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transactionID int64) (*FinanceTransaction, error) {
-	row := a.db.QueryRowContext(ctx, `
+	row := a.queryRowContextDB(ctx, `
 		SELECT ft.id,
 		       ft.receipt_number,
 		       COALESCE(ft.reference_number, ft.receipt_number),

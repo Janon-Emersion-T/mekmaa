@@ -40,7 +40,7 @@ func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter Fin
 		args = append(args, limit, (page-1)*limit)
 	}
 
-	rows, err := a.db.QueryContext(ctx, query, args...)
+	rows, err := a.queryContextDB(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
