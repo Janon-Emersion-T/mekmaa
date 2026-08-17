@@ -1735,7 +1735,7 @@ func (a *App) listRecentAttendanceDates(groupID int64, sessionID int64, limit in
 	`
 	args := []any{groupID, sessionID, limit}
 
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1765,7 +1765,7 @@ func (a *App) getAttendanceSummary(groupID int64, sessionID int64) (AttendanceSu
 		FROM attendance_records
 		WHERE group_id = ? AND COALESCE(session_id, 0) = ?
 	`
-	err := a.db.QueryRow(query, groupID, sessionID).Scan(
+	err := a.queryRowDB(query, groupID, sessionID).Scan(
 		&summary.SessionCount,
 		&summary.PresentCount,
 		&summary.AbsentCount,
@@ -1809,11 +1809,11 @@ func (a *App) listAttendanceLimitWarnings(groupID int64, sessionID int64, attend
 		  AND ar.attendance_date = ?
 		  AND ar.status IN ('present', 'late')
 		  AND monthly_sessions.session_count > ?
-		ORDER BY monthly_sessions.session_count DESC, a.full_name COLLATE NOCASE
+		ORDER BY monthly_sessions.session_count DESC, LOWER(a.full_name), a.id
 	`
 	args := []any{attendanceDate, groupID, sessionID, attendanceDate, limit}
 
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1832,7 +1832,7 @@ func (a *App) listAttendanceLimitWarnings(groupID int64, sessionID int64, attend
 }
 
 func (a *App) listStudentGroupSessions(groupID int64) ([]StudentGroupSession, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT id, group_id, title, day_of_week, start_time, end_time, COALESCE(active, 1), created_at, updated_at
 		FROM student_group_sessions
 		WHERE group_id = ?
@@ -1869,7 +1869,7 @@ func (a *App) listStudentGroupSessions(groupID int64) ([]StudentGroupSession, er
 }
 
 func (a *App) findStudentGroupSessionByID(sessionID int64) (*StudentGroupSession, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT id, group_id, title, day_of_week, start_time, end_time, COALESCE(active, 1), created_at, updated_at
 		FROM student_group_sessions
 		WHERE id = ?

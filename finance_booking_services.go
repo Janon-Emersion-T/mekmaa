@@ -1855,17 +1855,40 @@ func (a *App) replaceAttendanceRecords(groupID int64, sessionID int64, attendanc
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DELETE FROM attendance_records WHERE group_id = ? AND COALESCE(session_id, 0) = ? AND attendance_date = ?`, groupID, sessionID, attendanceDate); err != nil {
+	if _, err := tx.Exec(
+		rebindDatabaseQuery(
+			a.runtimeConfig.DBDriver,
+			`DELETE FROM attendance_records
+			 WHERE group_id = ?
+			   AND COALESCE(session_id, 0) = ?
+			   AND attendance_date = ?`,
+		),
+		groupID,
+		sessionID,
+		attendanceDate,
+	); err != nil {
 		return err
 	}
 
 	for _, record := range records {
-		if _, err := tx.Exec(`
-			INSERT INTO attendance_records (
-				group_id, session_id, admission_id, attendance_date, status, note, recorded_by_user_id, recorded_at, updated_at
-			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`,
+		if _, err := tx.Exec(
+			rebindDatabaseQuery(
+				a.runtimeConfig.DBDriver,
+				`
+					INSERT INTO attendance_records (
+						group_id,
+						session_id,
+						admission_id,
+						attendance_date,
+						status,
+						note,
+						recorded_by_user_id,
+						recorded_at,
+						updated_at
+					)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`,
+			),
 			record.GroupID,
 			nullIfZero(record.SessionID),
 			record.AdmissionID,
