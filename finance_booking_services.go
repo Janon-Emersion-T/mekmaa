@@ -373,7 +373,7 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 			  )
 		) AS payment_rows
 		ORDER BY
-			payment_rows.full_LOWER(name),
+			LOWER(payment_rows.full_name),
 			payment_rows.program_sort_order ASC,
 			payment_rows.training_program_name ASC,
 			payment_rows.enrollment_id,

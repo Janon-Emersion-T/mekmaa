@@ -106,7 +106,7 @@ func (a *App) listFinanceCategories(activeOnly bool) ([]FinanceCategory, error) 
 	if activeOnly {
 		query += ` WHERE fc.active = 1`
 	}
-	query += ` ORDER BY CASE fc.direction WHEN 'income' THEN 0 ELSE 1 END, fc.name COLLATE NOCASE, fc.id`
+	query += ` ORDER BY CASE fc.direction WHEN 'income' THEN 0 ELSE 1 END, fc.name , fc.id`
 
 	rows, err := a.db.Query(query, args...)
 	if err != nil {

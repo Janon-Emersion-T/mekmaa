@@ -918,10 +918,10 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	if _, err := db.Exec(`UPDATE finance_accounts SET division_id = COALESCE(division_id, 0)`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_name ON finance_accounts(division_id, name COLLATE NOCASE)`); err != nil {
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_name ON finance_accounts(division_id, name )`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_code ON finance_accounts(division_id, account_code COLLATE NOCASE)`); err != nil {
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_code ON finance_accounts(division_id, account_code )`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_cash_reconciliations_account_voided ON cash_reconciliations(finance_account_id, voided_at, reconciliation_date DESC)`); err != nil {
@@ -945,7 +945,7 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_id ON finance_accounts(division_id, id)`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_system_name ON finance_accounts(division_id, is_system, name COLLATE NOCASE)`); err != nil {
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_system_name ON finance_accounts(division_id, is_system, name )`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_account_type ON finance_accounts(division_id, account_type, id)`); err != nil {
@@ -972,13 +972,13 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_flags ON finance_accounts(division_id, is_system, is_active, account_type)`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_name_id ON finance_accounts(division_id, name COLLATE NOCASE, id)`); err != nil {
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_name_id ON finance_accounts(division_id, name , id)`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_code_id ON finance_accounts(division_id, account_code COLLATE NOCASE, id)`); err != nil {
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_code_id ON finance_accounts(division_id, account_code , id)`); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_type_name ON finance_accounts(division_id, account_type, name COLLATE NOCASE)`); err != nil {
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_finance_accounts_division_type_name ON finance_accounts(division_id, account_type, name )`); err != nil {
 		return fmt.Errorf("create finance account code index: %w", err)
 	}
 	return nil
@@ -1047,7 +1047,7 @@ func (a *App) listFinanceAccountsByDivisionIDs(divisionIDs []int64, activeOnly b
 	if len(conditions) > 0 {
 		query += ` WHERE ` + strings.Join(conditions, ` AND `)
 	}
-	query += ` ORDER BY divisions.name COLLATE NOCASE ASC, finance_accounts.is_system DESC, finance_accounts.account_type ASC, finance_accounts.account_code COLLATE NOCASE ASC, finance_accounts.name COLLATE NOCASE ASC, finance_accounts.id ASC`
+	query += ` ORDER BY divisions.name , finance_accounts.is_system DESC, finance_accounts.account_type ASC, finance_accounts.account_code , finance_accounts.name , finance_accounts.id ASC`
 	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return nil, err

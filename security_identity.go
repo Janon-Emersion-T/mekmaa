@@ -904,7 +904,7 @@ func (a *App) listCoachUsersDetailedByDivisionIDs(divisionIDs []int64, includeIn
 	query += `
 		ORDER BY
 			COALESCE(cp.active, 1) DESC,
-			u.name COLLATE NOCASE ASC,
+			u.name ,
 			u.id ASC
 	`
 
