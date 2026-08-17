@@ -1320,23 +1320,51 @@ func (a *App) createRole(name string, permissions []string) error {
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(`INSERT INTO roles (name) VALUES (?)`, name)
-	if err != nil {
-		return err
-	}
-	roleID, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	for _, permission := range permissions {
-		if _, err := tx.Exec(`INSERT INTO role_permissions (role_id, permission) VALUES (?, ?)`, roleID, permission); err != nil {
+	var roleID int64
+
+	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		if err := a.queryRowTxDB(
+			tx,
+			`INSERT INTO roles (name) VALUES (?) RETURNING id`,
+			name,
+		).Scan(&roleID); err != nil {
+			return err
+		}
+	} else {
+		result, err := a.execTxDB(
+			tx,
+			`INSERT INTO roles (name) VALUES (?)`,
+			name,
+		)
+		if err != nil {
+			return err
+		}
+
+		roleID, err = result.LastInsertId()
+		if err != nil {
 			return err
 		}
 	}
+
+	for _, permission := range permissions {
+		if _, err := a.execTxDB(
+			tx,
+			`INSERT INTO role_permissions (role_id, permission) VALUES (?, ?)`,
+			roleID,
+			permission,
+		); err != nil {
+			return err
+		}
+	}
+
 	return tx.Commit()
 }
 
-func (a *App) updateRole(roleID int64, name string, permissions []string) error {
+func (a *App) updateRole(
+	roleID int64,
+	name string,
+	permissions []string,
+) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
@@ -1344,24 +1372,46 @@ func (a *App) updateRole(roleID int64, name string, permissions []string) error 
 	defer tx.Rollback()
 
 	var currentName string
-	if err := tx.QueryRow(`SELECT name FROM roles WHERE id = ?`, roleID).Scan(&currentName); err != nil {
+	if err := a.queryRowTxDB(
+		tx,
+		`SELECT name FROM roles WHERE id = ?`,
+		roleID,
+	).Scan(&currentName); err != nil {
 		return err
 	}
+
 	if isSystemRole(currentName) {
 		return ErrSystemRoleProtected
 	}
 
-	if _, err := tx.Exec(`UPDATE roles SET name = ? WHERE id = ?`, name, roleID); err != nil {
+	if _, err := a.execTxDB(
+		tx,
+		`UPDATE roles SET name = ? WHERE id = ?`,
+		name,
+		roleID,
+	); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM role_permissions WHERE role_id = ?`, roleID); err != nil {
+
+	if _, err := a.execTxDB(
+		tx,
+		`DELETE FROM role_permissions WHERE role_id = ?`,
+		roleID,
+	); err != nil {
 		return err
 	}
+
 	for _, permission := range permissions {
-		if _, err := tx.Exec(`INSERT INTO role_permissions (role_id, permission) VALUES (?, ?)`, roleID, permission); err != nil {
+		if _, err := a.execTxDB(
+			tx,
+			`INSERT INTO role_permissions (role_id, permission) VALUES (?, ?)`,
+			roleID,
+			permission,
+		); err != nil {
 			return err
 		}
 	}
+
 	return tx.Commit()
 }
 
@@ -1373,44 +1423,84 @@ func (a *App) deleteRole(roleID int64) error {
 	defer tx.Rollback()
 
 	var roleName string
-	if err := tx.QueryRow(`SELECT name FROM roles WHERE id = ?`, roleID).Scan(&roleName); err != nil {
+	if err := a.queryRowTxDB(
+		tx,
+		`SELECT name FROM roles WHERE id = ?`,
+		roleID,
+	).Scan(&roleName); err != nil {
 		return err
 	}
+
 	if isSystemRole(roleName) {
 		return ErrSystemRoleProtected
 	}
+
 	var userCount int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM user_roles WHERE role_id = ?`, roleID).Scan(&userCount); err != nil {
+	if err := a.queryRowTxDB(
+		tx,
+		`SELECT COUNT(*) FROM user_roles WHERE role_id = ?`,
+		roleID,
+	).Scan(&userCount); err != nil {
 		return err
 	}
+
 	if userCount > 0 {
 		return ErrRoleAssigned
 	}
-	if _, err := tx.Exec(`DELETE FROM role_permissions WHERE role_id = ?`, roleID); err != nil {
+
+	if _, err := a.execTxDB(
+		tx,
+		`DELETE FROM role_permissions WHERE role_id = ?`,
+		roleID,
+	); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM roles WHERE id = ?`, roleID); err != nil {
+
+	if _, err := a.execTxDB(
+		tx,
+		`DELETE FROM roles WHERE id = ?`,
+		roleID,
+	); err != nil {
 		return err
 	}
+
 	return tx.Commit()
 }
 
-func (a *App) replaceUserRoles(userID int64, roles []string) error {
+func (a *App) replaceUserRoles(
+	userID int64,
+	roles []string,
+) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DELETE FROM user_roles WHERE user_id = ?`, userID); err != nil {
+	if _, err := a.execTxDB(
+		tx,
+		`DELETE FROM user_roles WHERE user_id = ?`,
+		userID,
+	); err != nil {
 		return err
 	}
+
 	for _, role := range roles {
-		roleID, err := roleIDByName(tx, role)
-		if err != nil {
+		var roleID int64
+		if err := a.queryRowTxDB(
+			tx,
+			`SELECT id FROM roles WHERE name = ?`,
+			role,
+		).Scan(&roleID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)`, userID, roleID); err != nil {
+
+		if _, err := a.execTxDB(
+			tx,
+			`INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)`,
+			userID,
+			roleID,
+		); err != nil {
 			return err
 		}
 	}

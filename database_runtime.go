@@ -195,6 +195,28 @@ func (a *App) execDB(
 	)
 }
 
+func (a *App) queryRowTxDB(
+	tx *sql.Tx,
+	query string,
+	args ...any,
+) *sql.Row {
+	return tx.QueryRow(
+		a.dbQuery(query),
+		args...,
+	)
+}
+
+func (a *App) execTxDB(
+	tx *sql.Tx,
+	query string,
+	args ...any,
+) (sql.Result, error) {
+	return tx.Exec(
+		a.dbQuery(query),
+		args...,
+	)
+}
+
 func (a *App) queryContextDB(
 	ctx context.Context,
 	query string,
