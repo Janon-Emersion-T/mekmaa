@@ -2149,7 +2149,7 @@ func (a *App) cancelBookingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	requests, _ := a.listBookingCancellationRequestsForScheduleIDs([]int64{scheduleID})
 	if pending := pendingCancellationRequestFor(requests, scheduleID); pending != nil {
-		_, _ = a.db.Exec(`
+		_, _ = a.execDB(`
 			UPDATE booking_cancellation_requests
 			SET status = 'approved', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
 			WHERE id = ? AND status = 'pending'
@@ -2295,7 +2295,7 @@ func (a *App) approveBookingCancellationRequestHandler(w http.ResponseWriter, r 
 		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
-	row := a.db.QueryRow(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
+	row := a.queryRowDB(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
 	var scheduleID int64
 	var reason string
 	var status string
@@ -2322,7 +2322,7 @@ func (a *App) approveBookingCancellationRequestHandler(w http.ResponseWriter, r 
 		http.Redirect(w, r, adminBookingCommunicationRedirect(scheduleID, bookingStatusConfirmed, ""), http.StatusSeeOther)
 		return
 	}
-	if _, err := a.db.Exec(`
+	if _, err := a.execDB(`
 		UPDATE booking_cancellation_requests
 		SET status = 'approved', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
 		WHERE id = ? AND status = 'pending'
@@ -2357,7 +2357,7 @@ func (a *App) rejectBookingCancellationRequestHandler(w http.ResponseWriter, r *
 		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
-	row := a.db.QueryRow(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
+	row := a.queryRowDB(`SELECT schedule_id, request_reason, status FROM booking_cancellation_requests WHERE id = ?`, requestID)
 	var scheduleID int64
 	var reason string
 	var status string
@@ -2383,7 +2383,7 @@ func (a *App) rejectBookingCancellationRequestHandler(w http.ResponseWriter, r *
 		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
 		return
 	}
-	if _, err := a.db.Exec(`
+	if _, err := a.execDB(`
 		UPDATE booking_cancellation_requests
 		SET status = 'rejected', review_note = ?, reviewed_at = ?, reviewed_by_user_id = ?
 		WHERE id = ? AND status = 'pending'
@@ -4179,7 +4179,7 @@ func (a *App) updateCourtActivityAutoAcceptHandler(w http.ResponseWriter, r *htt
 	}
 	courtID := strings.TrimSpace(r.FormValue("court_id"))
 	autoAccept := r.FormValue("auto_accept") == "1"
-	if _, err := a.db.Exec(`
+	if _, err := a.execDB(`
 		UPDATE court_activities
 		SET auto_accept = ?, updated_at = ?
 		WHERE id = ?
@@ -4214,7 +4214,7 @@ func (a *App) updateCourtActivityGameHandler(w http.ResponseWriter, r *http.Requ
 	courtID := strings.TrimSpace(r.FormValue("court_id"))
 
 	var currentActivity string
-	if err := a.db.QueryRow(`SELECT activity FROM court_activities WHERE id = ?`, activityID).Scan(&currentActivity); err != nil {
+	if err := a.queryRowDB(`SELECT activity FROM court_activities WHERE id = ?`, activityID).Scan(&currentActivity); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "activity not found", http.StatusNotFound)
 			return
@@ -4241,7 +4241,7 @@ func (a *App) updateCourtActivityGameHandler(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	if _, err := a.db.Exec(`
+	if _, err := a.execDB(`
 		UPDATE court_activities
 		SET game_id = ?, updated_at = ?
 		WHERE id = ?
@@ -4916,7 +4916,7 @@ func (a *App) voidStudentPaymentHandler(w http.ResponseWriter, r *http.Request) 
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
 	redirectMonth := strings.TrimSpace(r.FormValue("payment_month"))
 	var divisionID int64
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT COALESCE(tp.division_id, 0)
 		FROM student_monthly_payments smp
 		LEFT JOIN student_enrollments se ON se.id = smp.enrollment_id
@@ -5203,7 +5203,7 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var createdGroupID int64
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT id
 		FROM student_groups
 		WHERE UPPER(code) = UPPER(?)
