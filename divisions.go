@@ -302,7 +302,7 @@ func (a *App) listDivisions(activeOnly bool) ([]Division, error) {
 func (a *App) findDivisionByID(divisionID int64) (*Division, error) {
 	var division Division
 	var active int
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT id, code, slug, name, COALESCE(description, ''), COALESCE(active, 1), created_at, updated_at
 		FROM divisions
 		WHERE id = ?
@@ -320,7 +320,7 @@ func (a *App) findDivisionBySlugOrCode(value string) (*Division, error) {
 	}
 	var division Division
 	var active int
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT id, code, slug, name, COALESCE(description, ''), COALESCE(active, 1), created_at, updated_at
 		FROM divisions
 		WHERE LOWER(slug) = LOWER(?) OR UPPER(code) = UPPER(?)
@@ -359,27 +359,51 @@ func (a *App) divisionsForUser(userID int64) ([]Division, error) {
 	return divisions, rows.Err()
 }
 
-func (a *App) replaceUserDivisions(userID int64, divisionIDs []int64) error {
+func (a *App) replaceUserDivisions(
+	userID int64,
+	divisionIDs []int64,
+) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM user_divisions WHERE user_id = ?`, userID); err != nil {
+
+	if _, err := a.execTxDB(
+		tx,
+		`DELETE FROM user_divisions WHERE user_id = ?`,
+		userID,
+	); err != nil {
 		return err
 	}
+
 	now := time.Now().UTC()
+
 	for _, divisionID := range divisionIDs {
 		if divisionID <= 0 {
 			continue
 		}
-		if _, err := tx.Exec(`
-			INSERT INTO user_divisions (user_id, division_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?)
-		`, userID, divisionID, now, now); err != nil {
+
+		if _, err := a.execTxDB(
+			tx,
+			`
+				INSERT INTO user_divisions (
+					user_id,
+					division_id,
+					created_at,
+					updated_at
+				)
+				VALUES (?, ?, ?, ?)
+			`,
+			userID,
+			divisionID,
+			now,
+			now,
+		); err != nil {
 			return err
 		}
 	}
+
 	return tx.Commit()
 }
 
