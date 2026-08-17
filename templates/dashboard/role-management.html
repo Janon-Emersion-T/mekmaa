@@ -177,17 +177,17 @@
               </div>
               <div class="grid gap-2 sm:grid-cols-2">
               {{range .Permissions}}
-              <label class="group relative cursor-pointer rounded-xl border border-slate/10 bg-white p-3 transition hover:border-obsidian/25">
+              <label class="group relative flex cursor-pointer items-start gap-3 rounded-xl border border-slate/10 bg-white p-3 transition hover:border-obsidian/25">
                 <input
                   type="checkbox"
                   name="permissions"
                   value="{{.Key}}"
                   {{if and .Sensitive (not (hasRole $.User "superadmin"))}}disabled{{end}}
-                  class="peer sr-only"
+                  class="mt-1 h-5 w-5 shrink-0 cursor-pointer rounded-md border-slate/25 accent-obsidian focus:ring-aqua"
                 />
 
                 <span class="flex items-start gap-3 text-slate transition peer-checked:text-obsidian {{if and .Sensitive (not (hasRole $.User "superadmin"))}}cursor-not-allowed opacity-45{{end}}">
-                  <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate/25 bg-white peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud">
+                  <span class="hidden">
                     <svg
                       aria-hidden="true"
                       viewBox="0 0 20 20"
@@ -411,7 +411,7 @@
                           value="{{.Key}}"
                           {{if containsPermission $role.Permissions .Key}}checked{{end}}
                           {{if or $systemRole (not $canEditRole)}}disabled{{end}}
-                          class="peer sr-only"
+                          class="mt-1 h-5 w-5 shrink-0 cursor-pointer rounded-md border-slate/25 accent-obsidian focus:ring-aqua"
                         />
 
                         <span class="flex items-start gap-2.5 text-slate peer-checked:text-obsidian">

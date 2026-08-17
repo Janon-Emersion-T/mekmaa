@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -78,37 +78,51 @@ func normalizeRoleNames(roles []string) []string {
 	return normalized
 }
 
-func (a *App) normalizeExistingRoles(roles []string) ([]string, error) {
-	normalized := normalizeRoleNames(roles)
-	if len(normalized) == 0 {
-		return nil, nil
-	}
-
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(normalized)), ",")
-	args := make([]any, len(normalized))
-	for i, role := range normalized {
-		args[i] = role
-	}
-	rows, err := a.db.Query(`SELECT name FROM roles WHERE name IN (`+placeholders+`)`, args...)
+func (a *App) normalizeExistingRoles(
+	values []string,
+) ([]string, error) {
+	roles, err := a.listRoles()
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	existing := make(map[string]struct{}, len(normalized))
-	for rows.Next() {
-		var role string
-		if err := rows.Scan(&role); err != nil {
-			return nil, err
+	allowed := make(map[string]struct{}, len(roles))
+	for _, role := range roles {
+		name := strings.ToLower(
+			strings.TrimSpace(role.Name),
+		)
+		if name != "" {
+			allowed[name] = struct{}{}
 		}
-		existing[role] = struct{}{}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+
+	for _, value := range values {
+		role := strings.ToLower(
+			strings.TrimSpace(value),
+		)
+
+		if role == "" {
+			continue
+		}
+
+		if _, ok := allowed[role]; !ok {
+			return nil, fmt.Errorf(
+				"role %q does not exist",
+				role,
+			)
+		}
+
+		if _, ok := seen[role]; ok {
+			continue
+		}
+
+		seen[role] = struct{}{}
+		normalized = append(normalized, role)
 	}
-	if len(existing) != len(normalized) {
-		return nil, errors.New("unknown role")
-	}
+
 	return normalized, nil
 }
 
