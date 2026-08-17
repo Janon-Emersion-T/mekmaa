@@ -9819,3 +9819,294 @@ func aTestHydrateStaffAttendanceDivisions(
 		userID,
 	)
 }
+
+func TestNormalizeStaffAttendanceMonthRejectsFuture(
+	t *testing.T,
+) {
+	future := time.Now().
+		AddDate(0, 1, 0).
+		Format("2006-01")
+
+	if _, err :=
+		normalizeStaffAttendanceMonth(
+			future,
+		); err == nil {
+
+		t.Fatal(
+			"expected future attendance month to be rejected",
+		)
+	}
+}
+
+func TestStaffAttendanceMonthBounds(
+	t *testing.T,
+) {
+	start, end, err :=
+		staffAttendanceMonthBounds(
+			"2026-08",
+		)
+
+	if err != nil {
+		t.Fatalf(
+			"month bounds: %v",
+			err,
+		)
+	}
+
+	if start != "2026-08-01" {
+		t.Fatalf(
+			"start = %q, want 2026-08-01",
+			start,
+		)
+	}
+
+	if end != "2026-09-01" {
+		t.Fatalf(
+			"end = %q, want 2026-09-01",
+			end,
+		)
+	}
+}
+
+func TestBuildStaffAttendanceReportRows(
+	t *testing.T,
+) {
+	users := []User{
+		{
+			ID:     10,
+			Name:   "Teacher One",
+			Email:  "teacher@example.com",
+			Active: true,
+		},
+		{
+			ID:     20,
+			Name:   "Coach Two",
+			Email:  "coach@example.com",
+			Active: true,
+		},
+	}
+
+	records := []CoachAttendanceRecord{
+		{
+			UserID: 10,
+			Status: "present",
+		},
+		{
+			UserID: 10,
+			Status: "late",
+		},
+		{
+			UserID: 10,
+			Status: "absent",
+		},
+		{
+			UserID: 10,
+			Status: "excused",
+		},
+	}
+
+	rows :=
+		buildStaffAttendanceReportRows(
+			users,
+			records,
+		)
+
+	if len(rows) != 2 {
+		t.Fatalf(
+			"report rows = %d, want 2",
+			len(rows),
+		)
+	}
+
+	first := rows[0]
+
+	if first.PresentCount != 1 ||
+		first.LateCount != 1 ||
+		first.AbsentCount != 1 ||
+		first.ExcusedCount != 1 {
+
+		t.Fatalf(
+			"unexpected attendance counts: %#v",
+			first,
+		)
+	}
+
+	if first.CountedDays != 3 {
+		t.Fatalf(
+			"counted days = %d, want 3",
+			first.CountedDays,
+		)
+	}
+
+	if first.AttendedDays != 2 {
+		t.Fatalf(
+			"attended days = %d, want 2",
+			first.AttendedDays,
+		)
+	}
+
+	if first.AttendancePercentage < 66.6 ||
+		first.AttendancePercentage > 66.7 {
+
+		t.Fatalf(
+			"attendance percentage = %.4f, want about 66.67",
+			first.AttendancePercentage,
+		)
+	}
+
+	// Staff with no records must remain visible
+	// in the monthly report.
+	if rows[1].TotalRecords != 0 {
+		t.Fatalf(
+			"zero-attendance staff total = %d, want 0",
+			rows[1].TotalRecords,
+		)
+	}
+}
+
+func TestSummarizeStaffAttendanceReport(
+	t *testing.T,
+) {
+	rows := []StaffAttendanceReportRow{
+		{
+			PresentCount: 2,
+			AbsentCount:  1,
+			LateCount:    1,
+			ExcusedCount: 1,
+			TotalRecords: 5,
+			CountedDays:  4,
+			AttendedDays: 3,
+		},
+		{
+			PresentCount: 1,
+			AbsentCount:  1,
+			TotalRecords: 2,
+			CountedDays:  2,
+			AttendedDays: 1,
+		},
+	}
+
+	summary :=
+		summarizeStaffAttendanceReport(
+			rows,
+		)
+
+	if summary.StaffCount != 2 {
+		t.Fatalf(
+			"staff count = %d, want 2",
+			summary.StaffCount,
+		)
+	}
+
+	if summary.CountedDays != 6 {
+		t.Fatalf(
+			"counted days = %d, want 6",
+			summary.CountedDays,
+		)
+	}
+
+	if summary.AttendedDays != 4 {
+		t.Fatalf(
+			"attended days = %d, want 4",
+			summary.AttendedDays,
+		)
+	}
+
+	if summary.AttendancePercentage < 66.6 ||
+		summary.AttendancePercentage > 66.7 {
+
+		t.Fatalf(
+			"attendance percentage = %.4f",
+			summary.AttendancePercentage,
+		)
+	}
+}
+
+func TestStaffAttendanceHistoryForUser(
+	t *testing.T,
+) {
+	records := []CoachAttendanceRecord{
+		{
+			ID:             1,
+			UserID:         10,
+			AttendanceDate: "2026-08-10",
+			Status:         "present",
+			Note:           "On time",
+		},
+		{
+			ID:             2,
+			UserID:         20,
+			AttendanceDate: "2026-08-10",
+			Status:         "absent",
+		},
+	}
+
+	history :=
+		staffAttendanceHistoryForUser(
+			records,
+			10,
+		)
+
+	if len(history) != 1 {
+		t.Fatalf(
+			"history rows = %d, want 1",
+			len(history),
+		)
+	}
+
+	if history[0].Status != "present" {
+		t.Fatalf(
+			"history status = %q",
+			history[0].Status,
+		)
+	}
+
+	if history[0].Note != "On time" {
+		t.Fatalf(
+			"history note = %q",
+			history[0].Note,
+		)
+	}
+}
+
+func TestStaffAttendanceUserByIDRejectsUnknownUser(
+	t *testing.T,
+) {
+	users := []User{
+		{
+			ID:     10,
+			Active: true,
+		},
+	}
+
+	if staffAttendanceUserByID(
+		users,
+		999,
+	) != nil {
+
+		t.Fatal(
+			"unknown staff user must not be returned",
+		)
+	}
+}
+
+func TestBuildTemplatesIncludesStaffAttendanceReport(
+	t *testing.T,
+) {
+	templates, err :=
+		buildTemplates()
+
+	if err != nil {
+		t.Fatalf(
+			"build templates: %v",
+			err,
+		)
+	}
+
+	if templates["staff-attendance-report"] == nil {
+
+		t.Fatal(
+			"staff-attendance-report template is not registered",
+		)
+	}
+}

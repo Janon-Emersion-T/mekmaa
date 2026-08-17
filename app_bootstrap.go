@@ -1567,6 +1567,11 @@ type TemplateData struct {
 	CoachAttendanceRecords          []CoachAttendanceRecord
 	StaffAttendanceUsers            []User
 	StaffAttendanceRecords          []CoachAttendanceRecord
+	StaffAttendanceReportRows       []StaffAttendanceReportRow
+	StaffAttendanceReportSummary    StaffAttendanceReportSummary
+	StaffAttendanceHistory          []StaffAttendanceHistoryRow
+	StaffAttendanceMonth            string
+	SelectedStaffAttendanceUser     *User
 	AttendanceRecords               []AttendanceRecord
 	AttendanceDate                  string
 	RecentDates                     []string

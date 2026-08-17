@@ -22,6 +22,13 @@
 
     <div class="flex flex-col gap-2 sm:flex-row">
       <a
+        href="{{scopedURL "/admin/staff/attendance/report" .SelectedDivision .SelectedDivisionScope}}"
+        class="inline-flex h-11 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"
+      >
+        Attendance Report
+      </a>
+
+      <a
         href="{{scopedURL "/admin/staff" .SelectedDivision .SelectedDivisionScope}}"
         class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
       >
