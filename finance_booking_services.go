@@ -534,7 +534,7 @@ func (a *App) createStudentEnrollmentLeave(enrollmentID int64, startDate string,
 	}
 
 	var overlapCount int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT COUNT(*)
 		FROM student_enrollment_leaves
 		WHERE enrollment_id = ?
@@ -548,7 +548,7 @@ func (a *App) createStudentEnrollmentLeave(enrollmentID int64, startDate string,
 	}
 
 	now := time.Now().UTC()
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		INSERT INTO student_enrollment_leaves (
 			enrollment_id, start_date, end_date, reason, active, created_at, updated_at
 		) VALUES (?, ?, ?, ?, 1, ?, ?)
@@ -563,7 +563,7 @@ func (a *App) deleteStudentEnrollmentLeave(leaveID int64, enrollmentID int64) er
 	if leaveID <= 0 || enrollmentID <= 0 {
 		return errors.New("select a valid leave record")
 	}
-	result, err := a.execDB(`DELETE FROM student_enrollment_leaves WHERE id = ? AND enrollment_id = ?`, leaveID, enrollmentID)
+	result, err := a.db.Exec(`DELETE FROM student_enrollment_leaves WHERE id = ? AND enrollment_id = ?`, leaveID, enrollmentID)
 	if err != nil {
 		return err
 	}
@@ -643,7 +643,7 @@ func (a *App) listBookingReferralsByDivisionIDs(divisionIDs []int64) ([]BookingR
 	if !allowed {
 		return nil, nil
 	}
-	rows, err := a.queryDB(`
+	rows, err := a.db.Query(`
 		SELECT br.id, br.schedule_id, br.partner_id, rp.name, rp.code, br.commission_amount,
 		       s.status, s.title, s.slot_date, br.paid, br.paid_at, br.payment_method,
 		       COALESCE(br.finance_transaction_id, 0), br.created_at
@@ -691,7 +691,7 @@ func (a *App) listBookingPaymentCollectionsForScheduleIDs(scheduleIDs []int64) (
 }
 
 func (a *App) listBookingFinancials() ([]BookingFinancial, error) {
-	rows, err := a.queryDB(`SELECT schedule_id FROM booking_financials ORDER BY schedule_id`)
+	rows, err := a.db.Query(`SELECT schedule_id FROM booking_financials ORDER BY schedule_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -842,7 +842,7 @@ func aggregateBookingCustomerBalances(financials []BookingFinancial, search stri
 }
 
 func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
-	rows, err := a.queryDB(`
+	rows, err := a.db.Query(`
 		SELECT
 			brch.id,
 			brch.schedule_id,
@@ -916,7 +916,7 @@ func (a *App) listBookingRequestChangesForScheduleIDs(scheduleIDs []int64) ([]Bo
 }
 
 func (a *App) listActiveSpaceSchedules() ([]SpaceSchedule, error) {
-	rows, err := a.queryDB(`
+	rows, err := a.db.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       created_at, updated_at
@@ -969,7 +969,7 @@ func (a *App) listPendingSpaceSchedulesByDivisionIDs(divisionIDs []int64) ([]Spa
 	if !allowed {
 		return nil, nil
 	}
-	rows, err := a.queryDB(`
+	rows, err := a.db.Query(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
@@ -1035,7 +1035,7 @@ func (a *App) countPendingSpaceSchedulesByDivisionIDs(divisionIDs []int64) (int,
 	if !allowed {
 		return 0, nil
 	}
-	row := a.queryRowDB(`
+	row := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM space_schedules
 		WHERE entry_type = 'booking' AND status = 'pending'
@@ -1059,7 +1059,7 @@ func (a *App) countHeldSpaceSchedulesByDivisionIDs(divisionIDs []int64) (int, er
 	if !allowed {
 		return 0, nil
 	}
-	row := a.queryRowDB(`
+	row := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM space_schedules
 		WHERE entry_type = 'booking' AND status = 'held'
@@ -1110,7 +1110,7 @@ func (a *App) listOneToOneOfferings(includeInactive bool) ([]OneToOneOffering, e
 
 func (a *App) findOneToOneOfferingByID(id int64) (*OneToOneOffering, error) {
 	var offering OneToOneOffering
-	if err := a.queryRowDB(`
+	if err := a.db.QueryRow(`
 		SELECT id, name, game, audience, COALESCE(occurrence, 'per_day'), COALESCE(session_count, 1), price, active, created_at, updated_at
 		FROM one_to_one_offerings
 		WHERE id = ?
@@ -1138,7 +1138,7 @@ func (a *App) createOneToOneOffering(offering OneToOneOffering) (int64, error) {
 	if offering.Occurrence == "per_day" || offering.SessionCount <= 0 {
 		offering.SessionCount = 1
 	}
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		INSERT INTO one_to_one_offerings (
 			name,
 			game,
@@ -1151,7 +1151,7 @@ func (a *App) createOneToOneOffering(offering OneToOneOffering) (int64, error) {
 			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`),
+	`,
 		offering.Name,
 		offering.Game,
 		offering.Audience,
@@ -1170,7 +1170,7 @@ func (a *App) createOneToOneOffering(offering OneToOneOffering) (int64, error) {
 
 func (a *App) createGame(game Game) (int64, error) {
 	now := time.Now().UTC()
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		INSERT INTO games (
 			name,
 			activity,
@@ -1181,7 +1181,7 @@ func (a *App) createGame(game Game) (int64, error) {
 			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`),
+	`,
 		game.Name,
 		game.Activity,
 		game.Description,
@@ -1197,7 +1197,7 @@ func (a *App) createGame(game Game) (int64, error) {
 }
 
 func (a *App) updateGame(game Game) error {
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		UPDATE games
 		SET
 			name = ?,
@@ -1207,7 +1207,7 @@ func (a *App) updateGame(game Game) error {
 			sort_order = ?,
 			updated_at = ?
 		WHERE id = ?
-	`),
+	`,
 		game.Name,
 		game.Activity,
 		game.Description,
@@ -1231,7 +1231,7 @@ func (a *App) updateGame(game Game) error {
 
 func (a *App) deleteGame(id int64) error {
 	var offerings int
-	if err := a.queryRowDB(`
+	if err := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM one_to_one_offerings o
 		JOIN games g
@@ -1244,7 +1244,7 @@ func (a *App) deleteGame(id int64) error {
 		return errors.New("this game is already used by 1 to 1 offerings; set it inactive instead of deleting it")
 	}
 
-	result, err := a.execDB(`DELETE FROM games WHERE id = ?`, id)
+	result, err := a.db.Exec(`DELETE FROM games WHERE id = ?`, id)
 	if err != nil {
 		return err
 	}
@@ -1265,11 +1265,11 @@ func (a *App) updateOneToOneOffering(offering OneToOneOffering) error {
 	if offering.Occurrence == "per_day" || offering.SessionCount <= 0 {
 		offering.SessionCount = 1
 	}
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		UPDATE one_to_one_offerings
 		SET name = ?, game = ?, audience = ?, occurrence = ?, session_count = ?, price = ?, active = ?, updated_at = ?
 		WHERE id = ?
-	`),
+	`,
 		offering.Name,
 		offering.Game,
 		offering.Audience,
@@ -1295,7 +1295,7 @@ func (a *App) updateOneToOneOffering(offering OneToOneOffering) error {
 
 func (a *App) deleteOneToOneOffering(id int64) error {
 	var bookings int
-	if err := a.queryRowDB(`
+	if err := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM one_to_one_bookings
 		WHERE offering_id = ?
@@ -1305,7 +1305,7 @@ func (a *App) deleteOneToOneOffering(id int64) error {
 	if bookings > 0 {
 		return errors.New("this 1 to 1 setup already has bookings; set it inactive instead of deleting it")
 	}
-	result, err := a.execDB(`DELETE FROM one_to_one_offerings WHERE id = ?`, id)
+	result, err := a.db.Exec(`DELETE FROM one_to_one_offerings WHERE id = ?`, id)
 	if err != nil {
 		return err
 	}
@@ -1320,7 +1320,7 @@ func (a *App) deleteOneToOneOffering(id int64) error {
 }
 
 func (a *App) listOneToOneBookings() ([]OneToOneBooking, error) {
-	rows, err := a.queryDB(`
+	rows, err := a.db.Query(`
 		SELECT
 			ob.id,
 			ob.schedule_id,
@@ -1449,7 +1449,7 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
 			slot_date,
 			slot_hour,
@@ -1474,7 +1474,7 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', NULL, '', '', NULL, NULL, '', '', '', ?, ?)
-	`),
+	`,
 		schedule.SlotDate,
 		schedule.SlotHour,
 		schedule.EntryType,
@@ -1495,7 +1495,7 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 	if err != nil {
 		return 0, 0, err
 	}
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		INSERT INTO booking_financials (
 			schedule_id,
 			quoted_amount,
@@ -1511,7 +1511,7 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 	if err := a.createBookingReferralTx(tx, scheduleID, schedule.ReferralCode, now); err != nil {
 		return 0, 0, err
 	}
-	result, err = tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err = tx.Exec(`
 		INSERT INTO one_to_one_bookings (
 			schedule_id,
 			offering_id,
@@ -1565,7 +1565,7 @@ func (a *App) countReschedulePendingSpaceSchedulesByDivisionIDs(divisionIDs []in
 	if !allowed {
 		return 0, nil
 	}
-	row := a.queryRowDB(`
+	row := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM space_schedules
 		WHERE entry_type = 'booking' AND status = 'reschedule_pending'
@@ -1643,7 +1643,7 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 }
 
 func (a *App) listCoachesForGroup(groupID int64) ([]User, error) {
-	rows, err := a.queryDB(`
+	rows, err := a.db.Query(`
 		SELECT
 			u.id,
 			u.email,
@@ -1691,7 +1691,7 @@ func (a *App) listCoachesForGroup(groupID int64) ([]User, error) {
 }
 
 func (a *App) listStudentsForGroup(groupID int64) ([]Admission, error) {
-	rows, err := a.queryDB(`
+	rows, err := a.db.Query(`
 		SELECT a.id, a.student_id, a.full_name, COALESCE(a.admission_date, ''), a.date_of_birth, a.gender, a.address, a.passport_number, a.school,
 		       a.guardian_name, a.guardian_relationship, a.guardian_contact_number, a.guardian_alternative_contact_number,
 		       a.medical_information, a.created_at
@@ -1742,7 +1742,7 @@ func replaceStudentGroupCoachesTx(
 	coachIDs []int64,
 ) error {
 	if _, err := tx.Exec(
-		`DELETE FROM student_group_coaches WHERE group_id = ?`),
+		`DELETE FROM student_group_coaches WHERE group_id = ?`,
 		groupID,
 	); err != nil {
 		return err
@@ -1751,7 +1751,7 @@ func replaceStudentGroupCoachesTx(
 	now := time.Now().UTC()
 
 	for _, coachID := range coachIDs {
-		result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+		result, err := tx.Exec(`
 			INSERT INTO student_group_coaches (
 				group_id,
 				user_id,
@@ -1766,7 +1766,7 @@ func replaceStudentGroupCoachesTx(
 			WHERE u.id = ?
 				AND r.name = 'coach'
 			LIMIT 1
-		`),
+		`,
 			groupID,
 			now,
 			coachID,
@@ -1793,12 +1793,12 @@ func replaceStudentGroupSessionsTx(
 	groupID int64,
 	sessions []StudentGroupSession,
 ) error {
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `DELETE FROM student_group_sessions WHERE group_id = ?`, groupID); err != nil {
+	if _, err := tx.Exec(`DELETE FROM student_group_sessions WHERE group_id = ?`, groupID); err != nil {
 		return err
 	}
 	now := time.Now().UTC()
 	for _, session := range sessions {
-		if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+		if _, err := tx.Exec(`
 			INSERT INTO student_group_sessions (
 				group_id, title, day_of_week, start_time, end_time, active, created_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -1821,7 +1821,7 @@ func (a *App) createStudentGroup(
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		INSERT INTO student_groups (name, code, description, training_program_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, group.Name, group.Code, group.Description, nullIfZero(group.TrainingProgramID), time.Now().UTC(), time.Now().UTC())
@@ -1833,7 +1833,7 @@ func (a *App) createStudentGroup(
 		return err
 	}
 	for _, admissionID := range admissionIDs {
-		if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, groupID, admissionID); err != nil {
+		if _, err := tx.Exec(`INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, groupID, admissionID); err != nil {
 			return err
 		}
 	}
@@ -1861,7 +1861,7 @@ func (a *App) replaceAttendanceRecords(groupID int64, sessionID int64, attendanc
 			`DELETE FROM attendance_records
 			 WHERE group_id = ?
 			   AND COALESCE(session_id, 0) = ?
-			   AND attendance_date = ?`),
+			   AND attendance_date = ?`,
 		),
 		groupID,
 		sessionID,
@@ -1887,7 +1887,7 @@ func (a *App) replaceAttendanceRecords(groupID int64, sessionID int64, attendanc
 						updated_at
 					)
 					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-				`),
+				`,
 			),
 			record.GroupID,
 			nullIfZero(record.SessionID),
@@ -1932,7 +1932,7 @@ func (a *App) createCourtLayout(
 
 	now := time.Now().UTC()
 
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		INSERT INTO court_layouts (
 			court_id,
 			name,
@@ -1943,7 +1943,7 @@ func (a *App) createCourtLayout(
 			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`),
+	`,
 		layout.CourtID,
 		layout.Name,
 		layout.Description,
@@ -1962,14 +1962,14 @@ func (a *App) createCourtLayout(
 	}
 
 	for _, item := range layout.Items {
-		_, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+		_, err := tx.Exec(`
 			INSERT INTO court_layout_items (
 				layout_id,
 				activity,
 				quantity
 			)
 			VALUES (?, ?, ?)
-		`),
+		`,
 			layoutID,
 			item.Activity,
 			item.Quantity,
@@ -1994,7 +1994,7 @@ func (a *App) createCourtActivity(
 	}
 
 	now := time.Now().UTC()
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		INSERT INTO court_activities (
 			court_id,
 			game_id,
@@ -2008,7 +2008,7 @@ func (a *App) createCourtActivity(
 			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`),
+	`,
 		activity.CourtID,
 		activity.GameID,
 		activity.Activity,
@@ -2029,7 +2029,7 @@ func (a *App) createCourtActivity(
 
 func (a *App) createCourt(court Court) (int64, error) {
 	now := time.Now().UTC()
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		INSERT INTO courts (
 			name,
 			code,
@@ -2040,7 +2040,7 @@ func (a *App) createCourt(court Court) (int64, error) {
 			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`),
+	`,
 		court.Name,
 		court.Code,
 		court.Description,
@@ -2056,7 +2056,7 @@ func (a *App) createCourt(court Court) (int64, error) {
 }
 
 func (a *App) updateCourt(court Court) error {
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		UPDATE courts
 		SET
 			name = ?,
@@ -2066,7 +2066,7 @@ func (a *App) updateCourt(court Court) error {
 			sort_order = ?,
 			updated_at = ?
 		WHERE id = ?
-	`),
+	`,
 		court.Name,
 		court.Code,
 		court.Description,
@@ -2112,7 +2112,7 @@ func (a *App) updateCourtLayout(
 
 	if !layout.Active {
 		var otherActiveLayouts int
-		if err := a.queryRowDB(`
+		if err := a.db.QueryRow(`
 			SELECT COUNT(*)
 			FROM court_layouts
 			WHERE active = 1
@@ -2131,7 +2131,7 @@ func (a *App) updateCourtLayout(
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		UPDATE court_layouts
 		SET
 			name = ?,
@@ -2141,7 +2141,7 @@ func (a *App) updateCourtLayout(
 			updated_at = ?
 		WHERE id = ?
 		  AND court_id = ?
-	`),
+	`,
 		layout.Name,
 		layout.Description,
 		layout.Active,
@@ -2163,7 +2163,7 @@ func (a *App) updateCourtLayout(
 		return sql.ErrNoRows
 	}
 
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		DELETE FROM court_layout_items
 		WHERE layout_id = ?
 	`, layout.ID); err != nil {
@@ -2171,14 +2171,14 @@ func (a *App) updateCourtLayout(
 	}
 
 	for _, item := range layout.Items {
-		_, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+		_, err := tx.Exec(`
 			INSERT INTO court_layout_items (
 				layout_id,
 				activity,
 				quantity
 			)
 			VALUES (?, ?, ?)
-		`),
+		`,
 			layout.ID,
 			item.Activity,
 			item.Quantity,
@@ -2200,7 +2200,7 @@ func (a *App) toggleCourtLayout(
 
 	var active bool
 
-	err := a.queryRowDB(`
+	err := a.db.QueryRow(`
 		SELECT active
 		FROM court_layouts
 		WHERE id = ?
@@ -2211,7 +2211,7 @@ func (a *App) toggleCourtLayout(
 
 	if active {
 		var activeLayoutCount int
-		if err := a.queryRowDB(`
+		if err := a.db.QueryRow(`
 			SELECT COUNT(*)
 			FROM court_layouts
 			WHERE active = 1
@@ -2223,13 +2223,13 @@ func (a *App) toggleCourtLayout(
 		}
 	}
 
-	_, err = a.execDB(`
+	_, err = a.db.Exec(`
 		UPDATE court_layouts
 		SET
 			active = ?,
 			updated_at = ?
 		WHERE id = ?
-	`),
+	`,
 		!active,
 		time.Now().UTC(),
 		layoutID,
@@ -2247,7 +2247,7 @@ func (a *App) deleteCourtLayout(
 
 	var activeLayoutCount int
 
-	if err := a.queryRowDB(`
+	if err := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM court_layouts
 		WHERE active = 1
@@ -2257,7 +2257,7 @@ func (a *App) deleteCourtLayout(
 
 	var deletingActive bool
 
-	if err := a.queryRowDB(`
+	if err := a.db.QueryRow(`
 		SELECT active
 		FROM court_layouts
 		WHERE id = ?
@@ -2271,7 +2271,7 @@ func (a *App) deleteCourtLayout(
 		)
 	}
 
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		DELETE FROM court_layouts
 		WHERE id = ?
 	`, layoutID)
@@ -2352,7 +2352,7 @@ func (a *App) createSpaceSchedule(
 	}
 	now := time.Now().UTC()
 
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
 			slot_date,
 			slot_hour,
@@ -2377,7 +2377,7 @@ func (a *App) createSpaceSchedule(
 			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`),
+	`,
 		schedule.SlotDate,
 		schedule.SlotHour,
 		schedule.EntryType,
@@ -2410,7 +2410,7 @@ func (a *App) createSpaceSchedule(
 	}
 
 	if schedule.EntryType == "booking" {
-		if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+		if _, err := tx.Exec(`
 			INSERT INTO booking_financials (
 				schedule_id,
 				quoted_amount,
@@ -2420,7 +2420,7 @@ func (a *App) createSpaceSchedule(
 				updated_at
 			)
 			VALUES (?, ?, 0, '', ?, ?)
-		`),
+		`,
 			scheduleID,
 			schedule.QuotedPrice,
 			now,
@@ -2443,12 +2443,12 @@ func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode
 	}
 
 	var partnerID int64
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT id
 		FROM referral_partners
 		WHERE code = ?
 		  AND active = 1
-	`),
+	`,
 		referralCode,
 	).Scan(&partnerID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2458,7 +2458,7 @@ func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode
 	}
 
 	var commissionAmount float64
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT COALESCE(referral_commission_amount, 0)
 		FROM pricing_settings
 		WHERE id = 1
@@ -2469,7 +2469,7 @@ func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode
 		return errors.New("referral commission is not configured")
 	}
 
-	_, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	_, err := tx.Exec(`
 		INSERT INTO booking_referrals (
 			schedule_id,
 			partner_id,
@@ -2481,7 +2481,7 @@ func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode
 			created_at
 		)
 		VALUES (?, ?, ?, 0, NULL, '', NULL, ?)
-	`),
+	`,
 		scheduleID,
 		partnerID,
 		commissionAmount,
@@ -2491,13 +2491,13 @@ func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode
 }
 
 func (a *App) createPricingRule(rule PricingRule) error {
-	_, err := a.execDB(`
+	_, err := a.db.Exec(`
 		INSERT INTO pricing_rules (
 			game_id, activity, quantity, weekday_offpeak_price, weekday_peak_price,
 			weekend_offpeak_price, weekend_peak_price, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`),
+	`,
 		rule.GameID,
 		rule.Activity,
 		rule.Quantity,
@@ -2512,13 +2512,13 @@ func (a *App) createPricingRule(rule PricingRule) error {
 }
 
 func (a *App) createEvent(event Event) error {
-	_, err := a.execDB(`
+	_, err := a.db.Exec(`
 		INSERT INTO events (
 			game_id, title, category, event_date, start_time, end_time, registration_deadline, venue, summary,
 			image_path, cta_label, cta_link, published, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`),
+	`,
 		event.GameID,
 		event.Title,
 		event.Category,
@@ -2620,7 +2620,7 @@ func (a *App) createPublicBookingRequestDetailed(
 	changeSource := "customer"
 	actionType := bookingStatusPending
 
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		INSERT INTO space_schedules (
 			slot_date,
 			slot_hour,
@@ -2645,7 +2645,7 @@ func (a *App) createPublicBookingRequestDetailed(
 			updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`),
+	`,
 		schedule.SlotDate,
 		schedule.SlotHour,
 		"booking",
@@ -2684,7 +2684,7 @@ func (a *App) createPublicBookingRequestDetailed(
 	schedule.StatusChangedAt = now
 	schedule.StatusSource = statusSource
 
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		INSERT INTO booking_financials (
 			schedule_id,
 			quoted_amount,
@@ -2694,7 +2694,7 @@ func (a *App) createPublicBookingRequestDetailed(
 			updated_at
 		)
 		VALUES (?, ?, 0, '', ?, ?)
-	`),
+	`,
 		requestID,
 		schedule.QuotedPrice,
 		now,
@@ -2731,7 +2731,7 @@ func (a *App) createPublicBookingRequestDetailed(
 }
 
 func (a *App) updateAdmission(admission Admission) error {
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		UPDATE admissions
 		SET
 			student_id = ?,
@@ -2753,7 +2753,7 @@ func (a *App) updateAdmission(admission Admission) error {
 			qr_code_value = ?,
 			updated_at = ?
 		WHERE id = ?
-	`),
+	`,
 		admission.StudentID,
 		admission.FullName,
 		admission.AdmissionDate,
@@ -2800,7 +2800,7 @@ func syncAdmissionTrainingProgramsTx(
 	if _, err := tx.Exec(
 		rebindDatabaseQuery(
 			driver,
-			`DELETE FROM admission_training_programs WHERE admission_id = ?`),
+			`DELETE FROM admission_training_programs WHERE admission_id = ?`,
 		),
 		admissionID,
 	); err != nil {
@@ -2818,7 +2818,7 @@ func syncAdmissionTrainingProgramsTx(
 						created_at
 					)
 					VALUES (?, ?, ?)
-				`),
+				`,
 			),
 			admissionID,
 			programID,
@@ -2839,7 +2839,7 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 	defer tx.Rollback()
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		INSERT INTO student_enrollments (
 			admission_id,
 			training_program_id,
@@ -2853,7 +2853,7 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 			created_at,
 			updated_at
 		) VALUES (?, ?, ?, ?, 0, NULL, 0, NULL, 1, ?, ?)
-	`),
+	`,
 		enrollment.AdmissionID,
 		enrollment.TrainingProgramID,
 		boolToInt(enrollment.FreeAdmission),
@@ -2870,7 +2870,7 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 	}
 	enrollment.ID = enrollmentID
 
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		INSERT INTO admission_training_programs (
 			admission_id,
 			training_program_id,
@@ -2914,7 +2914,7 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 	}
 
 	var monthlyPaymentCount int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT COUNT(*)
 		FROM student_monthly_payments
 		WHERE enrollment_id = ?
@@ -2933,7 +2933,7 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 		enrollment.TrainingProgramName = existing.TrainingProgramName
 	}
 
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		UPDATE student_enrollments
 		SET
 			training_program_id = ?,
@@ -2955,14 +2955,14 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 	}
 
 	if enrollment.TrainingProgramID != existing.TrainingProgramID {
-		if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+		if _, err := tx.Exec(`
 			DELETE FROM admission_training_programs
 			WHERE admission_id = ?
 			  AND training_program_id = ?
 		`, existing.AdmissionID, existing.TrainingProgramID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+		if _, err := tx.Exec(`
 			INSERT INTO admission_training_programs (
 				admission_id,
 				training_program_id,
@@ -2996,7 +2996,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 	}
 
 	var admissionPaymentCount int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT COUNT(*)
 		FROM finance_transactions
 		WHERE reference_type = 'student_enrollment'
@@ -3006,7 +3006,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 	}
 
 	var monthlyPaymentCount int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT COUNT(*)
 		FROM student_monthly_payments
 		WHERE enrollment_id = ?
@@ -3016,7 +3016,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 	}
 
 	if admissionPaymentCount > 0 || monthlyPaymentCount > 0 {
-		result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+		result, err := tx.Exec(`
 			UPDATE student_enrollments
 			SET active = 0,
 			    updated_at = ?
@@ -3035,7 +3035,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 		return true, tx.Commit()
 	}
 
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `DELETE FROM student_enrollments WHERE id = ?`, enrollmentID)
+	result, err := tx.Exec(`DELETE FROM student_enrollments WHERE id = ?`, enrollmentID)
 	if err != nil {
 		return false, err
 	}
@@ -3047,7 +3047,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 		return false, sql.ErrNoRows
 	}
 
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		DELETE FROM admission_training_programs
 		WHERE admission_id = ?
 		  AND training_program_id = ?
@@ -3060,11 +3060,11 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 
 func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment StudentEnrollment, paymentMethod string, recordedByUserID int64) (int64, error) {
 	var studentName string
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `SELECT full_name FROM admissions WHERE id = ?`, enrollment.AdmissionID).Scan(&studentName); err != nil {
+	if err := tx.QueryRow(`SELECT full_name FROM admissions WHERE id = ?`, enrollment.AdmissionID).Scan(&studentName); err != nil {
 		return 0, err
 	}
 	var admissionFee float64
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `SELECT COALESCE(admission_fee, 0) FROM training_programs WHERE id = ?`, enrollment.TrainingProgramID).Scan(&admissionFee); err != nil {
+	if err := tx.QueryRow(`SELECT COALESCE(admission_fee, 0) FROM training_programs WHERE id = ?`, enrollment.TrainingProgramID).Scan(&admissionFee); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, ErrAdmissionFeeNotConfigured
 		}
@@ -3116,7 +3116,7 @@ func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment Student
 	if err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		UPDATE student_enrollments
 		SET payment_collected = 1,
 		    payment_collected_at = ?,
@@ -3303,7 +3303,7 @@ func (a *App) updateAdmissionWithOptionalPayment(
 			qr_code_value = ?,
 			updated_at = ?
 		WHERE id = ?
-			`),
+			`,
 		),
 		admission.StudentID,
 		admission.FullName,
@@ -3370,18 +3370,18 @@ func (a *App) updateStudentGroup(
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		UPDATE student_groups
 		SET name = ?, code = ?, description = ?, training_program_id = ?, updated_at = ?
 		WHERE id = ?
 	`, group.Name, group.Code, group.Description, nullIfZero(group.TrainingProgramID), time.Now().UTC(), group.ID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `DELETE FROM student_group_members WHERE group_id = ?`, group.ID); err != nil {
+	if _, err := tx.Exec(`DELETE FROM student_group_members WHERE group_id = ?`, group.ID); err != nil {
 		return err
 	}
 	for _, admissionID := range admissionIDs {
-		if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, group.ID, admissionID); err != nil {
+		if _, err := tx.Exec(`INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, group.ID, admissionID); err != nil {
 			return err
 		}
 	}
@@ -3442,7 +3442,7 @@ func (a *App) updateSpaceSchedule(
 	var currentEntryType string
 	var currentActivity string
 	var currentQuantity int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT slot_date, slot_hour, entry_type, activity, quantity
 		FROM space_schedules
 		WHERE id = ?
@@ -3468,7 +3468,7 @@ func (a *App) updateSpaceSchedule(
 		return err
 	}
 
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		UPDATE space_schedules
 		SET
 			slot_date = ?,
@@ -3480,7 +3480,7 @@ func (a *App) updateSpaceSchedule(
 			notes = ?,
 			updated_at = ?
 		WHERE id = ?
-	`),
+	`,
 		schedule.SlotDate,
 		schedule.SlotHour,
 		schedule.EntryType,
@@ -3509,7 +3509,7 @@ func (a *App) updateSpaceSchedule(
 		QuotedAmount float64
 		Paid         bool
 	}
-	financialErr := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	financialErr := tx.QueryRow(`
 		SELECT id, quoted_amount, paid
 		FROM booking_financials
 		WHERE schedule_id = ?
@@ -3536,7 +3536,7 @@ func (a *App) updateSpaceSchedule(
 			// Preserve the original quoted-price snapshot for existing bookings.
 			schedule.QuotedPrice = financial.QuotedAmount
 		} else {
-			if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+			if _, err := tx.Exec(`
 				INSERT INTO booking_financials (
 					schedule_id,
 					quoted_amount,
@@ -3555,7 +3555,7 @@ func (a *App) updateSpaceSchedule(
 			if financial.Paid {
 				return errors.New("paid bookings cannot be converted to internal training")
 			}
-			if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+			if _, err := tx.Exec(`
 				DELETE FROM booking_financials
 				WHERE id = ?
 			`, financial.ID); err != nil {
@@ -3568,12 +3568,12 @@ func (a *App) updateSpaceSchedule(
 }
 
 func (a *App) updatePricingRule(rule PricingRule) error {
-	_, err := a.execDB(`
+	_, err := a.db.Exec(`
 		UPDATE pricing_rules
 		SET game_id = ?, activity = ?, quantity = ?, weekday_offpeak_price = ?, weekday_peak_price = ?,
 		    weekend_offpeak_price = ?, weekend_peak_price = ?, updated_at = ?
 		WHERE id = ?
-	`),
+	`,
 		rule.GameID,
 		rule.Activity,
 		rule.Quantity,
@@ -3594,7 +3594,7 @@ func (a *App) updateCourtActivity(
 		return err
 	}
 
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		UPDATE court_activities
 		SET
 			display_name = ?,
@@ -3605,7 +3605,7 @@ func (a *App) updateCourtActivity(
 			updated_at = ?
 		WHERE id = ?
 		  AND court_id = ?
-	`),
+	`,
 		activity.DisplayName,
 		activity.MaxQuantity,
 		boolToInt(activity.AutoAccept),
@@ -3631,12 +3631,12 @@ func (a *App) updateCourtActivity(
 }
 
 func (a *App) updateEvent(event Event) error {
-	_, err := a.execDB(`
+	_, err := a.db.Exec(`
 		UPDATE events
 		SET game_id = ?, title = ?, category = ?, event_date = ?, start_time = ?, end_time = ?, registration_deadline = ?, venue = ?, summary = ?,
 		    image_path = ?, cta_label = ?, cta_link = ?, published = ?, updated_at = ?
 		WHERE id = ?
-	`),
+	`,
 		event.GameID,
 		event.Title,
 		event.Category,
@@ -3657,7 +3657,7 @@ func (a *App) updateEvent(event Event) error {
 }
 
 func (a *App) updatePricingSettings(settings PricingSettings) error {
-	_, err := a.execDB(`
+	_, err := a.db.Exec(`
 		UPDATE pricing_settings
 		SET peak_start_hour = ?, peak_end_hour = ?, updated_at = ?
 		WHERE id = 1
@@ -3666,7 +3666,7 @@ func (a *App) updatePricingSettings(settings PricingSettings) error {
 }
 
 func (a *App) updateReferralCommissionAmount(amount float64) error {
-	_, err := a.execDB(`
+	_, err := a.db.Exec(`
 		UPDATE pricing_settings
 		SET referral_commission_amount = ?, updated_at = ?
 		WHERE id = 1
@@ -3675,7 +3675,7 @@ func (a *App) updateReferralCommissionAmount(amount float64) error {
 }
 
 func (a *App) createReferralPartner(partner ReferralPartner) error {
-	_, err := a.execDB(`
+	_, err := a.db.Exec(`
 		INSERT INTO referral_partners (name, code, email, phone, active, created_at, updated_at)
 		VALUES (?, ?, ?, ?, 1, ?, ?)
 	`, partner.Name, partner.Code, partner.Email, partner.Phone, time.Now().UTC(), time.Now().UTC())
@@ -3683,7 +3683,7 @@ func (a *App) createReferralPartner(partner ReferralPartner) error {
 }
 
 func (a *App) updateReferralPartner(partner ReferralPartner) error {
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		UPDATE referral_partners
 		SET name = ?, code = ?, email = ?, phone = ?, updated_at = ?
 		WHERE id = ?
@@ -3702,7 +3702,7 @@ func (a *App) updateReferralPartner(partner ReferralPartner) error {
 }
 
 func (a *App) toggleReferralPartner(partnerID int64) error {
-	result, err := a.execDB(`
+	result, err := a.db.Exec(`
 		UPDATE referral_partners
 		SET active = CASE active WHEN 1 THEN 0 ELSE 1 END, updated_at = ?
 		WHERE id = ?
@@ -3733,7 +3733,7 @@ func (a *App) payReferralCommission(referralID int64, paymentMethod string, reco
 
 	var referral BookingReferral
 	var paid int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT br.id, br.schedule_id, rp.name, br.commission_amount, s.status, br.paid
 		FROM booking_referrals br
 		JOIN referral_partners rp ON rp.id = br.partner_id
@@ -3794,7 +3794,7 @@ func (a *App) payReferralCommission(referralID int64, paymentMethod string, reco
 	if err != nil {
 		return 0, err
 	}
-	updateResult, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	updateResult, err := tx.Exec(`
 		UPDATE booking_referrals
 		SET paid = 1, paid_at = ?, payment_method = ?, finance_transaction_id = ?
 		WHERE id = ? AND paid = 0
@@ -3814,7 +3814,7 @@ func (a *App) payReferralCommission(referralID int64, paymentMethod string, reco
 
 func (a *App) nextReceiptNumberTx(tx *sql.Tx, scope string, now time.Time) (string, error) {
 	year := now.UTC().Year()
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		INSERT INTO receipt_sequences (scope, year, next_value)
 		VALUES (?, ?, 2)
 		ON CONFLICT(scope, year) DO UPDATE
@@ -3823,7 +3823,7 @@ func (a *App) nextReceiptNumberTx(tx *sql.Tx, scope string, now time.Time) (stri
 		return "", err
 	}
 	var nextValue int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `SELECT next_value - 1 FROM receipt_sequences WHERE scope = ? AND year = ?`, scope, year).Scan(&nextValue); err != nil {
+	if err := tx.QueryRow(`SELECT next_value - 1 FROM receipt_sequences WHERE scope = ? AND year = ?`, scope, year).Scan(&nextValue); err != nil {
 		return "", err
 	}
 	if scope == "booking_payment" {
@@ -3879,7 +3879,7 @@ func (a *App) syncBookingFinancialSnapshotTx(tx *sql.Tx, scheduleID int64) error
 	if financial.ActivePaymentCount > 0 {
 		paidFlag = 1
 	}
-	_, err = tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	_, err = tx.Exec(`
 		UPDATE booking_financials
 		SET paid = ?, paid_at = ?, payment_method = COALESCE(?, ''), finance_transaction_id = ?, updated_at = ?
 		WHERE schedule_id = ?
@@ -3892,7 +3892,7 @@ func nullableExistingUserIDTx(tx *sql.Tx, userID int64) any {
 		return nil
 	}
 	var exists int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `SELECT 1 FROM users WHERE id = ?`, userID).Scan(&exists); err != nil {
+	if err := tx.QueryRow(`SELECT 1 FROM users WHERE id = ?`, userID).Scan(&exists); err != nil {
 		return nil
 	}
 	return userID
@@ -3921,7 +3921,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 
 	var financial BookingFinancial
 	var paid int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT bf.id, bf.quoted_amount, bf.paid, s.status, COALESCE(s.requester_name, ''), s.activity, s.quantity
 		FROM booking_financials bf
 		JOIN space_schedules s ON s.id = bf.schedule_id
@@ -3998,7 +3998,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 	if err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		INSERT INTO booking_payment_collections (
 			schedule_id,
 			finance_transaction_id,
@@ -4012,7 +4012,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 	`, scheduleID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), recordedByRef, now, now); err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		UPDATE finance_transactions
 		SET source_type = 'booking_payment_collection',
 		    source_id = (
@@ -4048,7 +4048,7 @@ func (a *App) voidBookingPayment(collectionID int64, reason string, voidedByUser
 	var scheduleID int64
 	var financeTransactionID int64
 	var voided int
-	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if err := tx.QueryRow(`
 		SELECT schedule_id, finance_transaction_id, voided
 		FROM booking_payment_collections
 		WHERE id = ?
@@ -4062,7 +4062,7 @@ func (a *App) voidBookingPayment(collectionID int64, reason string, voidedByUser
 		return errors.New("booking payment has already been voided")
 	}
 	voidedByRef := nullableExistingUserIDTx(tx, voidedByUserID)
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		UPDATE booking_payment_collections
 		SET voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ?
 		WHERE id = ? AND voided = 0
@@ -4152,7 +4152,7 @@ func (a *App) transitionBookingRequestStatus(
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		UPDATE space_schedules
 		SET
 			status = ?,
@@ -4164,7 +4164,7 @@ func (a *App) transitionBookingRequestStatus(
 			updated_at = ?
 		WHERE id = ?
 		  AND status = ?
-	`),
+	`,
 		status,
 		reviewNote,
 		customerMessage,
@@ -4251,7 +4251,7 @@ func (a *App) rescheduleBookingRequest(
 		QuotedAmount float64
 		Paid         bool
 	}
-	financialErr := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	financialErr := tx.QueryRow(`
 		SELECT id, quoted_amount, paid
 		FROM booking_financials
 		WHERE schedule_id = ?
@@ -4342,7 +4342,7 @@ func (a *App) rescheduleBookingRequest(
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	result, err := tx.Exec(`
 		UPDATE space_schedules
 		SET
 			slot_date = ?,
@@ -4358,7 +4358,7 @@ func (a *App) rescheduleBookingRequest(
 			updated_at = ?
 		WHERE id = ?
 		  AND status = ?
-	`),
+	`,
 		updated.SlotDate,
 		updated.SlotHour,
 		updated.Activity,
@@ -4384,7 +4384,7 @@ func (a *App) rescheduleBookingRequest(
 		return nil, errors.New("booking request is no longer awaiting action")
 	}
 
-	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+	if _, err := tx.Exec(`
 		UPDATE booking_financials
 		SET quoted_amount = ?, updated_at = ?
 		WHERE id = ?
@@ -4398,7 +4398,7 @@ func (a *App) rescheduleBookingRequest(
 		if changedByUserID > 0 {
 			changedBy = changedByUserID
 		}
-		changeResult, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
+		changeResult, err := tx.Exec(`
 			INSERT INTO booking_request_changes (
 				schedule_id,
 				previous_slot_date,
@@ -4421,7 +4421,7 @@ func (a *App) rescheduleBookingRequest(
 				changed_at
 			)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`),
+		`,
 			scheduleID,
 			current.SlotDate,
 			current.SlotHour,
@@ -4463,7 +4463,7 @@ func (a *App) rescheduleBookingRequest(
 
 func (a *App) deleteAdmission(admissionID int64) error {
 	var monthlyPaymentCount int
-	if err := a.queryRowDB(`
+	if err := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM student_monthly_payments
 		WHERE admission_id = ?
@@ -4474,7 +4474,7 @@ func (a *App) deleteAdmission(admissionID int64) error {
 	if monthlyPaymentCount > 0 {
 		return ErrAdmissionHasMonthlyPaymentHistory
 	}
-	result, err := a.execDB(`DELETE FROM admissions WHERE id = ?`, admissionID)
+	result, err := a.db.Exec(`DELETE FROM admissions WHERE id = ?`, admissionID)
 	if err != nil {
 		return err
 	}
@@ -4489,13 +4489,13 @@ func (a *App) deleteAdmission(admissionID int64) error {
 }
 
 func (a *App) deleteStudentGroup(groupID int64) error {
-	_, err := a.execDB(`DELETE FROM student_groups WHERE id = ?`, groupID)
+	_, err := a.db.Exec(`DELETE FROM student_groups WHERE id = ?`, groupID)
 	return err
 }
 
 func (a *App) deleteSpaceSchedule(scheduleID int64) error {
 	var activeCollections int
-	if err := a.queryRowDB(`
+	if err := a.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM booking_payment_collections
 		WHERE schedule_id = ?
@@ -4506,7 +4506,7 @@ func (a *App) deleteSpaceSchedule(scheduleID int64) error {
 	if activeCollections > 0 {
 		return errors.New("this booking already has collected payments and cannot be deleted")
 	}
-	result, err := a.execDB(`DELETE FROM space_schedules WHERE id = ?`, scheduleID)
+	result, err := a.db.Exec(`DELETE FROM space_schedules WHERE id = ?`, scheduleID)
 	if err != nil {
 		return err
 	}
@@ -4521,13 +4521,13 @@ func (a *App) deleteSpaceSchedule(scheduleID int64) error {
 }
 
 func (a *App) deletePricingRule(pricingID int64) error {
-	_, err := a.execDB(`DELETE FROM pricing_rules WHERE id = ?`, pricingID)
+	_, err := a.db.Exec(`DELETE FROM pricing_rules WHERE id = ?`, pricingID)
 	return err
 }
 
 func (a *App) deleteCourtActivity(activityID int64) error {
 	var activity string
-	if err := a.queryRowDB(`
+	if err := a.db.QueryRow(`
 		SELECT activity
 		FROM court_activities
 		WHERE id = ?
@@ -4552,7 +4552,7 @@ func (a *App) deleteCourtActivity(activityID int64) error {
 					  FROM court_activities
 					  WHERE id = ?
 				  )
-			`),
+			`,
 			message:         "this activity is used by one or more court layouts",
 			needsActivityID: true,
 		},
@@ -4566,7 +4566,7 @@ func (a *App) deleteCourtActivity(activityID int64) error {
 					  FROM court_activities
 					  WHERE id = ?
 				  )
-			`),
+			`,
 			message:         "this activity is used by one or more court closures",
 			needsActivityID: true,
 		},
@@ -4575,7 +4575,7 @@ func (a *App) deleteCourtActivity(activityID int64) error {
 				SELECT COUNT(*)
 				FROM space_schedules
 				WHERE activity = ?
-			`),
+			`,
 			message: "this activity is already used by bookings or internal schedules",
 		},
 		{
@@ -4583,7 +4583,7 @@ func (a *App) deleteCourtActivity(activityID int64) error {
 				SELECT COUNT(*)
 				FROM pricing_rules
 				WHERE activity = ?
-			`),
+			`,
 			message: "this activity is linked to one or more pricing rules",
 		},
 	}
@@ -4606,7 +4606,7 @@ func (a *App) deleteCourtActivity(activityID int64) error {
 	}
 
 	result, err := a.db.Exec(
-		`DELETE FROM court_activities WHERE id = ?`),
+		`DELETE FROM court_activities WHERE id = ?`,
 		activityID,
 	)
 	if err != nil {
@@ -4625,6 +4625,6 @@ func (a *App) deleteCourtActivity(activityID int64) error {
 }
 
 func (a *App) deleteEvent(eventID int64) error {
-	_, err := a.execDB(`DELETE FROM events WHERE id = ?`, eventID)
+	_, err := a.db.Exec(`DELETE FROM events WHERE id = ?`, eventID)
 	return err
 }
