@@ -539,8 +539,17 @@ func normalizeCoachType(value string) string {
 	}
 }
 
-func (a *App) createManagedUser(name, email, password string, roles []string, verified bool) (*User, error) {
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+func (a *App) createManagedUser(
+	name,
+	email,
+	password string,
+	roles []string,
+	verified bool,
+) (*User, error) {
+	passwordHash, err := bcrypt.GenerateFromPassword(
+		[]byte(password),
+		bcrypt.DefaultCost,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -556,27 +565,89 @@ func (a *App) createManagedUser(name, email, password string, roles []string, ve
 		verifiedAt = time.Now().UTC()
 	}
 
-	result, err := tx.Exec(`
-		INSERT INTO users (email, name, password_hash, created_at, email_verified_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, email, name, string(passwordHash), time.Now().UTC(), verifiedAt)
-	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			return nil, ErrEmailTaken
-		}
-		return nil, err
-	}
+	var userID int64
 
-	userID, err := result.LastInsertId()
-	if err != nil {
-		return nil, err
-	}
-	for _, role := range roles {
-		roleID, err := roleIDByName(tx, role)
+	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		err = a.queryRowTxDB(
+			tx,
+			`
+				INSERT INTO users (
+					email,
+					name,
+					password_hash,
+					created_at,
+					email_verified_at
+				)
+				VALUES (?, ?, ?, ?, ?)
+				RETURNING id
+			`,
+			email,
+			name,
+			string(passwordHash),
+			time.Now().UTC(),
+			verifiedAt,
+		).Scan(&userID)
+		if err != nil {
+			if isUniqueConstraintError(err) {
+				return nil, ErrEmailTaken
+			}
+			return nil, err
+		}
+	} else {
+		result, err := a.execTxDB(
+			tx,
+			`
+				INSERT INTO users (
+					email,
+					name,
+					password_hash,
+					created_at,
+					email_verified_at
+				)
+				VALUES (?, ?, ?, ?, ?)
+			`,
+			email,
+			name,
+			string(passwordHash),
+			time.Now().UTC(),
+			verifiedAt,
+		)
+		if err != nil {
+			if isUniqueConstraintError(err) {
+				return nil, ErrEmailTaken
+			}
+			return nil, err
+		}
+
+		userID, err = result.LastInsertId()
 		if err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(`INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)`, userID, roleID); err != nil {
+	}
+
+	for _, role := range roles {
+		var roleID int64
+
+		if err := a.queryRowTxDB(
+			tx,
+			`SELECT id FROM roles WHERE name = ?`,
+			role,
+		).Scan(&roleID); err != nil {
+			return nil, err
+		}
+
+		if _, err := a.execTxDB(
+			tx,
+			`
+				INSERT INTO user_roles (
+					user_id,
+					role_id
+				)
+				VALUES (?, ?)
+			`,
+			userID,
+			roleID,
+		); err != nil {
 			return nil, err
 		}
 	}
@@ -584,6 +655,7 @@ func (a *App) createManagedUser(name, email, password string, roles []string, ve
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+
 	return a.findUserByID(userID)
 }
 
@@ -647,7 +719,7 @@ func (a *App) updateCoach(coach User) error {
 		return err
 	}
 
-	if err := upsertCoachProfileTx(tx, coach.ID, coach); err != nil {
+	if err := a.upsertCoachProfileTx(tx, coach.ID, coach); err != nil {
 		return err
 	}
 
@@ -1072,14 +1144,14 @@ func (a *App) upsertCoachProfile(userID int64, coach User) error {
 	}
 	defer tx.Rollback()
 
-	if err := upsertCoachProfileTx(tx, userID, coach); err != nil {
+	if err := a.upsertCoachProfileTx(tx, userID, coach); err != nil {
 		return err
 	}
 
 	return tx.Commit()
 }
 
-func upsertCoachProfileTx(tx *sql.Tx, userID int64, coach User) error {
+func (a *App) upsertCoachProfileTx(tx *sql.Tx, userID int64, coach User) error {
 	now := time.Now().UTC()
 	coachType := normalizeCoachType(coach.CoachType)
 	parentCoachID := coach.ParentCoachID
