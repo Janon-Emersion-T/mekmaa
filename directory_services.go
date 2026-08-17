@@ -351,7 +351,7 @@ func (a *App) listAdmissionIdentitiesByIDs(admissionIDs []int64) ([]Admission, e
 }
 
 func (a *App) listAdmissions() ([]Admission, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			a.id,
 			a.student_id,
@@ -805,7 +805,7 @@ func (a *App) listTrainingProgramsByIDs(programIDs []int64) ([]TrainingProgram, 
 		args = append(args, programID)
 	}
 
-	rows, err := a.db.Query(fmt.Sprintf(`
+	rows, err := a.queryDB(fmt.Sprintf(`
 		SELECT
 			training_programs.id,
 			COALESCE(training_programs.game_id, 0),
@@ -947,8 +947,8 @@ func (a *App) listStudentEnrollmentsByDivisionIDs(divisionIDs []int64) ([]Studen
 		query += ` WHERE tp.division_id IN (` + placeholders + `)`
 		args = append(args, scopedArgs...)
 	}
-	query += ` ORDER BY a.full_name COLLATE NOCASE, tp.sort_order ASC, tp.name ASC, se.id ASC`
-	rows, err := a.db.Query(query, args...)
+	query += ` ORDER BY a.full_LOWER(name), tp.sort_order ASC, tp.name ASC, se.id ASC`
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1014,7 +1014,7 @@ func (a *App) listStudentEnrollmentsByDivisionIDs(divisionIDs []int64) ([]Studen
 
 func (a *App) findStudentEnrollmentDivisionByID(enrollmentID int64) (int64, error) {
 	var divisionID int64
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT COALESCE(tp.division_id, 0)
 		FROM student_enrollments se
 		JOIN training_programs tp ON tp.id = se.training_program_id
@@ -1078,7 +1078,7 @@ func (a *App) findStudentEnrollmentByIDForDivisionIDs(enrollmentID int64, divisi
 		query += ` AND tp.division_id IN (` + placeholders + `)`
 		args = append(args, scopedArgs...)
 	}
-	row := a.db.QueryRow(query, args...)
+	row := a.queryRowDB(query, args...)
 
 	var enrollment StudentEnrollment
 	var freeAdmission int
@@ -1169,7 +1169,7 @@ func (a *App) listTrainingProgramsByDivisionIDs(divisionIDs []int64, includeInac
 	}
 	query += ` ORDER BY training_programs.sort_order ASC, training_programs.name ASC, training_programs.id ASC`
 
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1204,7 +1204,7 @@ func (a *App) listTrainingProgramsByDivisionIDs(divisionIDs []int64, includeInac
 }
 
 func (a *App) listStudentEnrollmentLeaves(enrollmentID int64) ([]StudentEnrollmentLeave, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(active, 1), created_at, updated_at
 		FROM student_enrollment_leaves
 		WHERE enrollment_id = ?
@@ -1256,7 +1256,7 @@ func (a *App) listStudentEnrollmentLeavesByEnrollmentIDs(enrollmentIDs []int64) 
 		return result, nil
 	}
 
-	rows, err := a.db.Query(fmt.Sprintf(`
+	rows, err := a.queryDB(fmt.Sprintf(`
 		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(active, 1), created_at, updated_at
 		FROM student_enrollment_leaves
 		WHERE enrollment_id IN (%s)
@@ -1290,7 +1290,7 @@ func (a *App) listStudentEnrollmentLeavesByEnrollmentIDs(enrollmentIDs []int64) 
 }
 
 func (a *App) listEvents() ([]Event, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT id, COALESCE(game_id, 0), title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
 		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
 		       cta_label, cta_link, published, created_at, updated_at
@@ -1341,9 +1341,9 @@ func (a *App) listGames(includeInactive bool) ([]Game, error) {
 	if !includeInactive {
 		query += ` WHERE active = 1`
 	}
-	query += ` ORDER BY active DESC, sort_order ASC, name COLLATE NOCASE ASC, id ASC`
+	query += ` ORDER BY active DESC, sort_order ASC, LOWER(name) ASC, id ASC`
 
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1372,7 +1372,7 @@ func (a *App) listGames(includeInactive bool) ([]Game, error) {
 }
 
 func (a *App) findGameByID(gameID int64) (*Game, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT id, name, activity, COALESCE(description, ''), active, sort_order, created_at, updated_at
 		FROM games
 		WHERE id = ?
@@ -1397,7 +1397,7 @@ func (a *App) findGameByID(gameID int64) (*Game, error) {
 }
 
 func (a *App) listPublishedEvents() ([]Event, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT id, COALESCE(game_id, 0), title, category, event_date, COALESCE(start_time, ''), COALESCE(end_time, ''),
 		       COALESCE(registration_deadline, ''), venue, summary, COALESCE(image_path, ''),
 		       cta_label, cta_link, published, created_at, updated_at
@@ -1457,7 +1457,7 @@ func (a *App) listStudentGroupsByDivisionIDs(divisionIDs []int64) ([]StudentGrou
 		args = append(args, scopeArgs...)
 	}
 	query += ` ORDER BY sg.created_at DESC, sg.id DESC`
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1537,7 +1537,7 @@ func (a *App) listStudentGroupsForCoachByDivisionIDs(userID int64, divisionIDs [
 		args = append(args, scopeArgs...)
 	}
 	query += ` ORDER BY sg.created_at DESC, sg.id DESC`
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1610,7 +1610,7 @@ func (a *App) coachAssignedToGroup(
 ) (bool, error) {
 	var assigned int
 
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT EXISTS (
 			SELECT 1
 			FROM student_group_coaches
@@ -1627,7 +1627,7 @@ func (a *App) coachAssignedToGroup(
 
 func (a *App) findStudentGroupDivisionByID(groupID int64) (int64, error) {
 	var divisionID int64
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT COALESCE(tp.division_id, 0)
 		FROM student_groups sg
 		LEFT JOIN training_programs tp ON tp.id = sg.training_program_id
@@ -1648,7 +1648,7 @@ func (a *App) findStudentGroupByIDForDivisionIDs(groupID int64, divisionIDs []in
 		query += ` AND COALESCE(tp.division_id, 0) IN (` + placeholders + `)`
 		args = append(args, scopeArgs...)
 	}
-	row := a.db.QueryRow(query, args...)
+	row := a.queryRowDB(query, args...)
 
 	var group StudentGroup
 	if err := row.Scan(&group.ID, &group.Name, &group.Code, &group.Description, &group.TrainingProgramID, &group.TrainingProgramName, &group.CreatedAt); err != nil {
@@ -1693,7 +1693,7 @@ func (a *App) listAttendanceRecords(groupID int64, sessionID int64, attendanceDa
 	`
 	args := []any{groupID, sessionID, attendanceDate}
 
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1904,7 +1904,7 @@ func (a *App) listCourts(includeInactive bool) ([]Court, error) {
 
 	query += ` ORDER BY sort_order, name, id`
 
-	rows, err := a.db.Query(query)
+	rows, err := a.queryDB(query)
 	if err != nil {
 		return nil, err
 	}
@@ -1958,7 +1958,7 @@ func (a *App) listCourts(includeInactive bool) ([]Court, error) {
 func (a *App) findCourtByID(courtID int64) (*Court, error) {
 	var court Court
 
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT
 			id,
 			name,
@@ -2027,7 +2027,7 @@ func (a *App) listCourtActivities(
 
 	query += ` ORDER BY sort_order, display_name, id`
 
-	rows, err := a.db.Query(query, courtID)
+	rows, err := a.queryDB(query, courtID)
 	if err != nil {
 		return nil, err
 	}
@@ -2073,7 +2073,7 @@ func (a *App) findCourtActivityByID(
 	var activity CourtActivity
 	var autoAccept int
 
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT
 			id,
 			court_id,
@@ -2133,7 +2133,7 @@ func (a *App) listCourtLayouts(
 
 	query += ` ORDER BY sort_order, name, id`
 
-	rows, err := a.db.Query(query, courtID)
+	rows, err := a.queryDB(query, courtID)
 	if err != nil {
 		return nil, err
 	}
@@ -2184,7 +2184,7 @@ func (a *App) listCourtLayouts(
 func (a *App) findCourtLayoutByID(layoutID int64) (*CourtLayout, error) {
 	var layout CourtLayout
 
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT
 			id,
 			court_id,
@@ -2223,7 +2223,7 @@ func (a *App) findCourtLayoutByID(layoutID int64) (*CourtLayout, error) {
 func (a *App) listCourtLayoutItems(
 	layoutID int64,
 ) ([]CourtLayoutItem, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			cli.id,
 			cli.layout_id,
@@ -2308,7 +2308,7 @@ func (a *App) listCourtClosures(
 			cc.id DESC
 	`
 
-	rows, err := a.db.Query(
+	rows, err := a.queryDB(
 		query,
 		courtID,
 	)
@@ -2357,7 +2357,7 @@ func (a *App) findCourtClosureByID(
 ) (*CourtClosure, error) {
 	var closure CourtClosure
 
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT
 			cc.id,
 			cc.court_id,
@@ -2626,7 +2626,7 @@ func activeBookingConfigurationQuery(
 func (a *App) activeCourtClosuresForDate(
 	closureDate string,
 ) ([]CourtClosure, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			cc.id,
 			cc.court_id,
@@ -2711,7 +2711,7 @@ func (a *App) createCourtClosure(
 
 	now := time.Now().UTC()
 
-	result, err := a.db.Exec(`
+	result, err := a.execDB(`
 		INSERT INTO court_closures (
 			court_id,
 			closure_date,
@@ -2768,7 +2768,7 @@ func (a *App) updateCourtClosure(
 		return err
 	}
 
-	result, err := a.db.Exec(`
+	result, err := a.execDB(`
 		UPDATE court_closures
 		SET
 			court_id = ?,
@@ -2820,7 +2820,7 @@ func (a *App) toggleCourtClosure(
 
 	var active bool
 
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT active
 		FROM court_closures
 		WHERE id = ?
@@ -2828,7 +2828,7 @@ func (a *App) toggleCourtClosure(
 		return err
 	}
 
-	_, err := a.db.Exec(`
+	_, err := a.execDB(`
 		UPDATE court_closures
 		SET
 			active = ?,
@@ -2852,7 +2852,7 @@ func (a *App) deleteCourtClosure(
 		)
 	}
 
-	result, err := a.db.Exec(`
+	result, err := a.execDB(`
 		DELETE FROM court_closures
 		WHERE id = ?
 	`, closureID)
@@ -2873,7 +2873,7 @@ func (a *App) deleteCourtClosure(
 }
 
 func (a *App) listActiveCourtLayouts() ([]CourtLayout, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			cl.id,
 			cl.court_id,
@@ -2942,7 +2942,7 @@ func (a *App) listActiveCourtLayouts() ([]CourtLayout, error) {
 }
 
 func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
@@ -2999,7 +2999,7 @@ func (a *App) listActiveSpaceSchedulesBetween(
 	startDate string,
 	endDate string,
 ) ([]SpaceSchedule, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
@@ -3098,7 +3098,7 @@ func (a *App) listTrainingPrograms(includeInactive bool) ([]TrainingProgram, err
 }
 
 func (a *App) findTrainingProgramByID(programID int64) (*TrainingProgram, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT
 			training_programs.id,
 			COALESCE(training_programs.game_id, 0),
@@ -3149,7 +3149,7 @@ func (a *App) findTrainingProgramByID(programID int64) (*TrainingProgram, error)
 func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
 	now := time.Now().UTC()
 
-	result, err := a.db.Exec(`
+	result, err := a.execDB(`
 		INSERT INTO training_programs (
 			game_id,
 			division_id,
@@ -3190,7 +3190,7 @@ func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
 }
 
 func (a *App) updateTrainingProgram(program TrainingProgram) error {
-	_, err := a.db.Exec(`
+	_, err := a.execDB(`
 		UPDATE training_programs
 		SET
 			game_id = ?,
@@ -3222,7 +3222,7 @@ func (a *App) updateTrainingProgram(program TrainingProgram) error {
 }
 
 func (a *App) setTrainingProgramActive(programID int64, active bool) error {
-	result, err := a.db.Exec(`
+	result, err := a.execDB(`
 		UPDATE training_programs
 		SET active = ?, updated_at = ?
 		WHERE id = ?
@@ -3250,7 +3250,7 @@ func (a *App) setTrainingProgramActive(programID int64, active bool) error {
 func (a *App) deleteTrainingProgram(programID int64) error {
 	var admissionCount int
 
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT COUNT(*)
 		FROM admissions
 		WHERE training_program_id = ?
@@ -3265,7 +3265,7 @@ func (a *App) deleteTrainingProgram(programID int64) error {
 		)
 	}
 
-	result, err := a.db.Exec(`
+	result, err := a.execDB(`
 		DELETE FROM training_programs
 		WHERE id = ?
 	`, programID)
