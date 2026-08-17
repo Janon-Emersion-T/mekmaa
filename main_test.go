@@ -9011,3 +9011,313 @@ func TestHydrateStaffDirectoryUserDivisions(t *testing.T) {
 		)
 	}
 }
+
+func TestValidateStudentGroupMemberEnrollmentsAllowsEmptyRoster(
+	t *testing.T,
+) {
+	app := newBookingWorkflowTestApp(t)
+
+	if err := app.validateStudentGroupMemberEnrollments(
+		1,
+		nil,
+	); err != nil {
+		t.Fatalf(
+			"empty roster should be valid: %v",
+			err,
+		)
+	}
+}
+
+func TestValidateStudentGroupMemberEnrollmentsRejectsUnknownEnrollment(
+	t *testing.T,
+) {
+	app := newBookingWorkflowTestApp(t)
+
+	err := app.validateStudentGroupMemberEnrollments(
+		999999,
+		[]int64{999999},
+	)
+
+	if err == nil {
+		t.Fatal(
+			"expected student without programme enrollment to be rejected",
+		)
+	}
+
+	if !strings.Contains(
+		err.Error(),
+		"active enrollment",
+	) {
+		t.Fatalf(
+			"unexpected enrollment validation error: %v",
+			err,
+		)
+	}
+}
+
+func TestStudentGroupMutationScopeAllowed(
+	t *testing.T,
+) {
+	user := &User{
+		DivisionIDs: []int64{10},
+	}
+
+	if !studentGroupMutationScopeAllowed(
+		user,
+		10,
+		nil,
+	) {
+		t.Fatal(
+			"user should be allowed to mutate a group in an assigned division",
+		)
+	}
+
+	if studentGroupMutationScopeAllowed(
+		user,
+		20,
+		nil,
+	) {
+		t.Fatal(
+			"user must not mutate a group outside assigned divisions",
+		)
+	}
+
+	requestedDivision := &Division{
+		ID: 10,
+	}
+
+	if !studentGroupMutationScopeAllowed(
+		user,
+		10,
+		requestedDivision,
+	) {
+		t.Fatal(
+			"matching requested division should be allowed",
+		)
+	}
+
+	mismatchedDivision := &Division{
+		ID: 20,
+	}
+
+	if studentGroupMutationScopeAllowed(
+		user,
+		10,
+		mismatchedDivision,
+	) {
+		t.Fatal(
+			"group mutation must not cross the selected workspace division",
+		)
+	}
+}
+
+func TestStudentGroupMutationScopeAllowsGlobalUser(
+	t *testing.T,
+) {
+	user := &User{
+		Roles: []string{"superadmin"},
+	}
+
+	if !studentGroupMutationScopeAllowed(
+		user,
+		999,
+		nil,
+	) {
+		t.Fatal(
+			"superadmin should be allowed when no narrower workspace is requested",
+		)
+	}
+
+	if studentGroupMutationScopeAllowed(
+		user,
+		999,
+		&Division{ID: 1000},
+	) {
+		t.Fatal(
+			"even a global user must not mutate a group through a mismatched selected division",
+		)
+	}
+}
+
+func TestValidateStudentGroupMemberEnrollmentsRejectsEnrollmentFromDifferentProgramme(
+	t *testing.T,
+) {
+	app := newBookingWorkflowTestApp(t)
+
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf("seed divisions: %v", err)
+	}
+
+	kecID, err := divisionIDByCode(
+		app.db,
+		divisionCodeKEC,
+	)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+
+	firstProgramID, err := app.createTrainingProgram(
+		TrainingProgram{
+			DivisionID:     kecID,
+			DivisionCode:   divisionCodeKEC,
+			Name:           "Programme A",
+			Activity:       "mathematics",
+			TrainingFormat: "group",
+			Active:         true,
+			SortOrder:      10,
+		},
+	)
+	if err != nil {
+		t.Fatalf(
+			"create first programme: %v",
+			err,
+		)
+	}
+
+	secondProgramID, err := app.createTrainingProgram(
+		TrainingProgram{
+			DivisionID:     kecID,
+			DivisionCode:   divisionCodeKEC,
+			Name:           "Programme B",
+			Activity:       "science",
+			TrainingFormat: "group",
+			Active:         true,
+			SortOrder:      20,
+		},
+	)
+	if err != nil {
+		t.Fatalf(
+			"create second programme: %v",
+			err,
+		)
+	}
+
+	now := time.Now().UTC()
+
+	result, err := app.db.Exec(`
+		INSERT INTO admissions (
+			student_id,
+			full_name,
+			admission_date,
+			date_of_birth,
+			gender,
+			address,
+			passport_number,
+			school,
+			guardian_name,
+			guardian_relationship,
+			guardian_contact_number,
+			guardian_alternative_contact_number,
+			medical_information,
+			training_program_id,
+			created_at,
+			updated_at
+		)
+		VALUES (
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?
+		)
+	`,
+		"GROUP-INTEGRITY-001",
+		"Group Integrity Student",
+		now.Format("2006-01-02"),
+		"2015-01-01",
+		"other",
+		"Jaffna",
+		"",
+		"Test School",
+		"Test Guardian",
+		"parent",
+		"0770000000",
+		"",
+		"",
+		firstProgramID,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf(
+			"create admission: %v",
+			err,
+		)
+	}
+
+	admissionID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf(
+			"admission id: %v",
+			err,
+		)
+	}
+
+	_, err = app.db.Exec(`
+		INSERT INTO student_enrollments (
+			admission_id,
+			training_program_id,
+			active,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, 1, ?, ?)
+	`,
+		admissionID,
+		firstProgramID,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf(
+			"create first programme enrollment: %v",
+			err,
+		)
+	}
+
+	// The student is enrolled in Programme A only.
+	// Assigning the same admission to a group belonging
+	// to Programme B must therefore be rejected.
+	err = app.validateStudentGroupMemberEnrollments(
+		secondProgramID,
+		[]int64{admissionID},
+	)
+
+	if err == nil {
+		t.Fatal(
+			"expected enrollment from another programme to be rejected",
+		)
+	}
+
+	if !strings.Contains(
+		strings.ToLower(err.Error()),
+		"active enrollment",
+	) {
+		t.Fatalf(
+			"unexpected validation error: %v",
+			err,
+		)
+	}
+
+	// The same student must remain valid for Programme A.
+	if err := app.validateStudentGroupMemberEnrollments(
+		firstProgramID,
+		[]int64{admissionID},
+	); err != nil {
+		t.Fatalf(
+			"matching programme enrollment should be valid: %v",
+			err,
+		)
+	}
+}

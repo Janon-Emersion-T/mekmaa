@@ -5163,6 +5163,24 @@ func (a *App) createStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if err := a.validateStudentGroupMemberEnrollments(
+		group.TrainingProgramID,
+		admissionIDs,
+	); err != nil {
+		a.setFlash(
+			w,
+			"Student assignment could not be saved: "+
+				err.Error(),
+		)
+		http.Redirect(
+			w,
+			r,
+			target,
+			http.StatusSeeOther,
+		)
+		return
+	}
+
 	if err := validateStudentGroup(group); err != nil {
 		a.setFlash(w, err.Error())
 		http.Redirect(w, r, target, http.StatusSeeOther)
@@ -5343,6 +5361,24 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if err := a.validateStudentGroupMemberEnrollments(
+		group.TrainingProgramID,
+		admissionIDs,
+	); err != nil {
+		a.setFlash(
+			w,
+			"Student assignment could not be saved: "+
+				err.Error(),
+		)
+		http.Redirect(
+			w,
+			r,
+			target,
+			http.StatusSeeOther,
+		)
+		return
+	}
+
 	if err := validateStudentGroup(group); err != nil {
 		a.setFlash(w, err.Error())
 		http.Redirect(w, r, target, http.StatusSeeOther)
@@ -5402,6 +5438,47 @@ func (a *App) deleteStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
+	currentUser, _ := a.currentUser(r.Context())
+
+	if err := a.validateStudentGroupMutationScope(
+		currentUser,
+		groupID,
+		r.FormValue("division"),
+	); err != nil {
+
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(
+				w,
+				"student group not found",
+				http.StatusNotFound,
+			)
+			return
+		}
+
+		if errors.Is(
+			err,
+			errStudentGroupDivisionForbidden,
+		) {
+			http.Error(
+				w,
+				"forbidden",
+				http.StatusForbidden,
+			)
+			return
+		}
+
+		log.Printf(
+			"validate student group delete scope: %v",
+			err,
+		)
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
 	if err := a.deleteStudentGroup(groupID); err != nil {
 		log.Printf("delete student group: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
