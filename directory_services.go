@@ -512,7 +512,7 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 		SELECT COUNT(*)
 		FROM admissions a
 	` + whereSQL
-	if err := a.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+	if err := a.queryRowDB(countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -524,7 +524,7 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 	queryArgs := append([]any{}, args...)
 	queryArgs = append(queryArgs, filter.Limit, (filter.Page-1)*filter.Limit)
 
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			a.id,
 			a.student_id,

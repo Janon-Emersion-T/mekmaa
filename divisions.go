@@ -334,7 +334,7 @@ func (a *App) findDivisionBySlugOrCode(value string) (*Division, error) {
 }
 
 func (a *App) divisionsForUser(userID int64) ([]Division, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT d.id, d.code, d.slug, d.name, COALESCE(d.description, ''), COALESCE(d.active, 1), d.created_at, d.updated_at
 		FROM divisions d
 		JOIN user_divisions ud ON ud.division_id = d.id

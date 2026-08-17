@@ -127,3 +127,69 @@ func isPostgresDatabase(config DatabaseConfig) bool {
 func isSQLiteDatabase(config DatabaseConfig) bool {
 	return config.Driver == databaseDriverSQLite
 }
+
+func rebindDatabaseQuery(
+	driver DatabaseDriver,
+	query string,
+) string {
+	if driver != databaseDriverPostgres {
+		return query
+	}
+
+	var b strings.Builder
+	b.Grow(len(query) + 16)
+
+	arg := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] != '?' {
+			b.WriteByte(query[i])
+			continue
+		}
+
+		b.WriteString(fmt.Sprintf("$%d", arg))
+		arg++
+	}
+
+	return b.String()
+}
+
+func (a *App) dbQuery(query string) string {
+	if a == nil {
+		return query
+	}
+
+	return rebindDatabaseQuery(
+		a.runtimeConfig.DBDriver,
+		query,
+	)
+}
+
+func (a *App) queryRowDB(
+	query string,
+	args ...any,
+) *sql.Row {
+	return a.db.QueryRow(
+		a.dbQuery(query),
+		args...,
+	)
+}
+
+func (a *App) queryDB(
+	query string,
+	args ...any,
+) (*sql.Rows, error) {
+	return a.db.Query(
+		a.dbQuery(query),
+		args...,
+	)
+}
+
+func (a *App) execDB(
+	query string,
+	args ...any,
+) (sql.Result, error) {
+	return a.db.Exec(
+		a.dbQuery(query),
+		args...,
+	)
+}

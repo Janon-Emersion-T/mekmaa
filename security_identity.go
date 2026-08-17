@@ -309,10 +309,10 @@ func (a *App) createSession(w http.ResponseWriter, userID int64) error {
 
 	hash := sha256.Sum256([]byte(rawToken))
 	expiresAt := time.Now().UTC().Add(sessionTTL)
-	if _, err := a.db.Exec(`
+	if _, err := a.execDB(a.dbQuery(`
 		INSERT INTO sessions (user_id, token_hash, expires_at, created_at)
 		VALUES (?, ?, ?, ?)
-	`, userID, fmt.Sprintf("%x", hash[:]), expiresAt, time.Now().UTC()); err != nil {
+	`), userID, fmt.Sprintf("%x", hash[:]), expiresAt, time.Now().UTC()); err != nil {
 		return err
 	}
 
@@ -348,11 +348,11 @@ func (a *App) createSession(w http.ResponseWriter, userID int64) error {
 func (a *App) refreshSession(w http.ResponseWriter, rawToken string) error {
 	hash := sha256.Sum256([]byte(rawToken))
 	expiresAt := time.Now().UTC().Add(sessionTTL)
-	result, err := a.db.Exec(`
+	result, err := a.execDB(a.dbQuery(`
 		UPDATE sessions
 		SET expires_at = ?
 		WHERE token_hash = ?
-	`, expiresAt, fmt.Sprintf("%x", hash[:]))
+	`), expiresAt, fmt.Sprintf("%x", hash[:]))
 	if err != nil {
 		return err
 	}
@@ -379,12 +379,12 @@ func (a *App) refreshSession(w http.ResponseWriter, rawToken string) error {
 
 func (a *App) userFromSessionToken(token string) (*User, error) {
 	hash := sha256.Sum256([]byte(token))
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(a.dbQuery(`
 		SELECT u.id, u.email, u.name, u.email_verified_at, u.created_at
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.expires_at > ?
-	`, fmt.Sprintf("%x", hash[:]), time.Now().UTC())
+	`), fmt.Sprintf("%x", hash[:]), time.Now().UTC())
 
 	var user User
 	var verifiedAt sql.NullTime
@@ -737,11 +737,11 @@ func (a *App) ensureCoachCanChangeType(tx *sql.Tx, coach User) error {
 }
 
 func (a *App) findUserByEmail(email string) (*User, string, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(a.dbQuery(`
 		SELECT id, email, name, password_hash, email_verified_at, created_at
 		FROM users
 		WHERE email = ?
-	`, email)
+	`), email)
 
 	var user User
 	var passwordHash string
@@ -765,7 +765,7 @@ func (a *App) findUserByEmail(email string) (*User, string, error) {
 }
 
 func (a *App) findUserByID(userID int64) (*User, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT id, email, name, email_verified_at, created_at
 		FROM users
 		WHERE id = ?
@@ -1125,13 +1125,13 @@ func upsertCoachProfileTx(tx *sql.Tx, userID int64, coach User) error {
 }
 
 func (a *App) rolesForUser(userID int64) ([]string, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(a.dbQuery(`
 		SELECT r.name
 		FROM roles r
 		JOIN user_roles ur ON ur.role_id = r.id
 		WHERE ur.user_id = ?
 		ORDER BY r.name ASC
-	`, userID)
+	`), userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1267,7 +1267,7 @@ func (a *App) userHasRole(userID int64, roleName string) (bool, error) {
 }
 
 func (a *App) permissionsForUser(userID int64) ([]string, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT DISTINCT rp.permission
 		FROM role_permissions rp
 		JOIN user_roles ur ON ur.role_id = rp.role_id
@@ -1419,6 +1419,6 @@ func (a *App) replaceUserRoles(userID int64, roles []string) error {
 }
 
 func (a *App) deleteSessionsForUser(userID int64) error {
-	_, err := a.db.Exec(`DELETE FROM sessions WHERE user_id = ?`, userID)
+	_, err := a.execDB(`DELETE FROM sessions WHERE user_id = ?`, userID)
 	return err
 }

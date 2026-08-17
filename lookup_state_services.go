@@ -1118,7 +1118,7 @@ func (a *App) findEventByID(eventID int64) (*Event, error) {
 
 func (a *App) deleteSessionByToken(token string) error {
 	hash := sha256.Sum256([]byte(token))
-	_, err := a.db.Exec(`DELETE FROM sessions WHERE token_hash = ?`, fmt.Sprintf("%x", hash[:]))
+	_, err := a.execDB(`DELETE FROM sessions WHERE token_hash = ?`, fmt.Sprintf("%x", hash[:]))
 	return err
 }
 
