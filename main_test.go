@@ -9321,3 +9321,501 @@ func TestValidateStudentGroupMemberEnrollmentsRejectsEnrollmentFromDifferentProg
 		)
 	}
 }
+
+func TestValidStaffAttendanceStatus(t *testing.T) {
+	for _, status := range []string{
+		"present",
+		"absent",
+		"late",
+		"excused",
+	} {
+		if !validStaffAttendanceStatus(status) {
+			t.Fatalf(
+				"expected %q to be valid",
+				status,
+			)
+		}
+	}
+
+	for _, status := range []string{
+		"",
+		"holiday",
+		"working",
+		"leave",
+	} {
+		if validStaffAttendanceStatus(status) {
+			t.Fatalf(
+				"expected %q to be invalid",
+				status,
+			)
+		}
+	}
+}
+
+func TestNormalizeStaffAttendanceDateRejectsFuture(
+	t *testing.T,
+) {
+	future := time.Now().
+		AddDate(0, 0, 1).
+		Format("2006-01-02")
+
+	if _, err := normalizeStaffAttendanceDate(
+		future,
+	); err == nil {
+		t.Fatal(
+			"expected future staff attendance date to be rejected",
+		)
+	}
+}
+
+func TestSaveStaffAttendanceRecordsPersistsDailyRecord(
+	t *testing.T,
+) {
+	app := newBookingWorkflowTestApp(t)
+
+	user, err := app.createUser(
+		"Attendance Staff",
+		"attendance-staff@example.com",
+		"SecurePass123!",
+	)
+	if err != nil {
+		t.Fatalf(
+			"create staff user: %v",
+			err,
+		)
+	}
+
+	date := time.Now().Format("2006-01-02")
+
+	err = app.saveStaffAttendanceRecords(
+		date,
+		[]StaffAttendanceInput{
+			{
+				UserID: user.ID,
+				Status: "late",
+				Note:   "Traffic delay",
+			},
+		},
+		user.ID,
+	)
+	if err != nil {
+		t.Fatalf(
+			"save staff attendance: %v",
+			err,
+		)
+	}
+
+	records, err :=
+		app.listStaffAttendanceRecordsByUserIDs(
+			date,
+			[]int64{user.ID},
+		)
+	if err != nil {
+		t.Fatalf(
+			"list staff attendance: %v",
+			err,
+		)
+	}
+
+	if len(records) != 1 {
+		t.Fatalf(
+			"attendance records = %d, want 1",
+			len(records),
+		)
+	}
+
+	if records[0].Status != "late" {
+		t.Fatalf(
+			"attendance status = %q, want late",
+			records[0].Status,
+		)
+	}
+
+	if records[0].Note != "Traffic delay" {
+		t.Fatalf(
+			"attendance note = %q, want Traffic delay",
+			records[0].Note,
+		)
+	}
+}
+
+func TestSaveStaffAttendanceRecordsReplacesSameDayRecord(
+	t *testing.T,
+) {
+	app := newBookingWorkflowTestApp(t)
+
+	user, err := app.createUser(
+		"Replace Attendance Staff",
+		"replace-attendance@example.com",
+		"SecurePass123!",
+	)
+	if err != nil {
+		t.Fatalf(
+			"create staff user: %v",
+			err,
+		)
+	}
+
+	date := time.Now().Format("2006-01-02")
+
+	if err := app.saveStaffAttendanceRecords(
+		date,
+		[]StaffAttendanceInput{
+			{
+				UserID: user.ID,
+				Status: "absent",
+			},
+		},
+		user.ID,
+	); err != nil {
+		t.Fatalf(
+			"save first attendance: %v",
+			err,
+		)
+	}
+
+	if err := app.saveStaffAttendanceRecords(
+		date,
+		[]StaffAttendanceInput{
+			{
+				UserID: user.ID,
+				Status: "present",
+				Note:   "Corrected",
+			},
+		},
+		user.ID,
+	); err != nil {
+		t.Fatalf(
+			"replace attendance: %v",
+			err,
+		)
+	}
+
+	records, err :=
+		app.listStaffAttendanceRecordsByUserIDs(
+			date,
+			[]int64{user.ID},
+		)
+	if err != nil {
+		t.Fatalf(
+			"list replaced attendance: %v",
+			err,
+		)
+	}
+
+	if len(records) != 1 {
+		t.Fatalf(
+			"attendance records = %d, want exactly 1",
+			len(records),
+		)
+	}
+
+	if records[0].Status != "present" {
+		t.Fatalf(
+			"status = %q, want present",
+			records[0].Status,
+		)
+	}
+}
+
+func TestBuildTemplatesIncludesStaffAttendance(
+	t *testing.T,
+) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf(
+			"build templates: %v",
+			err,
+		)
+	}
+
+	if templates["staff-attendance"] == nil {
+		t.Fatal(
+			"staff-attendance template is not registered",
+		)
+	}
+}
+
+func TestSaveStaffAttendanceRecordsRequiresRecorder(
+	t *testing.T,
+) {
+	app := newBookingWorkflowTestApp(t)
+
+	date := time.Now().Format("2006-01-02")
+
+	err := app.saveStaffAttendanceRecords(
+		date,
+		[]StaffAttendanceInput{
+			{
+				UserID: 1,
+				Status: "present",
+			},
+		},
+		0,
+	)
+
+	if err == nil {
+		t.Fatal(
+			"expected missing attendance recorder to be rejected",
+		)
+	}
+
+	if !strings.Contains(
+		strings.ToLower(err.Error()),
+		"recorder",
+	) {
+		t.Fatalf(
+			"unexpected recorder validation error: %v",
+			err,
+		)
+	}
+}
+
+func TestStaffAttendanceIncludesUnassignedDivisionStaff(
+	t *testing.T,
+) {
+	app := newBookingWorkflowTestApp(t)
+
+	// newBookingWorkflowTestApp intentionally uses a compact users
+	// schema for booking tests. Staff Directory uses the complete
+	// operational user profile, so extend this isolated test database
+	// with those production profile columns before exercising that
+	// query.
+	for _, statement := range []string{
+		`ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN address TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN specialties TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN notes TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1`,
+	} {
+		if _, err := app.db.Exec(statement); err != nil {
+			lower := strings.ToLower(err.Error())
+
+			// Keep this fixture resilient if the shared test schema is
+			// upgraded later and already contains one of these columns.
+			if !strings.Contains(
+				lower,
+				"duplicate column",
+			) {
+				t.Fatalf(
+					"extend users test schema with %q: %v",
+					statement,
+					err,
+				)
+			}
+		}
+	}
+
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf(
+			"seed divisions: %v",
+			err,
+		)
+	}
+
+	kecID, err := divisionIDByCode(
+		app.db,
+		divisionCodeKEC,
+	)
+	if err != nil {
+		t.Fatalf(
+			"find KEC division: %v",
+			err,
+		)
+	}
+
+	user, err := app.createUser(
+		"Unassigned KEC Teacher",
+		"unassigned-kec-teacher@example.com",
+		"SecurePass123!",
+	)
+	if err != nil {
+		t.Fatalf(
+			"create teacher user: %v",
+			err,
+		)
+	}
+
+	now := time.Now().UTC()
+
+	if _, err := app.db.Exec(`
+		INSERT INTO user_divisions (
+			user_id,
+			division_id,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?)
+	`,
+		user.ID,
+		kecID,
+		now,
+		now,
+	); err != nil {
+		t.Fatalf(
+			"assign KEC division: %v",
+			err,
+		)
+	}
+
+	// Deliberately do not create student_group_staff.
+	//
+	// A teacher, coach or coordinator belongs on the daily staff
+	// attendance sheet because of their division membership. Group
+	// assignment is an operational responsibility, not an attendance
+	// eligibility requirement.
+	staff, err :=
+		app.listAssignableGroupStaffByDivisionIDs(
+			[]int64{kecID},
+		)
+	if err != nil {
+		t.Fatalf(
+			"list attendance staff: %v",
+			err,
+		)
+	}
+
+	found := false
+
+	for _, candidate := range staff {
+		if candidate.ID != user.ID {
+			continue
+		}
+
+		found = true
+
+		if candidate.Name !=
+			"Unassigned KEC Teacher" {
+			t.Fatalf(
+				"staff name = %q, want Unassigned KEC Teacher",
+				candidate.Name,
+			)
+		}
+
+		break
+	}
+
+	if !found {
+		t.Fatal(
+			"active KEC teacher must appear in staff attendance before receiving a class assignment",
+		)
+	}
+
+	if err := aTestHydrateStaffAttendanceDivisions(
+		app,
+		staff,
+		user.ID,
+		kecID,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGenericStaffAttendanceRemainsVisibleToCoachAttendance(
+	t *testing.T,
+) {
+	app := newBookingWorkflowTestApp(t)
+
+	user, err := app.createUser(
+		"Legacy Compatible Coach",
+		"legacy-compatible-coach@example.com",
+		"SecurePass123!",
+	)
+	if err != nil {
+		t.Fatalf(
+			"create coach user: %v",
+			err,
+		)
+	}
+
+	date := time.Now().Format("2006-01-02")
+
+	if err := app.saveStaffAttendanceRecords(
+		date,
+		[]StaffAttendanceInput{
+			{
+				UserID: user.ID,
+				Status: "present",
+				Note:   "Generic attendance entry",
+			},
+		},
+		user.ID,
+	); err != nil {
+		t.Fatalf(
+			"save generic staff attendance: %v",
+			err,
+		)
+	}
+
+	records, err :=
+		app.listCoachAttendanceRecordsByUserIDs(
+			date,
+			[]int64{user.ID},
+		)
+	if err != nil {
+		t.Fatalf(
+			"list legacy coach attendance: %v",
+			err,
+		)
+	}
+
+	if len(records) != 1 {
+		t.Fatalf(
+			"legacy coach attendance records = %d, want 1",
+			len(records),
+		)
+	}
+
+	if records[0].Status != "present" {
+		t.Fatalf(
+			"legacy status = %q, want present",
+			records[0].Status,
+		)
+	}
+
+	if records[0].Note != "Generic attendance entry" {
+		t.Fatalf(
+			"legacy note = %q",
+			records[0].Note,
+		)
+	}
+}
+
+func aTestHydrateStaffAttendanceDivisions(
+	app *App,
+	staff []User,
+	userID int64,
+	divisionID int64,
+) error {
+	if err := app.hydrateStaffDirectoryUserDivisions(
+		staff,
+	); err != nil {
+		return fmt.Errorf(
+			"hydrate staff divisions: %w",
+			err,
+		)
+	}
+
+	for _, candidate := range staff {
+		if candidate.ID != userID {
+			continue
+		}
+
+		for _, id := range candidate.DivisionIDs {
+			if id == divisionID {
+				return nil
+			}
+		}
+
+		return fmt.Errorf(
+			"staff user %d is missing expected division %d after hydration",
+			userID,
+			divisionID,
+		)
+	}
+
+	return fmt.Errorf(
+		"staff user %d disappeared during division hydration",
+		userID,
+	)
+}

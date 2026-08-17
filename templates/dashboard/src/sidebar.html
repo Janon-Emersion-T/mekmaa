@@ -73,6 +73,9 @@
         <a href="{{scopedURL "/admin/staff" .SelectedDivision .SelectedDivisionScope}}" class="{{if or (isCurrentPath .CurrentPath "/admin/staff") (isCurrentPath .CurrentPath "/admin/coaches")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>{{workspaceStaffLabel .User .SelectedDivision .SelectedDivisionScope}}</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Staff</span>
         </a>
+        <a href="{{scopedURL "/admin/staff/attendance" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/staff/attendance"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Staff Attendance</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Daily</span>
+        </a>
         {{end}}
 
         {{if hasPermission .User "student_groups.manage"}}

@@ -1,0 +1,294 @@
+{{define "staff-attendance"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="mx-auto w-full max-w-[1600px] space-y-6 pb-10">
+
+  <header class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <div class="max-w-3xl">
+      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-aqua-700">
+        {{workspaceName .User .SelectedDivision .SelectedDivisionScope}}
+      </p>
+
+      <h1 class="mt-2 text-3xl font-semibold tracking-tight text-obsidian sm:text-4xl">
+        Staff Attendance
+      </h1>
+
+      <p class="mt-2 text-sm leading-6 text-slate/65 sm:text-base">
+        Record daily attendance for
+        {{workspaceStaffLabel .User .SelectedDivision .SelectedDivisionScope}}
+        and other operational staff in this workspace.
+      </p>
+    </div>
+
+    <div class="flex flex-col gap-2 sm:flex-row">
+      <a
+        href="{{scopedURL "/admin/staff" .SelectedDivision .SelectedDivisionScope}}"
+        class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+      >
+        Staff Directory
+      </a>
+    </div>
+  </header>
+
+
+  <section class="rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+
+    <div class="flex flex-col gap-4 border-b border-slate/10 px-5 py-5 sm:px-7 lg:flex-row lg:items-end lg:justify-between">
+
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">
+          Daily register
+        </p>
+
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">
+          {{.AttendanceDate}}
+        </h2>
+
+        <p class="mt-1 text-sm text-slate/60">
+          Only active operational staff in the selected division appear on this sheet.
+        </p>
+      </div>
+
+
+      <form
+        method="get"
+        action="/admin/staff/attendance"
+        class="flex flex-col gap-3 sm:flex-row sm:items-end"
+      >
+
+        {{if .SelectedDivision}}
+        <input
+          type="hidden"
+          name="division"
+          value="{{.SelectedDivision.Slug}}"
+        />
+        {{else if eq .SelectedDivisionScope "all"}}
+        <input
+          type="hidden"
+          name="division"
+          value="all"
+        />
+        {{end}}
+
+        <div>
+          <label
+            for="staff-attendance-date"
+            class="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate/50"
+          >
+            Date
+          </label>
+
+          <input
+            id="staff-attendance-date"
+            type="date"
+            name="date"
+            value="{{.AttendanceDate}}"
+            max="{{.TodayDate}}"
+            class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm text-obsidian outline-none focus:border-aqua"
+          />
+        </div>
+
+        <button
+          type="submit"
+          class="h-11 rounded-xl bg-aqua px-5 text-sm font-semibold text-obsidian transition hover:bg-mint"
+        >
+          Load date
+        </button>
+      </form>
+
+    </div>
+
+
+    <div class="grid gap-3 border-b border-slate/10 bg-cloud/50 px-5 py-4 sm:grid-cols-2 lg:grid-cols-4 sm:px-7">
+
+      <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-emerald-800/70">
+          Present
+        </p>
+        <p class="mt-2 text-2xl font-semibold text-emerald-900">
+          {{coachAttendanceCount .StaffAttendanceRecords "present"}}
+        </p>
+      </div>
+
+      <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-rose-800/70">
+          Absent
+        </p>
+        <p class="mt-2 text-2xl font-semibold text-rose-900">
+          {{coachAttendanceCount .StaffAttendanceRecords "absent"}}
+        </p>
+      </div>
+
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-amber-800/70">
+          Late
+        </p>
+        <p class="mt-2 text-2xl font-semibold text-amber-900">
+          {{coachAttendanceCount .StaffAttendanceRecords "late"}}
+        </p>
+      </div>
+
+      <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-sky-800/70">
+          Excused
+        </p>
+        <p class="mt-2 text-2xl font-semibold text-sky-900">
+          {{coachAttendanceCount .StaffAttendanceRecords "excused"}}
+        </p>
+      </div>
+
+    </div>
+
+
+    <form
+      action="/admin/staff/attendance/save"
+      method="post"
+      class="space-y-5 p-5 sm:p-7"
+    >
+
+      <input
+        type="hidden"
+        name="csrf_token"
+        value="{{.CSRFToken}}"
+      />
+
+      <input
+        type="hidden"
+        name="attendance_date"
+        value="{{.AttendanceDate}}"
+      />
+
+      {{if .SelectedDivision}}
+      <input
+        type="hidden"
+        name="division"
+        value="{{.SelectedDivision.Slug}}"
+      />
+      {{else if eq .SelectedDivisionScope "all"}}
+      <input
+        type="hidden"
+        name="division"
+        value="all"
+      />
+      {{end}}
+
+
+      <div class="space-y-3">
+
+        {{range .StaffAttendanceUsers}}
+        {{if .Active}}
+
+        {{$record := coachAttendanceRecordFor $.StaffAttendanceRecords .ID}}
+
+        <article class="rounded-[1.5rem] border border-slate/10 bg-cloud/45 p-4 sm:p-5">
+
+          <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_14rem_minmax(0,1fr)] lg:items-center">
+
+            <div class="min-w-0">
+              <p class="truncate text-base font-semibold text-obsidian">
+                {{.Name}}
+              </p>
+
+              <p class="mt-1 truncate text-sm text-slate/60">
+                {{.Email}}
+              </p>
+
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                {{range .Divisions}}
+                <span class="rounded-full border border-slate/10 bg-white px-2.5 py-1 text-[0.65rem] font-semibold text-slate/55">
+                  {{.Name}}
+                </span>
+                {{end}}
+              </div>
+            </div>
+
+
+            <div>
+              <label
+                for="staff_status_{{.ID}}"
+                class="mb-2 block text-sm font-medium text-obsidian"
+              >
+                Status
+              </label>
+
+              <select
+                id="staff_status_{{.ID}}"
+                name="status_{{.ID}}"
+                class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua"
+              >
+                <option value="present" {{if eq $record.Status "present"}}selected{{end}}>
+                  Present
+                </option>
+
+                <option value="absent" {{if eq $record.Status "absent"}}selected{{end}}>
+                  Absent
+                </option>
+
+                <option value="late" {{if eq $record.Status "late"}}selected{{end}}>
+                  Late
+                </option>
+
+                <option value="excused" {{if eq $record.Status "excused"}}selected{{end}}>
+                  Excused
+                </option>
+              </select>
+            </div>
+
+
+            <div>
+              <label
+                for="staff_note_{{.ID}}"
+                class="mb-2 block text-sm font-medium text-obsidian"
+              >
+                Note
+              </label>
+
+              <input
+                id="staff_note_{{.ID}}"
+                type="text"
+                name="note_{{.ID}}"
+                value="{{$record.Note}}"
+                placeholder="Optional note"
+                class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua"
+              />
+            </div>
+
+          </div>
+
+        </article>
+
+        {{end}}
+        {{else}}
+
+        <div class="rounded-[1.5rem] border border-dashed border-slate/15 bg-cloud/40 px-5 py-10 text-center">
+          <p class="text-base font-semibold text-obsidian">
+            No active operational staff found
+          </p>
+
+          <p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate/60">
+            Add the staff member to this division through User Management first.
+          </p>
+        </div>
+
+        {{end}}
+
+      </div>
+
+
+      {{if .StaffAttendanceUsers}}
+      <div class="flex justify-end border-t border-slate/10 pt-5">
+        <button
+          type="submit"
+          class="inline-flex h-11 items-center justify-center rounded-xl bg-obsidian px-6 text-sm font-semibold text-cloud transition hover:bg-slate"
+        >
+          Save attendance
+        </button>
+      </div>
+      {{end}}
+
+    </form>
+
+  </section>
+
+</section>
+{{end}}

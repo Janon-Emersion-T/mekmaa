@@ -1565,6 +1565,8 @@ type TemplateData struct {
 	StaffDirectoryRows              []StaffDirectoryRow
 	Coaches                         []User
 	CoachAttendanceRecords          []CoachAttendanceRecord
+	StaffAttendanceUsers            []User
+	StaffAttendanceRecords          []CoachAttendanceRecord
 	AttendanceRecords               []AttendanceRecord
 	AttendanceDate                  string
 	RecentDates                     []string
