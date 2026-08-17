@@ -3255,7 +3255,10 @@ func (a *App) updateAdmissionWithOptionalPayment(
 		return 0, err
 	}
 
-	result, err := tx.Exec(`
+	result, err := tx.Exec(
+		rebindDatabaseQuery(
+			a.runtimeConfig.DBDriver,
+			`
 		UPDATE admissions
 		SET
 			student_id = ?,
@@ -3277,7 +3280,8 @@ func (a *App) updateAdmissionWithOptionalPayment(
 			qr_code_value = ?,
 			updated_at = ?
 		WHERE id = ?
-	`,
+			`,
+		),
 		admission.StudentID,
 		admission.FullName,
 		admission.AdmissionDate,

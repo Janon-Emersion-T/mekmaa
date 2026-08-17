@@ -103,7 +103,7 @@ func sanitizeAdmissionIdentity(admission *Admission) {
 }
 
 func (a *App) listAdmissionIdentities() ([]Admission, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			a.id,
 			a.student_id,
@@ -185,7 +185,7 @@ func (a *App) listAdmissionIdentities() ([]Admission, error) {
 }
 
 func (a *App) findAdmissionIdentityByID(admissionID int64) (*Admission, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT
 			a.id,
 			a.student_id,
@@ -271,7 +271,7 @@ func (a *App) listAdmissionIdentitiesByIDs(admissionIDs []int64) ([]Admission, e
 	if len(placeholders) == 0 {
 		return nil, nil
 	}
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			a.id,
 			a.student_id,
@@ -740,7 +740,7 @@ func (a *App) listTrainingProgramsForAdmissionsByDivisionIDs(admissionIDs []int6
 	}
 	query += ` ORDER BY atp.admission_id, tp.sort_order ASC, tp.name ASC, tp.id ASC`
 
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
