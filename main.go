@@ -27,12 +27,19 @@ func main() {
 		log.Fatal("production startup validation failed")
 	}
 
-	db, err := openConfiguredDatabase(deps.RuntimeConfig.DBPath)
+	db, err := openConfiguredDatabase(DatabaseConfig{
+		Driver: deps.RuntimeConfig.DBDriver,
+		URL:    deps.RuntimeConfig.DatabaseURL,
+		Path:   deps.RuntimeConfig.DBPath,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
-	if err := applyBootstrapData(db); err != nil {
+	if err := applyBootstrapDataForDatabase(
+		db,
+		deps.RuntimeConfig.DBDriver,
+	); err != nil {
 		log.Fatal(err)
 	}
 	if len(os.Args) > 1 {
@@ -74,9 +81,10 @@ func main() {
 		log.Printf("startup booking pricing warning: %d active booking options are unpriced (%s)", len(unpricedOptions), strings.Join(labels, ", "))
 	}
 	log.Printf(
-		"startup summary: env=%s addr=%s db_path=%s upload_path=%s public_base_url=%s cookie_secure=%t booking_email_enabled=%t booking_sms_enabled=%t active_unpriced_booking_options=%d",
+		"startup summary: env=%s addr=%s db_driver=%s db_path=%s upload_path=%s public_base_url=%s cookie_secure=%t booking_email_enabled=%t booking_sms_enabled=%t active_unpriced_booking_options=%d",
 		deps.RuntimeConfig.Env,
 		deps.RuntimeConfig.Addr,
+		deps.RuntimeConfig.DBDriver,
 		deps.RuntimeConfig.DBPath,
 		deps.RuntimeConfig.UploadRoot,
 		deps.RuntimeConfig.PublicBaseURL,

@@ -60,10 +60,28 @@ func (a *App) readinessResponse() (readinessResponse, bool) {
 	warnings := make([]string, 0)
 	ready := true
 
-	configErrs := validateRuntimeConfiguration(a.runtimeConfig, a.bookingMessages, a.bookingAccess, a.smtp, a.sms)
-	configErrs = append(configErrs, validateUploadPath(a.runtimeConfig.Env, a.uploads.Root)...)
-	_, dbPathErrs := validateDatabasePath(a.runtimeConfig.Env, a.runtimeConfig.DBPath)
-	configErrs = append(configErrs, dbPathErrs...)
+	configErrs := validateRuntimeConfiguration(
+		a.runtimeConfig,
+		a.bookingMessages,
+		a.bookingAccess,
+		a.smtp,
+		a.sms,
+	)
+	configErrs = append(
+		configErrs,
+		validateUploadPath(
+			a.runtimeConfig.Env,
+			a.uploads.Root,
+		)...,
+	)
+
+	if a.runtimeConfig.DBDriver == databaseDriverSQLite {
+		_, dbPathErrs := validateDatabasePath(
+			a.runtimeConfig.Env,
+			a.runtimeConfig.DBPath,
+		)
+		configErrs = append(configErrs, dbPathErrs...)
+	}
 	if len(configErrs) == 0 {
 		checks = append(checks, readinessCheckResponse{Name: "config", Status: "ok"})
 	} else {
@@ -118,34 +136,92 @@ func (a *App) checkDatabaseReadiness() error {
 	if a.db == nil {
 		return errors.New("database unavailable")
 	}
+
 	if err := a.db.Ping(); err != nil {
 		return err
 	}
-	var foreignKeys int
-	if err := a.db.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+
+	if a.runtimeConfig.DBDriver == databaseDriverSQLite {
+		var foreignKeys int
+
+		if err := a.db.QueryRow(
+			`PRAGMA foreign_keys`,
+		).Scan(&foreignKeys); err != nil {
+			return err
+		}
+
+		if foreignKeys != 1 {
+			return errors.New(
+				"sqlite foreign keys are disabled",
+			)
+		}
+	}
+
+	var one int
+
+	if err := a.db.QueryRow(
+		`SELECT 1`,
+	).Scan(&one); err != nil {
 		return err
 	}
-	if foreignKeys != 1 {
-		return errors.New("sqlite foreign keys are disabled")
-	}
-	var one int
-	if err := a.db.QueryRow(`SELECT 1`).Scan(&one); err != nil || one != 1 {
+
+	if one != 1 {
 		return errors.New("database query failed")
 	}
+
 	return nil
 }
 
 func (a *App) checkMigrationReadiness() error {
-	requiredTables := []string{"users", "roles", "space_schedules", "pricing_rules", "booking_financials"}
+	requiredTables := []string{
+		"users",
+		"roles",
+		"space_schedules",
+		"pricing_rules",
+		"booking_financials",
+	}
+
 	for _, tableName := range requiredTables {
 		var count int
-		if err := a.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, tableName).Scan(&count); err != nil {
+		var err error
+
+		switch a.runtimeConfig.DBDriver {
+		case databaseDriverPostgres:
+			err = a.db.QueryRow(`
+				SELECT COUNT(*)
+				FROM information_schema.tables
+				WHERE table_schema = 'public'
+				  AND table_type = 'BASE TABLE'
+				  AND table_name = $1
+			`, tableName).Scan(&count)
+
+		case databaseDriverSQLite:
+			err = a.db.QueryRow(`
+				SELECT COUNT(*)
+				FROM sqlite_master
+				WHERE type = 'table'
+				  AND name = ?
+			`, tableName).Scan(&count)
+
+		default:
+			return fmt.Errorf(
+				"unsupported database driver %q",
+				a.runtimeConfig.DBDriver,
+			)
+		}
+
+		if err != nil {
 			return err
 		}
+
 		if count == 0 {
-			return errors.New("required tables are missing")
+			return fmt.Errorf(
+				"required table %s is missing",
+				tableName,
+			)
 		}
 	}
+
 	return nil
 }
 

@@ -36,9 +36,25 @@ func loadRuntimeDependencies() (runtimeDependencies, error) {
 	}
 
 	addr := envOrDefault("ADDR", ":8080")
-	dbPath, dbPathErrs := validateDatabasePath(appEnv, os.Getenv("DB_PATH"))
-	if err := prepareDatabasePath(dbPath); err != nil {
-		return runtimeDependencies{}, fmt.Errorf("prepare database path: %w", err)
+
+	databaseConfig, err := loadDatabaseConfig()
+	if err != nil {
+		return runtimeDependencies{}, fmt.Errorf("load database configuration: %w", err)
+	}
+
+	var dbPathErrs []string
+	if databaseConfig.Driver == databaseDriverSQLite {
+		databaseConfig.Path, dbPathErrs = validateDatabasePath(
+			appEnv,
+			databaseConfig.Path,
+		)
+
+		if err := prepareDatabasePath(databaseConfig.Path); err != nil {
+			return runtimeDependencies{}, fmt.Errorf(
+				"prepare database path: %w",
+				err,
+			)
+		}
 	}
 
 	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
@@ -88,7 +104,9 @@ func loadRuntimeDependencies() (runtimeDependencies, error) {
 	runtimeConfig := AppRuntimeConfig{
 		Env:           appEnv,
 		Addr:          addr,
-		DBPath:        dbPath,
+		DBDriver:      databaseConfig.Driver,
+		DatabaseURL:   databaseConfig.URL,
+		DBPath:        databaseConfig.Path,
 		UploadRoot:    uploadStorage.Root,
 		PublicBaseURL: bookingAccess.BaseURL,
 		CookieSecure:  cookieSecure,
@@ -115,22 +133,41 @@ func loadRuntimeDependencies() (runtimeDependencies, error) {
 	}, nil
 }
 
-func openConfiguredDatabase(dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", sqliteRuntimeDSN(dbPath))
-	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
+func openConfiguredDatabase(config DatabaseConfig) (*sql.DB, error) {
+	return openDatabase(config)
+}
+
+func applyBootstrapDataForDatabase(
+	db *sql.DB,
+	driver DatabaseDriver,
+) error {
+	switch driver {
+	case databaseDriverPostgres:
+		if err := runPostgresMigrations(db); err != nil {
+			return fmt.Errorf(
+				"run PostgreSQL migrations: %w",
+				err,
+			)
+		}
+
+		if err := applyPostgresBootstrapData(db); err != nil {
+			return fmt.Errorf(
+				"apply PostgreSQL bootstrap data: %w",
+				err,
+			)
+		}
+
+		return nil
+
+	case databaseDriverSQLite:
+		return applyBootstrapData(db)
+
+	default:
+		return fmt.Errorf(
+			"unsupported database driver %q",
+			driver,
+		)
 	}
-	db.SetMaxOpenConns(8)
-	db.SetMaxIdleConns(4)
-	if err := enableSQLiteForeignKeys(db); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
-	}
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("ping database: %w", err)
-	}
-	return db, nil
 }
 
 func applyBootstrapData(db *sql.DB) error {

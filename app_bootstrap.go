@@ -377,6 +377,8 @@ const (
 type AppRuntimeConfig struct {
 	Env           AppEnvironment
 	Addr          string
+	DBDriver      DatabaseDriver
+	DatabaseURL   string
 	DBPath        string
 	UploadRoot    string
 	PublicBaseURL string
