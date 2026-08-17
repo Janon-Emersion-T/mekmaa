@@ -471,7 +471,11 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 		whereParts = append(whereParts, `(LOWER(COALESCE(a.student_id, '')) LIKE ? OR LOWER(COALESCE(a.full_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_contact_number, '')) LIKE ?)`)
 		args = append(args, searchLike, searchLike, searchLike, searchLike)
 	}
-	if strings.TrimSpace(filter.Division) != "" {
+	divisionFilter := strings.TrimSpace(filter.Division)
+
+	// "all" represents the shared All Mekmaa workspace and must not
+	// restrict the student master directory to a specific division.
+	if divisionFilter != "" && !strings.EqualFold(divisionFilter, divisionScopeAll) {
 		whereParts = append(whereParts, `EXISTS (
 			SELECT 1
 			FROM admission_training_programs atp_filter
@@ -480,7 +484,7 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 			WHERE atp_filter.admission_id = a.id
 			  AND (LOWER(d_filter.slug) = LOWER(?) OR UPPER(d_filter.code) = UPPER(?))
 		)`)
-		args = append(args, filter.Division, filter.Division)
+		args = append(args, divisionFilter, divisionFilter)
 	}
 	if len(filter.DivisionIDs) > 0 {
 		placeholders := make([]string, 0, len(filter.DivisionIDs))
