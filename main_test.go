@@ -11711,6 +11711,154 @@ func TestOneToOneSessionLifecycleCancellationReplacementAndCompletion(t *testing
 	}
 }
 
+func TestSaveOneToOneSessionAttendanceMarksSessionCompleted(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Attendance Private Badminton",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 4,
+		Price:        4000,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create offering: %v", err)
+	}
+
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find offering: %v", err)
+	}
+
+	slotDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
+	bookingID, scheduleID, err := app.createOneToOneBooking(
+		*offering,
+		"Attendance Customer",
+		slotDate,
+		"18:00",
+		2,
+		3800,
+		coachID,
+		900,
+		"Attendance workflow",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+
+	var sessionID int64
+	if err := app.db.QueryRow(`
+		SELECT id
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+		  AND session_number = 1
+	`, bookingID).Scan(&sessionID); err != nil {
+		t.Fatalf("load initial session: %v", err)
+	}
+
+	if err := app.saveOneToOneSessionAttendance(
+		sessionID,
+		"late",
+		"Customer arrived after warm-up",
+		0,
+	); err != nil {
+		t.Fatalf("save attendance: %v", err)
+	}
+
+	var (
+		sessionStatus    string
+		attendanceStatus string
+		attendanceNote   string
+		completedAt      sql.NullTime
+		attendanceMarked sql.NullTime
+	)
+	if err := app.db.QueryRow(`
+		SELECT
+			status,
+			attendance_status,
+			attendance_note,
+			completed_at,
+			attendance_marked_at
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, sessionID).Scan(
+		&sessionStatus,
+		&attendanceStatus,
+		&attendanceNote,
+		&completedAt,
+		&attendanceMarked,
+	); err != nil {
+		t.Fatalf("reload attended session: %v", err)
+	}
+
+	if sessionStatus != "completed" {
+		t.Fatalf("session status = %q, want completed", sessionStatus)
+	}
+	if attendanceStatus != "late" {
+		t.Fatalf("attendance status = %q, want late", attendanceStatus)
+	}
+	if attendanceNote != "Customer arrived after warm-up" {
+		t.Fatalf("attendance note = %q", attendanceNote)
+	}
+	if !completedAt.Valid {
+		t.Fatal("expected completed_at after attendance save")
+	}
+	if !attendanceMarked.Valid {
+		t.Fatal("expected attendance_marked_at after attendance save")
+	}
+
+	var scheduleStatus string
+	if err := app.db.QueryRow(`
+		SELECT status
+		FROM space_schedules
+		WHERE id = ?
+	`, scheduleID).Scan(&scheduleStatus); err != nil {
+		t.Fatalf("load linked schedule: %v", err)
+	}
+	if scheduleStatus != "completed" {
+		t.Fatalf("linked schedule status = %q, want completed", scheduleStatus)
+	}
+
+	var completedSessions int
+	if err := app.db.QueryRow(`
+		SELECT completed_sessions
+		FROM one_to_one_bookings
+		WHERE id = ?
+	`, bookingID).Scan(&completedSessions); err != nil {
+		t.Fatalf("load booking progress: %v", err)
+	}
+	if completedSessions != 1 {
+		t.Fatalf("completed sessions = %d, want 1", completedSessions)
+	}
+
+	if err := app.saveOneToOneSessionAttendance(
+		sessionID,
+		"present",
+		"Recovered and finished strongly",
+		0,
+	); err != nil {
+		t.Fatalf("update attendance: %v", err)
+	}
+
+	if err := app.db.QueryRow(`
+		SELECT attendance_status, attendance_note
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, sessionID).Scan(&attendanceStatus, &attendanceNote); err != nil {
+		t.Fatalf("reload updated attendance: %v", err)
+	}
+	if attendanceStatus != "present" {
+		t.Fatalf("updated attendance status = %q, want present", attendanceStatus)
+	}
+	if attendanceNote != "Recovered and finished strongly" {
+		t.Fatalf("updated attendance note = %q", attendanceNote)
+	}
+}
+
 func TestNormalizeSMSPhone(t *testing.T) {
 	tests := []struct {
 		name    string

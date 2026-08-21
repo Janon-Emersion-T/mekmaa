@@ -383,6 +383,7 @@ func main() {
 	mux.Handle("/admin/one-to-one-bookings/sessions/schedule", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.scheduleNextOneToOneSessionHandler), "space_bookings.manage"))))
 	mux.Handle("/admin/one-to-one-bookings/sessions/complete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.completeOneToOneSessionHandler), "space_bookings.manage"))))
 	mux.Handle("/admin/one-to-one-bookings/sessions/cancel", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.cancelOneToOneSessionHandler), "space_bookings.manage"))))
+	mux.Handle("/admin/one-to-one-bookings/sessions/attendance", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.saveOneToOneSessionAttendanceHandler), "space_bookings.manage"))))
 	mux.Handle("/admin/one-to-one-bookings/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteOneToOneBookingHandler), "space_bookings.manage"))))
 	mux.Handle("/admin/bookings/options", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminBookingOptionsHandler), "space_bookings.manage"))))
 	mux.Handle("/admin/mcp", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminMCPManagementHandler), "mcp.manage"))))

@@ -1736,6 +1736,11 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 			ss.slot_date,
 			ss.slot_hour,
 			ots.status,
+			COALESCE(ots.attendance_status, ''),
+			COALESCE(ots.attendance_note, ''),
+			ots.attendance_marked_at,
+			COALESCE(ots.attendance_marked_by_user_id, 0),
+			COALESCE(attendance_user.name, ''),
 			COALESCE(ots.notes, ''),
 			ots.completed_at,
 			COALESCE(ots.completed_by_user_id, 0),
@@ -1747,6 +1752,8 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 			ON ss.id = ots.schedule_id
 		LEFT JOIN users u
 			ON u.id = ots.coach_user_id
+		LEFT JOIN users attendance_user
+			ON attendance_user.id = ots.attendance_marked_by_user_id
 		WHERE ots.booking_id = ?
 		ORDER BY ots.session_number ASC, ots.id ASC
 	`, bookingID)
@@ -1761,6 +1768,7 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 		var session OneToOneBookingSession
 		var completedAt sql.NullTime
 		var cancelledAt sql.NullTime
+		var attendanceMarkedAt sql.NullTime
 
 		if err := rows.Scan(
 			&session.ID,
@@ -1773,6 +1781,11 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 			&session.SlotDate,
 			&session.SlotHour,
 			&session.Status,
+			&session.AttendanceStatus,
+			&session.AttendanceNote,
+			&attendanceMarkedAt,
+			&session.AttendanceMarkedByUserID,
+			&session.AttendanceMarkedByUserName,
 			&session.Notes,
 			&completedAt,
 			&session.CompletedByUserID,
@@ -1786,6 +1799,9 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 		if completedAt.Valid {
 			session.CompletedAt = completedAt.Time
 		}
+		if attendanceMarkedAt.Valid {
+			session.AttendanceMarkedAt = attendanceMarkedAt.Time
+		}
 		if cancelledAt.Valid {
 			session.CancelledAt = cancelledAt.Time
 		}
@@ -1798,6 +1814,111 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 	}
 
 	return sessions, nil
+}
+
+func (a *App) saveOneToOneSessionAttendance(
+	sessionID int64,
+	attendanceStatus string,
+	attendanceNote string,
+	recordedByUserID int64,
+) error {
+	if sessionID <= 0 {
+		return errors.New("invalid 1 to 1 session")
+	}
+
+	attendanceStatus = normalizeOneToOneAttendanceStatus(attendanceStatus)
+	if attendanceStatus == "" {
+		return errors.New("select a valid attendance status")
+	}
+	attendanceNote = strings.TrimSpace(attendanceNote)
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var (
+		bookingID     int64
+		scheduleID    int64
+		sessionStatus string
+	)
+
+	if err := a.queryRowTxDB(tx, `
+		SELECT
+			booking_id,
+			schedule_id,
+			status
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, sessionID).Scan(
+		&bookingID,
+		&scheduleID,
+		&sessionStatus,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("1 to 1 session was not found")
+		}
+		return err
+	}
+
+	if sessionStatus == "cancelled" {
+		return errors.New("attendance cannot be recorded for a cancelled 1 to 1 session")
+	}
+
+	now := time.Now().UTC()
+
+	var recordedBy any
+	if recordedByUserID > 0 {
+		recordedBy = recordedByUserID
+	}
+
+	if _, err := a.execTxDB(tx, `
+		UPDATE one_to_one_booking_sessions
+		SET
+			attendance_status = ?,
+			attendance_note = ?,
+			attendance_marked_at = ?,
+			attendance_marked_by_user_id = ?,
+			updated_at = ?
+		WHERE id = ?
+	`, attendanceStatus, attendanceNote, now, recordedBy, now, sessionID); err != nil {
+		return err
+	}
+
+	if sessionStatus == "scheduled" || sessionStatus == bookingStatusConfirmed {
+		if _, err := a.execTxDB(tx, `
+			UPDATE one_to_one_booking_sessions
+			SET
+				status = 'completed',
+				completed_at = ?,
+				completed_by_user_id = ?,
+				cancelled_at = NULL,
+				updated_at = ?
+			WHERE id = ?
+		`, now, recordedBy, now, sessionID); err != nil {
+			return err
+		}
+
+		if _, err := a.execTxDB(tx, `
+			UPDATE space_schedules
+			SET
+				status = 'completed',
+				status_changed_at = ?,
+				status_changed_by_user_id = ?,
+				status_change_source = 'one_to_one_session',
+				updated_at = ?
+			WHERE id = ?
+		`, now, recordedBy, now, scheduleID); err != nil {
+			return err
+		}
+
+		if err := a.refreshOneToOnePackageProgressTx(tx, bookingID, now); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (a *App) scheduleNextOneToOneSession(

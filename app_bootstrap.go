@@ -1252,22 +1252,27 @@ type OneToOneReceivable struct {
 }
 
 type OneToOneBookingSession struct {
-	ID                int64
-	BookingID         int64
-	ScheduleID        int64
-	SessionNumber     int
-	CoachUserID       int64
-	CoachName         string
-	CoachFee          float64
-	SlotDate          string
-	SlotHour          string
-	Status            string
-	Notes             string
-	CompletedAt       time.Time
-	CompletedByUserID int64
-	CancelledAt       time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID                         int64
+	BookingID                  int64
+	ScheduleID                 int64
+	SessionNumber              int
+	CoachUserID                int64
+	CoachName                  string
+	CoachFee                   float64
+	SlotDate                   string
+	SlotHour                   string
+	Status                     string
+	AttendanceStatus           string
+	AttendanceNote             string
+	AttendanceMarkedAt         time.Time
+	AttendanceMarkedByUserID   int64
+	AttendanceMarkedByUserName string
+	Notes                      string
+	CompletedAt                time.Time
+	CompletedByUserID          int64
+	CancelledAt                time.Time
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
 }
 
 type ReferralPartner struct {

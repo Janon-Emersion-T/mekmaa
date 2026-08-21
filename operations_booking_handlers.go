@@ -2195,6 +2195,74 @@ func (a *App) cancelOneToOneSessionHandler(w http.ResponseWriter, r *http.Reques
 	)
 }
 
+func (a *App) saveOneToOneSessionAttendanceHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	sessionID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("session_id")),
+		10,
+		64,
+	)
+	if err != nil || sessionID <= 0 {
+		http.Error(w, "invalid session", http.StatusBadRequest)
+		return
+	}
+
+	bookingID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("booking_id")),
+		10,
+		64,
+	)
+	if err != nil || bookingID <= 0 {
+		http.Error(w, "invalid 1 to 1 package", http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	var recordedByUserID int64
+	if currentUser != nil {
+		recordedByUserID = currentUser.ID
+	}
+
+	if err := a.saveOneToOneSessionAttendance(
+		sessionID,
+		r.FormValue("attendance_status"),
+		r.FormValue("attendance_note"),
+		recordedByUserID,
+	); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "1 to 1 attendance saved.")
+	http.Redirect(
+		w,
+		r,
+		"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+		http.StatusSeeOther,
+	)
+}
+
 func (a *App) deleteOneToOneBookingHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

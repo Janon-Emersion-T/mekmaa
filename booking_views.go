@@ -1296,6 +1296,50 @@ func attendanceCount(records []AttendanceRecord, status string) int {
 	return total
 }
 
+func normalizeOneToOneAttendanceStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "present":
+		return "present"
+	case "late":
+		return "late"
+	case "excused":
+		return "excused"
+	case "absent":
+		return "absent"
+	default:
+		return ""
+	}
+}
+
+func oneToOneAttendanceStatusLabel(value string) string {
+	switch normalizeOneToOneAttendanceStatus(value) {
+	case "present":
+		return "Present"
+	case "late":
+		return "Late"
+	case "excused":
+		return "Excused"
+	case "absent":
+		return "No-show"
+	default:
+		return "Pending"
+	}
+}
+
+func oneToOneAttendanceCount(
+	sessions []OneToOneBookingSession,
+	status string,
+) int {
+	target := normalizeOneToOneAttendanceStatus(status)
+	total := 0
+	for _, session := range sessions {
+		if normalizeOneToOneAttendanceStatus(session.AttendanceStatus) == target {
+			total++
+		}
+	}
+	return total
+}
+
 func enrollmentsForAdmission(enrollments []StudentEnrollment, admissionID int64) []StudentEnrollment {
 	filtered := make([]StudentEnrollment, 0)
 	for _, enrollment := range enrollments {
