@@ -127,6 +127,8 @@ func main() {
 	mux.Handle("/admin", app.sessionMiddleware(http.HandlerFunc(app.adminRedirectHandler)))
 	mux.Handle("/admin/users", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.userManagementHandler), "users.manage")))
 	mux.Handle("/admin/roles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.roleManagementHandler), "roles.manage")))
+	mux.Handle("/admin/sms-gateway", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.smsGatewayManagementHandler), "users.manage")))
+	mux.Handle("/admin/sms-gateway/test", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.smsGatewayTestHandler), "users.manage")))
 	mux.Handle("/admin/users/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createManagedUserHandler), "users.manage")))
 	mux.Handle("/admin/users/roles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateRolesHandler), "users.manage")))
 	mux.Handle("/admin/roles/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createRoleHandler), "roles.manage")))

@@ -418,6 +418,19 @@ type BookingCommunicationSettings struct {
 	VenueAddress string
 }
 
+type SMSGatewayAdminView struct {
+	GatewayEnabled    bool
+	BookingSMSEnabled bool
+	SenderID          string
+	AlertPhone        string
+	BalanceKnown      bool
+	LatestBalance     float64
+	ChargedFrom       string
+	Alerted200        bool
+	Alerted100        bool
+	UpdatedAt         time.Time
+}
+
 type BookingAccessSettings struct {
 	BaseURL     string
 	TokenSecret string
@@ -1746,6 +1759,7 @@ type TemplateData struct {
 	AdminBookingOptions              []AdminBookingOption
 	AdminBookingBlockedReason        string
 	SetupWarnings                    []SetupWarning
+	SMSGateway                       *SMSGatewayAdminView
 	WeekDays                         []CalendarDay
 	BookingOptions                   []BookingOption
 	Activities                       []string

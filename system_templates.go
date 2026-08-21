@@ -325,6 +325,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"editor":                         "templates/dashboard/editor.html",
 		"user-management":                "templates/dashboard/user-management.html",
 		"role-management":                "templates/dashboard/role-management.html",
+		"sms-gateway-management":         "templates/dashboard/sms-gateway-management.html",
 		"admission-management":           "templates/dashboard/admission-management.html",
 		"student-leave-management":       "templates/dashboard/student-leave-management.html",
 		"student-id-card":                "templates/dashboard/student-id-card.html",

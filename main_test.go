@@ -11835,3 +11835,85 @@ func TestSMSBalanceAlertMessagesStayWithinLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestMaskSMSPhone(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{
+			input: "+94766453232",
+			want:  "+947•••••232",
+		},
+		{
+			input: "",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		got := maskSMSPhone(tt.input)
+		if got != tt.want {
+			t.Fatalf(
+				"maskSMSPhone(%q) = %q, want %q",
+				tt.input,
+				got,
+				tt.want,
+			)
+		}
+	}
+}
+
+func TestSMSGatewayTemplateDoesNotExposeCredentials(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	data := TemplateData{
+		Title:       "SMS Gateway",
+		CurrentPath: "/admin/sms-gateway",
+		User: &User{
+			Name:        "Admin",
+			Roles:       []string{"superadmin"},
+			Permissions: allPermissions,
+		},
+		CSRFToken: "test-csrf-token",
+		SMSGateway: &SMSGatewayAdminView{
+			GatewayEnabled:    true,
+			BookingSMSEnabled: true,
+			SenderID:          "mekmaa",
+			AlertPhone:        "+947•••••232",
+			BalanceKnown:      true,
+			LatestBalance:     590.37,
+			ChargedFrom:       "main",
+		},
+	}
+
+	html := renderTemplateToString(
+		t,
+		templates,
+		"sms-gateway-management",
+		data,
+	)
+
+	for _, want := range []string{
+		"SMS Gateway",
+		"590.37",
+		"mekmaa",
+		"Alert phone",
+		"Sensitive digits are masked",
+		"Send Test SMS",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf(
+				"SMS gateway template missing %q",
+				want,
+			)
+		}
+	}
+
+	if strings.Contains(html, "SMS_API_KEY") {
+		t.Fatal("SMS gateway template must not expose SMS_API_KEY")
+	}
+}

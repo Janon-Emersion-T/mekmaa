@@ -1,0 +1,166 @@
+{{define "content"}}
+<div class="space-y-6">
+
+  <section class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm sm:p-8">
+    <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.22em] text-slate/45">
+          System Administration
+        </p>
+        <h1 class="mt-2 text-3xl font-semibold tracking-tight text-obsidian">
+          SMS Gateway
+        </h1>
+        <p class="mt-3 max-w-2xl text-sm leading-7 text-slate/65">
+          Monitor SMSlenz delivery status, remaining gateway credit and automatic balance alerts.
+        </p>
+      </div>
+
+      {{if .SMSGateway}}
+      <div class="rounded-2xl border border-slate/10 bg-cloud px-4 py-3">
+        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Gateway status</p>
+        {{if .SMSGateway.GatewayEnabled}}
+        <p class="mt-1 text-sm font-semibold text-emerald-700">Configured</p>
+        {{else}}
+        <p class="mt-1 text-sm font-semibold text-red-700">Not configured</p>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+  </section>
+
+  {{if .SMSGateway}}
+  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Balance</p>
+      {{if .SMSGateway.BalanceKnown}}
+      <p class="mt-3 text-3xl font-semibold text-obsidian">
+        {{printf "%.2f" .SMSGateway.LatestBalance}}
+      </p>
+      <p class="mt-1 text-xs text-slate/50">credits remaining</p>
+      {{else}}
+      <p class="mt-3 text-xl font-semibold text-slate/55">Not captured yet</p>
+      <p class="mt-1 text-xs text-slate/50">Send a test SMS to refresh it.</p>
+      {{end}}
+    </div>
+
+    <div class="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Sender ID</p>
+      <p class="mt-3 text-2xl font-semibold text-obsidian">
+        {{if .SMSGateway.SenderID}}{{.SMSGateway.SenderID}}{{else}}—{{end}}
+      </p>
+      <p class="mt-1 text-xs text-slate/50">SMSlenz approved sender</p>
+    </div>
+
+    <div class="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Charged from</p>
+      <p class="mt-3 text-2xl font-semibold capitalize text-obsidian">
+        {{if .SMSGateway.ChargedFrom}}{{.SMSGateway.ChargedFrom}}{{else}}—{{end}}
+      </p>
+      <p class="mt-1 text-xs text-slate/50">SMS credit pool</p>
+    </div>
+
+    <div class="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Alert phone</p>
+      <p class="mt-3 text-lg font-semibold text-obsidian">
+        {{if .SMSGateway.AlertPhone}}{{.SMSGateway.AlertPhone}}{{else}}Not configured{{end}}
+      </p>
+      <p class="mt-1 text-xs text-slate/50">Sensitive digits are masked</p>
+    </div>
+  </section>
+
+  <section class="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+    <div class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm sm:p-8">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
+          Balance monitoring
+        </p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">
+          Automatic credit alerts
+        </h2>
+      </div>
+
+      <div class="mt-6 space-y-3">
+        <div class="flex items-center justify-between gap-4 rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-4">
+          <div>
+            <p class="font-semibold text-obsidian">200-credit warning</p>
+            <p class="mt-1 text-xs text-slate/55">Low balance recharge reminder</p>
+          </div>
+          {{if .SMSGateway.Alerted200}}
+          <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">Sent</span>
+          {{else}}
+          <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">Ready</span>
+          {{end}}
+        </div>
+
+        <div class="flex items-center justify-between gap-4 rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-4">
+          <div>
+            <p class="font-semibold text-obsidian">100-credit critical alert</p>
+            <p class="mt-1 text-xs text-slate/55">Critical recharge notification</p>
+          </div>
+          {{if .SMSGateway.Alerted100}}
+          <span class="rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-800">Sent</span>
+          {{else}}
+          <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">Ready</span>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="mt-5 rounded-2xl border border-slate/10 bg-white px-4 py-4 text-sm text-slate/60">
+        When the observed balance rises above 200 credits after a recharge, the warning cycle resets automatically.
+      </div>
+    </div>
+
+    <div class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm sm:p-8">
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">
+        Diagnostics
+      </p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Gateway test</h2>
+
+      <div class="mt-5 space-y-3 text-sm">
+        <div class="flex justify-between gap-4">
+          <span class="text-slate/55">Gateway credentials</span>
+          <span class="font-semibold text-obsidian">
+            {{if .SMSGateway.GatewayEnabled}}Configured{{else}}Missing{{end}}
+          </span>
+        </div>
+
+        <div class="flex justify-between gap-4">
+          <span class="text-slate/55">Booking SMS</span>
+          <span class="font-semibold text-obsidian">
+            {{if .SMSGateway.BookingSMSEnabled}}Enabled{{else}}Disabled{{end}}
+          </span>
+        </div>
+
+        <div class="flex justify-between gap-4">
+          <span class="text-slate/55">Last balance update</span>
+          <span class="text-right font-semibold text-obsidian">
+            {{if .SMSGateway.BalanceKnown}}
+              {{.SMSGateway.UpdatedAt.Format "02 Jan 2006 15:04"}}
+            {{else}}
+              —
+            {{end}}
+          </span>
+        </div>
+      </div>
+
+      <form action="/admin/sms-gateway/test" method="post" class="mt-6">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+
+        <button
+          type="submit"
+          class="w-full rounded-2xl bg-obsidian px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
+          {{if not .SMSGateway.GatewayEnabled}}disabled{{end}}
+        >
+          Send Test SMS
+        </button>
+
+        <p class="mt-3 text-xs leading-5 text-slate/50">
+          Sends a short test message to the configured alert number and refreshes the recorded SMS balance.
+        </p>
+      </form>
+    </div>
+  </section>
+  {{end}}
+
+</div>
+{{end}}
