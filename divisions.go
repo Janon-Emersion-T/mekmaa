@@ -712,57 +712,100 @@ func divisionSlicesOverlap(left, right []int64) bool {
 	return false
 }
 
-func financeDivisionIDForEntryTx(tx *sql.Tx, entry financeTransactionCreate) (int64, error) {
+func financeDivisionIDForEntryTx(
+	tx *sql.Tx,
+	entry financeTransactionCreate,
+) (int64, error) {
 	if entry.DivisionID > 0 {
 		return entry.DivisionID, nil
 	}
-	resolveProgramDivision := func(query string, args ...any) (int64, error) {
+
+	resolveProgramDivision := func(
+		query string,
+		args ...any,
+	) (int64, error) {
 		var divisionID int64
-		err := tx.QueryRow(query, args...).Scan(&divisionID)
+
+		err := tx.QueryRow(
+			query,
+			args...,
+		).Scan(&divisionID)
+
 		if err == nil && divisionID > 0 {
 			return divisionID, nil
 		}
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+
+		if err != nil &&
+			!errors.Is(err, sql.ErrNoRows) {
 			return 0, err
 		}
+
 		return 0, nil
 	}
+
 	switch {
-	case entry.ReferenceType == "student_enrollment" && entry.ReferenceID > 0:
-		return resolveProgramDivision(`
+	case entry.ReferenceType == "student_enrollment" &&
+		entry.ReferenceID > 0:
+
+		return resolveProgramDivision(
+			`
 			SELECT COALESCE(tp.division_id, 0)
 			FROM student_enrollments se
-			JOIN training_programs tp ON tp.id = se.training_program_id
-			WHERE se.id = ?
-		`, entry.ReferenceID)
-	case entry.ReferenceType == "admission" && entry.ReferenceID > 0:
-		return resolveProgramDivision(`
+			JOIN training_programs tp
+			  ON tp.id = se.training_program_id
+			WHERE se.id = $1
+			`,
+			entry.ReferenceID,
+		)
+
+	case entry.ReferenceType == "admission" &&
+		entry.ReferenceID > 0:
+
+		return resolveProgramDivision(
+			`
 			SELECT COALESCE(tp.division_id, 0)
 			FROM admission_training_programs atp
-			JOIN training_programs tp ON tp.id = atp.training_program_id
-			WHERE atp.admission_id = ?
-			ORDER BY atp.created_at ASC, tp.id ASC
+			JOIN training_programs tp
+			  ON tp.id = atp.training_program_id
+			WHERE atp.admission_id = $1
+			ORDER BY
+				atp.created_at ASC,
+				tp.id ASC
 			LIMIT 1
-		`, entry.ReferenceID)
-	case entry.SourceType == "student_monthly_payment" && entry.SourceID > 0:
-		return resolveProgramDivision(`
+			`,
+			entry.ReferenceID,
+		)
+
+	case entry.SourceType == "student_monthly_payment" &&
+		entry.SourceID > 0:
+
+		return resolveProgramDivision(
+			`
 			SELECT COALESCE(tp.division_id, 0)
 			FROM student_monthly_payments smp
-			JOIN student_enrollments se ON se.id = smp.enrollment_id
-			JOIN training_programs tp ON tp.id = se.training_program_id
-			WHERE smp.id = ?
-		`, entry.SourceID)
+			JOIN student_enrollments se
+			  ON se.id = smp.enrollment_id
+			JOIN training_programs tp
+			  ON tp.id = se.training_program_id
+			WHERE smp.id = $1
+			`,
+			entry.SourceID,
+		)
 	}
+
 	code := divisionCodeSports
-	if entry.ReferenceType == "finance_transfer" || entry.SourceType == "finance_transfer" {
+
+	if entry.ReferenceType == "finance_transfer" ||
+		entry.SourceType == "finance_transfer" {
 		code = divisionCodeCorporate
 	}
+
 	return divisionIDByCodeTx(tx, code)
 }
 
 func divisionIDByCodeTx(tx *sql.Tx, code string) (int64, error) {
 	var divisionID int64
-	if err := tx.QueryRow(`SELECT id FROM divisions WHERE UPPER(code) = UPPER(?)`, strings.TrimSpace(code)).Scan(&divisionID); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM divisions WHERE UPPER(code) = UPPER($1)`, strings.TrimSpace(code)).Scan(&divisionID); err != nil {
 		return 0, err
 	}
 	return divisionID, nil

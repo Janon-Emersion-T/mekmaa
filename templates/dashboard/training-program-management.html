@@ -142,6 +142,34 @@
       {{end}}
 
       <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div class="space-y-2">
+	          <label
+	            for="new-division"
+	            class="block text-sm font-semibold text-obsidian"
+	          >
+	            Division
+	          </label>
+	
+	          <select
+	            id="new-division"
+	            name="division_id"
+	            required
+	            onchange="const option=this.options[this.selectedIndex]; const division=option.dataset.divisionSlug; if (division) { window.location.href='/admin/training-programs?action=new&division='+encodeURIComponent(division)+'#training-program-form'; }"
+	            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+	          >
+	            <option value="">Select division</option>
+	            {{range .ActiveDivisions}}
+	            {{if ne .Code "CORPORATE"}}
+	            <option
+	              value="{{.ID}}"
+	              data-division-slug="{{.Slug}}"
+	              {{if and $.SelectedDivision (eq $.SelectedDivision.ID .ID)}}selected{{end}}
+	            >{{.Name}}</option>
+	            {{end}}
+	            {{end}}
+	          </select>
+	        </div>
+	
         <div class="space-y-2 md:col-span-2">
           <label
             for="new-programme-name"
@@ -184,35 +212,7 @@
           />
         </div>
 
-	        <div class="space-y-2">
-	          <label
-	            for="new-division"
-	            class="block text-sm font-semibold text-obsidian"
-	          >
-	            Division
-	          </label>
-	
-	          <select
-	            id="new-division"
-	            name="division_id"
-	            required
-	            onchange="const option=this.options[this.selectedIndex]; const division=option.dataset.divisionSlug; if (division) { window.location.href='/admin/training-programs?action=new&division='+encodeURIComponent(division)+'#training-program-form'; }"
-	            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-	          >
-	            <option value="">Select division</option>
-	            {{range .ActiveDivisions}}
-	            {{if ne .Code "CORPORATE"}}
-	            <option
-	              value="{{.ID}}"
-	              data-division-slug="{{.Slug}}"
-	              {{if and $.SelectedDivision (eq $.SelectedDivision.ID .ID)}}selected{{end}}
-	            >{{.Name}}</option>
-	            {{end}}
-	            {{end}}
-	          </select>
-	        </div>
-	
-        {{if .SelectedDivision}}
+	        {{if .SelectedDivision}}
           {{if eq .SelectedDivision.Code "SPORTS"}}
           <div class="space-y-2">
             <label

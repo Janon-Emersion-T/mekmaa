@@ -1,5 +1,5 @@
 {{define "dashboard-sidebar"}}
-<aside data-sidebar class="fixed inset-y-0 left-0 z-40 flex h-screen w-[88vw] max-w-[18rem] -translate-x-full flex-col overflow-y-auto border-r border-white/60 bg-white/90 px-4 py-4 shadow-[0_30px_70px_rgba(11,18,21,0.18)] backdrop-blur-xl transition-transform duration-300 sm:px-5 sm:py-5 lg:static lg:z-auto lg:w-[18rem] lg:max-w-none lg:translate-x-0 lg:shadow-none">
+<aside data-sidebar class="fixed inset-y-0 left-0 z-40 flex h-screen w-[88vw] max-w-[18rem] -translate-x-full flex-col overflow-y-auto border-r border-white/60 bg-white/90 px-4 py-4 shadow-[0_30px_70px_rgba(11,18,21,0.18)] backdrop-blur-xl transition-transform duration-300 sm:px-5 sm:py-5 lg:sticky lg:top-0 lg:bottom-auto lg:self-start lg:z-auto lg:w-[18rem] lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:shadow-none">
   <div class="flex items-center justify-between">
     <a href="/dashboard" class="text-lg font-semibold tracking-[0.2em] uppercase">mekmaa3</a>
     <button type="button" data-sidebar-close class="rounded-full border border-slate/10 p-2 text-slate/70 transition hover:bg-cloud lg:hidden">
@@ -48,7 +48,7 @@
       {{end}}
     </div>
 
-    {{if or (hasPermission .User "admissions.manage") (hasPermission .User "coaches.manage") (hasPermission .User "training_programs.manage") (hasPermission .User "student_groups.manage") (hasPermission .User "attendance.manage")}}
+    {{if or (hasPermission .User "admissions.manage") (hasPermission .User "coaches.manage") (hasPermission .User "payroll.manage") (hasPermission .User "training_programs.manage") (hasPermission .User "student_groups.manage") (hasPermission .User "attendance.manage")}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">{{workspaceOperationsLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
       <div class="space-y-1">
@@ -66,7 +66,7 @@
 
         {{if hasPermission .User "training_programs.manage"}}
         <a href="{{scopedURL "/admin/training-programs" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>{{workspaceProgramLabel .User .SelectedDivision .SelectedDivisionScope}}</span><span class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Catalog</span>
+          <span>Courses</span><span class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Catalog</span>
         </a>
         {{end}}
         {{if hasPermission .User "coaches.manage"}}
@@ -79,6 +79,12 @@
 
         <a href="{{scopedURL "/admin/staff/attendance/report" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/staff/attendance/report"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Attendance Reports</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Monthly</span>
+        </a>
+        {{end}}
+
+        {{if hasPermission .User "payroll.manage"}}
+        <a href="/admin/staff/salary-profiles" class="{{if isCurrentPath .CurrentPath "/admin/staff/salary-profiles"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Salary Profiles</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Payroll</span>
         </a>
         {{end}}
 
@@ -138,6 +144,9 @@
         </a>
         <a href="/admin/one-to-one-bookings" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-bookings"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>1 to 1 bookings</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Sessions</span>
+        </a>
+        <a href="/admin/one-to-one-receivables" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>1 to 1 receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
         </a>
         {{end}}
         {{if hasPermission .User "booking_requests.manage"}}

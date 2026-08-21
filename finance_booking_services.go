@@ -236,34 +236,99 @@ func monthlyPaymentCollectionNotice(paymentMonth string, now time.Time) string {
 	return "Monthly payments for " + paymentMonthLabel(paymentMonth) + " can only be collected on " + lastCollectibleDay.Format("January 2, 2006") + " or later."
 }
 
-func paymentBillingStartDate(enrollment *StudentEnrollment, admission *Admission) (time.Time, error) {
-	if enrollment != nil && !enrollment.CreatedAt.IsZero() {
-		start := enrollment.CreatedAt.In(time.Local)
-		return time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.Local), nil
+func paymentBillingStartDate(
+	enrollment *StudentEnrollment,
+	admission *Admission,
+) (time.Time, error) {
+	if enrollment != nil {
+		if value := strings.TrimSpace(enrollment.EnrollmentDate); value != "" {
+			start, err := time.ParseInLocation(
+				"2006-01-02",
+				value,
+				time.Local,
+			)
+			if err != nil {
+				return time.Time{}, err
+			}
+
+			return start, nil
+		}
+
+		// Legacy fallback only. New enrollments must have EnrollmentDate.
+		if !enrollment.CreatedAt.IsZero() {
+			start := enrollment.CreatedAt.In(time.Local)
+
+			return time.Date(
+				start.Year(),
+				start.Month(),
+				start.Day(),
+				0,
+				0,
+				0,
+				0,
+				time.Local,
+			), nil
+		}
 	}
-	if admission == nil || strings.TrimSpace(admission.AdmissionDate) == "" {
-		return time.Time{}, errors.New("student admission date is required for monthly billing")
+
+	if admission == nil ||
+		strings.TrimSpace(admission.AdmissionDate) == "" {
+		return time.Time{}, errors.New(
+			"programme enrollment date is required for monthly billing",
+		)
 	}
-	start, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(admission.AdmissionDate), time.Local)
+
+	start, err := time.ParseInLocation(
+		"2006-01-02",
+		strings.TrimSpace(admission.AdmissionDate),
+		time.Local,
+	)
 	if err != nil {
 		return time.Time{}, err
 	}
+
 	return start, nil
 }
 
-func applyFirstMonthEnrollmentDiscount(baseAmount float64, billingStart time.Time, paymentMonth string, monthDays int) (float64, float64) {
+func applyFirstMonthEnrollmentDiscount(
+	baseAmount float64,
+	billingStart time.Time,
+	paymentMonth string,
+	monthDays int,
+) (float64, float64) {
 	if baseAmount <= 0 || billingStart.IsZero() || monthDays <= 0 {
 		return baseAmount, 0
 	}
+
+	// Proration applies only to the enrollment month.
 	if billingStart.Format("2006-01") != paymentMonth {
 		return baseAmount, 0
 	}
-	secondHalfStartDay := (monthDays / 2) + 1
-	if billingStart.Day() < secondHalfStartDay {
+
+	enrollmentDay := billingStart.Day()
+
+	// Final 5 calendar days of the enrollment month are free.
+	//
+	// Examples:
+	//   31-day month -> 27-31 free
+	//   30-day month -> 26-30 free
+	//   28-day month -> 24-28 free
+	//   29-day month -> 25-29 free
+	lastFiveDaysStart := monthDays - 4
+
+	if enrollmentDay >= lastFiveDaysStart {
+		return 0, normalizeMoney(baseAmount)
+	}
+
+	// Day 1 through day 15 pays the full monthly fee.
+	if enrollmentDay <= 15 {
 		return baseAmount, 0
 	}
-	discounted := math.Round((baseAmount*0.5)*100) / 100
-	return discounted, math.Round((baseAmount-discounted)*100) / 100
+
+	// From the 16th until the final-five-day window, charge half.
+	discounted := normalizeMoney(baseAmount * 0.5)
+
+	return discounted, normalizeMoney(baseAmount - discounted)
 }
 
 func (a *App) listStudentPaymentRows(paymentMonth string) ([]StudentPaymentRow, error) {
@@ -293,6 +358,7 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 			payment_rows.training_program_name,
 			payment_rows.free_monthly_fee,
 			payment_rows.original_monthly_fee,
+			payment_rows.enrollment_date,
 			payment_rows.enrollment_created_at
 		FROM (
 			SELECT
@@ -310,6 +376,7 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 				tp.name AS training_program_name,
 				COALESCE(se.free_monthly_fee, 0) AS free_monthly_fee,
 				COALESCE(tp.monthly_fee, 0) AS original_monthly_fee,
+				COALESCE(CAST(se.enrollment_date AS TEXT), '') AS enrollment_date,
 				COALESCE(CAST(se.created_at AS TEXT), '') AS enrollment_created_at,
 				COALESCE(tp.sort_order, 0) AS program_sort_order
 			FROM student_enrollments se
@@ -317,7 +384,7 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 				ON a.id = se.admission_id
 			JOIN training_programs tp
 				ON tp.id = se.training_program_id
-			WHERE a.admission_date <= ?
+			WHERE se.enrollment_date <= ?
 			  AND COALESCE(se.active, 1) = 1
 	`
 	args := []any{monthEnd}
@@ -327,50 +394,6 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 	}
 
 	query += `
-			UNION ALL
-
-			SELECT
-				0 AS enrollment_id,
-				a.id AS admission_id,
-				a.student_id,
-				a.full_name,
-				COALESCE(a.admission_date, '') AS admission_date,
-				a.date_of_birth,
-				a.gender,
-				COALESCE(a.photo_path, '') AS photo_path,
-				COALESCE(a.qr_code_path, '') AS qr_code_path,
-				COALESCE(a.qr_code_value, '') AS qr_code_value,
-				COALESCE(tp.id, 0) AS training_program_id,
-				COALESCE(
-					tp.name,
-					CASE
-						WHEN TRIM(COALESCE(a.practice_type, '')) <> '' THEN 'Legacy training programme'
-						ELSE ''
-					END
-				) AS training_program_name,
-				COALESCE(a.free_monthly_fee, 0) AS free_monthly_fee,
-				COALESCE(tp.monthly_fee, ap.monthly_fee, 0) AS original_monthly_fee,
-				'' AS enrollment_created_at,
-				COALESCE(tp.sort_order, 0) AS program_sort_order
-			FROM admissions a
-			LEFT JOIN training_programs tp
-				ON tp.id = a.training_program_id
-			LEFT JOIN admission_pricing ap
-				ON ap.practice_type = a.practice_type
-			WHERE a.admission_date <= ?
-	`
-	args = append(args, monthEnd)
-	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
-		query += ` AND COALESCE(tp.division_id, 0) IN (` + placeholders + `)`
-		args = append(args, scopeArgs...)
-	}
-	query += `
-			  AND NOT EXISTS (
-				SELECT 1
-				FROM student_enrollments se
-				WHERE se.admission_id = a.id
-				  AND COALESCE(se.active, 1) = 1
-			  )
 		) AS payment_rows
 		ORDER BY
 			LOWER(payment_rows.full_name),
@@ -392,6 +415,7 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 			row                 StudentPaymentRow
 			enrollmentID        int64
 			freeMonthlyFee      int
+			enrollmentDate      string
 			enrollmentCreatedAt string
 		)
 		if err := rows.Scan(
@@ -404,7 +428,10 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 			&row.Admission.QRCodeValue,
 			&row.Enrollment.TrainingProgramID,
 			&row.Enrollment.TrainingProgramName,
-			&freeMonthlyFee, &row.OriginalMonthlyFee, &enrollmentCreatedAt,
+			&freeMonthlyFee,
+			&row.OriginalMonthlyFee,
+			&enrollmentDate,
+			&enrollmentCreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -412,17 +439,37 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 		row.Enrollment.AdmissionID = row.Admission.ID
 		row.Enrollment.Student = row.Admission
 		row.Enrollment.FreeMonthlyFee = freeMonthlyFee == 1
+		row.Enrollment.EnrollmentDate = strings.TrimSpace(enrollmentDate)
 		if strings.TrimSpace(enrollmentCreatedAt) != "" {
-			createdAt, err := time.Parse("2006-01-02 15:04:05", enrollmentCreatedAt)
-			if err != nil {
-				createdAt, err = time.Parse(time.RFC3339Nano, enrollmentCreatedAt)
+			rawCreatedAt := strings.TrimSpace(enrollmentCreatedAt)
+
+			var (
+				createdAt time.Time
+				err       error
+			)
+
+			layouts := []string{
+				"2006-01-02 15:04:05",
+				"2006-01-02 15:04:05.999999999",
+				"2006-01-02 15:04:05Z07:00",
+				"2006-01-02 15:04:05.999999999Z07:00",
+				"2006-01-02 15:04:05-07",
+				"2006-01-02 15:04:05.999999999-07",
+				time.RFC3339Nano,
+				"2006-01-02 15:04:05.999999999 -0700 MST",
 			}
-			if err != nil {
-				createdAt, err = time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", enrollmentCreatedAt)
+
+			for _, layout := range layouts {
+				createdAt, err = time.Parse(layout, rawCreatedAt)
+				if err == nil {
+					break
+				}
 			}
+
 			if err != nil {
 				return nil, err
 			}
+
 			row.Enrollment.CreatedAt = createdAt
 		}
 		row.MonthDays = monthDays
@@ -683,11 +730,19 @@ func (a *App) listBookingReferralsByDivisionIDs(divisionIDs []int64) ([]BookingR
 }
 
 func (a *App) listBookingReferralsForScheduleIDs(scheduleIDs []int64) ([]BookingReferral, error) {
-	return listBookingReferralsForScheduleIDsQuery(a.db, scheduleIDs)
+	return listBookingReferralsForScheduleIDsQuery(
+		a.db,
+		a.runtimeConfig.DBDriver,
+		scheduleIDs,
+	)
 }
 
 func (a *App) listBookingPaymentCollectionsForScheduleIDs(scheduleIDs []int64) ([]BookingPaymentCollection, error) {
-	return listBookingPaymentCollectionsForScheduleIDsQuery(a.db, scheduleIDs)
+	return listBookingPaymentCollectionsForScheduleIDsQuery(
+		a.db,
+		a.runtimeConfig.DBDriver,
+		scheduleIDs,
+	)
 }
 
 func (a *App) listBookingFinancials() ([]BookingFinancial, error) {
@@ -707,11 +762,19 @@ func (a *App) listBookingFinancials() ([]BookingFinancial, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return listBookingFinancialsForScheduleIDsQuery(a.db, scheduleIDs)
+	return listBookingFinancialsForScheduleIDsQuery(
+		a.db,
+		a.runtimeConfig.DBDriver,
+		scheduleIDs,
+	)
 }
 
 func (a *App) listBookingFinancialsForScheduleIDs(scheduleIDs []int64) ([]BookingFinancial, error) {
-	return listBookingFinancialsForScheduleIDsQuery(a.db, scheduleIDs)
+	return listBookingFinancialsForScheduleIDsQuery(
+		a.db,
+		a.runtimeConfig.DBDriver,
+		scheduleIDs,
+	)
 }
 
 func studentMonthlyPaymentKey(admissionID, enrollmentID int64) string {
@@ -912,7 +975,11 @@ func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
 }
 
 func (a *App) listBookingRequestChangesForScheduleIDs(scheduleIDs []int64) ([]BookingRequestChange, error) {
-	return listBookingRequestChangesForScheduleIDsQuery(a.db, scheduleIDs)
+	return listBookingRequestChangesForScheduleIDsQuery(
+		a.db,
+		a.runtimeConfig.DBDriver,
+		scheduleIDs,
+	)
 }
 
 func (a *App) listActiveSpaceSchedules() ([]SpaceSchedule, error) {
@@ -1138,7 +1205,9 @@ func (a *App) createOneToOneOffering(offering OneToOneOffering) (int64, error) {
 	if offering.Occurrence == "per_day" || offering.SessionCount <= 0 {
 		offering.SessionCount = 1
 	}
-	result, err := a.execDB(`
+	now := time.Now().UTC()
+
+	return a.insertAndReturnID(`
 		INSERT INTO one_to_one_offerings (
 			name,
 			game,
@@ -1159,18 +1228,15 @@ func (a *App) createOneToOneOffering(offering OneToOneOffering) (int64, error) {
 		offering.SessionCount,
 		offering.Price,
 		boolToInt(offering.Active),
-		time.Now().UTC(),
-		time.Now().UTC(),
+		now,
+		now,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
 }
 
 func (a *App) createGame(game Game) (int64, error) {
 	now := time.Now().UTC()
-	result, err := a.execDB(`
+
+	return a.insertAndReturnID(`
 		INSERT INTO games (
 			name,
 			activity,
@@ -1190,10 +1256,6 @@ func (a *App) createGame(game Game) (int64, error) {
 		now,
 		now,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
 }
 
 func (a *App) updateGame(game Game) error {
@@ -1384,7 +1446,77 @@ func (a *App) listOneToOneBookings() ([]OneToOneBooking, error) {
 	return bookings, rows.Err()
 }
 
-func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slotDate, slotHour string, sessions int, discountedPrice float64, coachFee float64, notes string, referralCode string) (int64, int64, error) {
+func resolveOneToOneCourtActivity(
+	offering OneToOneOffering,
+	games []Game,
+	activities []CourtActivity,
+) (string, error) {
+	gameSlug := strings.TrimSpace(offering.Game)
+	if gameSlug == "" {
+		return "", errors.New("1 to 1 offering has no game configured")
+	}
+
+	// First preserve the existing/direct configuration model.
+	// Many games use the same internal slug as the court activity
+	// (for example badminton -> badminton, tennis -> tennis).
+	for _, activity := range activities {
+		if !activity.Active {
+			continue
+		}
+		if strings.EqualFold(
+			strings.TrimSpace(activity.Activity),
+			gameSlug,
+		) {
+			return strings.TrimSpace(activity.Activity), nil
+		}
+	}
+
+	// If there is no direct activity match, resolve through the Game record.
+	// This supports games whose product slug differs from the physical
+	// court activity, for example:
+	// cricket -> full_indoor_cricket.
+	var gameID int64
+	for _, game := range games {
+		if !game.Active {
+			continue
+		}
+		if strings.EqualFold(
+			strings.TrimSpace(game.Activity),
+			gameSlug,
+		) {
+			gameID = game.ID
+			break
+		}
+	}
+
+	if gameID <= 0 {
+		return "", fmt.Errorf(
+			"the selected 1 to 1 game %q is no longer available",
+			gameSlug,
+		)
+	}
+
+	for _, activity := range activities {
+		if !activity.Active {
+			continue
+		}
+		if activity.GameID != gameID {
+			continue
+		}
+
+		courtActivity := strings.TrimSpace(activity.Activity)
+		if courtActivity != "" {
+			return courtActivity, nil
+		}
+	}
+
+	return "", fmt.Errorf(
+		"the selected 1 to 1 game %q is not linked to an active court activity",
+		gameSlug,
+	)
+}
+
+func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slotDate, slotHour string, sessions int, discountedPrice float64, coachUserID int64, coachFee float64, notes string, referralCode string) (int64, int64, error) {
 	if sessions <= 0 {
 		sessions = 1
 	}
@@ -1398,30 +1530,47 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 		return 0, 0, fmt.Errorf("sessions cannot exceed the configured limit of %d", offering.SessionCount)
 	}
 	if discountedPrice < 0 {
-		return 0, 0, errors.New("discounted price must be zero or greater")
+		discountedPrice = offering.Price
 	}
 	if discountedPrice > offering.Price {
-		return 0, 0, errors.New("discounted price cannot exceed the standard price")
+		return 0, 0, errors.New("final package price cannot exceed the standard price")
+	}
+	if coachUserID <= 0 {
+		return 0, 0, errors.New("select a coach")
 	}
 	if coachFee < 0 {
 		return 0, 0, errors.New("coach fee must be zero or greater")
 	}
+	courtActivities, courtLayouts, err := a.activeBookingConfiguration()
+	if err != nil {
+		return 0, 0, fmt.Errorf("load active court configuration: %w", err)
+	}
+
+	games, err := a.listGames(false)
+	if err != nil {
+		return 0, 0, fmt.Errorf("load games for 1 to 1 booking: %w", err)
+	}
+
+	courtActivity, err := resolveOneToOneCourtActivity(
+		offering,
+		games,
+		courtActivities,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
 	schedule := SpaceSchedule{
 		SlotDate:      slotDate,
 		SlotHour:      slotHour,
 		EntryType:     "booking",
-		Activity:      offering.Game,
+		Activity:      courtActivity,
 		Quantity:      1,
 		Title:         fmt.Sprintf("1 to 1 · %s · %s", offering.Name, customerName),
 		Notes:         buildOneToOneBookingNotes(offering, sessions, discountedPrice, coachFee, notes),
 		RequesterName: customerName,
 		ReferralCode:  strings.ToUpper(strings.TrimSpace(referralCode)),
 		QuotedPrice:   discountedPrice,
-	}
-
-	courtActivities, courtLayouts, err := a.activeBookingConfiguration()
-	if err != nil {
-		return 0, 0, fmt.Errorf("load active court configuration: %w", err)
 	}
 	if err := validateConfiguredBookingOption(schedule, courtActivities, courtLayouts); err != nil {
 		return 0, 0, err
@@ -1440,7 +1589,13 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 	}
 	defer tx.Rollback()
 
-	existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, 0)
+	existing, err := querySchedulesForSlot(
+		tx,
+		a.runtimeConfig.DBDriver,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		0,
+	)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -1449,7 +1604,7 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
+	scheduleID, err := a.insertAndReturnIDTx(tx, `
 		INSERT INTO space_schedules (
 			slot_date,
 			slot_hour,
@@ -1491,11 +1646,10 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 		return 0, 0, err
 	}
 
-	scheduleID, err := result.LastInsertId()
 	if err != nil {
 		return 0, 0, err
 	}
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		INSERT INTO booking_financials (
 			schedule_id,
 			quoted_amount,
@@ -1511,7 +1665,7 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 	if err := a.createBookingReferralTx(tx, scheduleID, schedule.ReferralCode, now); err != nil {
 		return 0, 0, err
 	}
-	result, err = tx.Exec(`
+	bookingID, err := a.insertAndReturnIDTx(tx, `
 		INSERT INTO one_to_one_bookings (
 			schedule_id,
 			offering_id,
@@ -1533,8 +1687,33 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 	if err != nil {
 		return 0, 0, err
 	}
-	bookingID, err := result.LastInsertId()
-	if err != nil {
+
+	// A 1-to-1 booking represents the purchased package. Each actual
+	// appointment is tracked separately as a booking session.
+	// Creation schedules session #1 only; the remaining purchased sessions
+	// stay unscheduled until their individual dates/times are selected.
+	if _, err := a.insertAndReturnIDTx(tx, `
+		INSERT INTO one_to_one_booking_sessions (
+			booking_id,
+			schedule_id,
+			session_number,
+			coach_user_id,
+			coach_fee,
+			status,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		bookingID,
+		scheduleID,
+		1,
+		coachUserID,
+		coachFee,
+		"scheduled",
+		now,
+		now,
+	); err != nil {
 		return 0, 0, err
 	}
 
@@ -1542,6 +1721,598 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 		return 0, 0, err
 	}
 	return bookingID, scheduleID, nil
+}
+
+func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSession, error) {
+	rows, err := a.queryDB(`
+		SELECT
+			ots.id,
+			ots.booking_id,
+			ots.schedule_id,
+			ots.session_number,
+			COALESCE(ots.coach_user_id, 0),
+			COALESCE(u.name, ''),
+			COALESCE(ots.coach_fee, 0),
+			ss.slot_date,
+			ss.slot_hour,
+			ots.status,
+			COALESCE(ots.notes, ''),
+			ots.completed_at,
+			COALESCE(ots.completed_by_user_id, 0),
+			ots.cancelled_at,
+			ots.created_at,
+			ots.updated_at
+		FROM one_to_one_booking_sessions ots
+		JOIN space_schedules ss
+			ON ss.id = ots.schedule_id
+		LEFT JOIN users u
+			ON u.id = ots.coach_user_id
+		WHERE ots.booking_id = ?
+		ORDER BY ots.session_number ASC, ots.id ASC
+	`, bookingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []OneToOneBookingSession
+
+	for rows.Next() {
+		var session OneToOneBookingSession
+		var completedAt sql.NullTime
+		var cancelledAt sql.NullTime
+
+		if err := rows.Scan(
+			&session.ID,
+			&session.BookingID,
+			&session.ScheduleID,
+			&session.SessionNumber,
+			&session.CoachUserID,
+			&session.CoachName,
+			&session.CoachFee,
+			&session.SlotDate,
+			&session.SlotHour,
+			&session.Status,
+			&session.Notes,
+			&completedAt,
+			&session.CompletedByUserID,
+			&cancelledAt,
+			&session.CreatedAt,
+			&session.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		if completedAt.Valid {
+			session.CompletedAt = completedAt.Time
+		}
+		if cancelledAt.Valid {
+			session.CancelledAt = cancelledAt.Time
+		}
+
+		sessions = append(sessions, session)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return sessions, nil
+}
+
+func (a *App) scheduleNextOneToOneSession(
+	bookingID int64,
+	slotDate string,
+	slotHour string,
+	coachUserID int64,
+	coachFee float64,
+	notes string,
+) (int64, int64, error) {
+	if bookingID <= 0 {
+		return 0, 0, errors.New("invalid 1 to 1 booking")
+	}
+
+	if coachFee < 0 {
+		return 0, 0, errors.New("coach fee must be zero or greater")
+	}
+
+	var booking OneToOneBooking
+
+	err := a.queryRowDB(`
+		SELECT
+			id,
+			schedule_id,
+			offering_id,
+			customer_name,
+			offering_name,
+			game,
+			audience,
+			price,
+			discounted_price,
+			coach_fee,
+			sessions,
+			occurrence,
+			max_sessions,
+			COALESCE(coach_user_id, 0),
+			package_status,
+			completed_sessions,
+			cancelled_sessions,
+			created_at,
+			updated_at
+		FROM one_to_one_bookings
+		WHERE id = ?
+	`, bookingID).Scan(
+		&booking.ID,
+		&booking.ScheduleID,
+		&booking.OfferingID,
+		&booking.CustomerName,
+		&booking.OfferingName,
+		&booking.Game,
+		&booking.Audience,
+		&booking.Price,
+		&booking.DiscountedPrice,
+		&booking.CoachFee,
+		&booking.Sessions,
+		&booking.Occurrence,
+		&booking.MaxSessions,
+		&booking.CoachUserID,
+		&booking.PackageStatus,
+		&booking.CompletedSessions,
+		&booking.CancelledSessions,
+		&booking.CreatedAt,
+		&booking.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, 0, errors.New("1 to 1 booking was not found")
+		}
+		return 0, 0, err
+	}
+
+	if booking.PackageStatus != "active" {
+		return 0, 0, errors.New("this 1 to 1 package is not active")
+	}
+
+	// Cancelled appointments do not consume the purchased package allowance.
+	// Keep their rows for audit history, but permit a replacement appointment.
+	var consumingSessionCount int
+	if err := a.queryRowDB(`
+		SELECT COUNT(*)
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+			AND status <> 'cancelled'
+	`, bookingID).Scan(&consumingSessionCount); err != nil {
+		return 0, 0, err
+	}
+
+	if consumingSessionCount >= booking.Sessions {
+		return 0, 0, errors.New("all purchased sessions have already been scheduled")
+	}
+
+	// Session numbers identify appointment records and must never be reused.
+	// A cancelled session therefore remains #N and its replacement receives
+	// the next sequence number.
+	var maxSessionNumber int
+	if err := a.queryRowDB(`
+		SELECT COALESCE(MAX(session_number), 0)
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+	`, bookingID).Scan(&maxSessionNumber); err != nil {
+		return 0, 0, err
+	}
+
+	nextSessionNumber := maxSessionNumber + 1
+
+	courtActivities, courtLayouts, err := a.activeBookingConfiguration()
+	if err != nil {
+		return 0, 0, fmt.Errorf("load active court configuration: %w", err)
+	}
+
+	games, err := a.listGames(false)
+	if err != nil {
+		return 0, 0, fmt.Errorf("load games for 1 to 1 session: %w", err)
+	}
+
+	offering := OneToOneOffering{
+		ID:   booking.OfferingID,
+		Game: booking.Game,
+	}
+
+	courtActivity, err := resolveOneToOneCourtActivity(
+		offering,
+		games,
+		courtActivities,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	schedule := SpaceSchedule{
+		SlotDate:      strings.TrimSpace(slotDate),
+		SlotHour:      strings.TrimSpace(slotHour),
+		EntryType:     "booking",
+		Activity:      courtActivity,
+		Quantity:      1,
+		Title:         fmt.Sprintf("1 to 1 · %s · %s · Session %d", booking.OfferingName, booking.CustomerName, nextSessionNumber),
+		Notes:         strings.TrimSpace(notes),
+		RequesterName: booking.CustomerName,
+		QuotedPrice:   0,
+	}
+
+	if err := validateSpaceScheduleInput(schedule); err != nil {
+		return 0, 0, err
+	}
+
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		return 0, 0, err
+	}
+
+	if err := validateConfiguredBookingOption(schedule, courtActivities, courtLayouts); err != nil {
+		return 0, 0, err
+	}
+
+	courtClosures, err := a.listActiveCourtClosures()
+	if err != nil {
+		return 0, 0, fmt.Errorf("load active court closures: %w", err)
+	}
+
+	if err := validateScheduleAgainstClosures(schedule, courtClosures); err != nil {
+		return 0, 0, err
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback()
+
+	existing, err := querySchedulesForSlot(
+		tx,
+		a.runtimeConfig.DBDriver,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		0,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if err := validateSpaceScheduleSlotAgainstLayouts(existing, schedule, courtLayouts); err != nil {
+		return 0, 0, err
+	}
+
+	now := time.Now().UTC()
+
+	scheduleID, err := a.insertAndReturnIDTx(tx, `
+		INSERT INTO space_schedules (
+			slot_date,
+			slot_hour,
+			entry_type,
+			activity,
+			quantity,
+			title,
+			notes,
+			status,
+			requester_name,
+			requester_email,
+			requester_phone,
+			requested_by_user_id,
+			review_note,
+			customer_message,
+			status_changed_at,
+			status_changed_by_user_id,
+			status_change_source,
+			cancellation_reason,
+			cancellation_finance_note,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', NULL, '', '', NULL, NULL, '', '', '', ?, ?)
+	`,
+		schedule.SlotDate,
+		schedule.SlotHour,
+		schedule.EntryType,
+		schedule.Activity,
+		schedule.Quantity,
+		schedule.Title,
+		schedule.Notes,
+		bookingStatusConfirmed,
+		schedule.RequesterName,
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	var sessionCoachUserID any
+	if coachUserID > 0 {
+		sessionCoachUserID = coachUserID
+	}
+
+	sessionID, err := a.insertAndReturnIDTx(tx, `
+		INSERT INTO one_to_one_booking_sessions (
+			booking_id,
+			schedule_id,
+			session_number,
+			coach_user_id,
+			coach_fee,
+			status,
+			notes,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		bookingID,
+		scheduleID,
+		nextSessionNumber,
+		sessionCoachUserID,
+		coachFee,
+		"scheduled",
+		strings.TrimSpace(notes),
+		now,
+		now,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+
+	return sessionID, scheduleID, nil
+}
+
+func (a *App) refreshOneToOnePackageProgressTx(
+	tx *sql.Tx,
+	bookingID int64,
+	now time.Time,
+) error {
+	var (
+		purchasedSessions int
+		completedSessions int
+		cancelledSessions int
+	)
+
+	if err := a.queryRowTxDB(tx, `
+		SELECT sessions
+		FROM one_to_one_bookings
+		WHERE id = ?
+	`, bookingID).Scan(&purchasedSessions); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("1 to 1 booking was not found")
+		}
+		return err
+	}
+
+	if err := a.queryRowTxDB(tx, `
+		SELECT
+			COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0)
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+	`, bookingID).Scan(
+		&completedSessions,
+		&cancelledSessions,
+	); err != nil {
+		return err
+	}
+
+	packageStatus := "active"
+	if purchasedSessions > 0 && completedSessions >= purchasedSessions {
+		packageStatus = "completed"
+	}
+
+	if _, err := a.execTxDB(tx, `
+		UPDATE one_to_one_bookings
+		SET
+			completed_sessions = ?,
+			cancelled_sessions = ?,
+			package_status = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		completedSessions,
+		cancelledSessions,
+		packageStatus,
+		now,
+		bookingID,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *App) completeOneToOneSession(
+	sessionID int64,
+	completedByUserID int64,
+) error {
+	if sessionID <= 0 {
+		return errors.New("invalid 1 to 1 session")
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var (
+		bookingID  int64
+		scheduleID int64
+		status     string
+	)
+
+	if err := a.queryRowTxDB(tx, `
+		SELECT
+			booking_id,
+			schedule_id,
+			status
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, sessionID).Scan(
+		&bookingID,
+		&scheduleID,
+		&status,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("1 to 1 session was not found")
+		}
+		return err
+	}
+
+	if status != "scheduled" && status != bookingStatusConfirmed {
+		if status == "completed" {
+			return errors.New("this 1 to 1 session is already completed")
+		}
+		if status == "cancelled" {
+			return errors.New("a cancelled 1 to 1 session cannot be completed")
+		}
+		return fmt.Errorf("1 to 1 session cannot be completed from status %q", status)
+	}
+
+	now := time.Now().UTC()
+
+	var completedBy any
+	if completedByUserID > 0 {
+		completedBy = completedByUserID
+	}
+
+	if _, err := a.execTxDB(tx, `
+		UPDATE one_to_one_booking_sessions
+		SET
+			status = 'completed',
+			completed_at = ?,
+			completed_by_user_id = ?,
+			cancelled_at = NULL,
+			updated_at = ?
+		WHERE id = ?
+	`, now, completedBy, now, sessionID); err != nil {
+		return err
+	}
+
+	// Keep the linked appointment in the central schedule history while
+	// marking it as completed so it no longer represents an outstanding
+	// appointment.
+	if _, err := a.execTxDB(tx, `
+		UPDATE space_schedules
+		SET
+			status = 'completed',
+			status_changed_at = ?,
+			status_changed_by_user_id = ?,
+			status_change_source = 'one_to_one_session',
+			updated_at = ?
+		WHERE id = ?
+	`, now, completedBy, now, scheduleID); err != nil {
+		return err
+	}
+
+	if err := a.refreshOneToOnePackageProgressTx(tx, bookingID, now); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) cancelOneToOneSession(
+	sessionID int64,
+	cancelledByUserID int64,
+	reason string,
+) error {
+	if sessionID <= 0 {
+		return errors.New("invalid 1 to 1 session")
+	}
+
+	reason = strings.TrimSpace(reason)
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var (
+		bookingID  int64
+		scheduleID int64
+		status     string
+	)
+
+	if err := a.queryRowTxDB(tx, `
+		SELECT
+			booking_id,
+			schedule_id,
+			status
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, sessionID).Scan(
+		&bookingID,
+		&scheduleID,
+		&status,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("1 to 1 session was not found")
+		}
+		return err
+	}
+
+	if status != "scheduled" && status != bookingStatusConfirmed {
+		if status == "cancelled" {
+			return errors.New("this 1 to 1 session is already cancelled")
+		}
+		if status == "completed" {
+			return errors.New("a completed 1 to 1 session cannot be cancelled")
+		}
+		return fmt.Errorf("1 to 1 session cannot be cancelled from status %q", status)
+	}
+
+	now := time.Now().UTC()
+
+	var cancelledBy any
+	if cancelledByUserID > 0 {
+		cancelledBy = cancelledByUserID
+	}
+
+	if _, err := a.execTxDB(tx, `
+		UPDATE one_to_one_booking_sessions
+		SET
+			status = 'cancelled',
+			cancelled_at = ?,
+			completed_at = NULL,
+			completed_by_user_id = NULL,
+			updated_at = ?
+		WHERE id = ?
+	`, now, now, sessionID); err != nil {
+		return err
+	}
+
+	if _, err := a.execTxDB(tx, `
+		UPDATE space_schedules
+		SET
+			status = 'cancelled',
+			status_changed_at = ?,
+			status_changed_by_user_id = ?,
+			status_change_source = 'one_to_one_session',
+			cancellation_reason = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		now,
+		cancelledBy,
+		reason,
+		now,
+		scheduleID,
+	); err != nil {
+		return err
+	}
+
+	if err := a.refreshOneToOnePackageProgressTx(tx, bookingID, now); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func buildOneToOneBookingNotes(offering OneToOneOffering, sessions int, discountedPrice float64, coachFee float64, notes string) string {
@@ -1578,15 +2349,27 @@ func (a *App) countReschedulePendingSpaceSchedulesByDivisionIDs(divisionIDs []in
 }
 
 func (a *App) schedulesForSlot(slotDate, slotHour string, excludeID int64) ([]SpaceSchedule, error) {
-	return querySchedulesForSlot(a.db, slotDate, slotHour, excludeID)
+	return querySchedulesForSlot(
+		a.db,
+		a.runtimeConfig.DBDriver,
+		slotDate,
+		slotHour,
+		excludeID,
+	)
 }
 
 type scheduleQueryer interface {
 	Query(string, ...any) (*sql.Rows, error)
 }
 
-func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, excludeID int64) ([]SpaceSchedule, error) {
-	rows, err := queryer.Query(`
+func querySchedulesForSlot(
+	queryer scheduleQueryer,
+	driver DatabaseDriver,
+	slotDate,
+	slotHour string,
+	excludeID int64,
+) ([]SpaceSchedule, error) {
+	query := `
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
@@ -1596,7 +2379,13 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 		FROM space_schedules
 		WHERE slot_date = ? AND id != ? AND status IN ('pending', 'held', 'confirmed', 'reschedule_pending')
 		ORDER BY id ASC
-	`, slotDate, excludeID)
+	`
+
+	// queryer may be a raw *sql.DB or *sql.Tx, so rebind SQLite-style
+	// placeholders before executing against PostgreSQL.
+	query = rebindDatabaseQuery(driver, query)
+
+	rows, err := queryer.Query(query, slotDate, excludeID)
 	if err != nil {
 		return nil, err
 	}
@@ -1642,6 +2431,13 @@ func querySchedulesForSlot(queryer scheduleQueryer, slotDate, slotHour string, e
 	return schedules, rows.Err()
 }
 
+func (a *App) listActiveCoaches() ([]User, error) {
+	// Coach activation belongs to coach_profiles, not users.
+	// Reuse the canonical coach-directory query so 1-to-1 scheduling
+	// follows the same role/profile/active semantics as coach management.
+	return a.listCoachUsersDetailed(false)
+}
+
 func (a *App) listCoachesForGroup(groupID int64) ([]User, error) {
 	rows, err := a.queryDB(`
 		SELECT
@@ -1659,7 +2455,7 @@ func (a *App) listCoachesForGroup(groupID int64) ([]User, error) {
 			ON r.id = ur.role_id
 		WHERE sgc.group_id = ?
 			AND r.name = 'coach'
-		ORDER BY u.LOWER(name) ASC, u.id ASC
+		ORDER BY LOWER(u.name) ASC, u.id ASC
 	`, groupID)
 	if err != nil {
 		return nil, err
@@ -1738,11 +2534,15 @@ func (a *App) createAdmission(admission Admission) error {
 }
 func replaceStudentGroupCoachesTx(
 	tx *sql.Tx,
+	driver DatabaseDriver,
 	groupID int64,
 	coachIDs []int64,
 ) error {
 	if _, err := tx.Exec(
-		`DELETE FROM student_group_coaches WHERE group_id = ?`,
+		rebindDatabaseQuery(
+			driver,
+			`DELETE FROM student_group_coaches WHERE group_id = ?`,
+		),
 		groupID,
 	); err != nil {
 		return err
@@ -1751,7 +2551,10 @@ func replaceStudentGroupCoachesTx(
 	now := time.Now().UTC()
 
 	for _, coachID := range coachIDs {
-		result, err := tx.Exec(`
+		result, err := tx.Exec(
+			rebindDatabaseQuery(
+				driver,
+				`
 			INSERT INTO student_group_coaches (
 				group_id,
 				user_id,
@@ -1767,6 +2570,7 @@ func replaceStudentGroupCoachesTx(
 				AND r.name = 'coach'
 			LIMIT 1
 		`,
+			),
 			groupID,
 			now,
 			coachID,
@@ -1790,19 +2594,40 @@ func replaceStudentGroupCoachesTx(
 
 func replaceStudentGroupSessionsTx(
 	tx *sql.Tx,
+	driver DatabaseDriver,
 	groupID int64,
 	sessions []StudentGroupSession,
 ) error {
-	if _, err := tx.Exec(`DELETE FROM student_group_sessions WHERE group_id = ?`, groupID); err != nil {
+	if _, err := tx.Exec(
+		rebindDatabaseQuery(
+			driver,
+			`DELETE FROM student_group_sessions WHERE group_id = ?`,
+		),
+		groupID,
+	); err != nil {
 		return err
 	}
 	now := time.Now().UTC()
 	for _, session := range sessions {
-		if _, err := tx.Exec(`
-			INSERT INTO student_group_sessions (
-				group_id, title, day_of_week, start_time, end_time, active, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, groupID, session.Title, session.DayOfWeek, session.StartTime, session.EndTime, boolToInt(session.Active), now, now); err != nil {
+		if _, err := tx.Exec(
+			rebindDatabaseQuery(
+				driver,
+				`
+				INSERT INTO student_group_sessions (
+					group_id, title, day_of_week, start_time, end_time, active, created_at, updated_at
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				`,
+			),
+			groupID,
+			session.Title,
+			session.DayOfWeek,
+			session.StartTime,
+			session.EndTime,
+			boolToInt(session.Active),
+			now,
+			now,
+		); err != nil {
 			return err
 		}
 	}
@@ -1821,27 +2646,68 @@ func (a *App) createStudentGroup(
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(`
-		INSERT INTO student_groups (name, code, description, training_program_id, created_at, updated_at)
+	now := time.Now().UTC()
+
+	var groupID int64
+
+	if err := a.queryRowTxDB(
+		tx,
+		`
+		INSERT INTO student_groups (
+			name,
+			code,
+			description,
+			training_program_id,
+			created_at,
+			updated_at
+		)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, group.Name, group.Code, group.Description, nullIfZero(group.TrainingProgramID), time.Now().UTC(), time.Now().UTC())
-	if err != nil {
+		RETURNING id
+		`,
+		group.Name,
+		group.Code,
+		group.Description,
+		nullIfZero(group.TrainingProgramID),
+		now,
+		now,
+	).Scan(&groupID); err != nil {
 		return err
 	}
-	groupID, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
+
 	for _, admissionID := range admissionIDs {
-		if _, err := tx.Exec(`INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, groupID, admissionID); err != nil {
+		if _, err := a.execTxDB(
+			tx,
+			`
+			INSERT INTO student_group_members (
+				group_id,
+				admission_id
+			)
+			VALUES (?, ?)
+			`,
+			groupID,
+			admissionID,
+		); err != nil {
 			return err
 		}
 	}
 
-	if err := replaceStudentGroupCoachesTx(tx, groupID, coachIDs); err != nil {
+	// Legacy coach assignments are retained here for compatibility with
+	// existing attendance/group workflows.
+	if err := replaceStudentGroupCoachesTx(
+		tx,
+		a.runtimeConfig.DBDriver,
+		groupID,
+		coachIDs,
+	); err != nil {
 		return err
 	}
-	if err := replaceStudentGroupSessionsTx(tx, groupID, sessions); err != nil {
+
+	if err := replaceStudentGroupSessionsTx(
+		tx,
+		a.runtimeConfig.DBDriver,
+		groupID,
+		sessions,
+	); err != nil {
 		return err
 	}
 
@@ -1932,7 +2798,7 @@ func (a *App) createCourtLayout(
 
 	now := time.Now().UTC()
 
-	result, err := tx.Exec(`
+	layoutID, err := a.insertAndReturnIDTx(tx, `
 		INSERT INTO court_layouts (
 			court_id,
 			name,
@@ -1956,13 +2822,8 @@ func (a *App) createCourtLayout(
 		return 0, err
 	}
 
-	layoutID, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-
 	for _, item := range layout.Items {
-		_, err := tx.Exec(`
+		_, err := a.execTxDB(tx, `
 			INSERT INTO court_layout_items (
 				layout_id,
 				activity,
@@ -2131,7 +2992,7 @@ func (a *App) updateCourtLayout(
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(`
+	result, err := a.execTxDB(tx, `
 		UPDATE court_layouts
 		SET
 			name = ?,
@@ -2163,7 +3024,7 @@ func (a *App) updateCourtLayout(
 		return sql.ErrNoRows
 	}
 
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		DELETE FROM court_layout_items
 		WHERE layout_id = ?
 	`, layout.ID); err != nil {
@@ -2171,7 +3032,7 @@ func (a *App) updateCourtLayout(
 	}
 
 	for _, item := range layout.Items {
-		_, err := tx.Exec(`
+		_, err := a.execTxDB(tx, `
 			INSERT INTO court_layout_items (
 				layout_id,
 				activity,
@@ -2335,6 +3196,7 @@ func (a *App) createSpaceSchedule(
 
 	existing, err := querySchedulesForSlot(
 		tx,
+		a.runtimeConfig.DBDriver,
 		schedule.SlotDate,
 		schedule.SlotHour,
 		0,
@@ -2352,7 +3214,7 @@ func (a *App) createSpaceSchedule(
 	}
 	now := time.Now().UTC()
 
-	result, err := tx.Exec(`
+	scheduleID, err := a.insertAndReturnIDTx(tx, `
 		INSERT INTO space_schedules (
 			slot_date,
 			slot_hour,
@@ -2404,13 +3266,12 @@ func (a *App) createSpaceSchedule(
 		return err
 	}
 
-	scheduleID, err := result.LastInsertId()
 	if err != nil {
 		return err
 	}
 
 	if schedule.EntryType == "booking" {
-		if _, err := tx.Exec(`
+		if _, err := a.execTxDB(tx, `
 			INSERT INTO booking_financials (
 				schedule_id,
 				quoted_amount,
@@ -2443,7 +3304,7 @@ func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode
 	}
 
 	var partnerID int64
-	if err := tx.QueryRow(`
+	if err := a.queryRowTxDB(tx, `
 		SELECT id
 		FROM referral_partners
 		WHERE code = ?
@@ -2458,7 +3319,7 @@ func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode
 	}
 
 	var commissionAmount float64
-	if err := tx.QueryRow(`
+	if err := a.queryRowTxDB(tx, `
 		SELECT COALESCE(referral_commission_amount, 0)
 		FROM pricing_settings
 		WHERE id = 1
@@ -2469,7 +3330,7 @@ func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode
 		return errors.New("referral commission is not configured")
 	}
 
-	_, err := tx.Exec(`
+	_, err := a.execTxDB(tx, `
 		INSERT INTO booking_referrals (
 			schedule_id,
 			partner_id,
@@ -2592,6 +3453,7 @@ func (a *App) createPublicBookingRequestDetailed(
 
 	existing, err := querySchedulesForSlot(
 		tx,
+		a.runtimeConfig.DBDriver,
 		schedule.SlotDate,
 		schedule.SlotHour,
 		0,
@@ -2620,7 +3482,7 @@ func (a *App) createPublicBookingRequestDetailed(
 	changeSource := "customer"
 	actionType := bookingStatusPending
 
-	result, err := tx.Exec(`
+	requestID, err := a.insertAndReturnIDTx(tx, `
 		INSERT INTO space_schedules (
 			slot_date,
 			slot_hour,
@@ -2672,7 +3534,6 @@ func (a *App) createPublicBookingRequestDetailed(
 		return nil, 0, err
 	}
 
-	requestID, err := result.LastInsertId()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -2684,7 +3545,7 @@ func (a *App) createPublicBookingRequestDetailed(
 	schedule.StatusChangedAt = now
 	schedule.StatusSource = statusSource
 
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		INSERT INTO booking_financials (
 			schedule_id,
 			quoted_amount,
@@ -2839,10 +3700,29 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 	defer tx.Rollback()
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
+
+	if strings.TrimSpace(enrollment.EnrollmentDate) == "" {
+		if err := a.queryRowTxDB(
+			tx,
+			`SELECT COALESCE(admission_date, '') FROM admissions WHERE id = ?`,
+			enrollment.AdmissionID,
+		).Scan(&enrollment.EnrollmentDate); err != nil {
+			return 0, 0, err
+		}
+	}
+
+	enrollment.EnrollmentDate =
+		strings.TrimSpace(enrollment.EnrollmentDate)
+
+	var enrollmentID int64
+
+	if err := a.queryRowTxDB(
+		tx,
+		`
 		INSERT INTO student_enrollments (
 			admission_id,
 			training_program_id,
+			enrollment_date,
 			free_admission,
 			free_monthly_fee,
 			payment_collected,
@@ -2852,25 +3732,29 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 			active,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, 0, NULL, 0, NULL, 1, ?, ?)
-	`,
+		)
+		VALUES (
+			?, ?, ?, ?, ?,
+			0, NULL, 0, NULL, 1, ?, ?
+		)
+		RETURNING id
+		`,
 		enrollment.AdmissionID,
 		enrollment.TrainingProgramID,
+		enrollment.EnrollmentDate,
 		boolToInt(enrollment.FreeAdmission),
 		boolToInt(enrollment.FreeMonthlyFee),
 		now,
 		now,
-	)
-	if err != nil {
+	).Scan(&enrollmentID); err != nil {
 		return 0, 0, err
 	}
-	enrollmentID, err := result.LastInsertId()
-	if err != nil {
-		return 0, 0, err
-	}
+
 	enrollment.ID = enrollmentID
 
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(
+		tx,
+		`
 		INSERT INTO admission_training_programs (
 			admission_id,
 			training_program_id,
@@ -2881,9 +3765,15 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 			SELECT 1
 			FROM admission_training_programs
 			WHERE admission_id = ?
-				AND training_program_id = ?
+			  AND training_program_id = ?
 		)
-	`, enrollment.AdmissionID, enrollment.TrainingProgramID, now, enrollment.AdmissionID, enrollment.TrainingProgramID); err != nil {
+		`,
+		enrollment.AdmissionID,
+		enrollment.TrainingProgramID,
+		now,
+		enrollment.AdmissionID,
+		enrollment.TrainingProgramID,
+	); err != nil {
 		return 0, 0, err
 	}
 
@@ -2914,13 +3804,21 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 	}
 
 	var monthlyPaymentCount int
-	if err := tx.QueryRow(`
+	if err := a.queryRowTxDB(
+		tx,
+		`
 		SELECT COUNT(*)
 		FROM student_monthly_payments
 		WHERE enrollment_id = ?
 		  AND COALESCE(voided, 0) = 0
-	`, enrollment.ID).Scan(&monthlyPaymentCount); err != nil {
+		`,
+		enrollment.ID,
+	).Scan(&monthlyPaymentCount); err != nil {
 		return err
+	}
+
+	if strings.TrimSpace(enrollment.EnrollmentDate) == "" {
+		enrollment.EnrollmentDate = existing.EnrollmentDate
 	}
 
 	if existing.AdmissionPaymentPaid {
@@ -2933,15 +3831,25 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 		enrollment.TrainingProgramName = existing.TrainingProgramName
 	}
 
-	result, err := tx.Exec(`
+	result, err := a.execTxDB(
+		tx,
+		`
 		UPDATE student_enrollments
 		SET
 			training_program_id = ?,
+			enrollment_date = ?,
 			free_admission = ?,
 			free_monthly_fee = ?,
 			updated_at = ?
 		WHERE id = ?
-	`, enrollment.TrainingProgramID, boolToInt(enrollment.FreeAdmission), boolToInt(enrollment.FreeMonthlyFee), time.Now().UTC(), enrollment.ID)
+		`,
+		enrollment.TrainingProgramID,
+		enrollment.EnrollmentDate,
+		boolToInt(enrollment.FreeAdmission),
+		boolToInt(enrollment.FreeMonthlyFee),
+		time.Now().UTC(),
+		enrollment.ID,
+	)
 	if err != nil {
 		return err
 	}
@@ -2955,11 +3863,16 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 	}
 
 	if enrollment.TrainingProgramID != existing.TrainingProgramID {
-		if _, err := tx.Exec(`
+		if _, err := a.execTxDB(
+			tx,
+			`
 			DELETE FROM admission_training_programs
 			WHERE admission_id = ?
 			  AND training_program_id = ?
-		`, existing.AdmissionID, existing.TrainingProgramID); err != nil {
+			`,
+			existing.AdmissionID,
+			existing.TrainingProgramID,
+		); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`
@@ -3058,75 +3971,134 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 	return false, tx.Commit()
 }
 
-func (a *App) collectEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment StudentEnrollment, paymentMethod string, recordedByUserID int64) (int64, error) {
+func (a *App) collectEnrollmentAdmissionPaymentTx(
+	tx *sql.Tx,
+	enrollment StudentEnrollment,
+	paymentMethod string,
+	recordedByUserID int64,
+) (int64, error) {
 	var studentName string
-	if err := tx.QueryRow(`SELECT full_name FROM admissions WHERE id = ?`, enrollment.AdmissionID).Scan(&studentName); err != nil {
+
+	if err := a.queryRowTxDB(
+		tx,
+		`SELECT full_name FROM admissions WHERE id = ?`,
+		enrollment.AdmissionID,
+	).Scan(&studentName); err != nil {
 		return 0, err
 	}
+
 	var admissionFee float64
-	if err := tx.QueryRow(`SELECT COALESCE(admission_fee, 0) FROM training_programs WHERE id = ?`, enrollment.TrainingProgramID).Scan(&admissionFee); err != nil {
+
+	if err := a.queryRowTxDB(
+		tx,
+		`
+		SELECT COALESCE(admission_fee, 0)
+		FROM training_programs
+		WHERE id = ?
+		`,
+		enrollment.TrainingProgramID,
+	).Scan(&admissionFee); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, ErrAdmissionFeeNotConfigured
 		}
 		return 0, err
 	}
+
 	if enrollment.FreeAdmission {
 		admissionFee = 0
 	}
+
 	if admissionFee <= 0 {
 		return 0, ErrAdmissionFeeNotConfigured
 	}
+
 	now := time.Now().UTC()
-	receiptNumber := fmt.Sprintf("ENR-%s-%06d", now.Format("20060102150405"), enrollment.ID)
+
+	receiptNumber := fmt.Sprintf(
+		"ENR-%s-%06d",
+		now.Format("20060102150405"),
+		enrollment.ID,
+	)
+
 	paymentMethod = normalizePaymentMethod(paymentMethod)
+
 	if !validPaymentMethod(paymentMethod) {
 		return 0, errors.New("invalid payment method")
 	}
-	divisionID, err := financeDivisionIDForEntryTx(tx, financeTransactionCreate{
-		ReferenceType: "student_enrollment",
-		ReferenceID:   enrollment.ID,
-		SourceType:    "student_enrollment",
-		SourceID:      enrollment.ID,
-	})
+
+	divisionID, err := financeDivisionIDForEntryTx(
+		tx,
+		financeTransactionCreate{
+			ReferenceType: "student_enrollment",
+			ReferenceID:   enrollment.ID,
+			SourceType:    "student_enrollment",
+			SourceID:      enrollment.ID,
+		},
+	)
 	if err != nil {
 		return 0, err
 	}
-	account, err := findFinanceAccountForPaymentMethodTx(tx, divisionID, paymentMethod)
+
+	account, err := findFinanceAccountForPaymentMethodTx(
+		tx,
+		divisionID,
+		paymentMethod,
+	)
 	if err != nil {
 		return 0, err
 	}
-	description := fmt.Sprintf("Admission payment for %s - %s", studentName, enrollment.TrainingProgramName)
-	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
-		ReceiptNumber:    receiptNumber,
-		ReferenceNumber:  receiptNumber,
-		Category:         "admission_payment",
-		TransactionType:  financeTxnTypeIncome,
-		ReferenceType:    "student_enrollment",
-		ReferenceID:      enrollment.ID,
-		SourceType:       "student_enrollment",
-		SourceID:         enrollment.ID,
-		FinanceAccountID: account.ID,
-		PersonName:       studentName,
-		Description:      description,
-		PaymentMethod:    paymentMethod,
-		Amount:           admissionFee,
-		RecordedByUserID: recordedByUserID,
-		RecordedAt:       now,
-	})
+
+	description := fmt.Sprintf(
+		"Admission payment for %s - %s",
+		studentName,
+		enrollment.TrainingProgramName,
+	)
+
+	transactionID, err := insertFinanceTransactionTx(
+		tx,
+		financeTransactionCreate{
+			ReceiptNumber:    receiptNumber,
+			ReferenceNumber:  receiptNumber,
+			Category:         "admission_payment",
+			TransactionType:  financeTxnTypeIncome,
+			ReferenceType:    "student_enrollment",
+			ReferenceID:      enrollment.ID,
+			SourceType:       "student_enrollment",
+			SourceID:         enrollment.ID,
+			FinanceAccountID: account.ID,
+			PersonName:       studentName,
+			Description:      description,
+			PaymentMethod:    paymentMethod,
+			Amount:           admissionFee,
+			RecordedByUserID: recordedByUserID,
+			RecordedAt:       now,
+		},
+	)
 	if err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(`
+
+	if _, err := a.execTxDB(
+		tx,
+		`
 		UPDATE student_enrollments
-		SET payment_collected = 1,
-		    payment_collected_at = ?,
-		    admission_payment_amount = ?,
-		    finance_transaction_id = ?,
-		    updated_at = ?
+		SET
+			payment_collected = 1,
+			payment_collected_at = ?,
+			admission_payment_amount = ?,
+			finance_transaction_id = ?,
+			updated_at = ?
 		WHERE id = ?
-	`, now, admissionFee, transactionID, now, enrollment.ID); err != nil {
+		`,
+		now,
+		admissionFee,
+		transactionID,
+		now,
+		enrollment.ID,
+	); err != nil {
 		return 0, err
 	}
+
 	return transactionID, nil
 }
 
@@ -3370,25 +4342,68 @@ func (a *App) updateStudentGroup(
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(
+		tx,
+		`
 		UPDATE student_groups
-		SET name = ?, code = ?, description = ?, training_program_id = ?, updated_at = ?
+		SET
+			name = ?,
+			code = ?,
+			description = ?,
+			training_program_id = ?,
+			updated_at = ?
 		WHERE id = ?
-	`, group.Name, group.Code, group.Description, nullIfZero(group.TrainingProgramID), time.Now().UTC(), group.ID); err != nil {
+		`,
+		group.Name,
+		group.Code,
+		group.Description,
+		nullIfZero(group.TrainingProgramID),
+		time.Now().UTC(),
+		group.ID,
+	); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM student_group_members WHERE group_id = ?`, group.ID); err != nil {
+
+	if _, err := a.execTxDB(
+		tx,
+		`DELETE FROM student_group_members WHERE group_id = ?`,
+		group.ID,
+	); err != nil {
 		return err
 	}
+
 	for _, admissionID := range admissionIDs {
-		if _, err := tx.Exec(`INSERT INTO student_group_members (group_id, admission_id) VALUES (?, ?)`, group.ID, admissionID); err != nil {
+		if _, err := a.execTxDB(
+			tx,
+			`
+			INSERT INTO student_group_members (
+				group_id,
+				admission_id
+			)
+			VALUES (?, ?)
+			`,
+			group.ID,
+			admissionID,
+		); err != nil {
 			return err
 		}
 	}
-	if err := replaceStudentGroupCoachesTx(tx, group.ID, coachIDs); err != nil {
+
+	if err := replaceStudentGroupCoachesTx(
+		tx,
+		a.runtimeConfig.DBDriver,
+		group.ID,
+		coachIDs,
+	); err != nil {
 		return err
 	}
-	if err := replaceStudentGroupSessionsTx(tx, group.ID, sessions); err != nil {
+
+	if err := replaceStudentGroupSessionsTx(
+		tx,
+		a.runtimeConfig.DBDriver,
+		group.ID,
+		sessions,
+	); err != nil {
 		return err
 	}
 
@@ -3452,6 +4467,7 @@ func (a *App) updateSpaceSchedule(
 
 	existing, err := querySchedulesForSlot(
 		tx,
+		a.runtimeConfig.DBDriver,
 		schedule.SlotDate,
 		schedule.SlotHour,
 		schedule.ID,
@@ -3814,16 +4830,21 @@ func (a *App) payReferralCommission(referralID int64, paymentMethod string, reco
 
 func (a *App) nextReceiptNumberTx(tx *sql.Tx, scope string, now time.Time) (string, error) {
 	year := now.UTC().Year()
-	if _, err := tx.Exec(`
+	if _, err := tx.Exec(a.dbQuery(`
 		INSERT INTO receipt_sequences (scope, year, next_value)
 		VALUES (?, ?, 2)
 		ON CONFLICT(scope, year) DO UPDATE
-		SET next_value = next_value + 1
-	`, scope, year); err != nil {
+		SET next_value = receipt_sequences.next_value + 1
+	`), scope, year); err != nil {
 		return "", err
 	}
 	var nextValue int
-	if err := tx.QueryRow(`SELECT next_value - 1 FROM receipt_sequences WHERE scope = ? AND year = ?`, scope, year).Scan(&nextValue); err != nil {
+	if err := a.queryRowTxDB(
+		tx,
+		`SELECT next_value - 1 FROM receipt_sequences WHERE scope = ? AND year = ?`,
+		scope,
+		year,
+	).Scan(&nextValue); err != nil {
 		return "", err
 	}
 	if scope == "booking_payment" {
@@ -3850,7 +4871,7 @@ func bookingPaymentCollectibleStatus(status string) bool {
 }
 
 func (a *App) syncBookingFinancialSnapshotTx(tx *sql.Tx, scheduleID int64) error {
-	financials, err := listBookingFinancialsForScheduleIDsQuery(tx, []int64{scheduleID})
+	financials, err := listBookingFinancialsForScheduleIDsQuery(tx, a.runtimeConfig.DBDriver, []int64{scheduleID})
 	if err != nil {
 		return err
 	}
@@ -3864,7 +4885,7 @@ func (a *App) syncBookingFinancialSnapshotTx(tx *sql.Tx, scheduleID int64) error
 	if financial.ActivePaymentCount > 0 {
 		paidAt = financial.LastPaymentDate.UTC()
 		paymentMethod = "cash"
-		collections, err := listBookingPaymentCollectionsForScheduleIDsQuery(tx, []int64{scheduleID})
+		collections, err := listBookingPaymentCollectionsForScheduleIDsQuery(tx, a.runtimeConfig.DBDriver, []int64{scheduleID})
 		if err != nil {
 			return err
 		}
@@ -3879,11 +4900,23 @@ func (a *App) syncBookingFinancialSnapshotTx(tx *sql.Tx, scheduleID int64) error
 	if financial.ActivePaymentCount > 0 {
 		paidFlag = 1
 	}
-	_, err = tx.Exec(`
-		UPDATE booking_financials
-		SET paid = ?, paid_at = ?, payment_method = COALESCE(?, ''), finance_transaction_id = ?, updated_at = ?
-		WHERE schedule_id = ?
-	`, paidFlag, paidAt, paymentMethod, financeTransactionID, time.Now().UTC(), scheduleID)
+	_, err = tx.Exec(
+		a.dbQuery(`
+			UPDATE booking_financials
+			SET paid = ?,
+			    paid_at = ?,
+			    payment_method = COALESCE(?, ''),
+			    finance_transaction_id = ?,
+			    updated_at = ?
+			WHERE schedule_id = ?
+		`),
+		paidFlag,
+		paidAt,
+		paymentMethod,
+		financeTransactionID,
+		time.Now().UTC(),
+		scheduleID,
+	)
 	return err
 }
 
@@ -3892,7 +4925,7 @@ func nullableExistingUserIDTx(tx *sql.Tx, userID int64) any {
 		return nil
 	}
 	var exists int
-	if err := tx.QueryRow(`SELECT 1 FROM users WHERE id = ?`, userID).Scan(&exists); err != nil {
+	if err := tx.QueryRow(`SELECT 1 FROM users WHERE id = $1`, userID).Scan(&exists); err != nil {
 		return nil
 	}
 	return userID
@@ -3921,7 +4954,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 
 	var financial BookingFinancial
 	var paid int
-	if err := tx.QueryRow(`
+	if err := a.queryRowTxDB(tx, `
 		SELECT bf.id, bf.quoted_amount, bf.paid, s.status, COALESCE(s.requester_name, ''), s.activity, s.quantity
 		FROM booking_financials bf
 		JOIN space_schedules s ON s.id = bf.schedule_id
@@ -3941,7 +4974,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 	if financial.QuotedAmount <= 0 {
 		return 0, errors.New("booking has no collectible price")
 	}
-	financials, err := listBookingFinancialsForScheduleIDsQuery(tx, []int64{scheduleID})
+	financials, err := listBookingFinancialsForScheduleIDsQuery(tx, a.runtimeConfig.DBDriver, []int64{scheduleID})
 	if err != nil {
 		return 0, err
 	}
@@ -3998,7 +5031,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 	if err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(`
+	if _, err := tx.Exec(a.dbQuery(`
 		INSERT INTO booking_payment_collections (
 			schedule_id,
 			finance_transaction_id,
@@ -4009,10 +5042,10 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 			collected_at,
 			created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, scheduleID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), recordedByRef, now, now); err != nil {
+	`), scheduleID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), recordedByRef, now, now); err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(`
+	if _, err := tx.Exec(a.dbQuery(`
 		UPDATE finance_transactions
 		SET source_type = 'booking_payment_collection',
 		    source_id = (
@@ -4022,7 +5055,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 			),
 		    updated_at = ?
 		WHERE id = ?
-	`, transactionID, now, transactionID); err != nil {
+	`), transactionID, now, transactionID); err != nil {
 		return 0, err
 	}
 	if err := a.syncBookingFinancialSnapshotTx(tx, scheduleID); err != nil {
@@ -4107,7 +5140,11 @@ func (a *App) transitionBookingRequestStatus(
 	}
 	defer tx.Rollback()
 
-	schedule, err := findSpaceScheduleByIDQuery(tx, scheduleID)
+	schedule, err := findSpaceScheduleByIDQuery(
+		tx,
+		a.runtimeConfig.DBDriver,
+		scheduleID,
+	)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -4142,7 +5179,13 @@ func (a *App) transitionBookingRequestStatus(
 		if err := validateScheduleAgainstClosures(*schedule, courtClosures); err != nil {
 			return nil, 0, err
 		}
-		existing, err := querySchedulesForSlot(tx, schedule.SlotDate, schedule.SlotHour, schedule.ID)
+		existing, err := querySchedulesForSlot(
+			tx,
+			a.runtimeConfig.DBDriver,
+			schedule.SlotDate,
+			schedule.SlotHour,
+			schedule.ID,
+		)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -4186,7 +5229,11 @@ func (a *App) transitionBookingRequestStatus(
 		return nil, 0, errors.New("booking request is no longer awaiting action")
 	}
 
-	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(tx, scheduleID), scheduleID)
+	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(
+		tx,
+		a.runtimeConfig.DBDriver,
+		scheduleID,
+	), scheduleID)
 	if financial != nil {
 		schedule.QuotedPrice = financial.QuotedAmount
 	}
@@ -4229,7 +5276,11 @@ func (a *App) rescheduleBookingRequest(
 	}
 	defer tx.Rollback()
 
-	current, err := findSpaceScheduleByIDQuery(tx, scheduleID)
+	current, err := findSpaceScheduleByIDQuery(
+		tx,
+		a.runtimeConfig.DBDriver,
+		scheduleID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -4321,6 +5372,7 @@ func (a *App) rescheduleBookingRequest(
 
 	existing, err := querySchedulesForSlot(
 		tx,
+		a.runtimeConfig.DBDriver,
 		updated.SlotDate,
 		updated.SlotHour,
 		updated.ID,

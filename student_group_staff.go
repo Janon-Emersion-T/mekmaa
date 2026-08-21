@@ -107,30 +107,35 @@ func (a *App) listAssignableGroupStaffByDivisionIDs(
 	divisionIDs []int64,
 ) ([]User, error) {
 	placeholders, args := int64ScopePlaceholders(divisionIDs)
-	if placeholders == "" {
-		return nil, nil
-	}
 
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(
+		`
 		SELECT DISTINCT
 			u.id,
 			COALESCE(u.email, ''),
 			COALESCE(u.name, ''),
-			COALESCE(u.phone, ''),
-			COALESCE(u.address, ''),
-			COALESCE(u.specialties, ''),
-			COALESCE(u.notes, ''),
-			COALESCE(u.active, 1)
+			'' AS phone,
+			'' AS address,
+			'' AS specialties,
+			'' AS notes,
+			1 AS active
 		FROM users u
 		JOIN user_divisions ud
 			ON ud.user_id = u.id
-		WHERE ud.division_id IN (`+placeholders+`)
-		  AND COALESCE(u.active, 1) = 1
+		WHERE 1 = 1
+`+func() string {
+			if placeholders == "" {
+				return ""
+			}
+			return " AND ud.division_id IN (" + placeholders + ")"
+		}()+`
 		ORDER BY
-			LOWER(COALESCE(u.name, '')) ASC,
-			LOWER(COALESCE(u.email, '')) ASC,
-			u.id ASC
-	`, args...)
+			3 ASC,
+			2 ASC,
+			1 ASC
+		`,
+		args...,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +191,7 @@ func (a *App) hydrateStaffDirectoryUserDivisions(
 		return nil
 	}
 
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			ud.user_id,
 			d.id,
@@ -359,7 +364,7 @@ func validateGroupStaffAssignments(
 func (a *App) findStudentGroupDivisionCode(groupID int64) (string, error) {
 	var code string
 
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT d.code
 		FROM student_groups sg
 		JOIN training_programs tp
@@ -375,7 +380,7 @@ func (a *App) findStudentGroupDivisionCode(groupID int64) (string, error) {
 func (a *App) listStudentGroupStaff(
 	groupID int64,
 ) ([]GroupStaffAssignment, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			sgs.group_id,
 			sgs.user_id,
@@ -460,23 +465,26 @@ func (a *App) replaceStudentGroupStaff(
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(
+	// Replace canonical group staff assignments.
+	if _, err := a.execTxDB(
+		tx,
 		`DELETE FROM student_group_staff WHERE group_id = ?`,
 		groupID,
 	); err != nil {
 		return err
 	}
 
-	// Keep the legacy coach relationship synchronized while Sports/Chess
-	// attendance authorization still reads student_group_coaches.
-	if _, err := tx.Exec(
+	// Keep the legacy coach relationship synchronized because
+	// the current attendance authorization still reads it.
+	if _, err := a.execTxDB(
+		tx,
 		`DELETE FROM student_group_coaches WHERE group_id = ?`,
 		groupID,
 	); err != nil {
 		return err
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 
 	for _, assignment := range assignments {
 		primary := 0
@@ -484,7 +492,9 @@ func (a *App) replaceStudentGroupStaff(
 			primary = 1
 		}
 
-		if _, err := tx.Exec(`
+		if _, err := a.execTxDB(
+			tx,
+			`
 			INSERT INTO student_group_staff (
 				group_id,
 				user_id,
@@ -494,7 +504,7 @@ func (a *App) replaceStudentGroupStaff(
 				updated_at
 			)
 			VALUES (?, ?, ?, ?, ?, ?)
-		`,
+			`,
 			groupID,
 			assignment.UserID,
 			assignment.AssignmentRole,
@@ -507,14 +517,21 @@ func (a *App) replaceStudentGroupStaff(
 	}
 
 	for _, userID := range legacyCoachIDsFromGroupStaff(assignments) {
-		if _, err := tx.Exec(`
-			INSERT OR IGNORE INTO student_group_coaches (
+		if _, err := a.execTxDB(
+			tx,
+			`
+			INSERT INTO student_group_coaches (
 				group_id,
 				user_id,
 				created_at
 			)
 			VALUES (?, ?, ?)
-		`, groupID, userID, now); err != nil {
+			ON CONFLICT (group_id, user_id) DO NOTHING
+			`,
+			groupID,
+			userID,
+			now,
+		); err != nil {
 			return err
 		}
 	}

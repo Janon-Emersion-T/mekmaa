@@ -63,7 +63,7 @@ func (a *App) validateStudentGroupMemberEnrollments(
 
 	var enrolledCount int
 
-	err := a.db.QueryRow(`
+	err := a.queryRowDB(`
 		SELECT COUNT(DISTINCT se.admission_id)
 		FROM student_enrollments se
 		WHERE se.training_program_id = ?

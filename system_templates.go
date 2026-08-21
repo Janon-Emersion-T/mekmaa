@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"os"
 	"strings"
+	"time"
 )
 
 func normalizeRoleName(name string) string {
@@ -239,22 +240,25 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"paymentMonthLabel":                         paymentMonthLabel,
 		"formatDateTime":                            formatDateTime,
 		"relativeTime":                              relativeTime,
-		"formatCalendarDate":                        formatCalendarDate,
-		"formatClockTime":                           formatClockTime,
-		"paymentMethodLabel":                        paymentMethodLabel,
-		"formatEventTiming":                         formatEventTiming,
-		"eventScheduleLabel":                        eventScheduleLabel,
-		"hasTime":                                   hasTime,
-		"hasRegistrationDeadline":                   hasRegistrationDeadline,
-		"isPastEventDate":                           isPastEventDate,
-		"money":                                     money,
-		"negate":                                    negate,
-		"reportBarWidth":                            reportBarWidth,
-		"registrationDeadlineLabel":                 registrationDeadlineLabel,
-		"scheduleToneClasses":                       scheduleToneClasses,
-		"scheduleBadgeClasses":                      scheduleBadgeClasses,
-		"schedulesForCalendarSlot":                  schedulesForCalendarSlot,
-		"scheduleSummary":                           scheduleSummary,
+		"todayDate": func() string {
+			return time.Now().Format("2006-01-02")
+		},
+		"formatCalendarDate":        formatCalendarDate,
+		"formatClockTime":           formatClockTime,
+		"paymentMethodLabel":        paymentMethodLabel,
+		"formatEventTiming":         formatEventTiming,
+		"eventScheduleLabel":        eventScheduleLabel,
+		"hasTime":                   hasTime,
+		"hasRegistrationDeadline":   hasRegistrationDeadline,
+		"isPastEventDate":           isPastEventDate,
+		"money":                     money,
+		"negate":                    negate,
+		"reportBarWidth":            reportBarWidth,
+		"registrationDeadlineLabel": registrationDeadlineLabel,
+		"scheduleToneClasses":       scheduleToneClasses,
+		"scheduleBadgeClasses":      scheduleBadgeClasses,
+		"schedulesForCalendarSlot":  schedulesForCalendarSlot,
+		"scheduleSummary":           scheduleSummary,
 		"seq": func(n int) []int {
 			if n <= 0 {
 				return nil
@@ -271,7 +275,9 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"subFloat": func(a, b float64) float64 {
 			return normalizeMoney(a - b)
 		},
-		"isSystemRole": isSystemRole,
+		"salaryTypeLabel":         salaryTypeLabel,
+		"salaryStudentBasisLabel": salaryStudentBasisLabel,
+		"isSystemRole":            isSystemRole,
 	}
 
 	base, err := template.New("base.html").Funcs(funcs).ParseFiles("templates/base.html")
@@ -325,6 +331,10 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"enrollment-management":          "templates/dashboard/enrollment-management.html",
 		"coach-management":               "templates/dashboard/coach-management.html",
 		"staff-directory":                "templates/dashboard/staff-directory.html",
+		"salary-profiles":                "templates/dashboard/salary-profiles.html",
+		"payroll":                        "templates/dashboard/payroll.html",
+		"payroll-run":                    "templates/dashboard/payroll-run.html",
+		"payroll-slip":                   "templates/dashboard/payroll-slip.html",
 		"staff-attendance":               "templates/dashboard/staff-attendance.html",
 		"staff-attendance-report":        "templates/dashboard/staff-attendance-report.html",
 		"training-program-management":    "templates/dashboard/training-program-management.html",
@@ -336,6 +346,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"games-management":               "templates/dashboard/games-management.html",
 		"one-to-one-management":          "templates/dashboard/one-to-one-management.html",
 		"one-to-one-bookings":            "templates/dashboard/one-to-one-bookings.html",
+		"one-to-one-receivables":         "templates/dashboard/one-to-one-receivables.html",
 		"booking-management":             "templates/dashboard/booking-management.html",
 		"booking-requests":               "templates/dashboard/booking-requests.html",
 		"pricing-management":             "templates/dashboard/pricing-management.html",

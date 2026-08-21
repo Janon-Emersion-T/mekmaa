@@ -57,6 +57,7 @@ var (
 		"divisions.manage",
 		"admissions.manage",
 		"coaches.manage",
+		"payroll.manage",
 		"training_programs.manage",
 		"student_groups.manage",
 		"attendance.manage",
@@ -92,6 +93,12 @@ var permissionGroups = []PermissionGroup{
 			Key:         "coaches.manage",
 			Label:       "Manage operational staff",
 			Description: "Access operational staff directories, assignments, and compatible coach administration.",
+		},
+		{
+			Key:         "payroll.manage",
+			Label:       "Manage payroll",
+			Description: "Manage staff salary profiles, payroll calculations, approvals, and salary payments.",
+			Sensitive:   true,
 		},
 		{
 			Key:         "training_programs.manage",
@@ -514,6 +521,7 @@ type Admission struct {
 type StudentEnrollment struct {
 	ID                      int64
 	AdmissionID             int64
+	EnrollmentDate          string
 	TrainingProgramID       int64
 	TrainingProgramName     string
 	DivisionID              int64
@@ -1177,27 +1185,57 @@ type Game struct {
 }
 
 type OneToOneBooking struct {
-	ID              int64
-	ScheduleID      int64
-	OfferingID      int64
-	OfferingName    string
-	Game            string
-	Audience        string
-	Occurrence      string
-	MaxSessions     int
-	Price           float64
-	DiscountedPrice float64
-	CoachFee        float64
-	Sessions        int
-	CustomerName    string
-	SlotDate        string
-	SlotHour        string
-	Status          string
-	Title           string
-	Notes           string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	FinancialStatus string
+	ID                int64
+	ScheduleID        int64
+	OfferingID        int64
+	OfferingName      string
+	Game              string
+	Audience          string
+	Occurrence        string
+	MaxSessions       int
+	Price             float64
+	DiscountedPrice   float64
+	CoachFee          float64
+	Sessions          int
+	CustomerName      string
+	CoachUserID       int64
+	CoachName         string
+	PackageStatus     string
+	CompletedSessions int
+	CancelledSessions int
+	SlotDate          string
+	SlotHour          string
+	Status            string
+	Title             string
+	Notes             string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	FinancialStatus   string
+	BookingSessions   []OneToOneBookingSession
+}
+
+type OneToOneReceivable struct {
+	Booking   OneToOneBooking
+	Financial BookingFinancial
+}
+
+type OneToOneBookingSession struct {
+	ID                int64
+	BookingID         int64
+	ScheduleID        int64
+	SessionNumber     int
+	CoachUserID       int64
+	CoachName         string
+	CoachFee          float64
+	SlotDate          string
+	SlotHour          string
+	Status            string
+	Notes             string
+	CompletedAt       time.Time
+	CompletedByUserID int64
+	CancelledAt       time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type ReferralPartner struct {
@@ -1565,6 +1603,12 @@ type TemplateData struct {
 	AvailableGroupStaff          []User
 	GroupStaffRoles              []GroupStaffRoleOption
 	StaffDirectoryRows           []StaffDirectoryRow
+	SalaryProfiles               []StaffSalaryProfile
+	PayrollRuns                  []PayrollRun
+	PayrollRun                   *PayrollRun
+	PayrollPayments              []PayrollPayment
+	PayrollPayment               *PayrollPayment
+	PayrollFinanceTransaction    *FinanceTransaction
 	Coaches                      []User
 	CoachAttendanceRecords       []CoachAttendanceRecord
 	StaffAttendanceUsers         []User
@@ -1627,6 +1671,8 @@ type TemplateData struct {
 	SelectedOneToOneOffering         *OneToOneOffering
 	OneToOneMode                     string
 	OneToOneBookings                 []OneToOneBooking
+	OneToOneReceivables              []OneToOneReceivable
+	OneToOneCoaches                  []User
 	ReferralPartners                 []ReferralPartner
 	ReferralPartnerRows              []ReferralPartnerSummary
 	BookingReferrals                 []BookingReferral

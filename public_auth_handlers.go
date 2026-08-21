@@ -696,7 +696,7 @@ func (a *App) publicBookingCancellationRequestHandler(w http.ResponseWriter, r *
 		return
 	}
 	defer tx.Rollback()
-	result, err := tx.Exec(`
+	requestID, err := a.insertAndReturnIDTx(tx, `
 		INSERT INTO booking_cancellation_requests (
 			schedule_id, status, request_reason, requested_at, token_id, review_note, reviewed_at, reviewed_by_user_id
 		)
@@ -711,13 +711,11 @@ func (a *App) publicBookingCancellationRequestHandler(w http.ResponseWriter, r *
 		a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation request could not be submitted right now.")
 		return
 	}
-	requestID, err := result.LastInsertId()
-	if err != nil {
-		log.Printf("load booking cancellation request id: %v", err)
-		a.redirectPublicBookingStatus(w, r, rawToken, "Cancellation request could not be submitted right now.")
-		return
-	}
-	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(tx, schedule.ID), schedule.ID)
+	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(
+		tx,
+		a.runtimeConfig.DBDriver,
+		schedule.ID,
+	), schedule.ID)
 	if financial != nil {
 		schedule.QuotedPrice = financial.QuotedAmount
 	}

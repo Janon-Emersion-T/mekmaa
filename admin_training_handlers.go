@@ -346,8 +346,28 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		target = withDivisionQuery(target, division)
 	}
 
+	enrollmentDate := strings.TrimSpace(
+		r.FormValue("enrollment_date"),
+	)
+
+	if _, err := time.Parse(
+		"2006-01-02",
+		enrollmentDate,
+	); err != nil {
+		a.setFlash(w, "Select a valid enrollment date.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+
+	if enrollmentDate > time.Now().Format("2006-01-02") {
+		a.setFlash(w, "Enrollment date cannot be in the future.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+
 	enrollment := StudentEnrollment{
 		AdmissionID:         admissionID,
+		EnrollmentDate:      enrollmentDate,
 		TrainingProgramID:   trainingProgramID,
 		TrainingProgramName: trainingProgram.Name,
 		FreeAdmission:       r.FormValue("free_admission") == "true",
@@ -538,9 +558,39 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	enrollmentDate := strings.TrimSpace(
+		r.FormValue("enrollment_date"),
+	)
+
+	if _, err := time.Parse(
+		"2006-01-02",
+		enrollmentDate,
+	); err != nil {
+		a.setFlash(w, "Select a valid enrollment date.")
+		http.Redirect(
+			w,
+			r,
+			target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	if enrollmentDate > time.Now().Format("2006-01-02") {
+		a.setFlash(w, "Enrollment date cannot be in the future.")
+		http.Redirect(
+			w,
+			r,
+			target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
 	enrollment := StudentEnrollment{
 		ID:                  enrollmentID,
 		AdmissionID:         existing.AdmissionID,
+		EnrollmentDate:      enrollmentDate,
 		TrainingProgramID:   trainingProgramID,
 		TrainingProgramName: trainingProgram.Name,
 		FreeAdmission:       r.FormValue("free_admission") == "true",

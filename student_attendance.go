@@ -80,7 +80,7 @@ func (a *App) listStudentAttendanceHistory(
 	args = append(args, admissionID)
 	args = append(args, groupArgs...)
 
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			ar.id,
 			ar.admission_id,
@@ -337,7 +337,7 @@ func (a *App) listAttendanceSheets(
 	queryArgs = append(queryArgs, args...)
 	queryArgs = append(queryArgs, limit)
 
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			ar.group_id,
 			COALESCE(sg.name, ''),

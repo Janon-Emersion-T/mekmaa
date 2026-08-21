@@ -1,0 +1,417 @@
+{{define "content"}}
+<div class="space-y-6">
+
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Staff & Payroll
+            </p>
+
+            <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
+                Salary profiles
+            </h1>
+
+            <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Configure how each staff member is paid. A staff member may have
+                more than one compensation component when required.
+            </p>
+        </div>
+
+        <a
+            href="/admin/staff"
+            class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+            Back to staff
+        </a>
+    </div>
+
+    {{if .Flash}}
+    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+        {{.Flash}}
+    </div>
+    {{end}}
+
+    <div class="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+
+        <section class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-200 px-5 py-4">
+                <h2 class="text-base font-semibold text-slate-950">
+                    Add salary component
+                </h2>
+
+                <p class="mt-1 text-sm text-slate-500">
+                    Rates are stored independently so historical payroll can later
+                    use the correct effective salary profile.
+                </p>
+            </div>
+
+            <form
+                method="post"
+                action="/admin/staff/salary-profiles/create"
+                class="space-y-5 p-5"
+            >
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+                <div>
+                    <label class="mb-1.5 block text-sm font-medium text-slate-700">
+                        Staff member
+                    </label>
+
+                    <select
+                        name="user_id"
+                        required
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                    >
+                        <option value="">Select staff member</option>
+
+                        {{range .Users}}
+                        <option value="{{.ID}}">
+                            {{.Name}} — {{.Email}}
+                        </option>
+                        {{end}}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="mb-1.5 block text-sm font-medium text-slate-700">
+                        Salary type
+                    </label>
+
+                    <select
+                        name="compensation_type"
+                        required
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                    >
+                        <option value="monthly">Per month</option>
+                        <option value="weekly">Per week</option>
+                        <option value="hourly">Per hour</option>
+                        <option value="per_student">Per student</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="mb-1.5 block text-sm font-medium text-slate-700">
+                        Rate
+                    </label>
+
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-3 flex items-center text-sm text-slate-500">
+                            LKR
+                        </span>
+
+                        <input
+                            type="number"
+                            name="rate"
+                            min="0"
+                            step="0.01"
+                            required
+                            class="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-12 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                            placeholder="0.00"
+                        >
+                    </div>
+                </div>
+
+                <div>
+                    <label class="mb-1.5 block text-sm font-medium text-slate-700">
+                        Division
+                    </label>
+
+                    <select
+                        name="division_id"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                    >
+                        <option value="0">Shared / all Mekmaa</option>
+
+                        {{range .Divisions}}
+                        <option value="{{.ID}}">
+                            {{.Name}}
+                        </option>
+                        {{end}}
+                    </select>
+
+                    <p class="mt-1.5 text-xs leading-5 text-slate-500">
+                        Leave as shared when the salary is not tied to one division.
+                    </p>
+                </div>
+
+                <div>
+                    <label class="mb-1.5 block text-sm font-medium text-slate-700">
+                        Training programme
+                    </label>
+
+                    <select
+                        name="training_program_id"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                    >
+                        <option value="0">No specific programme</option>
+
+                        {{range .TrainingPrograms}}
+                        <option value="{{.ID}}">
+                            {{.Name}}{{if .DivisionName}} — {{.DivisionName}}{{end}}
+                        </option>
+                        {{end}}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="mb-1.5 block text-sm font-medium text-slate-700">
+                        Per-student calculation basis
+                    </label>
+
+                    <select
+                        name="student_basis"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                    >
+                        <option value="active_enrollment">
+                            Active enrolled students
+                        </option>
+
+                        <option value="group_membership">
+                            Group / class membership
+                        </option>
+
+                        <option value="attendance">
+                            Students attended
+                        </option>
+                    </select>
+
+                    <p class="mt-1.5 text-xs leading-5 text-slate-500">
+                        Used only when Salary Type is Per student.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium text-slate-700">
+                            Effective from
+                        </label>
+
+                        <input
+                            type="date"
+                            name="effective_from"
+                            required
+                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                        >
+                    </div>
+
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium text-slate-700">
+                            Effective to
+                        </label>
+
+                        <input
+                            type="date"
+                            name="effective_to"
+                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                        >
+                    </div>
+                </div>
+
+                <div>
+                    <label class="mb-1.5 block text-sm font-medium text-slate-700">
+                        Notes
+                    </label>
+
+                    <textarea
+                        name="notes"
+                        rows="3"
+                        class="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                        placeholder="Optional payroll or contract notes"
+                    ></textarea>
+                </div>
+
+                <label class="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <input
+                        type="checkbox"
+                        name="active"
+                        value="1"
+                        checked
+                        class="mt-0.5 h-4 w-4 rounded border-slate-300"
+                    >
+
+                    <span>
+                        <span class="block text-sm font-medium text-slate-800">
+                            Active salary profile
+                        </span>
+
+                        <span class="mt-0.5 block text-xs leading-5 text-slate-500">
+                            Only active profiles will be considered when payroll is generated.
+                        </span>
+                    </span>
+                </label>
+
+                <button
+                    type="submit"
+                    class="inline-flex w-full items-center justify-center rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                    Save salary profile
+                </button>
+            </form>
+        </section>
+
+        <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+
+            <div class="border-b border-slate-200 px-5 py-4">
+                <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h2 class="text-base font-semibold text-slate-950">
+                            Current salary profiles
+                        </h2>
+
+                        <p class="mt-1 text-sm text-slate-500">
+                            {{len .SalaryProfiles}} configured compensation components
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {{if .SalaryProfiles}}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Staff
+                            </th>
+
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Salary
+                            </th>
+
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Scope
+                            </th>
+
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Effective
+                            </th>
+
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Status
+                            </th>
+
+                            <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Action
+                            </th>
+                        </tr>
+                    </thead>
+
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        {{range .SalaryProfiles}}
+                        <tr class="align-top">
+                            <td class="px-5 py-4">
+                                <div class="font-medium text-slate-900">
+                                    {{.UserName}}
+                                </div>
+
+                                <div class="mt-0.5 text-xs text-slate-500">
+                                    {{.UserEmail}}
+                                </div>
+                            </td>
+
+                            <td class="px-5 py-4">
+                                <div class="font-medium text-slate-900">
+                                    {{money .Rate}}
+                                </div>
+
+                                <div class="mt-0.5 text-xs text-slate-500">
+                                    {{salaryTypeLabel .CompensationType}}
+                                </div>
+
+                                {{if eq .CompensationType "per_student"}}
+                                <div class="mt-1 text-xs text-slate-500">
+                                    {{salaryStudentBasisLabel .StudentBasis}}
+                                </div>
+                                {{end}}
+                            </td>
+
+                            <td class="px-5 py-4">
+                                {{if .DivisionName}}
+                                <div class="font-medium text-slate-800">
+                                    {{.DivisionName}}
+                                </div>
+                                {{else}}
+                                <div class="font-medium text-slate-800">
+                                    Shared / All Mekmaa
+                                </div>
+                                {{end}}
+
+                                {{if .TrainingProgramName}}
+                                <div class="mt-1 text-xs text-slate-500">
+                                    {{.TrainingProgramName}}
+                                </div>
+                                {{end}}
+                            </td>
+
+                            <td class="px-5 py-4 text-slate-700">
+                                <div>{{.EffectiveFrom}}</div>
+
+                                {{if .EffectiveTo}}
+                                <div class="mt-1 text-xs text-slate-500">
+                                    until {{.EffectiveTo}}
+                                </div>
+                                {{else}}
+                                <div class="mt-1 text-xs text-slate-500">
+                                    no end date
+                                </div>
+                                {{end}}
+                            </td>
+
+                            <td class="px-5 py-4">
+                                {{if .Active}}
+                                <span class="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                    Active
+                                </span>
+                                {{else}}
+                                <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                                    Inactive
+                                </span>
+                                {{end}}
+                            </td>
+
+                            <td class="px-5 py-4 text-right">
+                                <form
+                                    method="post"
+                                    action="/admin/staff/salary-profiles/toggle"
+                                    class="inline"
+                                >
+                                    <input
+                                        type="hidden"
+                                        name="csrf_token"
+                                        value="{{$.CSRFToken}}"
+                                    >
+
+                                    <input
+                                        type="hidden"
+                                        name="id"
+                                        value="{{.ID}}"
+                                    >
+
+                                    <button
+                                        type="submit"
+                                        class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        {{if .Active}}Deactivate{{else}}Activate{{end}}
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+            {{else}}
+            <div class="px-6 py-14 text-center">
+                <h3 class="text-sm font-semibold text-slate-900">
+                    No salary profiles yet
+                </h3>
+
+                <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                    Configure the first staff compensation profile using the form.
+                </p>
+            </div>
+            {{end}}
+        </section>
+    </div>
+</div>
+{{end}}

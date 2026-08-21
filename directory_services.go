@@ -907,6 +907,7 @@ func (a *App) listStudentEnrollmentsByDivisionIDs(divisionIDs []int64) ([]Studen
 			se.id,
 			se.admission_id,
 			se.training_program_id,
+			COALESCE(CAST(se.enrollment_date AS TEXT), ''),
 			COALESCE(tp.name, ''),
 			COALESCE(tp.division_id, 0),
 			COALESCE(d.code, ''),
@@ -970,6 +971,7 @@ func (a *App) listStudentEnrollmentsByDivisionIDs(divisionIDs []int64) ([]Studen
 			&enrollment.ID,
 			&enrollment.AdmissionID,
 			&enrollment.TrainingProgramID,
+			&enrollment.EnrollmentDate,
 			&enrollment.TrainingProgramName,
 			&enrollment.DivisionID,
 			&enrollment.DivisionCode,
@@ -1037,6 +1039,7 @@ func (a *App) findStudentEnrollmentByIDForDivisionIDs(enrollmentID int64, divisi
 			se.id,
 			se.admission_id,
 			se.training_program_id,
+			COALESCE(CAST(se.enrollment_date AS TEXT), ''),
 			COALESCE(tp.name, ''),
 			COALESCE(tp.division_id, 0),
 			COALESCE(d.code, ''),
@@ -1094,6 +1097,7 @@ func (a *App) findStudentEnrollmentByIDForDivisionIDs(enrollmentID int64, divisi
 		&enrollment.ID,
 		&enrollment.AdmissionID,
 		&enrollment.TrainingProgramID,
+		&enrollment.EnrollmentDate,
 		&enrollment.TrainingProgramName,
 		&enrollment.DivisionID,
 		&enrollment.DivisionCode,
@@ -3153,7 +3157,7 @@ func (a *App) findTrainingProgramByID(programID int64) (*TrainingProgram, error)
 func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
 	now := time.Now().UTC()
 
-	result, err := a.execDB(`
+	return a.insertAndReturnID(`
 		INSERT INTO training_programs (
 			game_id,
 			division_id,
@@ -3181,16 +3185,6 @@ func (a *App) createTrainingProgram(program TrainingProgram) (int64, error) {
 		now,
 		now,
 	)
-	if err != nil {
-		return 0, err
-	}
-
-	programID, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-
-	return programID, nil
 }
 
 func (a *App) updateTrainingProgram(program TrainingProgram) error {

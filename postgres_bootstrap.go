@@ -18,10 +18,6 @@ func applyPostgresBootstrapData(db *sql.DB) error {
 		return fmt.Errorf("seed PostgreSQL divisions: %w", err)
 	}
 
-	if err := seedPostgresTrainingPrograms(db); err != nil {
-		return fmt.Errorf("seed PostgreSQL training programmes: %w", err)
-	}
-
 	if err := seedPostgresFinanceCategories(db); err != nil {
 		return fmt.Errorf("seed PostgreSQL finance categories: %w", err)
 	}

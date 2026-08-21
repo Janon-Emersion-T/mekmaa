@@ -121,7 +121,7 @@ func (a *App) listBookingAccessTokensForScheduleIDs(scheduleIDs []int64) ([]Book
 	if len(scheduleIDs) == 0 {
 		return nil, nil
 	}
-	query, args := scheduleIDScopedQuery(`
+	query, args := scheduleIDScopedQuery(a.runtimeConfig.DBDriver, `
 		SELECT id, schedule_id, public_id, token_hash, purpose, active, expires_at, last_accessed_at, created_at, revoked_at
 		FROM booking_access_tokens
 		WHERE schedule_id IN (%s)
@@ -194,7 +194,7 @@ func (a *App) ensureActiveBookingAccessToken(scheduleID int64, purpose string) (
 		return nil, "", err
 	}
 	now := time.Now().UTC()
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT id, schedule_id, public_id, token_hash, purpose, active, expires_at, last_accessed_at, created_at, revoked_at
 		FROM booking_access_tokens
 		WHERE schedule_id = ?
@@ -219,16 +219,12 @@ func (a *App) ensureActiveBookingAccessToken(scheduleID int64, purpose string) (
 	rawToken := a.buildBookingAccessToken(scheduleID, publicID, purpose)
 	tokenHash := hashValue(rawToken)
 	expiresAt := a.bookingAccessTokenExpiry(schedule)
-	result, err := a.db.Exec(`
+	id, err := a.insertAndReturnID(`
 		INSERT INTO booking_access_tokens (
 			schedule_id, public_id, token_hash, purpose, active, expires_at, last_accessed_at, created_at, revoked_at
 		)
 		VALUES (?, ?, ?, ?, 1, ?, NULL, ?, NULL)
 	`, scheduleID, publicID, tokenHash, purpose, expiresAt, now)
-	if err != nil {
-		return nil, "", err
-	}
-	id, err := result.LastInsertId()
 	if err != nil {
 		return nil, "", err
 	}
@@ -246,7 +242,7 @@ func (a *App) ensureActiveBookingAccessToken(scheduleID int64, purpose string) (
 
 func (a *App) rotateBookingAccessToken(scheduleID int64, purpose string) (string, error) {
 	now := time.Now().UTC()
-	if _, err := a.db.Exec(`
+	if _, err := a.execDB(`
 		UPDATE booking_access_tokens
 		SET active = 0, revoked_at = ?, last_accessed_at = COALESCE(last_accessed_at, ?)
 		WHERE schedule_id = ? AND purpose = ? AND active = 1
@@ -259,7 +255,7 @@ func (a *App) rotateBookingAccessToken(scheduleID int64, purpose string) (string
 
 func (a *App) revokeBookingAccessToken(scheduleID int64, purpose string) error {
 	now := time.Now().UTC()
-	_, err := a.db.Exec(`
+	_, err := a.execDB(`
 		UPDATE booking_access_tokens
 		SET active = 0, revoked_at = ?
 		WHERE schedule_id = ? AND purpose = ? AND active = 1
@@ -276,7 +272,7 @@ func (a *App) findActiveBookingByAccessToken(rawToken string) (*SpaceSchedule, *
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return nil, nil, sql.ErrNoRows
 	}
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT id, schedule_id, public_id, token_hash, purpose, active, expires_at, last_accessed_at, created_at, revoked_at
 		FROM booking_access_tokens
 		WHERE public_id = ?
@@ -293,7 +289,7 @@ func (a *App) findActiveBookingByAccessToken(rawToken string) (*SpaceSchedule, *
 	if !compareHashConstantTime(rawToken, token.TokenHash) || subtle.ConstantTimeCompare([]byte(rawToken), []byte(expectedRaw)) != 1 {
 		return nil, nil, sql.ErrNoRows
 	}
-	if _, err := a.db.Exec(`UPDATE booking_access_tokens SET last_accessed_at = ? WHERE id = ?`, time.Now().UTC(), token.ID); err != nil {
+	if _, err := a.execDB(`UPDATE booking_access_tokens SET last_accessed_at = ? WHERE id = ?`, time.Now().UTC(), token.ID); err != nil {
 		return nil, nil, err
 	}
 	schedule, err := a.findSpaceScheduleByID(token.ScheduleID)
@@ -307,7 +303,7 @@ func (a *App) listBookingCancellationRequestsForScheduleIDs(scheduleIDs []int64)
 	if len(scheduleIDs) == 0 {
 		return nil, nil
 	}
-	query, args := scheduleIDScopedQuery(`
+	query, args := scheduleIDScopedQuery(a.runtimeConfig.DBDriver, `
 		SELECT id, schedule_id, status, request_reason, requested_at, COALESCE(token_id, 0),
 		       review_note, reviewed_at, COALESCE(reviewed_by_user_id, 0)
 		FROM booking_cancellation_requests
@@ -393,7 +389,7 @@ func (a *App) recordBookingLifecycleChangeTx(
 		changedBy = changedByUserID
 	}
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
+	changeID, err := a.insertAndReturnIDTx(tx, `
 		INSERT INTO booking_request_changes (
 			schedule_id,
 			previous_slot_date,
@@ -442,7 +438,7 @@ func (a *App) recordBookingLifecycleChangeTx(
 	if err != nil {
 		return 0, err
 	}
-	return result.LastInsertId()
+	return changeID, nil
 }
 
 func (a *App) transitionManagedBookingStatus(
@@ -464,7 +460,11 @@ func (a *App) transitionManagedBookingStatus(
 	}
 	defer tx.Rollback()
 
-	schedule, err := findSpaceScheduleByIDQuery(tx, scheduleID)
+	schedule, err := findSpaceScheduleByIDQuery(
+		tx,
+		a.runtimeConfig.DBDriver,
+		scheduleID,
+	)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -499,13 +499,20 @@ func (a *App) transitionManagedBookingStatus(
 		if schedule.Status != bookingStatusConfirmed {
 			return nil, 0, errors.New("only confirmed bookings can be marked no-show")
 		}
+		if start.After(nowLocal) {
+			return nil, 0, errors.New("future bookings cannot be marked no-show")
+		}
 	}
 
-	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(tx, scheduleID), scheduleID)
+	financial := bookingFinancialForSchedule(mustListBookingFinancialsTx(
+		tx,
+		a.runtimeConfig.DBDriver,
+		scheduleID,
+	), scheduleID)
 	if financial != nil {
 		schedule.QuotedPrice = financial.QuotedAmount
 	}
-	result, err := tx.Exec(`
+	result, err := a.execTxDB(tx, `
 		UPDATE space_schedules
 		SET
 			status = ?,
@@ -563,16 +570,28 @@ func (a *App) transitionManagedBookingStatus(
 	return &updated, changeID, nil
 }
 
-func mustListBookingFinancialsTx(tx *sql.Tx, scheduleID int64) []BookingFinancial {
-	return listBookingFinancialsForSingleQueryer(tx, scheduleID)
+func mustListBookingFinancialsTx(
+	tx *sql.Tx,
+	driver DatabaseDriver,
+	scheduleID int64,
+) []BookingFinancial {
+	return listBookingFinancialsForSingleQueryer(
+		tx,
+		driver,
+		scheduleID,
+	)
 }
 
 func mustListBookingFinancialsTxMust(queryer sqlQueryer, scheduleID int64) []BookingFinancial {
-	return listBookingFinancialsForSingleQueryer(queryer, scheduleID)
+	return listBookingFinancialsForSingleQueryer(queryer, databaseDriverPostgres, scheduleID)
 }
 
-func listBookingFinancialsForSingleQueryer(queryer sqlQueryer, scheduleID int64) []BookingFinancial {
-	financials, err := listBookingFinancialsForScheduleIDsQuery(queryer, []int64{scheduleID})
+func listBookingFinancialsForSingleQueryer(
+	queryer sqlQueryer,
+	driver DatabaseDriver,
+	scheduleID int64,
+) []BookingFinancial {
+	financials, err := listBookingFinancialsForScheduleIDsQuery(queryer, driver, []int64{scheduleID})
 	if err != nil {
 		return nil
 	}

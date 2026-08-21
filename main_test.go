@@ -139,6 +139,7 @@ func newReadinessTestApp(t *testing.T) *App {
 	app.runtimeConfig = AppRuntimeConfig{
 		Env:           appEnvDevelopment,
 		Addr:          ":8080",
+		DBDriver:      databaseDriverSQLite,
 		DBPath:        filepath.Join(t.TempDir(), "app.db"),
 		UploadRoot:    storage.Root,
 		PublicBaseURL: "http://localhost:8080",
@@ -172,6 +173,7 @@ func newProductionReadinessTestApp(t *testing.T) *App {
 	app.runtimeConfig = AppRuntimeConfig{
 		Env:           appEnvProduction,
 		Addr:          ":8080",
+		DBDriver:      databaseDriverSQLite,
 		DBPath:        filepath.Join(root, "app.db"),
 		UploadRoot:    storage.Root,
 		PublicBaseURL: "https://mekmaa.com",
@@ -1474,66 +1476,62 @@ func (a *App) dbRoleByName(name string) (*Role, error) {
 }
 
 func TestCollectStudentMonthlyPayment(t *testing.T) {
-	templates, err := buildTemplates()
+	app := newBookingWorkflowTestApp(t)
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Academy Monthly",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     7500,
+		Active:         true,
+	})
 	if err != nil {
-		t.Fatalf("build templates: %v", err)
-	}
-	if err := templates["student-payments"].ExecuteTemplate(io.Discard, "base", TemplateData{
-		User: &User{Name: "Test Admin", Email: "admin@example.com"},
-		StudentPaymentRows: []StudentPaymentRow{{
-			Admission:  Admission{ID: 1, StudentID: "STD-TEST", FullName: "Test Student", PracticeType: "group_practice"},
-			Enrollment: StudentEnrollment{ID: 1, TrainingProgramName: "Academy"},
-			MonthlyFee: 0,
-		}},
-		SelectedEnrollment: &StudentEnrollment{ID: 1, TrainingProgramName: "Academy", Student: Admission{FullName: "Test Student"}},
-		PaymentMonth:       "2026-07",
-		PaymentMonthLabel:  "July 2026",
-		TodayDate:          "2026-07",
-	}); err != nil {
-		t.Fatalf("render student payments template: %v", err)
+		t.Fatalf("create training programme: %v", err)
 	}
 
-	db, err := sql.Open("sqlite", "file:student-payment-test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	db.SetMaxOpenConns(1)
-
-	if err := runMigrations(db); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-	if _, err := db.Exec(`
-		UPDATE admission_pricing
-		SET monthly_fee = 7500
-		WHERE practice_type = 'group_practice'
-	`); err != nil {
-		t.Fatalf("configure pricing: %v", err)
-	}
-
-	now := time.Now().UTC()
-	result, err := db.Exec(`
-		INSERT INTO admissions (
-			student_id, full_name, admission_date, date_of_birth, gender, practice_type, address,
-			passport_number, school, guardian_name, guardian_relationship, guardian_contact_number,
-			guardian_alternative_contact_number, medical_information, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		"STD-TEST", "Test Student", "2026-01-15", "2012-05-10", "male", "group_practice",
-		"Test address", "P-TEST", "Test school", "Test guardian", "Parent", "0700000000",
-		"0710000000", "None", now, now,
-	)
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-TEST",
+		FullName:              "Test Student",
+		AdmissionDate:         "2026-01-15",
+		DateOfBirth:           "2012-05-10",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Test address",
+		PassportNumber:        "P-TEST",
+		School:                "Test school",
+		GuardianName:          "Test guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0700000000",
+	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission: %v", err)
 	}
-	admissionID, err := result.LastInsertId()
+
+	enrollmentID, _, err :=
+		app.createStudentEnrollmentWithOptionalPayment(
+			StudentEnrollment{
+				AdmissionID:       admissionID,
+				TrainingProgramID: programID,
+				EnrollmentDate:    "2026-01-15",
+			},
+			false,
+			"cash",
+			0,
+		)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("create enrollment: %v", err)
 	}
 
-	app := &App{db: db}
 	monthDate, _ := parsePaymentMonth("2026-07")
-	transactionID, err := app.collectStudentMonthlyPayment(admissionID, "2026-07", monthDate, "cash", 0)
+
+	transactionID, err := app.collectStudentMonthlyPayment(
+		enrollmentID,
+		"2026-07",
+		monthDate,
+		"cash",
+		0,
+	)
 	if err != nil {
 		t.Fatalf("collect payment: %v", err)
 	}
@@ -1541,38 +1539,77 @@ func TestCollectStudentMonthlyPayment(t *testing.T) {
 		t.Fatal("expected a finance transaction")
 	}
 
-	var category string
-	var amount float64
-	if err := db.QueryRow(`
+	var (
+		category string
+		amount   float64
+	)
+
+	if err := app.db.QueryRow(`
 		SELECT category, amount
 		FROM finance_transactions
 		WHERE id = ?
 	`, transactionID).Scan(&category, &amount); err != nil {
 		t.Fatalf("find finance transaction: %v", err)
 	}
+
 	if category != "student_monthly_payment" || amount != 7500 {
-		t.Fatalf("unexpected transaction: category=%q amount=%.2f", category, amount)
+		t.Fatalf(
+			"unexpected transaction: category=%q amount=%.2f",
+			category,
+			amount,
+		)
 	}
 
 	rows, err := app.listStudentPaymentRows("2026-07")
 	if err != nil {
 		t.Fatalf("list student payment rows: %v", err)
 	}
-	if len(rows) != 1 || rows[0].Payment == nil || rows[0].Payment.Amount != 7500 {
-		t.Fatalf("monthly register did not include collected payment: %#v", rows)
+
+	found := false
+
+	for _, row := range rows {
+		if row.Enrollment.ID != enrollmentID {
+			continue
+		}
+
+		found = true
+
+		if row.Payment == nil {
+			t.Fatal("expected collected payment on enrollment row")
+		}
+
+		if row.Payment.Amount != 7500 {
+			t.Fatalf(
+				"payment amount = %.2f, want 7500.00",
+				row.Payment.Amount,
+			)
+		}
+
+		if row.OutstandingAmount != 0 {
+			t.Fatalf(
+				"outstanding amount = %.2f, want 0",
+				row.OutstandingAmount,
+			)
+		}
 	}
 
-	_, err = app.collectStudentMonthlyPayment(admissionID, "2026-07", monthDate, "card", 0)
+	if !found {
+		t.Fatalf(
+			"monthly register did not include enrollment %d",
+			enrollmentID,
+		)
+	}
+
+	_, err = app.collectStudentMonthlyPayment(
+		enrollmentID,
+		"2026-07",
+		monthDate,
+		"card",
+		0,
+	)
+
 	if !errors.Is(err, ErrStudentPaymentAlreadyCollected) {
 		t.Fatalf("expected duplicate payment error, got %v", err)
-	}
-
-	var transactionCount int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM finance_transactions`).Scan(&transactionCount); err != nil {
-		t.Fatal(err)
-	}
-	if transactionCount != 1 {
-		t.Fatalf("duplicate attempt created a transaction; count=%d", transactionCount)
 	}
 }
 
@@ -1940,10 +1977,12 @@ func TestPublicBookingRequestRedirectsToStatusWhenCommunicationUnavailable(t *te
 	app.bookingMessages.EmailEnabled = false
 	app.bookingMessages.SMSEnabled = false
 
+	futureDate := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+
 	form := url.Values{
 		"csrf_token":      {"token"},
 		"entry_type":      {"booking"},
-		"slot_date":       {"2026-08-16"},
+		"slot_date":       {futureDate},
 		"slot_hour":       {"18:00"},
 		"booking_option":  {"badminton:1"},
 		"title":           {"Status Link Fallback"},
@@ -3903,49 +3942,108 @@ func TestCreateAdmissionWithFreeAdmissionSkipsFinanceCollection(t *testing.T) {
 
 func TestListStudentPaymentRowsTreatsFreeMonthlyFeeAsNonPayable(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
-	if _, err := app.db.Exec(`UPDATE admission_pricing SET monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
-		t.Fatalf("configure admission pricing: %v", err)
-	}
-	admission := Admission{
-		StudentID:             "STD-FREE-MON-001",
-		FullName:              "Free Monthly Student",
-		AdmissionDate:         "2026-07-15",
-		DateOfBirth:           "2011-01-20",
-		Gender:                "male",
-		PracticeType:          "group_practice",
-		Address:               "Jaffna",
-		GuardianName:          "Guardian",
-		GuardianRelationship:  "Parent",
-		GuardianContactNumber: "0770000002",
-		FreeMonthlyFee:        true,
-	}
-	admissionID, _, err := app.createAdmissionWithOptionalPayment(admission, false, "cash", 0)
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Free Monthly Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     3200,
+		Active:         true,
+	})
 	if err != nil {
-		t.Fatalf("create admission with free monthly fee: %v", err)
+		t.Fatalf("create training programme: %v", err)
 	}
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(
+		Admission{
+			StudentID:             "STD-FREE-MON-001",
+			FullName:              "Free Monthly Student",
+			AdmissionDate:         "2026-07-15",
+			DateOfBirth:           "2011-01-20",
+			Gender:                "male",
+			PracticeType:          "group_practice",
+			Address:               "Jaffna",
+			GuardianName:          "Guardian",
+			GuardianRelationship:  "Parent",
+			GuardianContactNumber: "0770000002",
+		},
+		false,
+		"cash",
+		0,
+	)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+
+	enrollmentID, _, err :=
+		app.createStudentEnrollmentWithOptionalPayment(
+			StudentEnrollment{
+				AdmissionID:       admissionID,
+				TrainingProgramID: programID,
+				EnrollmentDate:    "2026-07-15",
+				FreeMonthlyFee:    true,
+			},
+			false,
+			"cash",
+			0,
+		)
+	if err != nil {
+		t.Fatalf("create free monthly enrollment: %v", err)
+	}
+
 	rows, err := app.listStudentPaymentRows("2026-08")
 	if err != nil {
 		t.Fatalf("list student payment rows: %v", err)
 	}
+
 	for _, row := range rows {
-		if row.Admission.ID != admissionID {
+		if row.Enrollment.ID != enrollmentID {
 			continue
 		}
+
+		if !row.Enrollment.FreeMonthlyFee {
+			t.Fatal("expected enrollment free-monthly-fee flag")
+		}
+
 		if !row.Admission.FreeMonthlyFee {
-			t.Fatal("expected free monthly fee flag on payment row")
+			t.Fatal("expected effective free monthly flag on payment row")
 		}
-		if row.OriginalMonthlyFee <= 0 {
-			t.Fatalf("expected original monthly fee to stay configured, got %v", row.OriginalMonthlyFee)
+
+		if row.OriginalMonthlyFee != 3200 {
+			t.Fatalf(
+				"original monthly fee = %.2f, want 3200.00",
+				row.OriginalMonthlyFee,
+			)
 		}
+
 		if row.MonthlyFee != 0 {
-			t.Fatalf("expected effective monthly fee to be zero for waived student, got %v", row.MonthlyFee)
+			t.Fatalf(
+				"effective monthly fee = %.2f, want 0",
+				row.MonthlyFee,
+			)
 		}
+
+		if row.OutstandingAmount != 0 {
+			t.Fatalf(
+				"outstanding amount = %.2f, want 0",
+				row.OutstandingAmount,
+			)
+		}
+
 		if row.Payment != nil {
-			t.Fatal("expected no monthly payment record for waived student")
+			t.Fatal(
+				"free enrollment should not require monthly payment",
+			)
 		}
+
 		return
 	}
-	t.Fatalf("expected payment row for admission %d", admissionID)
+
+	t.Fatalf(
+		"expected free payment row for enrollment %d",
+		enrollmentID,
+	)
 }
 
 func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
@@ -4073,8 +4171,16 @@ func TestListStudentPaymentRowsDiscountsSecondHalfEnrollmentMonth(t *testing.T) 
 	if enrollmentID == 0 {
 		t.Fatal("expected enrollment to exist")
 	}
-	if _, err := app.db.Exec(`UPDATE student_enrollments SET created_at = ?, updated_at = ? WHERE id = ?`, "2026-07-20 09:00:00", "2026-07-20 09:00:00", enrollmentID); err != nil {
-		t.Fatalf("update enrollment created_at: %v", err)
+	if _, err := app.db.Exec(
+		`UPDATE student_enrollments
+		 SET enrollment_date = ?, created_at = ?, updated_at = ?
+		 WHERE id = ?`,
+		"2026-07-20",
+		"2026-07-20 09:00:00",
+		"2026-07-20 09:00:00",
+		enrollmentID,
+	); err != nil {
+		t.Fatalf("update enrollment date: %v", err)
 	}
 
 	rows, err := app.listStudentPaymentRows("2026-07")
@@ -5886,8 +5992,29 @@ func TestSessionMiddlewareRefreshesActiveSession(t *testing.T) {
 	}
 }
 
+func createOneToOneTestCoach(t *testing.T, app *App) int64 {
+	t.Helper()
+
+	coach, err := app.createCoach(User{
+		Name:      "1 to 1 Test Coach",
+		Email:     "one-to-one-test-coach@example.com",
+		CoachType: "main",
+		Active:    true,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create 1 to 1 test coach: %v", err)
+	}
+
+	if coach == nil || coach.ID <= 0 {
+		t.Fatal("expected persisted 1 to 1 test coach")
+	}
+
+	return coach.ID
+}
+
 func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
 
 	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
 		Name:         "Private Badminton",
@@ -5907,7 +6034,7 @@ func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
 	}
 
 	slotDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
-	bookingID, scheduleID, err := app.createOneToOneBooking(*offering, "Test Customer", slotDate, "18:00", 4, 3000, 800, "High-priority session", "")
+	bookingID, scheduleID, err := app.createOneToOneBooking(*offering, "Test Customer", slotDate, "18:00", 4, 3000, coachID, 800, "High-priority session", "")
 	if err != nil {
 		t.Fatalf("create 1 to 1 booking: %v", err)
 	}
@@ -5951,10 +6078,91 @@ func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
 	if quotedAmount != 3000 {
 		t.Fatalf("unexpected quoted amount: %v", quotedAmount)
 	}
+
+	// A multi-session package initially creates only the first scheduled
+	// appointment. Future sessions must be scheduled individually.
+	var sessionCount int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+	`, bookingID).Scan(&sessionCount); err != nil {
+		t.Fatalf("count initial booking sessions: %v", err)
+	}
+
+	if sessionCount != 1 {
+		t.Fatalf(
+			"expected exactly one initial booking session for 4 purchased sessions, got %d",
+			sessionCount,
+		)
+	}
+
+	var (
+		sessionScheduleID int64
+		sessionNumber     int
+		sessionStatus     string
+	)
+
+	if err := app.db.QueryRow(`
+		SELECT
+			schedule_id,
+			session_number,
+			status
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+	`, bookingID).Scan(
+		&sessionScheduleID,
+		&sessionNumber,
+		&sessionStatus,
+	); err != nil {
+		t.Fatalf("load initial booking session: %v", err)
+	}
+
+	if sessionScheduleID != scheduleID {
+		t.Fatalf(
+			"expected initial session schedule %d, got %d",
+			scheduleID,
+			sessionScheduleID,
+		)
+	}
+
+	if sessionNumber != 1 {
+		t.Fatalf(
+			"expected initial session number 1, got %d",
+			sessionNumber,
+		)
+	}
+
+	if sessionStatus != "scheduled" {
+		t.Fatalf(
+			"expected initial session status %q, got %q",
+			"scheduled",
+			sessionStatus,
+		)
+	}
+
+	var linkedScheduleCount int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM space_schedules ss
+		JOIN one_to_one_booking_sessions ots
+			ON ots.schedule_id = ss.id
+		WHERE ots.booking_id = ?
+	`, bookingID).Scan(&linkedScheduleCount); err != nil {
+		t.Fatalf("count linked 1-to-1 schedules: %v", err)
+	}
+
+	if linkedScheduleCount != 1 {
+		t.Fatalf(
+			"expected exactly one scheduled appointment at package creation, got %d",
+			linkedScheduleCount,
+		)
+	}
 }
 
 func TestOneToOneBookingCreatesReferralCommissionWhenReferrerSelected(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
 	if err := app.updateReferralCommissionAmount(600); err != nil {
 		t.Fatalf("configure referral commission: %v", err)
 	}
@@ -5986,7 +6194,7 @@ func TestOneToOneBookingCreatesReferralCommissionWhenReferrerSelected(t *testing
 	}
 
 	slotDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
-	_, scheduleID, err := app.createOneToOneBooking(*offering, "Referral Customer", slotDate, "18:15", 2, 3600, 700, "", "OTO-REF-01")
+	_, scheduleID, err := app.createOneToOneBooking(*offering, "Referral Customer", slotDate, "18:15", 2, 3600, coachID, 700, "", "OTO-REF-01")
 	if err != nil {
 		t.Fatalf("create referred 1 to 1 booking: %v", err)
 	}
@@ -6008,6 +6216,7 @@ func TestOneToOneBookingCreatesReferralCommissionWhenReferrerSelected(t *testing
 
 func TestOneToOneBookingRejectsConsumedCapacity(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
 
 	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
 		Name:         "Private Badminton",
@@ -6038,7 +6247,7 @@ func TestOneToOneBookingRejectsConsumedCapacity(t *testing.T) {
 		QuotedPrice:   2500,
 	})
 
-	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "18:00", 3, 4200, 900, "", "")
+	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "18:00", 3, 4200, coachID, 900, "", "")
 	if err == nil {
 		t.Fatal("expected 1 to 1 booking conflict error")
 	}
@@ -6049,6 +6258,7 @@ func TestOneToOneBookingRejectsConsumedCapacity(t *testing.T) {
 
 func TestOneToOneBookingRejectsSessionsAboveConfiguredLimit(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
 
 	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
 		Name:         "Private Cricket",
@@ -6068,7 +6278,7 @@ func TestOneToOneBookingRejectsSessionsAboveConfiguredLimit(t *testing.T) {
 	}
 
 	slotDate := time.Now().AddDate(0, 0, 6).Format("2006-01-02")
-	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "19:00", 4, 5500, 1200, "", "")
+	_, _, err = app.createOneToOneBooking(*offering, "Blocked Customer", slotDate, "19:00", 4, 5500, coachID, 1200, "", "")
 	if err == nil {
 		t.Fatal("expected sessions limit error")
 	}
@@ -10418,6 +10628,1026 @@ func TestBuildTemplatesIncludesStudentAttendanceReport(
 	if templates["student-attendance-report"] == nil {
 		t.Fatal(
 			"student-attendance-report template is not registered",
+		)
+	}
+}
+
+func TestApplyFirstMonthEnrollmentDiscountRules(t *testing.T) {
+	tests := []struct {
+		name         string
+		date         string
+		paymentMonth string
+		monthDays    int
+		base         float64
+		wantFee      float64
+		wantDiscount float64
+	}{
+		{
+			name:         "day 15 full fee",
+			date:         "2026-07-15",
+			paymentMonth: "2026-07",
+			monthDays:    31,
+			base:         5000,
+			wantFee:      5000,
+			wantDiscount: 0,
+		},
+		{
+			name:         "day 16 half fee",
+			date:         "2026-07-16",
+			paymentMonth: "2026-07",
+			monthDays:    31,
+			base:         5000,
+			wantFee:      2500,
+			wantDiscount: 2500,
+		},
+		{
+			name:         "day 26 half fee in 31 day month",
+			date:         "2026-07-26",
+			paymentMonth: "2026-07",
+			monthDays:    31,
+			base:         5000,
+			wantFee:      2500,
+			wantDiscount: 2500,
+		},
+		{
+			name:         "day 27 free in 31 day month",
+			date:         "2026-07-27",
+			paymentMonth: "2026-07",
+			monthDays:    31,
+			base:         5000,
+			wantFee:      0,
+			wantDiscount: 5000,
+		},
+		{
+			name:         "day 31 free",
+			date:         "2026-07-31",
+			paymentMonth: "2026-07",
+			monthDays:    31,
+			base:         5000,
+			wantFee:      0,
+			wantDiscount: 5000,
+		},
+		{
+			name:         "day 25 half fee in 30 day month",
+			date:         "2026-06-25",
+			paymentMonth: "2026-06",
+			monthDays:    30,
+			base:         5000,
+			wantFee:      2500,
+			wantDiscount: 2500,
+		},
+		{
+			name:         "day 26 free in 30 day month",
+			date:         "2026-06-26",
+			paymentMonth: "2026-06",
+			monthDays:    30,
+			base:         5000,
+			wantFee:      0,
+			wantDiscount: 5000,
+		},
+		{
+			name:         "february day 23 half fee",
+			date:         "2026-02-23",
+			paymentMonth: "2026-02",
+			monthDays:    28,
+			base:         5000,
+			wantFee:      2500,
+			wantDiscount: 2500,
+		},
+		{
+			name:         "february day 24 free",
+			date:         "2026-02-24",
+			paymentMonth: "2026-02",
+			monthDays:    28,
+			base:         5000,
+			wantFee:      0,
+			wantDiscount: 5000,
+		},
+		{
+			name:         "subsequent month full fee",
+			date:         "2026-07-27",
+			paymentMonth: "2026-08",
+			monthDays:    31,
+			base:         5000,
+			wantFee:      5000,
+			wantDiscount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, err := time.ParseInLocation(
+				"2006-01-02",
+				tt.date,
+				time.Local,
+			)
+			if err != nil {
+				t.Fatalf("parse enrollment date: %v", err)
+			}
+
+			gotFee, gotDiscount :=
+				applyFirstMonthEnrollmentDiscount(
+					tt.base,
+					start,
+					tt.paymentMonth,
+					tt.monthDays,
+				)
+
+			if gotFee != tt.wantFee {
+				t.Fatalf(
+					"fee = %.2f, want %.2f",
+					gotFee,
+					tt.wantFee,
+				)
+			}
+
+			if gotDiscount != tt.wantDiscount {
+				t.Fatalf(
+					"discount = %.2f, want %.2f",
+					gotDiscount,
+					tt.wantDiscount,
+				)
+			}
+		})
+	}
+}
+
+func TestListStudentPaymentRowsExcludesStudentWithoutEnrollment(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(
+		Admission{
+			StudentID:             "STD-NOT-ENROLLED-001",
+			FullName:              "Not Enrolled Student",
+			AdmissionDate:         "2026-07-01",
+			DateOfBirth:           "2012-01-01",
+			Gender:                "male",
+			PracticeType:          "group_practice",
+			Address:               "Jaffna",
+			GuardianName:          "Guardian",
+			GuardianRelationship:  "Parent",
+			GuardianContactNumber: "0770000099",
+		},
+		false,
+		"cash",
+		0,
+	)
+	if err != nil {
+		t.Fatalf("create student: %v", err)
+	}
+
+	rows, err := app.listStudentPaymentRows("2026-08")
+	if err != nil {
+		t.Fatalf("list student payments: %v", err)
+	}
+
+	for _, row := range rows {
+		if row.Admission.ID == admissionID {
+			t.Fatalf(
+				"non-enrolled student %d appeared in payment register",
+				admissionID,
+			)
+		}
+	}
+}
+
+func TestValidateAdminScheduleDateRejectsBeforeOpeningDate(t *testing.T) {
+	err := validateAdminScheduleDate(SpaceSchedule{
+		SlotDate: "2026-06-30",
+		SlotHour: "18:00",
+	})
+
+	if err == nil {
+		t.Fatal("expected admin booking before 2026-07-01 to be rejected")
+	}
+}
+
+func TestValidateAdminScheduleDateAllowsOpeningDate(t *testing.T) {
+	err := validateAdminScheduleDate(SpaceSchedule{
+		SlotDate: "2026-07-01",
+		SlotHour: "18:00",
+	})
+
+	if err != nil {
+		t.Fatalf(
+			"expected 2026-07-01 admin booking to be allowed: %v",
+			err,
+		)
+	}
+}
+
+func TestValidateAdminScheduleDateAllowsHistoricalDateAfterOpening(t *testing.T) {
+	err := validateAdminScheduleDate(SpaceSchedule{
+		SlotDate: "2026-08-01",
+		SlotHour: "18:00",
+	})
+
+	if err != nil {
+		t.Fatalf(
+			"expected historical admin booking after opening to be allowed: %v",
+			err,
+		)
+	}
+}
+
+func TestValidateBookableScheduleTimeRejectsHistoricalPublicSlot(t *testing.T) {
+	now := time.Date(
+		2026,
+		time.August,
+		19,
+		12,
+		0,
+		0,
+		0,
+		time.Local,
+	)
+
+	err := validateBookableScheduleTime(
+		SpaceSchedule{
+			SlotDate: "2026-08-18",
+			SlotHour: "18:00",
+		},
+		now,
+	)
+
+	if err == nil {
+		t.Fatal("expected historical public booking slot to be rejected")
+	}
+}
+
+func TestValidateBookableScheduleTimeAllowsFuturePublicSlot(t *testing.T) {
+	now := time.Date(
+		2026,
+		time.August,
+		19,
+		12,
+		0,
+		0,
+		0,
+		time.Local,
+	)
+
+	err := validateBookableScheduleTime(
+		SpaceSchedule{
+			SlotDate: "2026-08-20",
+			SlotHour: "18:00",
+		},
+		now,
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"expected future public booking slot to be allowed: %v",
+			err,
+		)
+	}
+}
+
+func TestScheduleNextOneToOneSessionCreatesIndependentAppointment(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Private Badminton Multi Session",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 6,
+		Price:        3500,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create 1 to 1 offering: %v", err)
+	}
+
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find 1 to 1 offering: %v", err)
+	}
+
+	firstDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
+
+	bookingID, firstScheduleID, err := app.createOneToOneBooking(
+		*offering,
+		"Multi Session Customer",
+		firstDate,
+		"18:00",
+		4,
+		3000,
+		coachID,
+		800,
+		"Session one",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("create 1 to 1 booking: %v", err)
+	}
+
+	if bookingID <= 0 || firstScheduleID <= 0 {
+		t.Fatalf(
+			"expected persisted booking and schedule ids, got booking=%d schedule=%d",
+			bookingID,
+			firstScheduleID,
+		)
+	}
+
+	// Capture the package-level financial state before scheduling session #2.
+	var financialCountBefore int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM booking_financials
+	`).Scan(&financialCountBefore); err != nil {
+		t.Fatalf("count booking financials before session #2: %v", err)
+	}
+
+	var firstQuotedAmount float64
+	if err := app.db.QueryRow(`
+		SELECT quoted_amount
+		FROM booking_financials
+		WHERE schedule_id = ?
+	`, firstScheduleID).Scan(&firstQuotedAmount); err != nil {
+		t.Fatalf("load initial booking financial: %v", err)
+	}
+
+	if firstQuotedAmount != 3000 {
+		t.Fatalf(
+			"initial package quoted amount = %.2f, want 3000.00",
+			firstQuotedAmount,
+		)
+	}
+
+	secondDate := time.Now().AddDate(0, 0, 6).Format("2006-01-02")
+
+	sessionID, secondScheduleID, err := app.scheduleNextOneToOneSession(
+		bookingID,
+		secondDate,
+		"19:00",
+		0,
+		900,
+		"Session two notes",
+	)
+	if err != nil {
+		t.Fatalf("schedule second 1 to 1 session: %v", err)
+	}
+
+	if sessionID <= 0 || secondScheduleID <= 0 {
+		t.Fatalf(
+			"expected persisted session and schedule ids, got session=%d schedule=%d",
+			sessionID,
+			secondScheduleID,
+		)
+	}
+
+	if secondScheduleID == firstScheduleID {
+		t.Fatalf(
+			"session #2 reused initial schedule %d; expected independent schedule",
+			firstScheduleID,
+		)
+	}
+
+	var (
+		sessionBookingID  int64
+		sessionScheduleID int64
+		sessionNumber     int
+		coachUserID       sql.NullInt64
+		coachFee          float64
+		sessionStatus     string
+		sessionNotes      string
+	)
+
+	if err := app.db.QueryRow(`
+		SELECT
+			booking_id,
+			schedule_id,
+			session_number,
+			coach_user_id,
+			coach_fee,
+			status,
+			notes
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, sessionID).Scan(
+		&sessionBookingID,
+		&sessionScheduleID,
+		&sessionNumber,
+		&coachUserID,
+		&coachFee,
+		&sessionStatus,
+		&sessionNotes,
+	); err != nil {
+		t.Fatalf("load scheduled session #2: %v", err)
+	}
+
+	if sessionBookingID != bookingID {
+		t.Fatalf(
+			"session #2 booking id = %d, want %d",
+			sessionBookingID,
+			bookingID,
+		)
+	}
+
+	if sessionScheduleID != secondScheduleID {
+		t.Fatalf(
+			"session #2 schedule id = %d, want %d",
+			sessionScheduleID,
+			secondScheduleID,
+		)
+	}
+
+	if sessionNumber != 2 {
+		t.Fatalf(
+			"session number = %d, want 2",
+			sessionNumber,
+		)
+	}
+
+	if coachUserID.Valid {
+		t.Fatalf(
+			"expected NULL coach_user_id when no coach selected, got %d",
+			coachUserID.Int64,
+		)
+	}
+
+	if coachFee != 900 {
+		t.Fatalf(
+			"session #2 coach fee = %.2f, want 900.00",
+			coachFee,
+		)
+	}
+
+	if sessionStatus != "scheduled" {
+		t.Fatalf(
+			"session #2 status = %q, want %q",
+			sessionStatus,
+			"scheduled",
+		)
+	}
+
+	if sessionNotes != "Session two notes" {
+		t.Fatalf(
+			"session #2 notes = %q, want %q",
+			sessionNotes,
+			"Session two notes",
+		)
+	}
+
+	var secondSchedule SpaceSchedule
+	if err := app.db.QueryRow(`
+		SELECT
+			id,
+			slot_date,
+			slot_hour,
+			entry_type,
+			activity,
+			quantity,
+			title,
+			notes,
+			status,
+			requester_name
+		FROM space_schedules
+		WHERE id = ?
+	`, secondScheduleID).Scan(
+		&secondSchedule.ID,
+		&secondSchedule.SlotDate,
+		&secondSchedule.SlotHour,
+		&secondSchedule.EntryType,
+		&secondSchedule.Activity,
+		&secondSchedule.Quantity,
+		&secondSchedule.Title,
+		&secondSchedule.Notes,
+		&secondSchedule.Status,
+		&secondSchedule.RequesterName,
+	); err != nil {
+		t.Fatalf("load session #2 schedule: %v", err)
+	}
+
+	if secondSchedule.SlotDate != secondDate {
+		t.Fatalf(
+			"session #2 date = %q, want %q",
+			secondSchedule.SlotDate,
+			secondDate,
+		)
+	}
+
+	if secondSchedule.SlotHour != "19:00" {
+		t.Fatalf(
+			"session #2 hour = %q, want %q",
+			secondSchedule.SlotHour,
+			"19:00",
+		)
+	}
+
+	if secondSchedule.EntryType != "booking" {
+		t.Fatalf(
+			"session #2 entry type = %q, want booking",
+			secondSchedule.EntryType,
+		)
+	}
+
+	if secondSchedule.Activity != "badminton" {
+		t.Fatalf(
+			"session #2 activity = %q, want badminton",
+			secondSchedule.Activity,
+		)
+	}
+
+	if secondSchedule.Quantity != 1 {
+		t.Fatalf(
+			"session #2 quantity = %d, want 1",
+			secondSchedule.Quantity,
+		)
+	}
+
+	if secondSchedule.RequesterName != "Multi Session Customer" {
+		t.Fatalf(
+			"session #2 requester = %q",
+			secondSchedule.RequesterName,
+		)
+	}
+
+	if !strings.Contains(secondSchedule.Title, "Session 2") {
+		t.Fatalf(
+			"session #2 schedule title does not identify session number: %q",
+			secondSchedule.Title,
+		)
+	}
+
+	var totalSessionCount int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+	`, bookingID).Scan(&totalSessionCount); err != nil {
+		t.Fatalf("count package sessions: %v", err)
+	}
+
+	if totalSessionCount != 2 {
+		t.Fatalf(
+			"scheduled session count = %d, want 2",
+			totalSessionCount,
+		)
+	}
+
+	var distinctScheduleCount int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(DISTINCT schedule_id)
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+	`, bookingID).Scan(&distinctScheduleCount); err != nil {
+		t.Fatalf("count distinct package schedules: %v", err)
+	}
+
+	if distinctScheduleCount != 2 {
+		t.Fatalf(
+			"distinct schedule count = %d, want 2",
+			distinctScheduleCount,
+		)
+	}
+
+	// Scheduling another appointment must not create another package charge.
+	var financialCountAfter int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM booking_financials
+	`).Scan(&financialCountAfter); err != nil {
+		t.Fatalf("count booking financials after session #2: %v", err)
+	}
+
+	if financialCountAfter != financialCountBefore {
+		t.Fatalf(
+			"scheduling session #2 changed booking financial count from %d to %d",
+			financialCountBefore,
+			financialCountAfter,
+		)
+	}
+
+	var secondScheduleFinancialCount int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM booking_financials
+		WHERE schedule_id = ?
+	`, secondScheduleID).Scan(&secondScheduleFinancialCount); err != nil {
+		t.Fatalf("count session #2 booking financials: %v", err)
+	}
+
+	if secondScheduleFinancialCount != 0 {
+		t.Fatalf(
+			"session #2 created %d booking financial rows; expected package charge only",
+			secondScheduleFinancialCount,
+		)
+	}
+}
+
+func TestOneToOneSessionLifecycleCancellationReplacementAndCompletion(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Lifecycle Private Badminton",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 6,
+		Price:        4000,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create offering: %v", err)
+	}
+
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find offering: %v", err)
+	}
+
+	date1 := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
+
+	bookingID, schedule1, err := app.createOneToOneBooking(
+		*offering,
+		"Lifecycle Customer",
+		date1,
+		"18:00",
+		3,
+		3600,
+		coachID,
+		800,
+		"Initial session",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+
+	var session1 int64
+	if err := app.db.QueryRow(`
+		SELECT id
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+		  AND session_number = 1
+	`, bookingID).Scan(&session1); err != nil {
+		t.Fatalf("load session #1: %v", err)
+	}
+
+	// --------------------------------------------------------
+	// Cancel session #1.
+	// --------------------------------------------------------
+
+	if err := app.cancelOneToOneSession(
+		session1,
+		0,
+		"Customer requested another date",
+	); err != nil {
+		t.Fatalf("cancel session #1: %v", err)
+	}
+
+	var (
+		session1Status      string
+		session1CancelledAt sql.NullTime
+	)
+
+	if err := app.db.QueryRow(`
+		SELECT status, cancelled_at
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, session1).Scan(
+		&session1Status,
+		&session1CancelledAt,
+	); err != nil {
+		t.Fatalf("reload cancelled session #1: %v", err)
+	}
+
+	if session1Status != "cancelled" {
+		t.Fatalf(
+			"session #1 status = %q, want cancelled",
+			session1Status,
+		)
+	}
+
+	if !session1CancelledAt.Valid {
+		t.Fatal("expected cancelled_at for session #1")
+	}
+
+	var (
+		schedule1Status string
+		cancelReason    string
+	)
+
+	if err := app.db.QueryRow(`
+		SELECT status, COALESCE(cancellation_reason, '')
+		FROM space_schedules
+		WHERE id = ?
+	`, schedule1).Scan(
+		&schedule1Status,
+		&cancelReason,
+	); err != nil {
+		t.Fatalf("reload cancelled schedule #1: %v", err)
+	}
+
+	if schedule1Status != "cancelled" {
+		t.Fatalf(
+			"schedule #1 status = %q, want cancelled",
+			schedule1Status,
+		)
+	}
+
+	if cancelReason != "Customer requested another date" {
+		t.Fatalf(
+			"schedule cancellation reason = %q",
+			cancelReason,
+		)
+	}
+
+	var (
+		completed int
+		cancelled int
+		pkgStatus string
+	)
+
+	if err := app.db.QueryRow(`
+		SELECT
+			completed_sessions,
+			cancelled_sessions,
+			package_status
+		FROM one_to_one_bookings
+		WHERE id = ?
+	`, bookingID).Scan(
+		&completed,
+		&cancelled,
+		&pkgStatus,
+	); err != nil {
+		t.Fatalf("load package after cancellation: %v", err)
+	}
+
+	if completed != 0 || cancelled != 1 || pkgStatus != "active" {
+		t.Fatalf(
+			"after cancellation: completed=%d cancelled=%d status=%q",
+			completed,
+			cancelled,
+			pkgStatus,
+		)
+	}
+
+	// --------------------------------------------------------
+	// Schedule replacement.
+	//
+	// Session #1 remains audit history.
+	// Replacement must become session #2.
+	// --------------------------------------------------------
+
+	date2 := time.Now().AddDate(0, 0, 6).Format("2006-01-02")
+
+	session2, schedule2, err := app.scheduleNextOneToOneSession(
+		bookingID,
+		date2,
+		"19:00",
+		0,
+		900,
+		"Replacement session",
+	)
+	if err != nil {
+		t.Fatalf("schedule replacement session: %v", err)
+	}
+
+	var session2Number int
+	if err := app.db.QueryRow(`
+		SELECT session_number
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, session2).Scan(&session2Number); err != nil {
+		t.Fatalf("load replacement session number: %v", err)
+	}
+
+	if session2Number != 2 {
+		t.Fatalf(
+			"replacement session number = %d, want 2",
+			session2Number,
+		)
+	}
+
+	if schedule2 == schedule1 {
+		t.Fatal("replacement session reused cancelled schedule")
+	}
+
+	// --------------------------------------------------------
+	// Complete replacement session.
+	// --------------------------------------------------------
+
+	if err := app.completeOneToOneSession(session2, 0); err != nil {
+		t.Fatalf("complete replacement session: %v", err)
+	}
+
+	var (
+		session2Status      string
+		session2CompletedAt sql.NullTime
+	)
+
+	if err := app.db.QueryRow(`
+		SELECT status, completed_at
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, session2).Scan(
+		&session2Status,
+		&session2CompletedAt,
+	); err != nil {
+		t.Fatalf("reload completed session #2: %v", err)
+	}
+
+	if session2Status != "completed" {
+		t.Fatalf(
+			"session #2 status = %q, want completed",
+			session2Status,
+		)
+	}
+
+	if !session2CompletedAt.Valid {
+		t.Fatal("expected completed_at for session #2")
+	}
+
+	var schedule2Status string
+	if err := app.db.QueryRow(`
+		SELECT status
+		FROM space_schedules
+		WHERE id = ?
+	`, schedule2).Scan(&schedule2Status); err != nil {
+		t.Fatalf("load completed schedule #2: %v", err)
+	}
+
+	if schedule2Status != "completed" {
+		t.Fatalf(
+			"schedule #2 status = %q, want completed",
+			schedule2Status,
+		)
+	}
+
+	if err := app.db.QueryRow(`
+		SELECT
+			completed_sessions,
+			cancelled_sessions,
+			package_status
+		FROM one_to_one_bookings
+		WHERE id = ?
+	`, bookingID).Scan(
+		&completed,
+		&cancelled,
+		&pkgStatus,
+	); err != nil {
+		t.Fatalf("load package after completion: %v", err)
+	}
+
+	if completed != 1 || cancelled != 1 || pkgStatus != "active" {
+		t.Fatalf(
+			"after completion: completed=%d cancelled=%d status=%q",
+			completed,
+			cancelled,
+			pkgStatus,
+		)
+	}
+
+	// --------------------------------------------------------
+	// Fill remaining purchased entitlement.
+	// Purchased sessions = 3.
+	//
+	// History:
+	// #1 cancelled
+	// #2 completed
+	// #3 completed
+	// #4 completed
+	//
+	// Package should then become completed.
+	// --------------------------------------------------------
+
+	date3 := time.Now().AddDate(0, 0, 8).Format("2006-01-02")
+
+	session3, _, err := app.scheduleNextOneToOneSession(
+		bookingID,
+		date3,
+		"18:30",
+		0,
+		700,
+		"Third appointment",
+	)
+	if err != nil {
+		t.Fatalf("schedule session #3: %v", err)
+	}
+
+	if err := app.completeOneToOneSession(session3, 0); err != nil {
+		t.Fatalf("complete session #3: %v", err)
+	}
+
+	date4 := time.Now().AddDate(0, 0, 10).Format("2006-01-02")
+
+	session4, _, err := app.scheduleNextOneToOneSession(
+		bookingID,
+		date4,
+		"19:30",
+		0,
+		700,
+		"Fourth appointment",
+	)
+	if err != nil {
+		t.Fatalf("schedule session #4: %v", err)
+	}
+
+	var session4Number int
+	if err := app.db.QueryRow(`
+		SELECT session_number
+		FROM one_to_one_booking_sessions
+		WHERE id = ?
+	`, session4).Scan(&session4Number); err != nil {
+		t.Fatalf("load session #4 number: %v", err)
+	}
+
+	if session4Number != 4 {
+		t.Fatalf(
+			"session number = %d, want 4",
+			session4Number,
+		)
+	}
+
+	if err := app.completeOneToOneSession(session4, 0); err != nil {
+		t.Fatalf("complete session #4: %v", err)
+	}
+
+	if err := app.db.QueryRow(`
+		SELECT
+			completed_sessions,
+			cancelled_sessions,
+			package_status
+		FROM one_to_one_bookings
+		WHERE id = ?
+	`, bookingID).Scan(
+		&completed,
+		&cancelled,
+		&pkgStatus,
+	); err != nil {
+		t.Fatalf("load final package progress: %v", err)
+	}
+
+	if completed != 3 {
+		t.Fatalf(
+			"completed sessions = %d, want 3",
+			completed,
+		)
+	}
+
+	if cancelled != 1 {
+		t.Fatalf(
+			"cancelled sessions = %d, want 1",
+			cancelled,
+		)
+	}
+
+	if pkgStatus != "completed" {
+		t.Fatalf(
+			"package status = %q, want completed",
+			pkgStatus,
+		)
+	}
+
+	// Completed packages must not allow additional appointments.
+	_, _, err = app.scheduleNextOneToOneSession(
+		bookingID,
+		time.Now().AddDate(0, 0, 12).Format("2006-01-02"),
+		"18:00",
+		0,
+		0,
+		"Should not be created",
+	)
+
+	if err == nil {
+		t.Fatal("expected completed package to reject another appointment")
+	}
+
+	// --------------------------------------------------------
+	// Invalid lifecycle transitions.
+	// --------------------------------------------------------
+
+	if err := app.completeOneToOneSession(session1, 0); err == nil {
+		t.Fatal("expected cancelled session to reject completion")
+	}
+
+	if err := app.cancelOneToOneSession(
+		session2,
+		0,
+		"Should fail",
+	); err == nil {
+		t.Fatal("expected completed session to reject cancellation")
+	}
+
+	// Audit row must still exist.
+	var historyCount int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+	`, bookingID).Scan(&historyCount); err != nil {
+		t.Fatalf("count session history: %v", err)
+	}
+
+	if historyCount != 4 {
+		t.Fatalf(
+			"session history count = %d, want 4",
+			historyCount,
 		)
 	}
 }

@@ -135,6 +135,23 @@
               {{end}}
             </div>
           </div>
+          <label class="block">
+            <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">
+              Enrollment date
+            </span>
+            <input
+              type="date"
+              name="enrollment_date"
+              value="{{todayDate}}"
+              max="{{todayDate}}"
+              required
+              class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua"
+            />
+            <span class="mt-2 block text-xs leading-5 text-slate/55">
+              The date this student joined this specific programme. Monthly fee eligibility begins from this date.
+            </span>
+          </label>
+
           <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-cloud/45 p-4">
             <input type="checkbox" name="free_admission" value="true" {{if .SelectedEnrollment.FreeAdmission}}checked{{end}} {{if .SelectedEnrollment.AdmissionPaymentPaid}}disabled{{end}} class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua disabled:cursor-not-allowed" />
             <span>
@@ -170,10 +187,14 @@
           </form>
         </div>
         {{else}}
-        <div class="mt-6 grid gap-4 lg:grid-cols-4">
+        <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <div class="rounded-2xl bg-cloud px-4 py-4">
             <p class="text-xs uppercase tracking-[0.16em] text-slate/50">Programme</p>
             <p class="mt-2 text-sm font-semibold text-obsidian">{{.SelectedEnrollment.TrainingProgramName}}</p>
+          </div>
+          <div class="rounded-2xl bg-cloud px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate/50">Enrollment date</p>
+            <p class="mt-2 text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedEnrollment.EnrollmentDate}}</p>
           </div>
           <div class="rounded-2xl bg-cloud px-4 py-4">
             <p class="text-xs uppercase tracking-[0.16em] text-slate/50">Admission fee</p>
@@ -224,6 +245,24 @@
               <option value="{{.ID}}">{{.Name}} · Admission {{money .AdmissionFee}} · Monthly {{money .MonthlyFee}}</option>
               {{end}}
             </select>
+          </div>
+
+          <div class="space-y-2">
+            <label for="enrollment-date" class="block text-sm font-semibold text-obsidian">
+              Enrollment date
+            </label>
+            <input
+              id="enrollment-date"
+              type="date"
+              name="enrollment_date"
+              value="{{todayDate}}"
+              max="{{todayDate}}"
+              required
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm font-semibold text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+            <p class="text-xs leading-5 text-slate/55">
+              Date this student joined this programme. Admission-fee and monthly-fee eligibility starts from this enrollment.
+            </p>
           </div>
           <label class="flex items-start gap-3 rounded-2xl border border-slate/10 bg-cloud/45 p-4">
             <input type="checkbox" name="free_admission" value="true" class="mt-1 h-4 w-4 rounded border-slate/30 text-obsidian focus:ring-aqua" />
@@ -287,7 +326,9 @@
                   <span class="rounded-full bg-white px-3 py-1 text-[0.68rem] font-semibold text-slate/70">Admission pending</span>
                   {{end}}
                 </div>
-                <p class="mt-2 text-sm text-slate/62">Created {{formatDateTime .CreatedAt}}</p>
+                <p class="mt-2 text-sm font-medium text-slate/62">
+                  Enrolled {{formatCalendarDate .EnrollmentDate}}
+                </p>
                 <p class="mt-1 text-xs text-slate/55">{{if not .Active}}Archived from active billing{{else if .FreeMonthlyFee}}Monthly fee waived{{else}}Monthly fee active{{end}}</p>
               </div>
 

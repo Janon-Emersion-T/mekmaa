@@ -195,6 +195,83 @@ func (a *App) execDB(
 	)
 }
 
+// insertAndReturnID executes an INSERT and returns its generated integer ID
+// across both PostgreSQL and SQLite.
+//
+// PostgreSQL does not support sql.Result.LastInsertId(), so it must use
+// INSERT ... RETURNING id instead.
+func (a *App) insertAndReturnID(
+	query string,
+	args ...any,
+) (int64, error) {
+	driver := strings.ToLower(
+		strings.TrimSpace(string(a.runtimeConfig.DBDriver)),
+	)
+
+	if driver == "postgres" || driver == "postgresql" {
+		query = strings.TrimSpace(query)
+		query = strings.TrimSuffix(query, ";")
+
+		var id int64
+
+		err := a.queryRowDB(
+			query+" RETURNING id",
+			args...,
+		).Scan(&id)
+
+		return id, err
+	}
+
+	result, err := a.execDB(
+		query,
+		args...,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.LastInsertId()
+}
+
+// insertAndReturnIDTx executes an INSERT inside an existing transaction
+// and returns its generated integer ID across PostgreSQL and SQLite.
+//
+// PostgreSQL requires INSERT ... RETURNING id, while SQLite supports
+// sql.Result.LastInsertId().
+func (a *App) insertAndReturnIDTx(
+	tx *sql.Tx,
+	query string,
+	args ...any,
+) (int64, error) {
+	driver := strings.ToLower(
+		strings.TrimSpace(string(a.runtimeConfig.DBDriver)),
+	)
+
+	if driver == "postgres" || driver == "postgresql" {
+		query = strings.TrimSpace(query)
+		query = strings.TrimSuffix(query, ";")
+
+		var id int64
+		err := a.queryRowTxDB(
+			tx,
+			query+" RETURNING id",
+			args...,
+		).Scan(&id)
+
+		return id, err
+	}
+
+	result, err := tx.Exec(
+		a.dbQuery(query),
+		args...,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.LastInsertId()
+}
+
 func (a *App) queryRowTxDB(
 	tx *sql.Tx,
 	query string,

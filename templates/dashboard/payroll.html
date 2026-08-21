@@ -1,0 +1,213 @@
+{{define "content"}}
+<div class="space-y-6">
+
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        Staff & Payroll
+      </p>
+
+      <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
+        Payroll
+      </h1>
+
+      <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+        Generate staff salary periods, calculate compensation,
+        add incentives and deductions, approve payments and issue salary slips.
+      </p>
+    </div>
+
+    <a
+      href="/admin/staff/salary-profiles"
+      class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+    >
+      Salary profiles
+    </a>
+  </div>
+
+  {{if .Flash}}
+  <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+    {{.Flash}}
+  </div>
+  {{end}}
+
+  <div class="grid gap-6 xl:grid-cols-[390px_minmax(0,1fr)]">
+
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-200 px-5 py-4">
+        <h2 class="text-base font-semibold text-slate-950">
+          Create payroll period
+        </h2>
+
+        <p class="mt-1 text-sm text-slate-500">
+          Define the salary period before calculating staff payments.
+        </p>
+      </div>
+
+      <form
+        method="post"
+        action="/admin/payroll/create"
+        class="space-y-5 p-5"
+      >
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-slate-700">
+            Period label
+          </label>
+
+          <input
+            type="text"
+            name="label"
+            placeholder="August 2026 Payroll"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+          >
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">
+              Start date
+            </label>
+
+            <input
+              type="date"
+              name="period_start"
+              required
+              class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+            >
+          </div>
+
+          <div>
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">
+              End date
+            </label>
+
+            <input
+              type="date"
+              name="period_end"
+              required
+              class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+            >
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          class="inline-flex w-full items-center justify-center rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          Create payroll period
+        </button>
+      </form>
+    </section>
+
+    <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-200 px-5 py-4">
+        <h2 class="text-base font-semibold text-slate-950">
+          Payroll history
+        </h2>
+
+        <p class="mt-1 text-sm text-slate-500">
+          {{len .PayrollRuns}} payroll periods
+        </p>
+      </div>
+
+      {{if .PayrollRuns}}
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Period
+              </th>
+
+              <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Staff
+              </th>
+
+              <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Base
+              </th>
+
+              <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Additions
+              </th>
+
+              <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Deductions
+              </th>
+
+              <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Net
+              </th>
+
+              <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Status
+              </th>
+            </tr>
+          </thead>
+
+          <tbody class="divide-y divide-slate-100">
+            {{range .PayrollRuns}}
+            <tr>
+              <td class="px-5 py-4">
+                <a
+                  href="/admin/payroll/run?id={{.ID}}"
+                  class="font-medium text-slate-950 hover:underline"
+                >
+                  {{.Label}}
+                </a>
+
+                <div class="mt-1 text-xs text-slate-500">
+                  {{.PeriodStart}} → {{.PeriodEnd}}
+                </div>
+              </td>
+
+              <td class="px-5 py-4 text-slate-700">
+                {{.StaffCount}}
+              </td>
+
+              <td class="px-5 py-4 text-right text-slate-700">
+                {{money .BaseTotal}}
+              </td>
+
+              <td class="px-5 py-4 text-right text-emerald-700">
+                {{money .AdditionsTotal}}
+              </td>
+
+              <td class="px-5 py-4 text-right text-rose-700">
+                {{money .DeductionsTotal}}
+              </td>
+
+              <td class="px-5 py-4 text-right font-semibold text-slate-950">
+                {{money .NetTotal}}
+              </td>
+
+              <td class="px-5 py-4">
+                <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                  {{.Status}}
+                </span>
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}
+
+      <div class="px-6 py-14 text-center">
+        <h3 class="text-sm font-semibold text-slate-900">
+          No payroll periods yet
+        </h3>
+
+        <p class="mt-2 text-sm text-slate-500">
+          Create the first payroll period to begin salary calculation.
+        </p>
+      </div>
+
+      {{end}}
+    </section>
+
+  </div>
+</div>
+{{end}}

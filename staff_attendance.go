@@ -78,7 +78,7 @@ func (a *App) listStaffAttendanceRecordsByUserIDs(
 	queryArgs = append(queryArgs, attendanceDate)
 	queryArgs = append(queryArgs, args...)
 
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			id,
 			user_id,

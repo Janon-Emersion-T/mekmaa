@@ -633,10 +633,10 @@ func ensureStudentGroup(app *App, spec seedGroupSpec) error {
 			return err
 		}
 	}
-	if err := replaceStudentGroupCoachesTx(tx, groupID, spec.CoachIDs); err != nil {
+	if err := replaceStudentGroupCoachesTx(tx, databaseDriverSQLite, groupID, spec.CoachIDs); err != nil {
 		return err
 	}
-	if err := replaceStudentGroupSessionsTx(tx, groupID, spec.Sessions); err != nil {
+	if err := replaceStudentGroupSessionsTx(tx, databaseDriverSQLite, groupID, spec.Sessions); err != nil {
 		return err
 	}
 

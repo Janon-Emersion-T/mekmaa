@@ -534,11 +534,11 @@ func bookingCommunicationStatusTone(status string) string {
 	}
 }
 
-func listBookingFinancialsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingFinancial, error) {
+func listBookingFinancialsForScheduleIDsQuery(queryer sqlQueryer, driver DatabaseDriver, scheduleIDs []int64) ([]BookingFinancial, error) {
 	if len(scheduleIDs) == 0 {
 		return nil, nil
 	}
-	query, args := scheduleIDScopedQuery(`
+	query, args := scheduleIDScopedQuery(driver, `
 		SELECT
 			bf.id,
 			bf.schedule_id,
@@ -598,18 +598,18 @@ func listBookingFinancialsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	collections, err := listBookingPaymentCollectionsForScheduleIDsQuery(queryer, scheduleIDs)
+	collections, err := listBookingPaymentCollectionsForScheduleIDsQuery(queryer, driver, scheduleIDs)
 	if err != nil {
 		return nil, err
 	}
 	return enrichBookingFinancials(financials, collections), nil
 }
 
-func listBookingPaymentCollectionsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingPaymentCollection, error) {
+func listBookingPaymentCollectionsForScheduleIDsQuery(queryer sqlQueryer, driver DatabaseDriver, scheduleIDs []int64) ([]BookingPaymentCollection, error) {
 	if len(scheduleIDs) == 0 {
 		return nil, nil
 	}
-	query, args := scheduleIDScopedQuery(`
+	query, args := scheduleIDScopedQuery(driver, `
 		SELECT
 			bpc.id,
 			bpc.schedule_id,
@@ -750,11 +750,11 @@ func enrichBookingFinancials(financials []BookingFinancial, collections []Bookin
 	return financials
 }
 
-func listBookingReferralsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingReferral, error) {
+func listBookingReferralsForScheduleIDsQuery(queryer sqlQueryer, driver DatabaseDriver, scheduleIDs []int64) ([]BookingReferral, error) {
 	if len(scheduleIDs) == 0 {
 		return nil, nil
 	}
-	query, args := scheduleIDScopedQuery(`
+	query, args := scheduleIDScopedQuery(driver, `
 		SELECT br.id, br.schedule_id, br.partner_id, rp.name, rp.code, br.commission_amount,
 		       s.status, s.title, s.slot_date, br.paid, br.paid_at, br.payment_method,
 		       COALESCE(br.finance_transaction_id, 0), br.created_at
@@ -793,11 +793,11 @@ func listBookingReferralsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []i
 	return referrals, rows.Err()
 }
 
-func listBookingRequestChangesForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingRequestChange, error) {
+func listBookingRequestChangesForScheduleIDsQuery(queryer sqlQueryer, driver DatabaseDriver, scheduleIDs []int64) ([]BookingRequestChange, error) {
 	if len(scheduleIDs) == 0 {
 		return nil, nil
 	}
-	query, args := scheduleIDScopedQuery(`
+	query, args := scheduleIDScopedQuery(driver, `
 		SELECT
 			brch.id,
 			brch.schedule_id,
@@ -868,14 +868,14 @@ func listBookingRequestChangesForScheduleIDsQuery(queryer sqlQueryer, scheduleID
 }
 
 func (a *App) listBookingCommunicationsForScheduleIDs(scheduleIDs []int64) ([]BookingCommunication, error) {
-	return listBookingCommunicationsForScheduleIDsQuery(a.db, scheduleIDs)
+	return listBookingCommunicationsForScheduleIDsQuery(a.db, a.runtimeConfig.DBDriver, scheduleIDs)
 }
 
-func listBookingCommunicationsForScheduleIDsQuery(queryer sqlQueryer, scheduleIDs []int64) ([]BookingCommunication, error) {
+func listBookingCommunicationsForScheduleIDsQuery(queryer sqlQueryer, driver DatabaseDriver, scheduleIDs []int64) ([]BookingCommunication, error) {
 	if len(scheduleIDs) == 0 {
 		return nil, nil
 	}
-	query, args := scheduleIDScopedQuery(`
+	query, args := scheduleIDScopedQuery(driver, `
 		SELECT
 			id,
 			schedule_id,
@@ -916,7 +916,7 @@ func listBookingCommunicationsForScheduleIDsQuery(queryer sqlQueryer, scheduleID
 }
 
 func (a *App) findBookingCommunicationByEventKeyChannel(eventKey string, channel string) (*BookingCommunication, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT
 			id,
 			schedule_id,
@@ -985,7 +985,7 @@ func scanBookingCommunication(row rowScanner) (BookingCommunication, error) {
 
 func (a *App) createPendingBookingCommunication(communication BookingCommunication) (*BookingCommunication, bool, error) {
 	now := time.Now().UTC()
-	result, err := a.db.Exec(`
+	communicationID, err := a.insertAndReturnID(`
 		INSERT INTO booking_communications (
 			schedule_id,
 			event_type,
@@ -1028,10 +1028,6 @@ func (a *App) createPendingBookingCommunication(communication BookingCommunicati
 		}
 		return nil, false, err
 	}
-	communicationID, err := result.LastInsertId()
-	if err != nil {
-		return nil, false, err
-	}
 	communication.ID = communicationID
 	communication.Status = bookingCommStatusPending
 	communication.CreatedAt = now
@@ -1049,7 +1045,7 @@ func (a *App) completeBookingCommunicationAttempt(
 	if status == bookingCommStatusSent {
 		sentAt = now
 	}
-	_, err := a.db.Exec(`
+	_, err := a.execDB(`
 		UPDATE booking_communications
 		SET
 			status = ?,
@@ -1070,14 +1066,25 @@ func (a *App) completeBookingCommunicationAttempt(
 	return err
 }
 
-func scheduleIDScopedQuery(base string, scheduleIDs []int64) (string, []any) {
+func scheduleIDScopedQuery(
+	driver DatabaseDriver,
+	base string,
+	scheduleIDs []int64,
+) (string, []any) {
 	placeholders := make([]string, 0, len(scheduleIDs))
 	args := make([]any, 0, len(scheduleIDs))
+
 	for _, scheduleID := range scheduleIDs {
 		placeholders = append(placeholders, "?")
 		args = append(args, scheduleID)
 	}
-	return fmt.Sprintf(base, strings.Join(placeholders, ",")), args
+
+	query := fmt.Sprintf(
+		base,
+		strings.Join(placeholders, ","),
+	)
+
+	return rebindDatabaseQuery(driver, query), args
 }
 
 func scheduleIDs(schedules []SpaceSchedule) []int64 {

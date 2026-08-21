@@ -462,12 +462,11 @@ func buildAdminBookingOptions(
 		}
 	}
 
-	if err := validateBookableScheduleTime(
+	if err := validateAdminScheduleDate(
 		SpaceSchedule{
 			SlotDate: schedule.SlotDate,
 			SlotHour: schedule.SlotHour,
 		},
-		time.Now(),
 	); err != nil {
 		return nil, err.Error(), nil
 	}
@@ -652,12 +651,12 @@ func buildAdminCalendarHours(
 			}
 		}
 
+		// Historical slots remain identifiable in the admin calendar,
+		// but authorised dashboard users may add backdated records.
 		row.IsPast = validateBookableScheduleTime(
 			SpaceSchedule{SlotDate: slotDate, SlotHour: hour},
 			time.Now(),
 		) != nil
-		row.CanAddDirect = row.CanAddDirect && !row.IsPast
-		row.CanAddTraining = row.CanAddTraining && !row.IsPast
 		if !row.CanAddDirect {
 			row.AddDirectURL = ""
 		}

@@ -184,10 +184,10 @@ func oneToOneOfferingFromRequest(r *http.Request) (OneToOneOffering, error) {
 }
 
 func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActivity, games []Game) error {
-	gameExists := false
-	for _, game := range games {
-		if game.Active && game.Activity == offering.Game {
-			gameExists = true
+	var selectedGame *Game
+	for i := range games {
+		if games[i].Active && games[i].Activity == offering.Game {
+			selectedGame = &games[i]
 			break
 		}
 	}
@@ -199,9 +199,9 @@ func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActiv
 		return errors.New("game is required")
 	case offering.Game == "training":
 		return errors.New("training is reserved for internal schedules; choose a customer-bookable game")
-	case !gameExists:
+	case selectedGame == nil:
 		return errors.New("selected game is not available in the games list")
-	case !bookingActivityExists(offering.Game, activities):
+	case !bookingGameExists(selectedGame.ID, activities):
 		return errors.New("selected game is not active in court manager")
 	case offering.Audience != "local" && offering.Audience != "foreign":
 		return errors.New("who must be local or foreign")
@@ -216,6 +216,20 @@ func validateOneToOneOffering(offering OneToOneOffering, activities []CourtActiv
 	default:
 		return nil
 	}
+}
+
+func bookingGameExists(gameID int64, activities []CourtActivity) bool {
+	if gameID <= 0 {
+		return false
+	}
+
+	for _, candidate := range activities {
+		if candidate.Active && candidate.GameID == gameID {
+			return true
+		}
+	}
+
+	return false
 }
 
 func gameFromRequest(r *http.Request) (Game, error) {
@@ -246,22 +260,32 @@ func normalizeGameActivitySlug(name string) string {
 	return name
 }
 
-func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, int, float64, float64, string, string, error) {
+func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, int, float64, int64, float64, string, string, error) {
 	offeringID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("offering_id")), 10, 64)
 	if err != nil || offeringID <= 0 {
-		return 0, "", "", "", 0, 0, 0, "", "", errors.New("valid 1 to 1 selection is required")
+		return 0, "", "", "", 0, 0, 0, 0, "", "", errors.New("valid 1 to 1 selection is required")
 	}
 	sessions, err := strconv.Atoi(strings.TrimSpace(r.FormValue("sessions")))
 	if err != nil || sessions <= 0 {
-		return 0, "", "", "", 0, 0, 0, "", "", errors.New("valid sessions count is required")
+		return 0, "", "", "", 0, 0, 0, 0, "", "", errors.New("valid sessions count is required")
 	}
-	discountedPrice, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("discounted_price")), 64)
-	if err != nil {
-		return 0, "", "", "", 0, 0, 0, "", "", errors.New("valid discounted price is required")
+	discountedPrice := float64(-1)
+	rawDiscountedPrice := strings.TrimSpace(r.FormValue("discounted_price"))
+	if rawDiscountedPrice != "" {
+		parsedDiscountedPrice, err := strconv.ParseFloat(rawDiscountedPrice, 64)
+		if err != nil {
+			return 0, "", "", "", 0, 0, 0, 0, "", "", errors.New("valid final package price is required")
+		}
+		discountedPrice = parsedDiscountedPrice
 	}
+	coachUserID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("coach_user_id")), 10, 64)
+	if err != nil || coachUserID <= 0 {
+		return 0, "", "", "", 0, 0, 0, 0, "", "", errors.New("select a coach")
+	}
+
 	coachFee, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue("coach_fee")), 64)
 	if err != nil {
-		return 0, "", "", "", 0, 0, 0, "", "", errors.New("valid coach fee is required")
+		return 0, "", "", "", 0, 0, 0, 0, "", "", errors.New("valid coach fee is required")
 	}
 	return offeringID,
 		strings.TrimSpace(r.FormValue("customer_name")),
@@ -269,6 +293,7 @@ func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, 
 		strings.TrimSpace(r.FormValue("slot_hour")),
 		sessions,
 		discountedPrice,
+		coachUserID,
 		coachFee,
 		strings.TrimSpace(r.FormValue("notes")),
 		strings.ToUpper(strings.TrimSpace(r.FormValue("referral_code"))),
@@ -1226,6 +1251,32 @@ func validateReferralPartner(partner ReferralPartner) error {
 	default:
 		return nil
 	}
+}
+
+const adminHistoricalBookingStartDate = "2026-07-01"
+
+func validateAdminScheduleDate(schedule SpaceSchedule) error {
+	slotDate, err := time.Parse("2006-01-02", schedule.SlotDate)
+	if err != nil {
+		return errors.New("valid booking date is required")
+	}
+
+	historicalStart, err := time.Parse(
+		"2006-01-02",
+		adminHistoricalBookingStartDate,
+	)
+	if err != nil {
+		return errors.New("invalid historical booking configuration")
+	}
+
+	if slotDate.Before(historicalStart) {
+		return fmt.Errorf(
+			"bookings before %s cannot be entered",
+			adminHistoricalBookingStartDate,
+		)
+	}
+
+	return nil
 }
 
 func validateBookableScheduleTime(schedule SpaceSchedule, now time.Time) error {

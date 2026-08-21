@@ -16,7 +16,7 @@ import (
 func (a *App) findAdmissionByID(
 	admissionID int64,
 ) (*Admission, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT
 			a.id,
 			a.student_id,
@@ -141,7 +141,7 @@ func (a *App) findAdmissionByIDTx(
 	tx *sql.Tx,
 	admissionID int64,
 ) (*Admission, error) {
-	row := tx.QueryRow(`
+	row := a.queryRowTxDB(tx, `
 		SELECT
 			a.id,
 			a.student_id,
@@ -241,7 +241,11 @@ func (a *App) findAdmissionByIDTx(
 		admission.PaymentVoidedAt = paymentVoidedAt.Time
 	}
 
-	if err := populateAdmissionTrainingProgramsTx(tx, &admission); err != nil {
+	if err := populateAdmissionTrainingProgramsTx(
+		tx,
+		a.runtimeConfig.DBDriver,
+		&admission,
+	); err != nil {
 		return nil, err
 	}
 
@@ -249,7 +253,24 @@ func (a *App) findAdmissionByIDTx(
 }
 
 func (a *App) findFinanceTransactionByID(transactionID int64) (*FinanceTransaction, error) {
-	return a.findFinanceTransactionByIDContext(context.Background(), transactionID)
+	ctx := context.Background()
+
+	transaction, err := a.findFinanceTransactionByIDContext(ctx, transactionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// The non-context convenience lookup returns the fully hydrated finance
+	// domain object, including derived general-void / ledger-repair state.
+	//
+	// The context-aware lookup remains lightweight because it is also used by
+	// receipt/reporting paths that do not require these additional queries.
+	transactions := []FinanceTransaction{*transaction}
+	if err := populateFinanceTransactionVoidStates(ctx, a.db, transactions); err != nil {
+		return nil, err
+	}
+
+	return &transactions[0], nil
 }
 
 func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transactionID int64) (*FinanceTransaction, error) {
@@ -374,11 +395,12 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 		transaction.UpdatedAt = transaction.CreatedAt
 	}
 	transaction.MoneyIn, transaction.MoneyOut = financeAmountParts(transaction.Amount)
-	transactions := []FinanceTransaction{transaction}
-	if err := populateFinanceTransactionVoidStates(ctx, a.db, transactions); err != nil {
-		return nil, err
-	}
-	return &transactions[0], nil
+
+	// The finance transaction itself has already been loaded successfully.
+	// Single receipt lookup does not require ledger repair/orphan enrichment.
+	// Keeping receipt rendering independent prevents PostgreSQL compatibility
+	// issues in repair-state queries from hiding an otherwise valid receipt.
+	return &transaction, nil
 }
 
 func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, paymentMethod string, recordedByUserID int64) (int64, error) {
@@ -517,12 +539,19 @@ func trainingProgramFeesForAdmissionTx(
 	return pricing.Price, pricing.MonthlyFee, nil
 }
 
-func populateAdmissionTrainingProgramsTx(tx *sql.Tx, admission *Admission) error {
+func populateAdmissionTrainingProgramsTx(
+	tx *sql.Tx,
+	driver DatabaseDriver,
+	admission *Admission,
+) error {
 	if admission == nil {
 		return nil
 	}
 
-	rows, err := tx.Query(`
+	rows, err := tx.Query(
+		rebindDatabaseQuery(
+			driver,
+			`
 		SELECT
 			tp.id,
 			tp.name,
@@ -539,7 +568,10 @@ func populateAdmissionTrainingProgramsTx(tx *sql.Tx, admission *Admission) error
 			ON tp.id = atp.training_program_id
 		WHERE atp.admission_id = ?
 		ORDER BY tp.sort_order ASC, tp.name ASC, tp.id ASC
-	`, admission.ID)
+		`,
+		),
+		admission.ID,
+	)
 	if err != nil {
 		return err
 	}
@@ -587,12 +619,16 @@ func populateAdmissionTrainingProgramsTx(tx *sql.Tx, admission *Admission) error
 	return nil
 }
 
-func findStudentEnrollmentByIDTx(tx *sql.Tx, enrollmentID int64) (*StudentEnrollment, error) {
+func findStudentEnrollmentByIDTx(
+	tx *sql.Tx,
+	enrollmentID int64,
+) (*StudentEnrollment, error) {
 	row := tx.QueryRow(`
 		SELECT
 			se.id,
 			se.admission_id,
 			se.training_program_id,
+			COALESCE(CAST(se.enrollment_date AS TEXT), ''),
 			COALESCE(tp.name, ''),
 			COALESCE(tp.division_id, 0),
 			COALESCE(d.code, ''),
@@ -644,6 +680,7 @@ func findStudentEnrollmentByIDTx(tx *sql.Tx, enrollmentID int64) (*StudentEnroll
 		&enrollment.ID,
 		&enrollment.AdmissionID,
 		&enrollment.TrainingProgramID,
+		&enrollment.EnrollmentDate,
 		&enrollment.TrainingProgramName,
 		&enrollment.DivisionID,
 		&enrollment.DivisionCode,
@@ -993,15 +1030,23 @@ func (a *App) findStudentGroupByID(groupID int64) (*StudentGroup, error) {
 }
 
 func (a *App) findSpaceScheduleByID(scheduleID int64) (*SpaceSchedule, error) {
-	return findSpaceScheduleByIDQuery(a.db, scheduleID)
+	return findSpaceScheduleByIDQuery(
+		a.db,
+		a.runtimeConfig.DBDriver,
+		scheduleID,
+	)
 }
 
 type scheduleRowQueryer interface {
 	QueryRow(string, ...any) *sql.Row
 }
 
-func findSpaceScheduleByIDQuery(queryer scheduleRowQueryer, scheduleID int64) (*SpaceSchedule, error) {
-	row := queryer.QueryRow(`
+func findSpaceScheduleByIDQuery(
+	queryer scheduleRowQueryer,
+	driver DatabaseDriver,
+	scheduleID int64,
+) (*SpaceSchedule, error) {
+	query := `
 		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
@@ -1010,7 +1055,12 @@ func findSpaceScheduleByIDQuery(queryer scheduleRowQueryer, scheduleID int64) (*
 		       created_at, updated_at
 		FROM space_schedules
 		WHERE id = ?
-	`, scheduleID)
+	`
+
+	row := queryer.QueryRow(
+		rebindDatabaseQuery(driver, query),
+		scheduleID,
+	)
 
 	return scanSpaceSchedule(row)
 }

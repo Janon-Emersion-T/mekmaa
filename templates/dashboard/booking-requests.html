@@ -540,6 +540,7 @@
           slot_date: slotDate.value,
           slot_hour: slotHour.value,
           entry_type: type.value,
+          future_only: "1",
         });
         const scheduleID = form.querySelector('input[name="schedule_id"]');
         if (scheduleID && scheduleID.value) params.set("schedule_id", scheduleID.value);

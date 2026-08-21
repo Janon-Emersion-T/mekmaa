@@ -160,7 +160,7 @@ func (a *App) listStaffAttendanceRecordsForMonthByUserIDs(
 		args...,
 	)
 
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT
 			id,
 			user_id,

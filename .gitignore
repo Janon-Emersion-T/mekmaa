@@ -7,3 +7,25 @@ mekmaa3
 *.test
 data/uploads/
 backups/
+# Environment / secrets
+.env.*
+!.env.example
+# Manual development backups
+*.bak
+*.bak-*
+*.pre-*
+mekmaa.bak-*
+mekmaa.pre-*
+mekmaa.*-fix
+mekmaa.old-*
+# Compiled application binaries
+/mekmaa
+/mekmaa.new
+# Local/runtime data
+*.db
+*.db-shm
+*.db-wal
+# Editor / OS junk
+.DS_Store
+*.swp
+*.swo

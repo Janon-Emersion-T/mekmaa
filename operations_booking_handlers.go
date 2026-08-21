@@ -175,6 +175,35 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 			selectedGroup, err := a.findStudentGroupByIDForDivisionIDs(groupID, divisionIDs)
 			if err == nil {
 				data.SelectedGroup = selectedGroup
+
+				// Once a specific group is selected, staff assignment must be
+				// scoped to the division that owns the group's training programme.
+				// This is especially important when the page itself is in
+				// division=all scope.
+				if selectedGroup.TrainingProgramID > 0 {
+					trainingProgram, programErr := a.findTrainingProgramByID(
+						selectedGroup.TrainingProgramID,
+					)
+					if programErr == nil {
+						groupDivision, divisionErr := a.findDivisionByID(
+							trainingProgram.DivisionID,
+						)
+						if divisionErr == nil {
+							data.GroupStaffRoles =
+								groupStaffRoleOptionsForDivisionCode(
+									groupDivision.Code,
+								)
+						}
+
+						groupStaff, staffErr :=
+							a.listAssignableGroupStaffByDivisionIDs(
+								[]int64{trainingProgram.DivisionID},
+							)
+						if staffErr == nil {
+							data.AvailableGroupStaff = groupStaff
+						}
+					}
+				}
 			}
 		}
 	}
@@ -1444,11 +1473,30 @@ func (a *App) buildOneToOneTemplateData(w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		return TemplateData{}, err
 	}
+
+	// A 1-to-1 booking is the purchased package. Its appointment rows are
+	// loaded separately so the admin UI can manage the full session lifecycle.
+	for i := range bookings {
+		sessions, err := a.listOneToOneBookingSessions(bookings[i].ID)
+		if err != nil {
+			return TemplateData{}, fmt.Errorf(
+				"list sessions for 1 to 1 booking %d: %w",
+				bookings[i].ID,
+				err,
+			)
+		}
+		bookings[i].BookingSessions = sessions
+	}
+
 	courtActivities, _, err := a.activeBookingConfiguration()
 	if err != nil {
 		return TemplateData{}, err
 	}
 	games, err := a.listGames(false)
+	if err != nil {
+		return TemplateData{}, err
+	}
+	coaches, err := a.listActiveCoaches()
 	if err != nil {
 		return TemplateData{}, err
 	}
@@ -1471,6 +1519,7 @@ func (a *App) buildOneToOneTemplateData(w http.ResponseWriter, r *http.Request, 
 	data.BookingReferrals, _ = a.listBookingReferralsForScheduleIDs(scheduleIDs)
 	data.CourtActivities = courtActivities
 	data.Games = games
+	data.OneToOneCoaches = coaches
 	data.Hours = bookingHours()
 	data.TodayDate = time.Now().Format("2006-01-02")
 	return data, nil
@@ -1805,6 +1854,67 @@ func (a *App) oneToOneBookingManagementHandler(w http.ResponseWriter, r *http.Re
 	a.render(w, "one-to-one-bookings", data, http.StatusOK)
 }
 
+func (a *App) oneToOneReceivablesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+
+	bookings, err := a.listOneToOneBookings()
+	if err != nil {
+		log.Printf("list 1 to 1 receivables bookings: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	scheduleIDs := make([]int64, 0, len(bookings))
+	for _, booking := range bookings {
+		if booking.ScheduleID > 0 {
+			scheduleIDs = append(scheduleIDs, booking.ScheduleID)
+		}
+	}
+
+	financials, err := a.listBookingFinancialsForScheduleIDs(scheduleIDs)
+	if err != nil {
+		log.Printf("list 1 to 1 receivable financials: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	financialBySchedule := make(map[int64]BookingFinancial, len(financials))
+	for _, financial := range financials {
+		financialBySchedule[financial.ScheduleID] = financial
+	}
+
+	rows := make([]OneToOneReceivable, 0, len(bookings))
+
+	for _, booking := range bookings {
+		financial, ok := financialBySchedule[booking.ScheduleID]
+		if !ok {
+			continue
+		}
+
+		// Receivables page only contains money still due.
+		if financial.OutstandingAmount <= 0.004 {
+			continue
+		}
+
+		rows = append(rows, OneToOneReceivable{
+			Booking:   booking,
+			Financial: financial,
+		})
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "1 to 1 Receivables"
+	data.Description = "Collect outstanding payments for 1 to 1 packages."
+	data.OneToOneReceivables = rows
+
+	a.render(w, "one-to-one-receivables", data, http.StatusOK)
+}
+
 func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1818,7 +1928,7 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
-	offeringID, customerName, slotDate, slotHour, sessions, discountedPrice, coachFee, notes, referralCode, err := oneToOneBookingFormValues(r)
+	offeringID, customerName, slotDate, slotHour, sessions, discountedPrice, coachUserID, coachFee, notes, referralCode, err := oneToOneBookingFormValues(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1859,12 +1969,230 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, _, err := a.createOneToOneBooking(*offering, customerName, slotDate, slotHour, sessions, discountedPrice, coachFee, notes, referralCode); err != nil {
+	if _, _, err := a.createOneToOneBooking(*offering, customerName, slotDate, slotHour, sessions, discountedPrice, coachUserID, coachFee, notes, referralCode); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	a.setFlash(w, "1 to 1 booking created.")
 	http.Redirect(w, r, "/admin/one-to-one-bookings", http.StatusSeeOther)
+}
+
+func (a *App) scheduleNextOneToOneSessionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	bookingID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("booking_id")),
+		10,
+		64,
+	)
+	if err != nil || bookingID <= 0 {
+		http.Error(w, "invalid 1 to 1 package", http.StatusBadRequest)
+		return
+	}
+
+	slotDate := strings.TrimSpace(r.FormValue("slot_date"))
+	slotHour := strings.TrimSpace(r.FormValue("slot_hour"))
+	notes := strings.TrimSpace(r.FormValue("notes"))
+
+	coachUserID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("coach_user_id")),
+		10,
+		64,
+	)
+	if err != nil || coachUserID <= 0 {
+		http.Error(w, "select a coach", http.StatusBadRequest)
+		return
+	}
+
+	coachFee, err := strconv.ParseFloat(
+		strings.TrimSpace(r.FormValue("coach_fee")),
+		64,
+	)
+	if err != nil || coachFee < 0 {
+		http.Error(w, "invalid coach fee", http.StatusBadRequest)
+		return
+	}
+
+	schedule := SpaceSchedule{
+		SlotDate: slotDate,
+		SlotHour: slotHour,
+	}
+	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	if _, _, err := a.scheduleNextOneToOneSession(
+		bookingID,
+		slotDate,
+		slotHour,
+		coachUserID,
+		coachFee,
+		notes,
+	); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "Next 1 to 1 session scheduled.")
+	http.Redirect(
+		w,
+		r,
+		"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) completeOneToOneSessionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	sessionID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("session_id")),
+		10,
+		64,
+	)
+	if err != nil || sessionID <= 0 {
+		http.Error(w, "invalid session", http.StatusBadRequest)
+		return
+	}
+
+	bookingID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("booking_id")),
+		10,
+		64,
+	)
+	if err != nil || bookingID <= 0 {
+		http.Error(w, "invalid 1 to 1 package", http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	var completedByUserID int64
+	if currentUser != nil {
+		completedByUserID = currentUser.ID
+	}
+
+	if err := a.completeOneToOneSession(
+		sessionID,
+		completedByUserID,
+	); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "1 to 1 session marked completed.")
+	http.Redirect(
+		w,
+		r,
+		"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+		http.StatusSeeOther,
+	)
+}
+
+func (a *App) cancelOneToOneSessionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	sessionID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("session_id")),
+		10,
+		64,
+	)
+	if err != nil || sessionID <= 0 {
+		http.Error(w, "invalid session", http.StatusBadRequest)
+		return
+	}
+
+	bookingID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("booking_id")),
+		10,
+		64,
+	)
+	if err != nil || bookingID <= 0 {
+		http.Error(w, "invalid 1 to 1 package", http.StatusBadRequest)
+		return
+	}
+
+	reason := strings.TrimSpace(r.FormValue("reason"))
+
+	currentUser, _ := a.currentUser(r.Context())
+	var cancelledByUserID int64
+	if currentUser != nil {
+		cancelledByUserID = currentUser.ID
+	}
+
+	if err := a.cancelOneToOneSession(
+		sessionID,
+		cancelledByUserID,
+		reason,
+	); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "1 to 1 session cancelled. A replacement session may now be scheduled.")
+	http.Redirect(
+		w,
+		r,
+		"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+		http.StatusSeeOther,
+	)
 }
 
 func (a *App) deleteOneToOneBookingHandler(w http.ResponseWriter, r *http.Request) {
@@ -1929,6 +2257,22 @@ func (a *App) adminBookingOptionsHandler(w http.ResponseWriter, r *http.Request)
 	if entryType != "booking" && entryType != "training" {
 		http.Error(w, "invalid entry type", http.StatusBadRequest)
 		return
+	}
+
+	// Direct admin booking maintenance may use historical dates from the
+	// configured Mekmaa opening date. Booking-request rescheduling remains
+	// future-only because it changes a live customer request.
+	if strings.TrimSpace(r.URL.Query().Get("future_only")) == "1" {
+		if err := validateBookableScheduleTime(candidate, time.Now()); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"options":        []AdminBookingOption{},
+				"blocked_reason": err.Error(),
+			}); err != nil {
+				log.Printf("encode admin booking options validation: %v", err)
+			}
+			return
+		}
 	}
 
 	options, blockedReason, err := a.adminBookingOptionsForSchedule(candidate, scheduleID)
@@ -5696,7 +6040,7 @@ func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+	if err := validateAdminScheduleDate(schedule); err != nil {
 		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -5744,7 +6088,7 @@ func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
 		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+	if err := validateAdminScheduleDate(schedule); err != nil {
 		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}

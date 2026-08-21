@@ -285,7 +285,7 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "balance-sheet"
 	needAllTransactions := page == "ledger" || page == "specified-ledgers" || page == "accounts" || page == "transfers" || page == "reconciliations" || page == "profit-loss" || page == "balance-sheet"
 	needBookingFinancials := page == "receivables" || page == "customers"
-	needMonthlyRows := page == "receivables"
+	needMonthlyRows := false // Student monthly fees are managed exclusively from /admin/student-payments.
 	needTransfers := page == "transfers"
 	needReconciliations := page == "reconciliations"
 	needCategories := page == "ledger" || page == "categories" || page == "profit-loss"
@@ -1078,6 +1078,11 @@ func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 
 	transaction, err := a.findFinanceTransactionByID(transactionID)
 	if err != nil {
+		log.Printf(
+			"find finance transaction for receipt %d: %v",
+			transactionID,
+			err,
+		)
 		http.Error(w, "receipt not found", http.StatusNotFound)
 		return
 	}

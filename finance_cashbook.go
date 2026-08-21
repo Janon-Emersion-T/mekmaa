@@ -1078,7 +1078,7 @@ func findFinanceAccountByIDQuery(queryer sqlQueryer, accountID int64) (*FinanceA
 		       COALESCE(finance_accounts.created_by_user_id, 0), COALESCE(finance_accounts.updated_by_user_id, 0), finance_accounts.created_at, finance_accounts.updated_at
 		FROM finance_accounts
 		LEFT JOIN divisions ON divisions.id = finance_accounts.division_id
-		WHERE finance_accounts.id = ?
+		WHERE finance_accounts.id = $1
 	`, accountID)
 	var account FinanceAccount
 	var isSystem, isActive int
@@ -1265,8 +1265,8 @@ func findFinanceAccountByNameTx(tx *sql.Tx, divisionID int64, name string) (*Fin
 		       COALESCE(finance_accounts.created_by_user_id, 0), COALESCE(finance_accounts.updated_by_user_id, 0), finance_accounts.created_at, finance_accounts.updated_at
 		FROM finance_accounts
 		LEFT JOIN divisions ON divisions.id = finance_accounts.division_id
-		WHERE finance_accounts.division_id = ?
-		  AND LOWER(finance_accounts.name) = LOWER(?)
+		WHERE finance_accounts.division_id = $1
+		  AND LOWER(finance_accounts.name) = LOWER($2)
 		LIMIT 1
 	`, divisionID, name)
 	var account FinanceAccount
@@ -1489,13 +1489,19 @@ func insertFinanceTransactionTx(tx *sql.Tx, entry financeTransactionCreate) (int
 	if divisionID != account.DivisionID {
 		return 0, errors.New("selected finance account belongs to a different division")
 	}
-	result, err := tx.Exec(`
+	var transactionID int64
+
+	err = tx.QueryRow(`
 		INSERT INTO finance_transactions (
 			receipt_number, reference_number, division_id, category, approval_status, transaction_type,
 			reference_type, reference_id, source_type, source_id, finance_account_id,
 			transfer_group_id, person_name, description, notes, payment_method, amount,
 			recorded_by_user_id, approved_by_user_id, recorded_at, created_at, updated_at, approved_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+			$13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+		)
+		RETURNING id
 	`,
 		receiptNumber,
 		referenceNumber,
@@ -1520,11 +1526,12 @@ func insertFinanceTransactionTx(tx *sql.Tx, entry financeTransactionCreate) (int
 		createdAt,
 		createdAt,
 		nullIfZeroTime(approvedAt),
-	)
+	).Scan(&transactionID)
 	if err != nil {
 		return 0, fmt.Errorf("insert finance transaction: %w", err)
 	}
-	return result.LastInsertId()
+
+	return transactionID, nil
 }
 
 func voidFinanceTransactionTx(tx *sql.Tx, transactionID int64, reason string, voidedByUserID int64) error {
@@ -3429,6 +3436,17 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "finance transaction not found", http.StatusNotFound)
 		return
 	}
+
+	// General finance voiding needs the derived ledger-repair state.
+	// The shared single-transaction lookup intentionally does not populate
+	// this state because receipt/reporting callers do not require it.
+	voidState := []FinanceTransaction{*transaction}
+	if err := populateFinanceTransactionVoidStates(ctx, a.db, voidState); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	transaction = &voidState[0]
+
 	if !a.requireDivisionAccessForDivision(w, r, currentUser, transaction.DivisionID) {
 		return
 	}

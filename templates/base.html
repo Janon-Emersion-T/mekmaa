@@ -83,15 +83,15 @@
       {{template "content" .}}
     </main>
     {{else if .User}}
-    <div class="relative h-screen overflow-hidden lg:flex">
+    <div class="relative min-h-screen lg:flex">
       <div data-sidebar-overlay class="fixed inset-0 z-30 hidden bg-obsidian/45 backdrop-blur-sm lg:hidden"></div>
 
       {{template "dashboard-sidebar" .}}
 
-      <div class="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+      <div class="flex min-h-screen min-w-0 flex-1 flex-col">
         {{template "dashboard-header" .}}
 
-        <main class="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <main class="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
           {{if .Flash}}
           <div class="mb-6 rounded-2xl border border-aqua/30 bg-white/85 px-5 py-4 text-sm shadow-sm">{{.Flash}}</div>
           {{end}}
