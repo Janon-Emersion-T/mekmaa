@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 func hashValue(value string) string {
@@ -642,6 +643,8 @@ func normalizeSMSPhone(phone string) (string, error) {
 	}
 
 	normalized := builder.String()
+
+	// Already E.164.
 	if strings.HasPrefix(normalized, "+") {
 		digits := strings.TrimPrefix(normalized, "+")
 		if len(digits) < 8 || len(digits) > 15 {
@@ -649,17 +652,68 @@ func normalizeSMSPhone(phone string) (string, error) {
 		}
 		return normalized, nil
 	}
-	return "", errors.New("customer phone number must include country code, for example +9477xxxxxxx")
+
+	// Sri Lankan local mobile number: 0761234567 -> +94761234567
+	if len(normalized) == 10 && strings.HasPrefix(normalized, "0") {
+		return "+94" + normalized[1:], nil
+	}
+
+	// Sri Lankan number without leading zero: 761234567 -> +94761234567
+	if len(normalized) == 9 {
+		return "+94" + normalized, nil
+	}
+
+	// Sri Lankan international digits without plus:
+	// 94761234567 -> +94761234567
+	if len(normalized) == 11 && strings.HasPrefix(normalized, "94") {
+		return "+" + normalized, nil
+	}
+
+	return "", errors.New(
+		"customer phone number is invalid; use 07xxxxxxxx or +947xxxxxxxx",
+	)
 }
 
 func buildBookingConfirmationSMSBody(schedule *SpaceSchedule) string {
-	return fmt.Sprintf(
-		"Booking confirmed: %s on %s at %s for %s. We look forward to seeing you.",
-		schedule.Title,
-		schedule.SlotDate,
-		schedule.SlotHour,
-		scheduleSummary(*schedule),
+	if schedule == nil {
+		return ""
+	}
+
+	activity := strings.TrimSpace(schedule.Activity)
+	if activity == "" {
+		activity = "Booking"
+	}
+
+	dateLabel := strings.TrimSpace(schedule.SlotDate)
+	if parsed, err := time.Parse("2006-01-02", dateLabel); err == nil {
+		dateLabel = parsed.Format("02 Jan 2006")
+	}
+
+	timeLabel := strings.TrimSpace(schedule.SlotHour)
+
+	const prefix = "Mekmaa: "
+	const suffixTemplate = " booking confirmed for %s at %s. Thank you."
+
+	suffix := fmt.Sprintf(
+		suffixTemplate,
+		dateLabel,
+		timeLabel,
 	)
+
+	maxActivityLength := maxSMSMessageLength -
+		utf8.RuneCountInString(prefix) -
+		utf8.RuneCountInString(suffix)
+
+	if maxActivityLength < 1 {
+		return ""
+	}
+
+	activityRunes := []rune(activity)
+	if len(activityRunes) > maxActivityLength {
+		activity = string(activityRunes[:maxActivityLength])
+	}
+
+	return prefix + activity + suffix
 }
 
 type bookingCommunicationDispatch struct {
@@ -719,9 +773,22 @@ func (a *App) sendEmailMessage(recipient string, subject string, textBody string
 	return smtp.SendMail(a.smtp.Host+":"+a.smtp.Port, auth, a.smtp.From, []string{recipient}, message.Bytes())
 }
 
+const maxSMSMessageLength = 150
+
 func (a *App) sendSMSMessage(phone string, message string) error {
 	if !a.sms.Enabled {
 		return errors.New("sms is not configured")
+	}
+
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return errors.New("sms message is empty")
+	}
+	if utf8.RuneCountInString(message) > maxSMSMessageLength {
+		return fmt.Errorf(
+			"sms message exceeds %d characters",
+			maxSMSMessageLength,
+		)
 	}
 
 	normalizedPhone, err := normalizeSMSPhone(phone)
@@ -743,9 +810,13 @@ func (a *App) sendSMSMessage(phone string, message string) error {
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("sms gateway request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -762,7 +833,7 @@ func (a *App) sendSMSMessage(phone string, message string) error {
 		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil
+		return fmt.Errorf("sms gateway returned invalid JSON: %w", err)
 	}
 	if !payload.Success {
 		if payload.Message != "" {

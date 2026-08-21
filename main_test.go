@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
 )
@@ -11648,6 +11649,141 @@ func TestOneToOneSessionLifecycleCancellationReplacementAndCompletion(t *testing
 		t.Fatalf(
 			"session history count = %d, want 4",
 			historyCount,
+		)
+	}
+}
+
+func TestNormalizeSMSPhone(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:  "Sri Lankan local mobile",
+			input: "0761234567",
+			want:  "+94761234567",
+		},
+		{
+			name:  "Sri Lankan mobile without leading zero",
+			input: "761234567",
+			want:  "+94761234567",
+		},
+		{
+			name:  "Sri Lankan international digits",
+			input: "94761234567",
+			want:  "+94761234567",
+		},
+		{
+			name:  "already E164",
+			input: "+94761234567",
+			want:  "+94761234567",
+		},
+		{
+			name:  "spaces and punctuation",
+			input: "076 123-4567",
+			want:  "+94761234567",
+		},
+		{
+			name:    "empty",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid short number",
+			input:   "12345",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeSMSPhone(tt.input)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf(
+						"normalizeSMSPhone(%q) expected error, got %q",
+						tt.input,
+						got,
+					)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf(
+					"normalizeSMSPhone(%q) returned error: %v",
+					tt.input,
+					err,
+				)
+			}
+
+			if got != tt.want {
+				t.Fatalf(
+					"normalizeSMSPhone(%q) = %q, want %q",
+					tt.input,
+					got,
+					tt.want,
+				)
+			}
+		})
+	}
+}
+
+func TestBuildBookingConfirmationSMSBody(t *testing.T) {
+	schedule := &SpaceSchedule{
+		Activity: "Cricket",
+		SlotDate: "2026-08-21",
+		SlotHour: "18:00",
+	}
+
+	got := buildBookingConfirmationSMSBody(schedule)
+
+	want := "Mekmaa: Cricket booking confirmed for 21 Aug 2026 at 18:00. Thank you."
+
+	if got != want {
+		t.Fatalf(
+			"buildBookingConfirmationSMSBody() = %q, want %q",
+			got,
+			want,
+		)
+	}
+
+	if utf8.RuneCountInString(got) > maxSMSMessageLength {
+		t.Fatalf(
+			"confirmation SMS length = %d, want <= %d",
+			utf8.RuneCountInString(got),
+			maxSMSMessageLength,
+		)
+	}
+}
+
+func TestBuildBookingConfirmationSMSBodyNeverExceedsLimit(t *testing.T) {
+	schedule := &SpaceSchedule{
+		Activity: strings.Repeat("VeryLongActivityName", 20),
+		SlotDate: "2026-08-21",
+		SlotHour: "18:00",
+	}
+
+	got := buildBookingConfirmationSMSBody(schedule)
+
+	if utf8.RuneCountInString(got) > maxSMSMessageLength {
+		t.Fatalf(
+			"confirmation SMS length = %d, want <= %d: %q",
+			utf8.RuneCountInString(got),
+			maxSMSMessageLength,
+			got,
+		)
+	}
+}
+
+func TestBuildBookingConfirmationSMSBodyNilSchedule(t *testing.T) {
+	if got := buildBookingConfirmationSMSBody(nil); got != "" {
+		t.Fatalf(
+			"buildBookingConfirmationSMSBody(nil) = %q, want empty string",
+			got,
 		)
 	}
 }
