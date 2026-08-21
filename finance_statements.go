@@ -224,8 +224,11 @@ func (a *App) buildFinanceBalanceSheet(asOfRaw string, divisionIDs []int64) (*Fi
 		return nil, err
 	}
 	filter := FinanceFilter{}
-	if len(divisionIDs) > 0 {
-		filter.DivisionIDs = append([]int64(nil), divisionIDs...)
+	if len(accounts) > 0 {
+		filter.AccountIDs = make([]int64, 0, len(accounts))
+		for _, account := range accounts {
+			filter.AccountIDs = append(filter.AccountIDs, account.ID)
+		}
 	}
 	transactions, err := a.listFinanceTransactionsFiltered(filter)
 	if err != nil {

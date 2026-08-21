@@ -16,6 +16,7 @@ func defaultFinanceCategories() []FinanceCategory {
 		{Code: "manual_income", Name: "Manual income", Direction: "income", Active: true},
 		{Code: "sponsorship_income", Name: "Sponsorship income", Direction: "income", Active: true},
 		{Code: "other_income", Name: "Other income", Direction: "income", Active: true},
+		{Code: "mcp_payment", Name: "Monthly court plan payment", Direction: "income", Active: true},
 		{Code: "facility_expense", Name: "Facility or court rental", Direction: "expense", Active: true},
 		{Code: "utilities_expense", Name: "Utilities", Direction: "expense", Active: true},
 		{Code: "loan_repayment_expense", Name: "Loan repayment", Direction: "expense", Active: true},

@@ -1502,6 +1502,9 @@ ON court_closures(activity, active, closure_date)`,
 	if err := migrateFinanceCashbook(db); err != nil {
 		return err
 	}
+	if err := migrateMCPSQLiteSchema(db); err != nil {
+		return err
+	}
 
 	if _, err := db.Exec(`DELETE FROM sessions WHERE expires_at <= ?`, time.Now().UTC()); err != nil {
 		return err

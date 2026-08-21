@@ -1,0 +1,39 @@
+{{define "customer-mcp"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="rounded-[2rem] bg-obsidian p-6 text-cloud shadow-float">
+    <p class="text-xs font-bold uppercase tracking-[0.24em] text-aqua">Customer portal</p>
+    <h1 class="mt-3 text-3xl font-semibold">Monthly Court Plans</h1>
+    <p class="mt-3 max-w-2xl text-sm text-cloud/65">View requested plans, session schedules, and receivable status for your monthly court usage.</p>
+    <div class="mt-5 flex flex-wrap gap-3">
+      <a href="/customer/mcp/new" class="inline-flex h-11 items-center rounded-2xl bg-aqua px-4 text-sm font-semibold text-obsidian">Create new plan</a>
+      <a href="/logout" class="inline-flex h-11 items-center rounded-2xl border border-white/15 px-4 text-sm font-semibold text-cloud">Sign out</a>
+    </div>
+  </div>
+
+  <div class="grid gap-4">
+    {{range .MCPPlans}}
+    <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">{{.PlanMonth}} · {{.Status}}</p>
+          <h2 class="mt-2 text-xl font-semibold text-obsidian">{{.Title}}</h2>
+          <p class="mt-2 text-sm text-slate/60">{{bookingProductLabel .Activity .Quantity}} · {{.TotalSessions}} sessions</p>
+        </div>
+        <div class="text-sm text-right">
+          <p class="font-semibold text-obsidian">{{money .GrossAmount}}</p>
+          <p class="mt-1 text-slate/55">Collected {{money .TotalCollected}}</p>
+          <p class="text-slate/55">Outstanding {{money .OutstandingAmount}}</p>
+        </div>
+      </div>
+      <div class="mt-4">
+        <a href="/customer/mcp/{{.ID}}" class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-cloud/50 px-4 text-sm font-semibold text-obsidian">View plan</a>
+      </div>
+    </article>
+    {{else}}
+    <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-white/80 p-6 text-sm text-slate/60">No monthly court plans exist for this account yet.</div>
+    {{end}}
+  </div>
+</section>
+{{end}}

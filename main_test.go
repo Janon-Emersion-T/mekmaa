@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -1977,13 +1978,12 @@ func TestPublicBookingRequestRedirectsToStatusWhenCommunicationUnavailable(t *te
 	app := newBookingWorkflowTestApp(t)
 	app.bookingMessages.EmailEnabled = false
 	app.bookingMessages.SMSEnabled = false
-
-	futureDate := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	futureSlotDate := time.Now().AddDate(0, 0, 7).Format("2006-01-02")
 
 	form := url.Values{
 		"csrf_token":      {"token"},
 		"entry_type":      {"booking"},
-		"slot_date":       {futureDate},
+		"slot_date":       {futureSlotDate},
 		"slot_hour":       {"18:00"},
 		"booking_option":  {"badminton:1"},
 		"title":           {"Status Link Fallback"},
@@ -3142,6 +3142,51 @@ func TestBuildFinanceProfitAndLossAndBalanceSheet(t *testing.T) {
 	}
 }
 
+func TestBuildFinanceBalanceSheetUsesAccountScopeWhenTransactionDivisionIsMissing(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	sportsDivisionID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+
+	if _, err := app.createManualFinanceTransactionForAccount(
+		"manual_income",
+		"Legacy Cash Customer",
+		"Legacy cash receipt",
+		"",
+		cashID,
+		1750,
+		time.Date(2026, 8, 10, 10, 0, 0, 0, time.Local),
+		0,
+	); err != nil {
+		t.Fatalf("create manual cash transaction: %v", err)
+	}
+	if _, err := app.db.Exec(`UPDATE finance_transactions SET division_id = NULL WHERE finance_account_id = ?`, cashID); err != nil {
+		t.Fatalf("clear transaction division ids: %v", err)
+	}
+
+	balanceSheet, err := app.buildFinanceBalanceSheet("2026-08-31", []int64{sportsDivisionID})
+	if err != nil {
+		t.Fatalf("build scoped balance sheet: %v", err)
+	}
+	if !moneyEquals(balanceSheet.TotalAssets, 1750) {
+		t.Fatalf("scoped balance sheet assets = %.2f, want 1750.00", balanceSheet.TotalAssets)
+	}
+	foundCash := false
+	for _, item := range balanceSheet.AssetItems {
+		if strings.Contains(strings.ToLower(item.Label), strings.ToLower(financeAccountCashInHand)) {
+			foundCash = true
+			if !moneyEquals(item.Amount, 1750) {
+				t.Fatalf("cash in hand asset amount = %.2f, want 1750.00", item.Amount)
+			}
+		}
+	}
+	if !foundCash {
+		t.Fatal("expected cash in hand asset item to remain visible when legacy transaction division ids are missing")
+	}
+}
+
 func TestFinanceRoutesRequirePermissionAndCSRFAuth(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	templates, err := buildTemplates()
@@ -4049,6 +4094,8 @@ func TestListStudentPaymentRowsTreatsFreeMonthlyFeeAsNonPayable(t *testing.T) {
 
 func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
+	paymentMonthStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.Local)
+	paymentMonth := paymentMonthStart.Format("2006-01")
 	programID, err := app.createTrainingProgram(TrainingProgram{
 		Name:           "Leave Programme",
 		Activity:       "cricket",
@@ -4095,11 +4142,17 @@ func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
 	if enrollmentID == 0 {
 		t.Fatal("expected enrollment to exist")
 	}
-	if err := app.createStudentEnrollmentLeave(enrollmentID, "2026-08-10", "2026-08-19", "Family travel"); err != nil {
+	enrollmentStart := paymentMonthStart.AddDate(0, -1, 0)
+	if _, err := app.db.Exec(`UPDATE student_enrollments SET created_at = ?, updated_at = ? WHERE id = ?`, enrollmentStart.UTC(), enrollmentStart.UTC(), enrollmentID); err != nil {
+		t.Fatalf("backdate enrollment: %v", err)
+	}
+	leaveStart := paymentMonthStart.AddDate(0, 0, 9).Format("2006-01-02")
+	leaveEnd := paymentMonthStart.AddDate(0, 0, 18).Format("2006-01-02")
+	if err := app.createStudentEnrollmentLeave(enrollmentID, leaveStart, leaveEnd, "Family travel"); err != nil {
 		t.Fatalf("create leave: %v", err)
 	}
 
-	rows, err := app.listStudentPaymentRows("2026-08")
+	rows, err := app.listStudentPaymentRows(paymentMonth)
 	if err != nil {
 		t.Fatalf("list student payment rows: %v", err)
 	}
@@ -4113,11 +4166,16 @@ func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
 		if row.MonthDays != 31 {
 			t.Fatalf("month days = %d, want 31", row.MonthDays)
 		}
-		if row.MonthlyFee != 4200 {
-			t.Fatalf("monthly fee = %.2f, want 4200.00", row.MonthlyFee)
+		expectedLeaveAmount := math.Round((6200*float64(row.LeaveDays)/float64(row.MonthDays))*100) / 100
+		expectedMonthlyFee := math.Round((6200-expectedLeaveAmount)*100) / 100
+		if row.MonthlyFee != expectedMonthlyFee {
+			t.Fatalf("monthly fee = %.2f, want %.2f", row.MonthlyFee, expectedMonthlyFee)
 		}
-		if row.LeaveAmount != 2000 {
-			t.Fatalf("leave amount = %.2f, want 2000.00", row.LeaveAmount)
+		if row.LeaveAmount != expectedLeaveAmount {
+			t.Fatalf("leave amount = %.2f, want %.2f", row.LeaveAmount, expectedLeaveAmount)
+		}
+		if row.EnrollmentProrationAmount != 0 {
+			t.Fatalf("enrollment proration amount = %.2f, want 0.00", row.EnrollmentProrationAmount)
 		}
 		return
 	}

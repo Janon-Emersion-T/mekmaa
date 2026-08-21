@@ -1624,6 +1624,12 @@ func financeTransactionSourceExistsQuery(queryer sqlQueryer, transaction *Financ
 			return false, err
 		}
 		return count > 0, nil
+	case "mcp_payment_collection":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM mcp_payment_collections WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
 	default:
 		return true, nil
 	}

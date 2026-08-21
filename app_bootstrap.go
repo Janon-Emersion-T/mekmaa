@@ -64,6 +64,9 @@ var (
 		"courts.manage",
 		"space_bookings.manage",
 		"booking_requests.manage",
+		"mcp.manage",
+		"mcp_pricing.manage",
+		"mcp_receivables.manage",
 		"pricing.manage",
 		"finance.manage",
 		"finance.consolidated",
@@ -132,8 +135,23 @@ var permissionGroups = []PermissionGroup{
 			Label:       "Manage booking requests",
 			Description: "Review, confirm, and reject customer booking requests.",
 		},
+		{
+			Key:         "mcp.manage",
+			Label:       "Manage monthly court plans",
+			Description: "Create customers, review monthly plans, confirm sessions, and continue plans into a new month.",
+		},
 	}},
 	{Name: "Finance", Description: "Pricing, collections, ledger, referrals, and reporting.", Permissions: []PermissionDefinition{
+		{
+			Key:         "mcp_pricing.manage",
+			Label:       "Manage MCP pricing",
+			Description: "Maintain monthly court plan pricing bands across enabled tiers.",
+		},
+		{
+			Key:         "mcp_receivables.manage",
+			Label:       "Manage MCP receivables",
+			Description: "Collect MCP payments, view receipts, and follow outstanding monthly plan balances.",
+		},
 		{
 			Key:         "pricing.manage",
 			Label:       "Manage booking pricing",
@@ -1784,6 +1802,18 @@ type TemplateData struct {
 	SportsCatalog                    []SportPage
 	SelectedSport                    *SportPage
 	FAQItems                         []FAQItem
+	MCPCustomers                     []MCPMonthlyCustomer
+	SelectedMCPCustomer              *MCPMonthlyCustomer
+	MCPPlans                         []MCPMonthlyPlan
+	SelectedMCPPlan                  *MCPMonthlyPlan
+	MCPPricingBands                  []MCPPricingBand
+	SelectedMCPPricingBand           *MCPPricingBand
+	MCPReceivables                   []MCPReceivable
+	MCPPreview                       *MCPPlanPreview
+	MCPConflicts                     []MCPPlanConflict
+	MCPPage                          string
+	MCPPortal                        bool
+	MCPSelectedMonth                 string
 }
 
 type Stat struct {

@@ -1,0 +1,48 @@
+{{define "customer-mcp-detail"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+{{$plan := .SelectedMCPPlan}}
+<section class="space-y-6">
+  <div class="rounded-[2rem] bg-white/90 p-6 shadow-float">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">{{$plan.PlanMonth}} · {{$plan.Status}}</p>
+        <h1 class="mt-2 text-3xl font-semibold text-obsidian">{{$plan.Title}}</h1>
+        <p class="mt-2 text-sm text-slate/60">{{bookingProductLabel $plan.Activity $plan.Quantity}} · {{$plan.TotalSessions}} sessions</p>
+      </div>
+      <a href="/customer/mcp" class="rounded-xl bg-cloud px-4 py-2 text-sm font-semibold text-slate">Back</a>
+    </div>
+    <div class="mt-6 grid gap-3 sm:grid-cols-3">
+      <div class="rounded-2xl bg-cloud/45 p-4"><p class="text-xs font-bold uppercase tracking-wider text-slate/40">Gross</p><p class="mt-2 text-lg font-semibold text-obsidian">{{money $plan.GrossAmount}}</p></div>
+      <div class="rounded-2xl bg-cloud/45 p-4"><p class="text-xs font-bold uppercase tracking-wider text-slate/40">Collected</p><p class="mt-2 text-lg font-semibold text-obsidian">{{money $plan.TotalCollected}}</p></div>
+      <div class="rounded-2xl bg-cloud/45 p-4"><p class="text-xs font-bold uppercase tracking-wider text-slate/40">Outstanding</p><p class="mt-2 text-lg font-semibold text-obsidian">{{money $plan.OutstandingAmount}}</p></div>
+    </div>
+  </div>
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm">
+    <h2 class="text-xl font-semibold text-obsidian">Generated sessions</h2>
+    <div class="mt-4 grid gap-3">
+      {{range $plan.Sessions}}
+      <div class="rounded-xl border border-slate/10 bg-cloud/25 px-4 py-3">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold text-obsidian">{{formatCalendarDate .SessionDate}} · {{.SessionHour}}</p>
+            <p class="mt-1 text-xs text-slate/55">{{mcpTierLabel .PricingTier}}</p>
+          </div>
+          <div class="text-sm font-semibold text-obsidian">{{money .Amount}}</div>
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-sm">
+    <h2 class="text-xl font-semibold text-obsidian">Continue to next month</h2>
+    <form action="{{mcpContinueAction $plan}}" method="post" class="mt-4 flex flex-col gap-3 sm:flex-row">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="month" name="plan_month" value="{{mcpPlanContinueMonthDefault $plan}}" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm">
+      <button class="h-11 rounded-xl bg-obsidian px-5 text-sm font-semibold text-cloud">Copy and recheck availability</button>
+    </form>
+  </div>
+</section>
+{{end}}

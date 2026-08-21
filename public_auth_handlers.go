@@ -741,7 +741,7 @@ func (a *App) registerHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		user := a.optionalUser(r)
 		if user != nil {
-			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+			http.Redirect(w, r, a.customerRedirectAfterLogin(user), http.StatusSeeOther)
 			return
 		}
 
@@ -865,7 +865,7 @@ func (a *App) loginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		a.setFlash(w, "Signed in successfully.")
-		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		http.Redirect(w, r, a.customerRedirectAfterLogin(user), http.StatusSeeOther)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
