@@ -11942,8 +11942,6 @@ func TestSMSGatewayTemplateDoesNotExposeCredentials(t *testing.T) {
 			BookingSMSEnabled: true,
 			SenderID:          "mekmaa",
 			AlertPhone:        "+947•••••232",
-			BalanceKnown:      true,
-			LatestBalance:     590.37,
 			ChargedFrom:       "main",
 		},
 	}
@@ -11957,11 +11955,11 @@ func TestSMSGatewayTemplateDoesNotExposeCredentials(t *testing.T) {
 
 	for _, want := range []string{
 		"SMS Gateway",
-		"590.37",
 		"mekmaa",
 		"Alert phone",
 		"Sensitive digits are masked",
 		"Send Test SMS",
+		"+94 77 435 2345",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf(

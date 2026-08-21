@@ -38,14 +38,6 @@
         </span>
         <span>Dashboard</span>
       </a>
-      {{if hasPermission .User "reports.view"}}
-      <a href="{{scopedURL "/admin/reports" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/reports"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} mt-1 flex items-center gap-3 rounded-2xl px-3 py-2.5 font-semibold transition">
-        <span class="{{if isCurrentPath .CurrentPath "/admin/reports"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/55{{end}} flex h-8 w-8 items-center justify-center rounded-xl">
-          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 16V9m6 7V4m6 12v-5M2.5 16.5h15" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </span>
-        <span>Reports</span>
-      </a>
-      {{end}}
     </div>
 
     {{if or (hasPermission .User "admissions.manage") (hasPermission .User "coaches.manage") (hasPermission .User "payroll.manage") (hasPermission .User "training_programs.manage") (hasPermission .User "student_groups.manage") (hasPermission .User "attendance.manage")}}
@@ -241,6 +233,29 @@
     </div>
     {{end}}
 
+    {{if or (hasPermission .User "users.manage") (hasPermission .User "roles.manage")}}
+    <div>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">System Administration</p>
+      <div class="space-y-1">
+        {{if hasPermission .User "users.manage"}}
+        <a href="/admin/users" class="{{if isCurrentPath .CurrentPath "/admin/users"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Users</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Access</span>
+        </a>
+        {{end}}
+        {{if hasPermission .User "roles.manage"}}
+        <a href="/admin/roles" class="{{if isCurrentPath .CurrentPath "/admin/roles"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Roles & permissions</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">RBAC</span>
+        </a>
+        {{end}}
+        {{if hasPermission .User "users.manage"}}
+        <a href="/admin/sms-gateway" class="{{if isCurrentPath .CurrentPath "/admin/sms-gateway"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>SMS Gateway</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Gateway</span>
+        </a>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+
     {{if or (hasPermission .User "events.manage") (hasPermission .User "reports.view")}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Insights & Content</p>
@@ -253,27 +268,6 @@
         {{if hasPermission .User "reports.view"}}
         <a href="/admin/reports" class="{{if isCurrentPath .CurrentPath "/admin/reports"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Reports</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Insights</span>
-        </a>
-        {{end}}
-      </div>
-    </div>
-    {{end}}
-
-    {{if or (hasPermission .User "users.manage") (hasPermission .User "roles.manage")}}
-    <div>
-      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">System Administration</p>
-      <div class="space-y-1">
-        {{if hasPermission .User "users.manage"}}
-        <a href="/admin/users" class="{{if isCurrentPath .CurrentPath "/admin/users"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Users</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Access</span>
-        </a>
-        <a href="/admin/sms-gateway" class="{{if isCurrentPath .CurrentPath "/admin/sms-gateway"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>SMS Gateway</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Gateway</span>
-        </a>
-        {{end}}
-        {{if hasPermission .User "roles.manage"}}
-        <a href="/admin/roles" class="{{if isCurrentPath .CurrentPath "/admin/roles"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Roles & permissions</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">RBAC</span>
         </a>
         {{end}}
       </div>

@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+const smsGatewayExtraTestPhone = "+94 77 435 2345"
+
 func maskSMSPhone(phone string) string {
 	phone = strings.TrimSpace(phone)
 	if phone == "" {
@@ -110,7 +112,7 @@ func (a *App) smsGatewayManagementHandler(
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "SMS Gateway"
-	data.Description = "Monitor SMS delivery, gateway credit and automatic balance alerts."
+	data.Description = "Monitor SMS delivery and automatic balance alerts."
 	data.SMSGateway = gateway
 
 	a.render(
@@ -140,21 +142,6 @@ func (a *App) smsGatewayTestHandler(
 		return
 	}
 
-	alertPhone := strings.TrimSpace(a.sms.AlertPhone)
-	if alertPhone == "" {
-		a.setFlash(
-			w,
-			"SMS balance alert phone is not configured.",
-		)
-		http.Redirect(
-			w,
-			r,
-			"/admin/sms-gateway",
-			http.StatusSeeOther,
-		)
-		return
-	}
-
 	if !a.sms.Enabled {
 		a.setFlash(
 			w,
@@ -169,17 +156,25 @@ func (a *App) smsGatewayTestHandler(
 		return
 	}
 
-	if err := a.sendSMSMessage(
-		alertPhone,
-		"Mekmaa SMS gateway test successful.",
-	); err != nil {
-		log.Printf("sms gateway admin test: %v", err)
-
+	recipients := []string{}
+	seen := map[string]struct{}{}
+	for _, phone := range []string{a.sms.AlertPhone, smsGatewayExtraTestPhone} {
+		normalized := strings.TrimSpace(phone)
+		if normalized == "" {
+			continue
+		}
+		canonical := strings.ReplaceAll(normalized, " ", "")
+		if _, exists := seen[canonical]; exists {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		recipients = append(recipients, normalized)
+	}
+	if len(recipients) == 0 {
 		a.setFlash(
 			w,
-			"SMS gateway test failed: "+err.Error(),
+			"No SMS test recipients are configured.",
 		)
-
 		http.Redirect(
 			w,
 			r,
@@ -189,9 +184,31 @@ func (a *App) smsGatewayTestHandler(
 		return
 	}
 
+	for _, recipient := range recipients {
+		if err := a.sendSMSMessage(
+			recipient,
+			"Mekmaa SMS gateway test successful.",
+		); err != nil {
+			log.Printf("sms gateway admin test: recipient=%s err=%v", recipient, err)
+
+			a.setFlash(
+				w,
+				"SMS gateway test failed: "+err.Error(),
+			)
+
+			http.Redirect(
+				w,
+				r,
+				"/admin/sms-gateway",
+				http.StatusSeeOther,
+			)
+			return
+		}
+	}
+
 	a.setFlash(
 		w,
-		"Test SMS sent successfully. Gateway balance has been refreshed.",
+		"Test SMS sent successfully.",
 	)
 
 	http.Redirect(

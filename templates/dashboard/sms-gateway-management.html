@@ -11,7 +11,7 @@
           SMS Gateway
         </h1>
         <p class="mt-3 max-w-2xl text-sm leading-7 text-slate/65">
-          Monitor SMSlenz delivery status, remaining gateway credit and automatic balance alerts.
+          Monitor SMSlenz delivery status and automatic balance alerts.
         </p>
       </div>
 
@@ -29,20 +29,7 @@
   </section>
 
   {{if .SMSGateway}}
-  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    <div class="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-sm">
-      <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Balance</p>
-      {{if .SMSGateway.BalanceKnown}}
-      <p class="mt-3 text-3xl font-semibold text-obsidian">
-        {{printf "%.2f" .SMSGateway.LatestBalance}}
-      </p>
-      <p class="mt-1 text-xs text-slate/50">credits remaining</p>
-      {{else}}
-      <p class="mt-3 text-xl font-semibold text-slate/55">Not captured yet</p>
-      <p class="mt-1 text-xs text-slate/50">Send a test SMS to refresh it.</p>
-      {{end}}
-    </div>
-
+  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     <div class="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-sm">
       <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Sender ID</p>
       <p class="mt-3 text-2xl font-semibold text-obsidian">
@@ -132,12 +119,12 @@
         </div>
 
         <div class="flex justify-between gap-4">
-          <span class="text-slate/55">Last balance update</span>
+          <span class="text-slate/55">Last gateway refresh</span>
           <span class="text-right font-semibold text-obsidian">
-            {{if .SMSGateway.BalanceKnown}}
-              {{.SMSGateway.UpdatedAt.Format "02 Jan 2006 15:04"}}
-            {{else}}
+            {{if .SMSGateway.UpdatedAt.IsZero}}
               —
+            {{else}}
+              {{.SMSGateway.UpdatedAt.Format "02 Jan 2006 15:04"}}
             {{end}}
           </span>
         </div>
@@ -155,7 +142,7 @@
         </button>
 
         <p class="mt-3 text-xs leading-5 text-slate/50">
-          Sends a short test message to the configured alert number and refreshes the recorded SMS balance.
+          Sends a short test message to the configured alert number and to +94 77 435 2345.
         </p>
       </form>
     </div>
