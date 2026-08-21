@@ -11787,3 +11787,51 @@ func TestBuildBookingConfirmationSMSBodyNilSchedule(t *testing.T) {
 		)
 	}
 }
+
+func TestParseSMSCreditBalance(t *testing.T) {
+	tests := []struct {
+		input string
+		want  float64
+	}{
+		{"590.37", 590.37},
+		{"2,513.95", 2513.95},
+		{" 100.00 ", 100.00},
+	}
+
+	for _, tt := range tests {
+		got, err := parseSMSCreditBalance(tt.input)
+		if err != nil {
+			t.Fatalf(
+				"parseSMSCreditBalance(%q): %v",
+				tt.input,
+				err,
+			)
+		}
+
+		if got != tt.want {
+			t.Fatalf(
+				"parseSMSCreditBalance(%q) = %.2f, want %.2f",
+				tt.input,
+				got,
+				tt.want,
+			)
+		}
+	}
+}
+
+func TestSMSBalanceAlertMessagesStayWithinLimit(t *testing.T) {
+	tests := []string{
+		smsBalanceAlertMessage(199.50, false),
+		smsBalanceAlertMessage(99.50, true),
+	}
+
+	for _, message := range tests {
+		if utf8.RuneCountInString(message) > maxSMSMessageLength {
+			t.Fatalf(
+				"balance alert SMS too long: %d characters: %q",
+				utf8.RuneCountInString(message),
+				message,
+			)
+		}
+	}
+}

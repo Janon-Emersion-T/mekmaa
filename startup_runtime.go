@@ -76,9 +76,10 @@ func loadRuntimeDependencies() (runtimeDependencies, error) {
 	smtpConfig.Enabled = smtpConfig.Username != "" && smtpConfig.Password != "" && smtpConfig.From != ""
 
 	smsConfig := SMSConfig{
-		UserID:   envValue("SMS_USER_ID", "SMSLENZ_USER_ID"),
-		APIKey:   envValue("SMS_API_KEY", "SMSLENZ_API_KEY"),
-		SenderID: envValue("SMS_SENDER_ID", "SMSLENZ_SENDER_ID"),
+		UserID:     envValue("SMS_USER_ID", "SMSLENZ_USER_ID"),
+		APIKey:     envValue("SMS_API_KEY", "SMSLENZ_API_KEY"),
+		SenderID:   envValue("SMS_SENDER_ID", "SMSLENZ_SENDER_ID"),
+		AlertPhone: strings.TrimSpace(os.Getenv("SMS_BALANCE_ALERT_PHONE")),
 	}
 	smsConfig.Enabled = smsConfig.UserID != "" && smsConfig.APIKey != "" && smsConfig.SenderID != ""
 

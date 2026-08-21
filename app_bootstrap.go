@@ -402,10 +402,11 @@ type SMTPConfig struct {
 }
 
 type SMSConfig struct {
-	UserID   string
-	APIKey   string
-	SenderID string
-	Enabled  bool
+	UserID     string
+	APIKey     string
+	SenderID   string
+	AlertPhone string
+	Enabled    bool
 }
 
 type BookingCommunicationSettings struct {

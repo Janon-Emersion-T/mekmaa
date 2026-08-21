@@ -12,12 +12,15 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"net/smtp"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -773,9 +776,51 @@ func (a *App) sendEmailMessage(recipient string, subject string, textBody string
 	return smtp.SendMail(a.smtp.Host+":"+a.smtp.Port, auth, a.smtp.From, []string{recipient}, message.Bytes())
 }
 
-const maxSMSMessageLength = 150
+const (
+	maxSMSMessageLength    = 150
+	smsLowBalanceThreshold = 200.0
+	smsCriticalThreshold   = 100.0
+)
+
+var smsBalanceAlertMu sync.Mutex
+
+func parseSMSCreditBalance(raw string) (float64, error) {
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, ",", ""))
+	if raw == "" {
+		return 0, errors.New("sms credit balance is empty")
+	}
+
+	balance, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse sms credit balance: %w", err)
+	}
+
+	return balance, nil
+}
+
+func smsBalanceAlertMessage(balance float64, critical bool) string {
+	if critical {
+		return fmt.Sprintf(
+			"The mekmaa SMS gateway balance is %.2f credits. Critical balance. Please recharge now.",
+			balance,
+		)
+	}
+
+	return fmt.Sprintf(
+		"The mekmaa SMS gateway balance is %.2f credits. Please recharge soon.",
+		balance,
+	)
+}
 
 func (a *App) sendSMSMessage(phone string, message string) error {
+	return a.sendSMSMessageInternal(phone, message, true)
+}
+
+func (a *App) sendSMSMessageInternal(
+	phone string,
+	message string,
+	monitorBalance bool,
+) error {
 	if !a.sms.Enabled {
 		return errors.New("sms is not configured")
 	}
@@ -784,6 +829,7 @@ func (a *App) sendSMSMessage(phone string, message string) error {
 	if message == "" {
 		return errors.New("sms message is empty")
 	}
+
 	if utf8.RuneCountInString(message) > maxSMSMessageLength {
 		return fmt.Errorf(
 			"sms message exceeds %d characters",
@@ -804,11 +850,20 @@ func (a *App) sendSMSMessage(phone string, message string) error {
 	form.Set("message", message)
 
 	endpoint := "https://smslenz.lk/api/send-sms"
-	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+
+	req, err := http.NewRequest(
+		http.MethodPost,
+		endpoint,
+		strings.NewReader(form.Encode()),
+	)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	req.Header.Set(
+		"Content-Type",
+		"application/x-www-form-urlencoded",
+	)
 
 	client := &http.Client{
 		Timeout: 15 * time.Second,
@@ -816,7 +871,10 @@ func (a *App) sendSMSMessage(phone string, message string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("sms gateway request failed: %w", err)
+		return fmt.Errorf(
+			"sms gateway request failed: %w",
+			err,
+		)
 	}
 	defer resp.Body.Close()
 
@@ -824,23 +882,206 @@ func (a *App) sendSMSMessage(phone string, message string) error {
 	if err != nil {
 		return err
 	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("sms send failed with status %s", resp.Status)
+		return fmt.Errorf(
+			"sms send failed with status %s",
+			resp.Status,
+		)
 	}
 
 	var payload struct {
 		Success bool   `json:"success"`
 		Message string `json:"message"`
+		Data    struct {
+			SMSCreditBalance string `json:"sms_credit_balance"`
+			ChargedFrom      string `json:"charged_from"`
+		} `json:"data"`
 	}
+
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return fmt.Errorf("sms gateway returned invalid JSON: %w", err)
+		return fmt.Errorf(
+			"sms gateway returned invalid JSON: %w",
+			err,
+		)
 	}
+
 	if !payload.Success {
 		if payload.Message != "" {
 			return errors.New(payload.Message)
 		}
 		return errors.New("sms send failed")
 	}
+
+	if monitorBalance &&
+		strings.TrimSpace(payload.Data.SMSCreditBalance) != "" {
+
+		balance, err := parseSMSCreditBalance(
+			payload.Data.SMSCreditBalance,
+		)
+		if err != nil {
+			log.Printf(
+				"sms balance tracking warning: %v",
+				err,
+			)
+			return nil
+		}
+
+		if err := a.processSMSBalance(
+			balance,
+			payload.Data.ChargedFrom,
+		); err != nil {
+			// The customer's SMS has already been successfully sent.
+			// Balance-alert failure must not turn that into a false
+			// customer delivery failure.
+			log.Printf(
+				"sms balance alert warning: %v",
+				err,
+			)
+		}
+	}
+
+	return nil
+}
+
+func (a *App) processSMSBalance(
+	balance float64,
+	chargedFrom string,
+) error {
+	alertPhone := strings.TrimSpace(a.sms.AlertPhone)
+	if alertPhone == "" {
+		return nil
+	}
+
+	smsBalanceAlertMu.Lock()
+	defer smsBalanceAlertMu.Unlock()
+
+	var previousBalance sql.NullFloat64
+	var alerted200 int
+	var alerted100 int
+
+	err := a.queryRowDB(`
+		SELECT
+			latest_balance,
+			alerted_200,
+			alerted_100
+		FROM sms_gateway_state
+		WHERE id = 1
+	`).Scan(
+		&previousBalance,
+		&alerted200,
+		&alerted100,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		_, err = a.execDB(`
+			INSERT INTO sms_gateway_state (
+				id,
+				latest_balance,
+				charged_from,
+				alerted_200,
+				alerted_100,
+				updated_at
+			)
+			VALUES (1, ?, ?, 0, 0, ?)
+		`,
+			balance,
+			strings.TrimSpace(chargedFrom),
+			time.Now().UTC(),
+		)
+		if err != nil {
+			return err
+		}
+
+		previousBalance = sql.NullFloat64{}
+		alerted200 = 0
+		alerted100 = 0
+	} else if err != nil {
+		return err
+	}
+
+	// A recharge above 200 credits starts a fresh warning cycle.
+	if balance > smsLowBalanceThreshold {
+		alerted200 = 0
+		alerted100 = 0
+	}
+
+	_, err = a.execDB(`
+		UPDATE sms_gateway_state
+		SET
+			latest_balance = ?,
+			charged_from = ?,
+			alerted_200 = ?,
+			alerted_100 = ?,
+			updated_at = ?
+		WHERE id = 1
+	`,
+		balance,
+		strings.TrimSpace(chargedFrom),
+		alerted200,
+		alerted100,
+		time.Now().UTC(),
+	)
+	if err != nil {
+		return err
+	}
+
+	// If the balance crosses both thresholds in one operation,
+	// send both warnings in threshold order.
+	if balance <= smsLowBalanceThreshold &&
+		alerted200 == 0 {
+
+		message := smsBalanceAlertMessage(balance, false)
+
+		if err := a.sendSMSMessageInternal(
+			alertPhone,
+			message,
+			false,
+		); err != nil {
+			return fmt.Errorf(
+				"send 200-credit SMS balance alert: %w",
+				err,
+			)
+		}
+
+		alerted200 = 1
+
+		if _, err := a.execDB(`
+			UPDATE sms_gateway_state
+			SET alerted_200 = 1, updated_at = ?
+			WHERE id = 1
+		`, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+
+	if balance <= smsCriticalThreshold &&
+		alerted100 == 0 {
+
+		message := smsBalanceAlertMessage(balance, true)
+
+		if err := a.sendSMSMessageInternal(
+			alertPhone,
+			message,
+			false,
+		); err != nil {
+			return fmt.Errorf(
+				"send 100-credit SMS balance alert: %w",
+				err,
+			)
+		}
+
+		alerted100 = 1
+
+		if _, err := a.execDB(`
+			UPDATE sms_gateway_state
+			SET alerted_100 = 1, updated_at = ?
+			WHERE id = 1
+		`, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
