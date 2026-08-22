@@ -703,7 +703,7 @@ func buildBookingConfirmationSMSBody(schedule *SpaceSchedule) string {
 		timeLabel,
 	)
 
-	maxActivityLength := maxSMSMessageLength -
+	maxActivityLength := (maxSMSMessageLength - 1) -
 		utf8.RuneCountInString(prefix) -
 		utf8.RuneCountInString(suffix)
 
@@ -830,9 +830,9 @@ func (a *App) sendSMSMessageInternal(
 		return errors.New("sms message is empty")
 	}
 
-	if utf8.RuneCountInString(message) > maxSMSMessageLength {
+	if utf8.RuneCountInString(message) >= maxSMSMessageLength {
 		return fmt.Errorf(
-			"sms message exceeds %d characters",
+			"sms message must be under %d characters",
 			maxSMSMessageLength,
 		)
 	}

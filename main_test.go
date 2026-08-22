@@ -12548,9 +12548,9 @@ func TestBuildBookingConfirmationSMSBody(t *testing.T) {
 		)
 	}
 
-	if utf8.RuneCountInString(got) > maxSMSMessageLength {
+	if utf8.RuneCountInString(got) >= maxSMSMessageLength {
 		t.Fatalf(
-			"confirmation SMS length = %d, want <= %d",
+			"confirmation SMS length = %d, want < %d",
 			utf8.RuneCountInString(got),
 			maxSMSMessageLength,
 		)
@@ -12566,9 +12566,9 @@ func TestBuildBookingConfirmationSMSBodyNeverExceedsLimit(t *testing.T) {
 
 	got := buildBookingConfirmationSMSBody(schedule)
 
-	if utf8.RuneCountInString(got) > maxSMSMessageLength {
+	if utf8.RuneCountInString(got) >= maxSMSMessageLength {
 		t.Fatalf(
-			"confirmation SMS length = %d, want <= %d: %q",
+			"confirmation SMS length = %d, want < %d: %q",
 			utf8.RuneCountInString(got),
 			maxSMSMessageLength,
 			got,
@@ -12623,13 +12623,40 @@ func TestSMSBalanceAlertMessagesStayWithinLimit(t *testing.T) {
 	}
 
 	for _, message := range tests {
-		if utf8.RuneCountInString(message) > maxSMSMessageLength {
+		if utf8.RuneCountInString(message) >= maxSMSMessageLength {
 			t.Fatalf(
 				"balance alert SMS too long: %d characters: %q",
 				utf8.RuneCountInString(message),
 				message,
 			)
 		}
+	}
+}
+
+func TestSendSMSMessageInternalRejectsExactLimit(t *testing.T) {
+	app := &App{
+		sms: SMSConfig{
+			Enabled: true,
+		},
+	}
+
+	message := strings.Repeat("A", maxSMSMessageLength)
+
+	err := app.sendSMSMessageInternal("+94770000000", message, false)
+	if err == nil {
+		t.Fatal("sendSMSMessageInternal() error = nil, want length validation error")
+	}
+
+	want := fmt.Sprintf(
+		"sms message must be under %d characters",
+		maxSMSMessageLength,
+	)
+	if err.Error() != want {
+		t.Fatalf(
+			"sendSMSMessageInternal() error = %q, want %q",
+			err.Error(),
+			want,
+		)
 	}
 }
 
