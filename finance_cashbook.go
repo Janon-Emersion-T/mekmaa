@@ -1138,7 +1138,7 @@ func (a *App) createFinanceAccount(divisionID int64, accountCode, name, accountT
 		}
 	}
 	now := time.Now().UTC()
-	result, err := a.execDB(`
+	accountID, err := a.insertAndReturnID(`
 		INSERT INTO finance_accounts (
 			division_id, account_code, name, account_type, description, opening_balance, is_system, is_active,
 			created_at, updated_at, created_by_user_id, updated_by_user_id
@@ -1150,7 +1150,7 @@ func (a *App) createFinanceAccount(divisionID int64, accountCode, name, accountT
 		}
 		return 0, err
 	}
-	return result.LastInsertId()
+	return accountID, nil
 }
 
 func (a *App) updateFinanceAccount(accountID int64, accountCode, name, accountType, description string, isActive bool, updatedByUserID int64) error {

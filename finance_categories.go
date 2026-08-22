@@ -145,7 +145,7 @@ func (a *App) financeCategoryExists(direction, code string, requireActive bool) 
 		query += ` AND active = 1`
 	}
 	var count int
-	if err := a.db.QueryRow(query, args...).Scan(&count); err != nil {
+	if err := a.queryRowDB(query, args...).Scan(&count); err != nil {
 		return false, err
 	}
 	return count > 0, nil
@@ -162,7 +162,7 @@ func (a *App) createFinanceCategory(name, direction string, active bool) error {
 		return errors.New("category name must contain letters or numbers")
 	}
 	now := time.Now().UTC()
-	if _, err := a.db.Exec(`
+	if _, err := a.execDB(`
 		INSERT INTO finance_categories (code, name, direction, active, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, code, name, direction, boolToInt(active), now, now); err != nil {

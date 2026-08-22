@@ -2726,8 +2726,7 @@ func (a *App) createCourtClosure(
 	}
 
 	now := time.Now().UTC()
-
-	result, err := a.execDB(`
+	return a.insertAndReturnID(`
 		INSERT INTO court_closures (
 			court_id,
 			closure_date,
@@ -2749,15 +2748,10 @@ func (a *App) createCourtClosure(
 		closure.Activity,
 		closure.Title,
 		closure.Reason,
-		closure.Active,
+		boolToInt(closure.Active),
 		now,
 		now,
 	)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.LastInsertId()
 }
 
 func (a *App) updateCourtClosure(

@@ -3437,7 +3437,7 @@ func (a *App) createCourtActivity(
 	}
 
 	now := time.Now().UTC()
-	result, err := a.execDB(`
+	return a.insertAndReturnID(`
 		INSERT INTO court_activities (
 			court_id,
 			game_id,
@@ -3463,16 +3463,11 @@ func (a *App) createCourtActivity(
 		now,
 		now,
 	)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.LastInsertId()
 }
 
 func (a *App) createCourt(court Court) (int64, error) {
 	now := time.Now().UTC()
-	result, err := a.execDB(`
+	return a.insertAndReturnID(`
 		INSERT INTO courts (
 			name,
 			code,
@@ -3492,10 +3487,6 @@ func (a *App) createCourt(court Court) (int64, error) {
 		now,
 		now,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
 }
 
 func (a *App) updateCourt(court Court) error {
