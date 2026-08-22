@@ -6008,7 +6008,7 @@ func (a *App) rescheduleBookingRequest(
 		if changedByUserID > 0 {
 			changedBy = changedByUserID
 		}
-		changeResult, err := tx.Exec(`
+		changeID, err = a.insertAndReturnIDTx(tx, `
 			INSERT INTO booking_request_changes (
 				schedule_id,
 				previous_slot_date,
@@ -6052,10 +6052,6 @@ func (a *App) rescheduleBookingRequest(
 			changedBy,
 			now,
 		)
-		if err != nil {
-			return nil, err
-		}
-		changeID, err = changeResult.LastInsertId()
 		if err != nil {
 			return nil, err
 		}
