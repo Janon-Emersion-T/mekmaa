@@ -169,6 +169,21 @@
               <span class="mt-1 block text-xs leading-5 text-slate/55">This enrollment will be excluded from monthly fee collection.</span>
             </span>
           </label>
+          <label class="block">
+            <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">
+              Discounted monthly fee
+            </span>
+            <input
+              type="number"
+              name="discounted_monthly_fee"
+              min="0"
+              step="0.01"
+              value="{{if gt .SelectedEnrollment.DiscountedMonthlyFee 0.0}}{{printf "%.2f" .SelectedEnrollment.DiscountedMonthlyFee}}{{end}}"
+              placeholder="Leave blank for standard monthly fee"
+              class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua"
+            />
+            <span class="mt-2 block text-xs leading-5 text-slate/55">Use this when the student pays a reduced monthly amount. Leave empty for the standard rate, or use free monthly fee to waive it fully.</span>
+          </label>
           <div class="flex flex-wrap justify-end gap-2">
             <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d&action=view&id=%d" .SelectedAdmission.ID .SelectedEnrollment.ID) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">View</a>
             <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Save changes</button>
@@ -202,7 +217,7 @@
           </div>
           <div class="rounded-2xl bg-cloud px-4 py-4">
             <p class="text-xs uppercase tracking-[0.16em] text-slate/50">Monthly fee</p>
-            <p class="mt-2 text-sm font-semibold text-obsidian">{{if .SelectedEnrollment.FreeMonthlyFee}}Waived{{else}}Active{{end}}</p>
+            <p class="mt-2 text-sm font-semibold text-obsidian">{{if .SelectedEnrollment.FreeMonthlyFee}}Waived{{else if gt .SelectedEnrollment.DiscountedMonthlyFee 0.0}}{{money .SelectedEnrollment.DiscountedMonthlyFee}}{{else}}Standard rate{{end}}</p>
           </div>
           <div class="rounded-2xl bg-cloud px-4 py-4">
             <p class="text-xs uppercase tracking-[0.16em] text-slate/50">Updated</p>
@@ -277,6 +292,18 @@
               <span class="block text-sm font-semibold text-obsidian">Free monthly fee</span>
               <span class="mt-1 block text-xs leading-5 text-slate/55">This programme enrollment will be excluded from monthly fee collection.</span>
             </span>
+          </label>
+          <label class="block">
+            <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Discounted monthly fee</span>
+            <input
+              type="number"
+              name="discounted_monthly_fee"
+              min="0"
+              step="0.01"
+              placeholder="Leave blank for standard monthly fee"
+              class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua"
+            />
+            <span class="mt-2 block text-xs leading-5 text-slate/55">Set a reduced monthly amount for this enrollment. Leave empty for the standard programme monthly fee.</span>
           </label>
           <label class="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
             <input type="checkbox" name="payment_collected" value="true" class="mt-1 h-4 w-4 rounded border-emerald-300 text-emerald-900 focus:ring-aqua" />

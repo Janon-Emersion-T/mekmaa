@@ -564,6 +564,7 @@ type StudentEnrollment struct {
 	Student                 Admission
 	FreeAdmission           bool
 	FreeMonthlyFee          bool
+	DiscountedMonthlyFee    float64
 	AdmissionPaymentAmount  float64
 	AdmissionPaymentPaid    bool
 	AdmissionPaymentPaidAt  time.Time

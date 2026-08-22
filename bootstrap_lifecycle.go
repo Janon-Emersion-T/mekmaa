@@ -97,6 +97,7 @@ func runMigrations(db *sql.DB) error {
 			enrollment_date TEXT NOT NULL DEFAULT '',
 			free_admission INTEGER NOT NULL DEFAULT 0,
 			free_monthly_fee INTEGER NOT NULL DEFAULT 0,
+			discounted_monthly_fee REAL NOT NULL DEFAULT 0,
 			payment_collected INTEGER NOT NULL DEFAULT 0,
 			payment_collected_at DATETIME,
 			admission_payment_amount REAL NOT NULL DEFAULT 0,
@@ -801,6 +802,11 @@ ON court_closures(activity, active, closure_date)`,
 			stmt:   `ALTER TABLE student_enrollments ADD COLUMN enrollment_date TEXT NOT NULL DEFAULT ''`,
 		},
 		{
+			table:  "student_enrollments",
+			column: "discounted_monthly_fee",
+			stmt:   `ALTER TABLE student_enrollments ADD COLUMN discounted_monthly_fee REAL NOT NULL DEFAULT 0`,
+		},
+		{
 			table:  "student_groups",
 			column: "training_program_id",
 			stmt:   `ALTER TABLE student_groups ADD COLUMN training_program_id INTEGER`,
@@ -1028,6 +1034,7 @@ ON court_closures(activity, active, closure_date)`,
 			enrollment_date TEXT NOT NULL DEFAULT '',
 			free_admission INTEGER NOT NULL DEFAULT 0,
 			free_monthly_fee INTEGER NOT NULL DEFAULT 0,
+			discounted_monthly_fee REAL NOT NULL DEFAULT 0,
 			payment_collected INTEGER NOT NULL DEFAULT 0,
 			payment_collected_at DATETIME,
 			admission_payment_amount REAL NOT NULL DEFAULT 0,
@@ -1112,6 +1119,7 @@ ON court_closures(activity, active, closure_date)`,
 			training_program_id,
 			free_admission,
 			free_monthly_fee,
+			discounted_monthly_fee,
 			payment_collected,
 			payment_collected_at,
 			admission_payment_amount,
@@ -1125,6 +1133,7 @@ ON court_closures(activity, active, closure_date)`,
 			atp.training_program_id,
 			CASE WHEN atp.training_program_id = a.training_program_id THEN COALESCE(a.free_admission, 0) ELSE 0 END,
 			CASE WHEN atp.training_program_id = a.training_program_id THEN COALESCE(a.free_monthly_fee, 0) ELSE 0 END,
+			0,
 			CASE WHEN atp.training_program_id = a.training_program_id THEN COALESCE(a.payment_collected, 0) ELSE 0 END,
 			CASE WHEN atp.training_program_id = a.training_program_id THEN a.payment_collected_at ELSE NULL END,
 			CASE WHEN atp.training_program_id = a.training_program_id THEN COALESCE(a.admission_payment_amount, 0) ELSE 0 END,
@@ -1271,6 +1280,9 @@ ON court_closures(activity, active, closure_date)`,
 		return err
 	}
 	if _, err := db.Exec(`UPDATE admissions SET free_monthly_fee = 0 WHERE free_monthly_fee IS NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE student_enrollments SET discounted_monthly_fee = 0 WHERE discounted_monthly_fee IS NULL`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`UPDATE admissions SET admission_payment_amount = 0 WHERE admission_payment_amount IS NULL`); err != nil {

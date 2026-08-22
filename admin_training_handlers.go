@@ -349,6 +349,20 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	enrollmentDate := strings.TrimSpace(
 		r.FormValue("enrollment_date"),
 	)
+	discountedMonthlyFee, err := parseNonNegativeFloat(
+		r.FormValue("discounted_monthly_fee"),
+	)
+	if err != nil {
+		a.setFlash(w, "Enter a valid discounted monthly fee.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	discountedMonthlyFee = normalizeMoney(discountedMonthlyFee)
+	if discountedMonthlyFee > normalizeMoney(trainingProgram.MonthlyFee) {
+		a.setFlash(w, "Discounted monthly fee cannot exceed the programme monthly fee.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
 
 	if _, err := time.Parse(
 		"2006-01-02",
@@ -366,12 +380,16 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	enrollment := StudentEnrollment{
-		AdmissionID:         admissionID,
-		EnrollmentDate:      enrollmentDate,
-		TrainingProgramID:   trainingProgramID,
-		TrainingProgramName: trainingProgram.Name,
-		FreeAdmission:       r.FormValue("free_admission") == "true",
-		FreeMonthlyFee:      r.FormValue("free_monthly_fee") == "true",
+		AdmissionID:          admissionID,
+		EnrollmentDate:       enrollmentDate,
+		TrainingProgramID:    trainingProgramID,
+		TrainingProgramName:  trainingProgram.Name,
+		FreeAdmission:        r.FormValue("free_admission") == "true",
+		FreeMonthlyFee:       r.FormValue("free_monthly_fee") == "true",
+		DiscountedMonthlyFee: discountedMonthlyFee,
+	}
+	if enrollment.FreeMonthlyFee {
+		enrollment.DiscountedMonthlyFee = 0
 	}
 	if err := validateEnrollment(enrollment); err != nil {
 		a.setFlash(w, err.Error())
@@ -561,6 +579,30 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	enrollmentDate := strings.TrimSpace(
 		r.FormValue("enrollment_date"),
 	)
+	discountedMonthlyFee, err := parseNonNegativeFloat(
+		r.FormValue("discounted_monthly_fee"),
+	)
+	if err != nil {
+		a.setFlash(w, "Enter a valid discounted monthly fee.")
+		http.Redirect(
+			w,
+			r,
+			target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+	discountedMonthlyFee = normalizeMoney(discountedMonthlyFee)
+	if discountedMonthlyFee > normalizeMoney(trainingProgram.MonthlyFee) {
+		a.setFlash(w, "Discounted monthly fee cannot exceed the programme monthly fee.")
+		http.Redirect(
+			w,
+			r,
+			target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
 
 	if _, err := time.Parse(
 		"2006-01-02",
@@ -588,13 +630,17 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	enrollment := StudentEnrollment{
-		ID:                  enrollmentID,
-		AdmissionID:         existing.AdmissionID,
-		EnrollmentDate:      enrollmentDate,
-		TrainingProgramID:   trainingProgramID,
-		TrainingProgramName: trainingProgram.Name,
-		FreeAdmission:       r.FormValue("free_admission") == "true",
-		FreeMonthlyFee:      r.FormValue("free_monthly_fee") == "true",
+		ID:                   enrollmentID,
+		AdmissionID:          existing.AdmissionID,
+		EnrollmentDate:       enrollmentDate,
+		TrainingProgramID:    trainingProgramID,
+		TrainingProgramName:  trainingProgram.Name,
+		FreeAdmission:        r.FormValue("free_admission") == "true",
+		FreeMonthlyFee:       r.FormValue("free_monthly_fee") == "true",
+		DiscountedMonthlyFee: discountedMonthlyFee,
+	}
+	if enrollment.FreeMonthlyFee {
+		enrollment.DiscountedMonthlyFee = 0
 	}
 	if err := validateEnrollment(enrollment); err != nil {
 		a.setFlash(w, err.Error())

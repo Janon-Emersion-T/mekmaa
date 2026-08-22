@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -733,6 +734,10 @@ func validateEnrollment(enrollment StudentEnrollment) error {
 		return errors.New("training programme is required")
 	case strings.TrimSpace(enrollment.TrainingProgramName) == "":
 		return errors.New("training programme name is required")
+	case math.IsNaN(enrollment.DiscountedMonthlyFee),
+		math.IsInf(enrollment.DiscountedMonthlyFee, 0),
+		enrollment.DiscountedMonthlyFee < 0:
+		return errors.New("discounted monthly fee cannot be negative")
 	default:
 		return nil
 	}

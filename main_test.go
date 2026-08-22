@@ -4092,6 +4092,93 @@ func TestListStudentPaymentRowsTreatsFreeMonthlyFeeAsNonPayable(t *testing.T) {
 	)
 }
 
+func TestListStudentPaymentRowsUsesDiscountedMonthlyFee(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Discounted Monthly Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     3200,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(
+		Admission{
+			StudentID:             "STD-DISC-MON-001",
+			FullName:              "Discounted Monthly Student",
+			AdmissionDate:         "2026-07-15",
+			DateOfBirth:           "2011-01-20",
+			Gender:                "male",
+			PracticeType:          "group_practice",
+			Address:               "Jaffna",
+			GuardianName:          "Guardian",
+			GuardianRelationship:  "Parent",
+			GuardianContactNumber: "0770000003",
+		},
+		false,
+		"cash",
+		0,
+	)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(
+		StudentEnrollment{
+			AdmissionID:          admissionID,
+			TrainingProgramID:    programID,
+			EnrollmentDate:       "2026-07-15",
+			DiscountedMonthlyFee: 2000,
+			TrainingProgramName:  "Discounted Monthly Programme",
+		},
+		false,
+		"cash",
+		0,
+	)
+	if err != nil {
+		t.Fatalf("create discounted monthly enrollment: %v", err)
+	}
+
+	storedEnrollment, err := app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		t.Fatalf("reload enrollment: %v", err)
+	}
+	if storedEnrollment.DiscountedMonthlyFee != 2000 {
+		t.Fatalf("discounted monthly fee = %.2f, want 2000.00", storedEnrollment.DiscountedMonthlyFee)
+	}
+
+	rows, err := app.listStudentPaymentRows("2026-08")
+	if err != nil {
+		t.Fatalf("list student payment rows: %v", err)
+	}
+
+	for _, row := range rows {
+		if row.Enrollment.ID != enrollmentID {
+			continue
+		}
+		if row.OriginalMonthlyFee != 3200 {
+			t.Fatalf("original monthly fee = %.2f, want 3200.00", row.OriginalMonthlyFee)
+		}
+		if row.Enrollment.DiscountedMonthlyFee != 2000 {
+			t.Fatalf("stored discounted monthly fee = %.2f, want 2000.00", row.Enrollment.DiscountedMonthlyFee)
+		}
+		if row.MonthlyFee != 2000 {
+			t.Fatalf("effective monthly fee = %.2f, want 2000.00", row.MonthlyFee)
+		}
+		if row.OutstandingAmount != 2000 {
+			t.Fatalf("outstanding amount = %.2f, want 2000.00", row.OutstandingAmount)
+		}
+		return
+	}
+
+	t.Fatalf("expected discounted payment row for enrollment %d", enrollmentID)
+}
+
 func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	paymentMonthStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.Local)
@@ -7055,6 +7142,13 @@ func TestRunMigrationsHandlesLegacyAdmissionsWithoutQRCodeColumns(t *testing.T) 
 	}
 	if !exists {
 		t.Fatal("expected student_monthly_payments.enrollment_id to exist after migration")
+	}
+	exists, err = tableHasColumn(db, "student_enrollments", "discounted_monthly_fee")
+	if err != nil {
+		t.Fatalf("check student_enrollments discounted_monthly_fee column: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected student_enrollments.discounted_monthly_fee to exist after migration")
 	}
 }
 

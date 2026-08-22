@@ -357,6 +357,7 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 			payment_rows.training_program_id,
 			payment_rows.training_program_name,
 			payment_rows.free_monthly_fee,
+			payment_rows.discounted_monthly_fee,
 			payment_rows.original_monthly_fee,
 			payment_rows.enrollment_date,
 			payment_rows.enrollment_created_at
@@ -375,6 +376,7 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 				tp.id AS training_program_id,
 				tp.name AS training_program_name,
 				COALESCE(se.free_monthly_fee, 0) AS free_monthly_fee,
+				COALESCE(se.discounted_monthly_fee, 0) AS discounted_monthly_fee,
 				COALESCE(tp.monthly_fee, 0) AS original_monthly_fee,
 				COALESCE(CAST(se.enrollment_date AS TEXT), '') AS enrollment_date,
 				COALESCE(CAST(se.created_at AS TEXT), '') AS enrollment_created_at,
@@ -412,11 +414,12 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 	enrollmentIDs := make([]int64, 0)
 	for rows.Next() {
 		var (
-			row                 StudentPaymentRow
-			enrollmentID        int64
-			freeMonthlyFee      int
-			enrollmentDate      string
-			enrollmentCreatedAt string
+			row                  StudentPaymentRow
+			enrollmentID         int64
+			freeMonthlyFee       int
+			discountedMonthlyFee float64
+			enrollmentDate       string
+			enrollmentCreatedAt  string
 		)
 		if err := rows.Scan(
 			&enrollmentID,
@@ -429,6 +432,7 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 			&row.Enrollment.TrainingProgramID,
 			&row.Enrollment.TrainingProgramName,
 			&freeMonthlyFee,
+			&discountedMonthlyFee,
 			&row.OriginalMonthlyFee,
 			&enrollmentDate,
 			&enrollmentCreatedAt,
@@ -439,6 +443,7 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 		row.Enrollment.AdmissionID = row.Admission.ID
 		row.Enrollment.Student = row.Admission
 		row.Enrollment.FreeMonthlyFee = freeMonthlyFee == 1
+		row.Enrollment.DiscountedMonthlyFee = normalizeMoney(discountedMonthlyFee)
 		row.Enrollment.EnrollmentDate = strings.TrimSpace(enrollmentDate)
 		if strings.TrimSpace(enrollmentCreatedAt) != "" {
 			rawCreatedAt := strings.TrimSpace(enrollmentCreatedAt)
@@ -478,6 +483,8 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 		if row.Enrollment.FreeMonthlyFee {
 			row.Admission.FreeMonthlyFee = true
 			row.MonthlyFee = 0
+		} else if row.Enrollment.DiscountedMonthlyFee > 0 {
+			row.MonthlyFee = row.Enrollment.DiscountedMonthlyFee
 		}
 		if enrollmentID > 0 {
 			enrollmentIDs = append(enrollmentIDs, enrollmentID)
@@ -4002,6 +4009,7 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 			enrollment_date,
 			free_admission,
 			free_monthly_fee,
+			discounted_monthly_fee,
 			payment_collected,
 			payment_collected_at,
 			admission_payment_amount,
@@ -4011,7 +4019,7 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 			updated_at
 		)
 		VALUES (
-			?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?,
 			0, NULL, 0, NULL, 1, ?, ?
 		)
 		RETURNING id
@@ -4021,6 +4029,7 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 		enrollment.EnrollmentDate,
 		boolToInt(enrollment.FreeAdmission),
 		boolToInt(enrollment.FreeMonthlyFee),
+		normalizeMoney(enrollment.DiscountedMonthlyFee),
 		now,
 		now,
 	).Scan(&enrollmentID); err != nil {
@@ -4117,6 +4126,7 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 			enrollment_date = ?,
 			free_admission = ?,
 			free_monthly_fee = ?,
+			discounted_monthly_fee = ?,
 			updated_at = ?
 		WHERE id = ?
 		`,
@@ -4124,6 +4134,7 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 		enrollment.EnrollmentDate,
 		boolToInt(enrollment.FreeAdmission),
 		boolToInt(enrollment.FreeMonthlyFee),
+		normalizeMoney(enrollment.DiscountedMonthlyFee),
 		time.Now().UTC(),
 		enrollment.ID,
 	)

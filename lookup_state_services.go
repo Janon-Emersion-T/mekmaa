@@ -635,6 +635,7 @@ func findStudentEnrollmentByIDTx(
 			COALESCE(d.name, ''),
 			COALESCE(se.free_admission, 0),
 			COALESCE(se.free_monthly_fee, 0),
+			COALESCE(se.discounted_monthly_fee, 0),
 			COALESCE(se.payment_collected, 0),
 			se.payment_collected_at,
 			COALESCE(se.admission_payment_amount, 0),
@@ -673,6 +674,7 @@ func findStudentEnrollmentByIDTx(
 	var enrollment StudentEnrollment
 	var freeAdmission int
 	var freeMonthlyFee int
+	var discountedMonthlyFee float64
 	var paymentCollected int
 	var active int
 	var paidAt sql.NullTime
@@ -687,6 +689,7 @@ func findStudentEnrollmentByIDTx(
 		&enrollment.DivisionName,
 		&freeAdmission,
 		&freeMonthlyFee,
+		&discountedMonthlyFee,
 		&paymentCollected,
 		&paidAt,
 		&enrollment.AdmissionPaymentAmount,
@@ -717,6 +720,7 @@ func findStudentEnrollmentByIDTx(
 	}
 	enrollment.FreeAdmission = freeAdmission == 1
 	enrollment.FreeMonthlyFee = freeMonthlyFee == 1
+	enrollment.DiscountedMonthlyFee = normalizeMoney(discountedMonthlyFee)
 	enrollment.AdmissionPaymentPaid = paymentCollected == 1
 	enrollment.Active = active == 1
 	if paidAt.Valid {

@@ -114,6 +114,9 @@
               {{if gt .LeaveDays 0}}
               <p class="mt-2 text-xs font-semibold text-sky-800">Leave in {{$.PaymentMonthLabel}}: {{.LeaveDays}} / {{.MonthDays}} days</p>
               {{end}}
+              {{if and (not .Enrollment.FreeMonthlyFee) (gt .Enrollment.DiscountedMonthlyFee 0.0)}}
+              <p class="mt-2 text-xs font-semibold text-emerald-800">Discounted monthly fee: {{money .Enrollment.DiscountedMonthlyFee}} instead of {{money .OriginalMonthlyFee}}</p>
+              {{end}}
               {{if gt .EnrollmentProrationAmount 0.0}}
               <p class="mt-2 text-xs font-semibold text-amber-800">First-month enrollment adjustment: {{money .EnrollmentProrationAmount}} discounted because the enrollment started in the second half of the month.</p>
               {{end}}
@@ -125,6 +128,9 @@
             <p class="mt-2 text-2xl font-semibold text-obsidian">{{if gt .CollectedAmount 0.0}}{{money .CollectedAmount}}{{else if .Enrollment.FreeMonthlyFee}}Free{{else}}{{money .MonthlyFee}}{{end}}</p>
             {{if gt .LeaveAmount 0.0}}
             <p class="mt-1 text-xs font-medium text-sky-700">{{money .LeaveAmount}} deducted for approved leave</p>
+            {{end}}
+            {{if and (gt .Enrollment.DiscountedMonthlyFee 0.0) (not .Enrollment.FreeMonthlyFee)}}
+            <p class="mt-1 text-xs font-medium text-emerald-700">Standard monthly fee is {{money .OriginalMonthlyFee}}.</p>
             {{end}}
             {{if and (gt .CollectedAmount 0.0) (gt .OutstandingAmount 0.0)}}
             <p class="mt-1 text-xs font-medium text-amber-700">{{money .OutstandingAmount}} still outstanding for {{$.PaymentMonthLabel}}.</p>
