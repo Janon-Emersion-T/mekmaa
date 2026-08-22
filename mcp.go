@@ -210,6 +210,28 @@ func mcpMonthBounds(month string) (time.Time, time.Time, error) {
 	return start, end, nil
 }
 
+func (a *App) mcpOptionalDateValue(value string) any {
+	value = strings.TrimSpace(value)
+	if value != "" {
+		return value
+	}
+	if a != nil && a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		return nil
+	}
+	return ""
+}
+
+func (a *App) mcpPlanMonthValue(month string) (string, error) {
+	start, _, err := mcpMonthBounds(month)
+	if err != nil {
+		return "", err
+	}
+	if a != nil && a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		return start.Format("2006-01-02"), nil
+	}
+	return start.Format("2006-01"), nil
+}
+
 func mcpRuleSessionsInMonth(month string, rule MCPPlanScheduleRule) ([]time.Time, error) {
 	start, end, err := mcpMonthBounds(month)
 	if err != nil {
@@ -311,7 +333,17 @@ func applicableMCPPricingBand(bands []MCPPricingBand, tier string, totalSessions
 
 func listMCPPricingBandsQuery(queryer sqlQueryer) ([]MCPPricingBand, error) {
 	rows, err := queryer.Query(`
-		SELECT id, tier, minimum_sessions, maximum_sessions, price_per_session, active, effective_from, effective_to, created_at, updated_at
+		SELECT
+			id,
+			tier,
+			minimum_sessions,
+			maximum_sessions,
+			price_per_session,
+			CASE WHEN active THEN 1 ELSE 0 END,
+			COALESCE(CAST(effective_from AS TEXT), ''),
+			COALESCE(CAST(effective_to AS TEXT), ''),
+			created_at,
+			updated_at
 		FROM mcp_pricing_bands
 		ORDER BY tier ASC, minimum_sessions ASC, maximum_sessions ASC, id ASC
 	`)
@@ -395,10 +427,10 @@ func lockMCPReservationWindowTx(tx *sql.Tx) error {
 func (a *App) findMCPMonthlyCustomerByUserID(userID int64) (*MCPMonthlyCustomer, error) {
 	var customer MCPMonthlyCustomer
 	var active int
-	err := a.db.QueryRow(`
-		SELECT id, user_id, name, email, phone, active, notes, created_at, updated_at
+	err := a.queryRowDB(`
+		SELECT id, user_id, name, email, phone, CASE WHEN active THEN 1 ELSE 0 END, notes, created_at, updated_at
 		FROM mcp_customers
-		WHERE user_id = ?
+		WHERE user_id = $1
 	`, userID).Scan(
 		&customer.ID,
 		&customer.UserID,
@@ -420,10 +452,10 @@ func (a *App) findMCPMonthlyCustomerByUserID(userID int64) (*MCPMonthlyCustomer,
 func (a *App) findMCPMonthlyCustomerByID(customerID int64) (*MCPMonthlyCustomer, error) {
 	var customer MCPMonthlyCustomer
 	var active int
-	err := a.db.QueryRow(`
-		SELECT id, user_id, name, email, phone, active, notes, created_at, updated_at
+	err := a.queryRowDB(`
+		SELECT id, user_id, name, email, phone, CASE WHEN active THEN 1 ELSE 0 END, notes, created_at, updated_at
 		FROM mcp_customers
-		WHERE id = ?
+		WHERE id = $1
 	`, customerID).Scan(
 		&customer.ID,
 		&customer.UserID,
@@ -443,8 +475,8 @@ func (a *App) findMCPMonthlyCustomerByID(customerID int64) (*MCPMonthlyCustomer,
 }
 
 func (a *App) listMCPMonthlyCustomers() ([]MCPMonthlyCustomer, error) {
-	rows, err := a.db.Query(`
-		SELECT id, user_id, name, email, phone, active, notes, created_at, updated_at
+	rows, err := a.queryDB(`
+		SELECT id, user_id, name, email, phone, CASE WHEN active THEN 1 ELSE 0 END, notes, created_at, updated_at
 		FROM mcp_customers
 		ORDER BY active DESC, LOWER(name), id DESC
 	`)
@@ -488,14 +520,16 @@ func (a *App) createMCPMonthlyCustomer(name, email, phone, password, notes strin
 		return 0, err
 	}
 	now := time.Now().UTC()
-	result, err := a.db.Exec(`
+	var customerID int64
+	err = a.queryRowDB(`
 		INSERT INTO mcp_customers (user_id, name, email, phone, active, notes, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, user.ID, name, email, phone, boolToInt(active), notes, now, now)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id
+	`, user.ID, name, email, phone, active, notes, now, now).Scan(&customerID)
 	if err != nil {
 		return 0, err
 	}
-	return result.LastInsertId()
+	return customerID, nil
 }
 
 func (a *App) listMCPPricingBands() ([]MCPPricingBand, error) {
@@ -511,15 +545,17 @@ func (a *App) createMCPPricingBand(band MCPPricingBand) (int64, error) {
 		return 0, err
 	}
 	now := time.Now().UTC()
-	result, err := a.db.Exec(`
+	var bandID int64
+	err = a.queryRowDB(`
 		INSERT INTO mcp_pricing_bands (
 			tier, minimum_sessions, maximum_sessions, price_per_session, active, effective_from, effective_to, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, band.Tier, band.MinimumSessions, band.MaximumSessions, normalizeMoney(band.PricePerSession), boolToInt(band.Active), strings.TrimSpace(band.EffectiveFrom), strings.TrimSpace(band.EffectiveTo), now, now)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id
+	`, band.Tier, band.MinimumSessions, band.MaximumSessions, normalizeMoney(band.PricePerSession), band.Active, a.mcpOptionalDateValue(band.EffectiveFrom), a.mcpOptionalDateValue(band.EffectiveTo), now, now).Scan(&bandID)
 	if err != nil {
 		return 0, err
 	}
-	return result.LastInsertId()
+	return bandID, nil
 }
 
 func mcpRulesFromRequest(r *http.Request) ([]MCPPlanScheduleRule, error) {
@@ -627,10 +663,10 @@ func (a *App) buildMCPPlanPreview(month string, activity string, quantity int, r
 
 func queryMCPPlanSessionsByPlanID(queryer sqlQueryer, planID int64) ([]MCPPlanSession, error) {
 	rows, err := queryer.Query(`
-		SELECT id, plan_id, session_date, session_hour, activity, quantity, pricing_tier, COALESCE(pricing_band_id, 0),
+		SELECT id, plan_id, CAST(session_date AS TEXT), SUBSTR(CAST(session_hour AS TEXT), 1, 5), activity, quantity, pricing_tier, COALESCE(pricing_band_id, 0),
 		       pricing_band_minimum, pricing_band_maximum, price_per_session, amount, status, conflict_reason, created_at, updated_at
 		FROM mcp_plan_sessions
-		WHERE plan_id = ?
+		WHERE plan_id = $1
 		ORDER BY session_date, session_hour, id
 	`, planID)
 	if err != nil {
@@ -650,9 +686,9 @@ func queryMCPPlanSessionsByPlanID(queryer sqlQueryer, planID int64) ([]MCPPlanSe
 
 func queryMCPPlanRulesByPlanID(queryer sqlQueryer, planID int64) ([]MCPPlanScheduleRule, error) {
 	rows, err := queryer.Query(`
-		SELECT id, plan_id, weekday, start_hour, end_hour, created_at
+		SELECT id, plan_id, weekday, SUBSTR(CAST(start_hour AS TEXT), 1, 5), SUBSTR(CAST(end_hour AS TEXT), 1, 5), created_at
 		FROM mcp_plan_rules
-		WHERE plan_id = ?
+		WHERE plan_id = $1
 		ORDER BY weekday, start_hour, id
 	`, planID)
 	if err != nil {
@@ -672,7 +708,7 @@ func queryMCPPlanRulesByPlanID(queryer sqlQueryer, planID int64) ([]MCPPlanSched
 
 func (a *App) listMCPMonthlyPlans(customerID int64) ([]MCPMonthlyPlan, error) {
 	query := `
-		SELECT p.id, p.customer_id, c.name, c.email, c.user_id, p.plan_month, p.game_id, p.activity, p.quantity, p.title, p.status,
+		SELECT p.id, p.customer_id, c.name, c.email, c.user_id, SUBSTR(CAST(p.plan_month AS TEXT), 1, 7), p.game_id, p.activity, p.quantity, p.title, p.status,
 		       p.total_sessions, p.gross_amount, p.total_collected, p.outstanding_amount, p.payment_status, p.notes,
 		       COALESCE(p.created_by_user_id, 0), COALESCE(p.requested_by_user_id, 0), p.confirmed_at, COALESCE(p.confirmed_by_user_id, 0),
 		       p.created_at, p.updated_at
@@ -681,11 +717,11 @@ func (a *App) listMCPMonthlyPlans(customerID int64) ([]MCPMonthlyPlan, error) {
 	`
 	var args []any
 	if customerID > 0 {
-		query += ` WHERE p.customer_id = ?`
+		query += ` WHERE p.customer_id = $1`
 		args = append(args, customerID)
 	}
 	query += ` ORDER BY p.plan_month DESC, p.created_at DESC, p.id DESC`
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -745,12 +781,12 @@ func mcpSessionAsSchedule(session MCPPlanSession, status string) SpaceSchedule {
 
 func queryMCPExistingSchedulesForSlot(tx *sql.Tx, slotDate, slotHour string, excludePlanID int64) ([]SpaceSchedule, error) {
 	rows, err := tx.Query(`
-		SELECT s.session_date, s.session_hour, s.activity, s.quantity, p.status
+		SELECT CAST(s.session_date AS TEXT), SUBSTR(CAST(s.session_hour AS TEXT), 1, 5), s.activity, s.quantity, p.status
 		FROM mcp_plan_sessions s
 		JOIN mcp_monthly_plans p ON p.id = s.plan_id
-		WHERE s.session_date = ?
-		  AND s.session_hour = ?
-		  AND p.id <> ?
+		WHERE s.session_date = $1
+		  AND s.session_hour = $2
+		  AND p.id <> $3
 		  AND p.status IN ('pending', 'confirmed')
 		  AND s.status IN ('pending', 'confirmed')
 	`, slotDate, slotHour, excludePlanID)
@@ -841,13 +877,13 @@ func (a *App) validateMCPPreviewAvailability(preview *MCPPlanPreview, excludePla
 
 func findMCPMonthlyPlanByIDQuery(queryer sqlQueryer, planID int64) (*MCPMonthlyPlan, error) {
 	row := queryer.QueryRow(`
-		SELECT p.id, p.customer_id, c.name, c.email, c.user_id, p.plan_month, p.game_id, p.activity, p.quantity, p.title, p.status,
+		SELECT p.id, p.customer_id, c.name, c.email, c.user_id, SUBSTR(CAST(p.plan_month AS TEXT), 1, 7), p.game_id, p.activity, p.quantity, p.title, p.status,
 		       p.total_sessions, p.gross_amount, p.total_collected, p.outstanding_amount, p.payment_status, p.notes,
 		       COALESCE(p.created_by_user_id, 0), COALESCE(p.requested_by_user_id, 0), p.confirmed_at, COALESCE(p.confirmed_by_user_id, 0),
 		       p.created_at, p.updated_at
 		FROM mcp_monthly_plans p
 		JOIN mcp_customers c ON c.id = p.customer_id
-		WHERE p.id = ?
+		WHERE p.id = $1
 	`, planID)
 	var plan MCPMonthlyPlan
 	var confirmedAt sql.NullTime
@@ -930,36 +966,40 @@ func (a *App) createMCPMonthlyPlan(customerID int64, month string, activity stri
 	if len(preview.Conflicts) > 0 {
 		return 0, mcpAvailabilityConflictError(preview.Conflicts, "one or more MCP sessions are unavailable under the current court configuration")
 	}
-	result, err := tx.Exec(`
+	planMonthValue, err := a.mcpPlanMonthValue(month)
+	if err != nil {
+		return 0, err
+	}
+	var planID int64
+	err = a.queryRowTxDB(
+		tx,
+		`
 		INSERT INTO mcp_monthly_plans (
 			customer_id, plan_month, game_id, activity, quantity, title, status, total_sessions, gross_amount,
 			total_collected, outstanding_amount, payment_status, notes, created_by_user_id, requested_by_user_id,
 			confirmed_at, confirmed_by_user_id, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, customerID, month, gameID, activity, quantity, strings.TrimSpace(title), status, preview.TotalSessions, preview.GrossAmount, preview.GrossAmount, mcpPaymentStatus(preview.GrossAmount, 0), strings.TrimSpace(notes), nullIfZero(requestedByUserID), nullIfZero(requestedByUserID), func() any {
-		if confirmed {
-			return now
-		}
-		return nil
-	}(), nullIfZero(requestedByUserID), now, now)
-	if err != nil {
-		return 0, err
-	}
-	planID, err := result.LastInsertId()
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		RETURNING id
+	`, customerID, planMonthValue, gameID, activity, quantity, strings.TrimSpace(title), status, preview.TotalSessions, preview.GrossAmount, preview.GrossAmount, mcpPaymentStatus(preview.GrossAmount, 0), strings.TrimSpace(notes), nullIfZero(requestedByUserID), nullIfZero(requestedByUserID), func() any {
+			if confirmed {
+				return now
+			}
+			return nil
+		}(), nullIfZero(requestedByUserID), now, now).Scan(&planID)
 	if err != nil {
 		return 0, err
 	}
 	for _, rule := range rules {
-		if _, err := tx.Exec(`INSERT INTO mcp_plan_rules (plan_id, weekday, start_hour, end_hour, created_at) VALUES (?, ?, ?, ?, ?)`, planID, rule.Weekday, rule.StartHour, rule.EndHour, now); err != nil {
+		if _, err := a.execTxDB(tx, `INSERT INTO mcp_plan_rules (plan_id, weekday, start_hour, end_hour, created_at) VALUES ($1, $2, $3, $4, $5)`, planID, rule.Weekday, rule.StartHour, rule.EndHour, now); err != nil {
 			return 0, err
 		}
 	}
 	for _, session := range preview.Sessions {
-		if _, err := tx.Exec(`
+		if _, err := a.execTxDB(tx, `
 			INSERT INTO mcp_plan_sessions (
 				plan_id, session_date, session_hour, activity, quantity, pricing_tier, pricing_band_id,
 				pricing_band_minimum, pricing_band_maximum, price_per_session, amount, status, conflict_reason, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, '', $13, $14)
 		`, planID, session.SessionDate, session.SessionHour, session.Activity, session.Quantity, session.PricingTier, nullIfZero(session.PricingBandID), session.PricingBandMin, session.PricingBandMax, session.PricePerSession, session.Amount, status, now, now); err != nil {
 			return 0, err
 		}
@@ -999,10 +1039,10 @@ func (a *App) confirmMCPMonthlyPlan(planID int64, confirmedByUserID int64) error
 	if len(preview.Conflicts) > 0 {
 		return mcpAvailabilityConflictError(preview.Conflicts, "availability changed and the plan can no longer be confirmed")
 	}
-	if _, err := tx.Exec(`UPDATE mcp_monthly_plans SET status = 'confirmed', confirmed_at = ?, confirmed_by_user_id = ?, updated_at = ? WHERE id = ?`, now, nullIfZero(confirmedByUserID), now, planID); err != nil {
+	if _, err := a.execTxDB(tx, `UPDATE mcp_monthly_plans SET status = 'confirmed', confirmed_at = $1, confirmed_by_user_id = $2, updated_at = $3 WHERE id = $4`, now, nullIfZero(confirmedByUserID), now, planID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE mcp_plan_sessions SET status = 'confirmed', updated_at = ? WHERE plan_id = ?`, now, planID); err != nil {
+	if _, err := a.execTxDB(tx, `UPDATE mcp_plan_sessions SET status = 'confirmed', updated_at = $1 WHERE plan_id = $2`, now, planID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1064,10 +1104,10 @@ func (a *App) collectMCPPayment(planID int64, paymentMethod string, amount float
 	if err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		INSERT INTO mcp_payment_collections (
 			plan_id, finance_transaction_id, amount, payment_method, payment_note, collected_by_user_id, collected_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`, planID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), nullIfZero(recordedByUserID), now, now); err != nil {
 		return 0, err
 	}
@@ -1077,15 +1117,15 @@ func (a *App) collectMCPPayment(planID int64, paymentMethod string, amount float
 		outstanding = 0
 	}
 	paymentStatus := mcpPaymentStatus(plan.GrossAmount, totalCollected)
-	if _, err := tx.Exec(`UPDATE mcp_monthly_plans SET total_collected = ?, outstanding_amount = ?, payment_status = ?, updated_at = ? WHERE id = ?`, totalCollected, outstanding, paymentStatus, now, planID); err != nil {
+	if _, err := a.execTxDB(tx, `UPDATE mcp_monthly_plans SET total_collected = $1, outstanding_amount = $2, payment_status = $3, updated_at = $4 WHERE id = $5`, totalCollected, outstanding, paymentStatus, now, planID); err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		UPDATE finance_transactions
 		SET source_type = 'mcp_payment_collection',
-		    source_id = (SELECT id FROM mcp_payment_collections WHERE finance_transaction_id = ? LIMIT 1),
-		    updated_at = ?
-		WHERE id = ?
+		    source_id = (SELECT id FROM mcp_payment_collections WHERE finance_transaction_id = $1 LIMIT 1),
+		    updated_at = $2
+		WHERE id = $3
 	`, transactionID, now, transactionID); err != nil {
 		return 0, err
 	}

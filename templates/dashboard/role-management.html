@@ -3,8 +3,10 @@
 {{define "content"}}
 <section class="mx-auto w-full max-w-[1600px] space-y-6 pb-10">
 
-  <!-- Page header -->
-  <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+  <!-- ============================================================
+       PAGE HEADER
+  ============================================================= -->
+  <header class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
     <div>
       <div class="flex items-center gap-2 text-sm font-medium text-slate/60">
         <a href="/admin" class="transition hover:text-obsidian">
@@ -37,86 +39,88 @@
       </p>
     </div>
 
-    <div class="grid grid-cols-2 gap-3">
-      <div class="rounded-2xl border border-obsidian/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
-        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/50">
-          Total roles
-        </p>
+    <div class="flex flex-wrap items-center gap-3">
 
-        <p class="mt-1 text-2xl font-semibold text-obsidian">
-          {{len .Roles}}
-        </p>
-      </div>
+      <!-- Stats -->
+      <div class="flex overflow-hidden rounded-2xl border border-obsidian/10 bg-white/80 shadow-sm backdrop-blur">
+        <div class="border-r border-slate/10 px-4 py-3">
+          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">
+            Roles
+          </p>
 
-      <div class="rounded-2xl border border-obsidian/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
-        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/50">
-          Permissions
-        </p>
-
-        <p class="mt-1 text-2xl font-semibold text-obsidian">
-          {{len .Permissions}}
-        </p>
-      </div>
-    </div>
-  </header>
-
-  <!-- Create role -->
-  <section
-    class="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/85 shadow-[0_20px_60px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:rounded-[2rem]"
-  >
-    <div class="border-b border-slate/10 px-5 py-5 sm:px-8 sm:py-6">
-      <div class="flex items-start gap-4">
-        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-cloud shadow-sm">
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            class="h-5 w-5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M12 3 4.5 6.75v4.875c0 4.567 3.1 8.783 7.5 9.875 4.4-1.092 7.5-5.308 7.5-9.875V6.75L12 3Z"
-            />
-
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M12 8.25v7.5M8.25 12h7.5"
-            />
-          </svg>
+          <p class="mt-0.5 text-xl font-semibold text-obsidian">
+            {{len .Roles}}
+          </p>
         </div>
 
-        <div>
-          <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
-            Create a new role
-          </h2>
+        <div class="px-4 py-3">
+          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">
+            Permissions
+          </p>
 
-          <p class="mt-1 text-sm leading-6 text-slate/60">
-            Create an authorization role and select the permissions it should
-            receive.
+          <p class="mt-0.5 text-xl font-semibold text-obsidian">
+            {{len .Permissions}}
           </p>
         </div>
       </div>
+
+      <!-- Create button -->
+      <button
+        type="button"
+        data-open-create-role
+        class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud shadow-[0_12px_30px_rgba(11,18,21,0.18)] transition hover:-translate-y-0.5 hover:bg-slate hover:shadow-[0_16px_35px_rgba(11,18,21,0.24)] focus:outline-none focus:ring-4 focus:ring-aqua/30 active:translate-y-0"
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          class="h-5 w-5"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M12 4.5v15m7.5-7.5h-15"
+          />
+        </svg>
+
+        Create role
+      </button>
     </div>
+  </header>
 
-    <form action="/admin/roles/create" method="post" class="p-5 sm:p-8">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
 
-      <div class="grid gap-6 xl:grid-cols-[minmax(280px,0.65fr)_minmax(0,1.35fr)]">
-        <!-- Role name -->
-        <div class="space-y-2">
-          <label
-            for="create-role-name"
-            class="block text-sm font-semibold text-obsidian"
-          >
-            Role name
-          </label>
+  <!-- ============================================================
+       ROLE DIRECTORY
+  ============================================================= -->
+  <section
+    id="role-management"
+    class="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/85 shadow-[0_20px_60px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:rounded-[2rem]"
+  >
 
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate/40">
+    <!-- Directory header -->
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-8 sm:py-6">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+
+        <div>
+          <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
+            Role directory
+          </h2>
+
+          <p class="mt-1 text-sm leading-6 text-slate/60">
+            Review and manage all authorization roles from one place.
+          </p>
+        </div>
+
+        <!-- Search / filters -->
+        <div class="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+
+          <!-- Search -->
+          <label class="relative block min-w-0 flex-1 lg:w-80">
+            <span class="sr-only">Search roles</span>
+
+            <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate/40">
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
@@ -125,101 +129,574 @@
                 stroke-width="1.8"
                 class="h-5 w-5"
               >
+                <circle cx="11" cy="11" r="7"></circle>
                 <path
                   stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M15.75 5.25a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.25a7.5 7.5 0 0 1 15 0"
-                />
-
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M18 8.25h3.75M19.875 6.375v3.75"
-                />
+                  d="m20 20-3.5-3.5"
+                ></path>
               </svg>
-            </div>
+            </span>
 
             <input
-              id="create-role-name"
-              type="text"
-              name="name"
-              placeholder="Example: content-manager"
-              required
+              id="role-search"
+              type="search"
+              placeholder="Search roles..."
               autocomplete="off"
-              spellcheck="false"
-              class="h-12 w-full rounded-2xl border border-slate/15 bg-white pl-12 pr-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+              class="h-11 w-full rounded-xl border border-slate/15 bg-white pl-11 pr-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
             />
-          </div>
+          </label>
 
-          <p class="text-xs leading-5 text-slate/50">
-            Use a clear and reusable name that reflects the role's responsibility.
-          </p>
+          <!-- Type filter -->
+          <select
+            id="role-type-filter"
+            class="h-11 rounded-xl border border-slate/15 bg-white px-4 text-sm font-medium text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+          >
+            <option value="all">All roles</option>
+            <option value="system">System roles</option>
+            <option value="custom">Custom roles</option>
+          </select>
         </div>
+      </div>
+    </div>
 
-        <!-- Permission selection -->
-        <fieldset class="min-w-0">
-          <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <legend class="text-sm font-semibold text-obsidian">
-              Role permissions
-            </legend>
 
-            <span class="text-xs text-slate/45">
-              Select all permissions required by this role
-            </span>
-          </div>
+    {{if .Roles}}
 
-          <div class="mt-3 space-y-4 rounded-2xl border border-slate/10 bg-cloud/55 p-4 sm:p-5">
-            {{range .PermissionGroups}}
-            <section class="rounded-2xl border border-slate/10 bg-white/75 p-4">
-              <div class="mb-3">
-                <h3 class="text-sm font-semibold text-obsidian">{{.Name}}</h3>
-                <p class="mt-1 text-xs leading-5 text-slate/50">{{.Description}}</p>
+    <!-- ============================================================
+         TABLE
+    ============================================================= -->
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[850px] text-left">
+
+        <thead>
+          <tr class="border-b border-slate/10 bg-cloud/55">
+            <th class="px-5 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45 sm:px-8">
+              Role
+            </th>
+
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+              Type
+            </th>
+
+            <th class="px-4 py-3.5 text-center text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+              Users
+            </th>
+
+            <th class="px-4 py-3.5 text-center text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+              Permissions
+            </th>
+
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">
+              Access
+            </th>
+
+            <th class="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-[0.12em] text-slate/45 sm:px-8">
+              Actions
+            </th>
+          </tr>
+        </thead>
+
+        <tbody id="role-table-body" class="divide-y divide-slate/10">
+
+          {{range .Roles}}
+          {{$role := .}}
+          {{$systemRole := isSystemRole .Name}}
+          {{$selfAssigned := contains $.User.Roles .Name}}
+          {{$canEditRole := and (not $systemRole) (or (hasRole $.User "superadmin") (not $selfAssigned))}}
+
+          <tr
+            class="role-row transition hover:bg-cloud/45"
+            data-role-name="{{.Name}}"
+            data-role-type="{{if $systemRole}}system{{else}}custom{{end}}"
+          >
+
+            <!-- Role -->
+            <td class="px-5 py-4 sm:px-8">
+              <div class="flex items-center gap-3">
+
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl {{if $systemRole}}bg-indigo-50 text-indigo-700{{else}}bg-obsidian text-cloud{{end}}">
+                  {{if $systemRole}}
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    class="h-4 w-4"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M10 1.75a5.25 5.25 0 0 0-5.25 5.25v1.287A2.75 2.75 0 0 0 3 10.85v4.4A2.75 2.75 0 0 0 5.75 18h8.5A2.75 2.75 0 0 0 17 15.25v-4.4a2.75 2.75 0 0 0-1.75-2.563V7A5.25 5.25 0 0 0 10 1.75ZM6.25 7a3.75 3.75 0 0 1 7.5 0v1.1h-7.5V7Z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                  {{else}}
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    class="h-5 w-5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 3 4.5 6.75v4.875c0 4.567 3.1 8.783 7.5 9.875 4.4-1.092 7.5-5.308 7.5-9.875V6.75L12 3Z"
+                    />
+                  </svg>
+                  {{end}}
+                </div>
+
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold text-obsidian">
+                    {{.Name}}
+                  </p>
+
+                  <p class="mt-0.5 font-mono text-[0.68rem] text-slate/40">
+                    ID {{.ID}}
+                  </p>
+                </div>
               </div>
-              <div class="grid gap-2 sm:grid-cols-2">
-              {{range .Permissions}}
-              <label class="group relative flex cursor-pointer items-start gap-3 rounded-xl border border-slate/10 bg-white p-3 transition hover:border-obsidian/25">
-                <input
-                  type="checkbox"
-                  name="permissions"
-                  value="{{.Key}}"
-                  {{if and .Sensitive (not (hasRole $.User "superadmin"))}}disabled{{end}}
-                  class="mt-1 h-5 w-5 shrink-0 cursor-pointer rounded-md border-slate/25 accent-obsidian focus:ring-aqua"
-                />
+            </td>
 
-                <span class="flex items-start gap-3 text-slate transition peer-checked:text-obsidian {{if and .Sensitive (not (hasRole $.User "superadmin"))}}cursor-not-allowed opacity-45{{end}}">
-                  <span class="hidden">
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      class="h-3 w-3 opacity-0 transition peer-checked:opacity-100"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M16.704 5.292a1 1 0 0 1 .004 1.414l-7.25 7.292a1 1 0 0 1-1.42 0l-3.75-3.77a1 1 0 1 1 1.418-1.41l3.04 3.055 6.542-6.577a1 1 0 0 1 1.416-.004Z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </span>
 
-                  <span>
-                    <span class="block text-sm font-semibold">{{.Label}}{{if .Sensitive}} <span class="text-[0.6rem] uppercase tracking-wider text-amber-700">Privileged</span>{{end}}</span>
-                    <span class="mt-1 block text-xs leading-5 text-slate/50">{{.Description}}</span>
-                  </span>
-                </span>
-              </label>
+            <!-- Type -->
+            <td class="px-4 py-4">
+              {{if $systemRole}}
+              <span class="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-indigo-700">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="h-3 w-3"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M10 1.75a5.25 5.25 0 0 0-5.25 5.25v1.287A2.75 2.75 0 0 0 3 10.85v4.4A2.75 2.75 0 0 0 5.75 18h8.5A2.75 2.75 0 0 0 17 15.25v-4.4a2.75 2.75 0 0 0-1.75-2.563V7A5.25 5.25 0 0 0 10 1.75ZM6.25 7a3.75 3.75 0 0 1 7.5 0v1.1h-7.5V7Z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+
+                System
+              </span>
+
+              {{else}}
+
+              <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-emerald-700">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                Custom
+              </span>
               {{end}}
+            </td>
+
+
+            <!-- Users -->
+            <td class="px-4 py-4 text-center">
+              <span class="inline-flex min-w-9 items-center justify-center rounded-lg bg-cloud px-2.5 py-1.5 text-sm font-semibold text-slate/70">
+                {{.UserCount}}
+              </span>
+            </td>
+
+
+            <!-- Permissions -->
+            <td class="px-4 py-4 text-center">
+              <span class="inline-flex items-center gap-1.5 rounded-lg border border-slate/10 bg-white px-2.5 py-1.5 text-sm font-medium text-slate/65">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  class="h-4 w-4 text-slate/40"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9 12.75 11.25 15 15 9.75"
+                  />
+
+                  <circle cx="12" cy="12" r="9"></circle>
+                </svg>
+
+                {{len .Permissions}}
+              </span>
+            </td>
+
+
+            <!-- Access -->
+            <td class="px-4 py-4">
+              {{if $systemRole}}
+
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-slate/50">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  class="h-4 w-4"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M16.5 10.5V6.75a4.5 4.5 0 0 0-9 0v3.75"
+                  />
+                  <rect x="5.25" y="10.5" width="13.5" height="10.5" rx="2" />
+                </svg>
+
+                Protected
+              </span>
+
+              {{else if not $canEditRole}}
+
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  class="h-4 w-4"
+                >
+                  <circle cx="12" cy="12" r="9"></circle>
+                  <path
+                    stroke-linecap="round"
+                    d="M12 8.25v4.5m0 3h.008"
+                  />
+                </svg>
+
+                Assigned to you
+              </span>
+
+              {{else}}
+
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                Editable
+              </span>
+              {{end}}
+            </td>
+
+
+            <!-- Actions -->
+            <td class="px-5 py-4 sm:px-8">
+              <div class="flex items-center justify-end gap-2">
+
+                <!-- Edit / View -->
+                <button
+                  type="button"
+                  class="role-edit-button inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate/15 bg-white px-3 text-xs font-semibold text-obsidian shadow-sm transition hover:border-slate/30 hover:bg-cloud focus:outline-none focus:ring-4 focus:ring-aqua/15"
+
+                  data-role-id="{{.ID}}"
+                  data-role-name="{{.Name}}"
+                  data-system-role="{{if $systemRole}}true{{else}}false{{end}}"
+                  data-editable="{{if $canEditRole}}true{{else}}false{{end}}"
+                >
+                  {{if $canEditRole}}
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    class="h-4 w-4"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="m16.862 4.487 2.651 2.651M18.375 2.975a1.875 1.875 0 0 1 2.651 2.651L8.25 18.402 3.75 19.5l1.098-4.5L18.375 2.975Z"
+                    />
+                  </svg>
+
+                  Edit
+
+                  {{else}}
+
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    class="h-4 w-4"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M2.25 12s3.75-6 9.75-6 9.75 6 9.75 6-3.75 6-9.75 6S2.25 12 2.25 12Z"
+                    />
+                    <circle cx="12" cy="12" r="2.25"></circle>
+                  </svg>
+
+                  View
+                  {{end}}
+                </button>
+
+
+                <!-- Delete -->
+                {{if and (not $systemRole) (eq .UserCount 0)}}
+
+                <button
+                  type="button"
+                  class="role-delete-button inline-flex h-9 items-center justify-center rounded-lg border border-red-200 bg-white px-2.5 text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50 focus:outline-none focus:ring-4 focus:ring-red-100"
+                  data-role-id="{{.ID}}"
+                  data-role-name="{{.Name}}"
+                  aria-label="Delete {{.Name}}"
+                  title="Delete role"
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    class="h-4 w-4"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166M19.228 5.79 18.16 19.673A2.25 2.25 0 0 1 15.916 21H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0A48.108 48.108 0 0 0 15.75 5.4m-10.978.39a48.11 48.11 0 0 1 3.478-.39m7.5 0v-.916c0-1.18-.91-2.164-2.088-2.201a51.964 51.964 0 0 0-3.324 0C9.16 2.32 8.25 3.304 8.25 4.484V5.4m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                    />
+                  </svg>
+                </button>
+
+                {{else if and (not $systemRole) (gt .UserCount 0)}}
+
+                <span
+                  class="inline-flex h-9 cursor-not-allowed items-center justify-center rounded-lg border border-slate/10 bg-slate/5 px-2.5 text-slate/30"
+                  title="Remove user assignments before deleting this role"
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    class="h-4 w-4"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166M19.228 5.79 18.16 19.673A2.25 2.25 0 0 1 15.916 21H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79"
+                    />
+                  </svg>
+                </span>
+                {{end}}
+
+
+                <!--
+                  Lightweight permission information used by the reusable
+                  modal. We deliberately do NOT render the entire permission
+                  editor once for every role.
+                -->
+                <div
+                  class="role-permission-data hidden"
+                  data-role-id="{{.ID}}"
+                >
+                  {{range .Permissions}}
+                  <span data-permission-key="{{.Key}}"></span>
+                  {{end}}
+                </div>
+
               </div>
-            </section>
-            {{end}}
-          </div>
-        </fieldset>
+            </td>
+          </tr>
+          {{end}}
+
+        </tbody>
+      </table>
+    </div>
+
+
+    <!-- Search empty state -->
+    <div
+      id="role-search-empty"
+      class="hidden px-6 py-16 text-center"
+    >
+      <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-cloud text-slate/40">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          class="h-6 w-6"
+        >
+          <circle cx="11" cy="11" r="7"></circle>
+          <path
+            stroke-linecap="round"
+            d="m20 20-3.5-3.5"
+          ></path>
+        </svg>
       </div>
 
-      <div class="mt-6 flex justify-end border-t border-slate/10 pt-6">
+      <h3 class="mt-4 text-base font-semibold text-obsidian">
+        No matching roles
+      </h3>
+
+      <p class="mt-1 text-sm text-slate/50">
+        Try changing your search term or role type filter.
+      </p>
+    </div>
+
+
+    <!-- Footer -->
+    <div class="flex items-center justify-between border-t border-slate/10 bg-cloud/35 px-5 py-3 sm:px-8">
+      <p id="visible-role-count" class="text-xs font-medium text-slate/50">
+        {{len .Roles}} role(s)
+      </p>
+
+      <p class="text-xs text-slate/40">
+        Role permission changes may affect assigned users immediately.
+      </p>
+    </div>
+
+
+    {{else}}
+
+    <!-- ============================================================
+         EMPTY STATE
+    ============================================================= -->
+    <div class="flex min-h-80 flex-col items-center justify-center px-6 py-14 text-center">
+      <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-cloud text-slate/45 shadow-sm">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          class="h-7 w-7"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M12 3 4.5 6.75v4.875c0 4.567 3.1 8.783 7.5 9.875 4.4-1.092 7.5-5.308 7.5-9.875V6.75L12 3Z"
+          />
+
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M12 8.25v7.5M8.25 12h7.5"
+          />
+        </svg>
+      </div>
+
+      <h3 class="mt-4 text-lg font-semibold text-obsidian">
+        No roles found
+      </h3>
+
+      <p class="mt-2 max-w-sm text-sm leading-6 text-slate/55">
+        Create your first authorization role and assign the permissions
+        required by that role.
+      </p>
+
+      <button
+        type="button"
+        data-open-create-role
+        class="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-obsidian px-5 text-sm font-semibold text-cloud shadow-sm transition hover:bg-slate focus:outline-none focus:ring-4 focus:ring-aqua/25"
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          class="h-4 w-4"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M12 4.5v15m7.5-7.5h-15"
+          />
+        </svg>
+
+        Create role
+      </button>
+    </div>
+
+    {{end}}
+  </section>
+</section>
+
+
+
+<!-- ==============================================================
+     CREATE / EDIT / VIEW ROLE MODAL
+================================================================ -->
+<div
+  id="role-modal"
+  class="fixed inset-0 z-[100] hidden"
+  aria-hidden="true"
+>
+  <!-- Backdrop -->
+  <div
+    data-role-modal-backdrop
+    class="absolute inset-0 bg-obsidian/55 backdrop-blur-sm"
+  ></div>
+
+
+  <!-- Modal positioning -->
+  <div class="relative flex min-h-full items-center justify-center p-3 sm:p-6">
+
+    <div
+      id="role-modal-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="role-modal-title"
+      class="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.5rem] border border-white/80 bg-white shadow-[0_30px_100px_rgba(11,18,21,0.3)] sm:rounded-[2rem]"
+    >
+
+      <!-- Header -->
+      <div class="flex shrink-0 items-start justify-between gap-4 border-b border-slate/10 px-5 py-5 sm:px-7 sm:py-6">
+        <div class="flex min-w-0 items-start gap-4">
+
+          <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-obsidian text-cloud shadow-sm">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              class="h-5 w-5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 3 4.5 6.75v4.875c0 4.567 3.1 8.783 7.5 9.875 4.4-1.092 7.5-5.308 7.5-9.875V6.75L12 3Z"
+              />
+            </svg>
+          </div>
+
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <h2
+                id="role-modal-title"
+                class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl"
+              >
+                Create role
+              </h2>
+
+              <span
+                id="role-modal-protected-badge"
+                class="hidden rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-indigo-700"
+              >
+                Protected
+              </span>
+            </div>
+
+            <p
+              id="role-modal-description"
+              class="mt-1 text-sm leading-6 text-slate/55"
+            >
+              Create a new authorization role and assign its permissions.
+            </p>
+          </div>
+        </div>
+
         <button
-          type="submit"
-          class="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-obsidian px-6 text-sm font-semibold text-cloud shadow-[0_12px_30px_rgba(11,18,21,0.22)] transition hover:-translate-y-0.5 hover:bg-slate hover:shadow-[0_16px_35px_rgba(11,18,21,0.26)] focus:outline-none focus:ring-4 focus:ring-aqua/30 active:translate-y-0 sm:w-auto"
+          type="button"
+          data-close-role-modal
+          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate/45 transition hover:bg-cloud hover:text-obsidian focus:outline-none focus:ring-4 focus:ring-aqua/15"
+          aria-label="Close"
         >
           <svg
             aria-hidden="true"
@@ -231,230 +708,277 @@
           >
             <path
               stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M12 4.5v15m7.5-7.5h-15"
+              d="m6 6 12 12M18 6 6 18"
             />
           </svg>
-
-          Create role
         </button>
       </div>
-    </form>
-  </section>
 
-  <!-- Role directory -->
-  <section
-    id="role-management"
-    class="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/85 shadow-[0_20px_60px_rgba(11,18,21,0.08)] backdrop-blur-xl sm:rounded-[2rem]"
-  >
-    <div class="flex flex-col gap-4 border-b border-slate/10 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
-      <div>
-        <h2 class="text-xl font-semibold tracking-tight text-obsidian sm:text-2xl">
-          Role directory
-        </h2>
 
-        <p class="mt-1 text-sm leading-6 text-slate/60">
-          Review, rename, and configure the permissions assigned to each role.
-        </p>
-      </div>
+      <!-- Form -->
+      <form
+        id="role-form"
+        action="/admin/roles/create"
+        method="post"
+        class="flex min-h-0 flex-1 flex-col"
+      >
+        <input
+          type="hidden"
+          name="csrf_token"
+          value="{{.CSRFToken}}"
+        />
 
-      <div class="inline-flex w-fit items-center gap-2 rounded-full border border-slate/10 bg-cloud px-3 py-2 text-xs font-semibold text-slate/60">
-        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-        {{len .Roles}} configured
-      </div>
-    </div>
+        <input
+          id="role-form-id"
+          type="hidden"
+          name="role_id"
+          value=""
+        />
 
-    <div class="p-4 sm:p-6 lg:p-8">
-      <div class="space-y-4">
-        {{range .Roles}}
-        {{$role := .}}
-        {{$systemRole := isSystemRole .Name}}
-        {{$selfAssigned := contains $.User.Roles .Name}}
-        {{$canEditRole := and (not $systemRole) (or (hasRole $.User "superadmin") (not $selfAssigned))}}
 
-        <article
-          class="group overflow-hidden rounded-[1.5rem] border border-slate/10 bg-cloud/65 transition duration-200 hover:border-slate/20 hover:bg-cloud hover:shadow-[0_16px_45px_rgba(11,18,21,0.08)]"
-        >
-          <form action="/admin/roles/update" method="post">
-            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-            <input type="hidden" name="role_id" value="{{.ID}}" />
+        <!-- Scrollable content -->
+        <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
 
-            <div class="p-4 sm:p-5 lg:p-6">
-              <div class="grid gap-6 xl:grid-cols-[minmax(280px,0.65fr)_minmax(0,1.35fr)]">
-                <!-- Role identity -->
-                <div class="min-w-0">
-                  <div class="mb-3 flex flex-wrap items-center gap-2">
-                    <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-obsidian text-cloud shadow-sm">
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.8"
-                        class="h-5 w-5"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M12 3 4.5 6.75v4.875c0 4.567 3.1 8.783 7.5 9.875 4.4-1.092 7.5-5.308 7.5-9.875V6.75L12 3Z"
-                        />
-                      </svg>
-                    </span>
+          <!-- Role name -->
+          <div>
+            <label
+              for="role-form-name"
+              class="block text-sm font-semibold text-obsidian"
+            >
+              Role name
+            </label>
 
-                    {{if $systemRole}}
-                    <span class="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-indigo-700">
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        class="h-3.5 w-3.5"
-                      >
-                        <path
-                          fill-rule="evenodd"
-                          d="M10 1.75a5.25 5.25 0 0 0-5.25 5.25v1.287A2.75 2.75 0 0 0 3 10.85v4.4A2.75 2.75 0 0 0 5.75 18h8.5A2.75 2.75 0 0 0 17 15.25v-4.4a2.75 2.75 0 0 0-1.75-2.563V7A5.25 5.25 0 0 0 10 1.75ZM6.25 7a3.75 3.75 0 0 1 7.5 0v1.1h-7.5V7Z"
-                          clip-rule="evenodd"
-                        />
-                      </svg>
-
-                      System role
-                    </span>
-                    {{else}}
-                    <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
-                      <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                      Custom role
-                    </span>
-                    {{end}}
-                  </div>
-
-                  <label
-                    for="role-name-{{.ID}}"
-                    class="block text-sm font-semibold text-obsidian"
-                  >
-                    Role name
-                  </label>
-
-                  <input
-                    id="role-name-{{.ID}}"
-                    type="text"
-                    name="name"
-                    value="{{.Name}}"
-                    {{if $systemRole}}readonly{{end}}
-                    autocomplete="off"
-                    spellcheck="false"
-                    class="mt-2 h-12 w-full rounded-2xl border border-slate/15 px-4 text-sm font-medium shadow-sm outline-none transition focus:ring-4 {{if $systemRole}}cursor-not-allowed bg-slate/5 text-slate/55 focus:border-slate/15 focus:ring-transparent{{else}}bg-white text-obsidian hover:border-slate/25 focus:border-aqua focus:ring-aqua/15{{end}}"
+            <div class="relative mt-2">
+              <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate/40">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  class="h-5 w-5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M15.75 5.25a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.25a7.5 7.5 0 0 1 15 0"
                   />
+                </svg>
+              </span>
 
-                  <div class="mt-3 flex flex-wrap items-center gap-2">
-                    <span class="inline-flex items-center gap-2 rounded-lg border border-slate/10 bg-white/70 px-2.5 py-1.5 text-xs text-slate/50">
-                      <span class="font-medium uppercase tracking-[0.1em]">
-                        Role ID
-                      </span>
-
-                      <span class="font-mono text-obsidian/70">
-                        {{.ID}}
-                      </span>
-                    </span>
-                  </div>
-
-                  {{if $systemRole}}
-                  <p class="mt-3 flex items-start gap-2 text-xs leading-5 text-slate/50">
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                      class="mt-0.5 h-4 w-4 shrink-0"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M11.25 9.75h1.5v6h-1.5v-6Zm.75-3v.008"
-                      />
-
-                      <circle cx="12" cy="12" r="9" />
-                    </svg>
-
-                    System roles are protected. Their names and permissions
-                    cannot be changed or deleted.
-                  </p>
-                  {{else}}
-                  <p class="mt-3 text-xs leading-5 text-slate/50">
-                    Custom roles can be renamed or removed when they are no
-                    longer required.
-                  </p>
-                  {{end}}
-                </div>
-
-                <!-- Permission configuration -->
-                <fieldset class="min-w-0">
-                  <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <legend class="text-sm font-semibold text-obsidian">
-                      Assigned permissions
-                    </legend>
-
-                    <span class="text-xs text-slate/45">
-                      Changes apply after saving
-                    </span>
-                  </div>
-
-                  <div class="mt-3 space-y-3 rounded-2xl border border-slate/10 bg-white/55 p-4 sm:p-5">
-                    {{range $.PermissionGroups}}
-                    <section>
-                      <h4 class="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate/45">{{.Name}}</h4>
-                      <div class="grid gap-2 sm:grid-cols-2">
-                      {{range .Permissions}}
-                      <label class="group/permission relative {{if $systemRole}}cursor-not-allowed opacity-70{{else}}cursor-pointer{{end}} rounded-xl border border-slate/10 bg-white p-3">
-                        <input
-                          type="checkbox"
-                          name="permissions"
-                          value="{{.Key}}"
-                          {{if containsPermission $role.Permissions .Key}}checked{{end}}
-                          {{if or $systemRole (not $canEditRole)}}disabled{{end}}
-                          class="mt-1 h-5 w-5 shrink-0 cursor-pointer rounded-md border-slate/25 accent-obsidian focus:ring-aqua"
-                        />
-
-                        <span class="flex items-start gap-2.5 text-slate peer-checked:text-obsidian">
-                          <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-current/30 peer-checked:bg-obsidian peer-checked:text-cloud">
-                            <svg
-                              aria-hidden="true"
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                              class="h-3 w-3 opacity-0 transition peer-checked:opacity-100"
-                            >
-                              <path
-                                fill-rule="evenodd"
-                                d="M16.704 5.292a1 1 0 0 1 .004 1.414l-7.25 7.292a1 1 0 0 1-1.42 0l-3.75-3.77a1 1 0 1 1 1.418-1.41l3.04 3.055 6.542-6.577a1 1 0 0 1 1.416-.004Z"
-                                clip-rule="evenodd"
-                              />
-                            </svg>
-                          </span>
-
-                          <span>
-                            <span class="block text-sm font-semibold">{{.Label}}</span>
-                            <span class="mt-0.5 block text-[0.68rem] leading-4 text-slate/45">{{.Key}}</span>
-                          </span>
-                        </span>
-                      </label>
-                      {{end}}
-                      </div>
-                    </section>
-                    {{end}}
-                  </div>
-                </fieldset>
-              </div>
+              <input
+                id="role-form-name"
+                type="text"
+                name="name"
+                placeholder="Example: content-manager"
+                required
+                autocomplete="off"
+                spellcheck="false"
+                class="h-12 w-full rounded-2xl border border-slate/15 bg-white pl-12 pr-4 text-sm font-medium text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15 disabled:cursor-not-allowed disabled:bg-slate/5 disabled:text-slate/55"
+              />
             </div>
 
-            <div class="flex flex-col gap-3 border-t border-slate/10 bg-white/55 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 lg:px-6">
-              <p class="text-xs leading-5 text-slate/50">
-                Permission changes may immediately affect users assigned to this
-                role.
-              </p>
+            <p
+              id="role-name-help"
+              class="mt-2 text-xs leading-5 text-slate/50"
+            >
+              Use a clear and reusable name that reflects the role's responsibility.
+            </p>
+          </div>
 
-              {{if $canEditRole}}
+
+          <!-- Permission toolbar -->
+          <div class="mt-7 flex flex-col gap-3 border-t border-slate/10 pt-6 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h3 class="text-sm font-semibold text-obsidian">
+                Role permissions
+              </h3>
+
+              <p class="mt-1 text-xs leading-5 text-slate/50">
+                Select the permissions this role should receive.
+              </p>
+            </div>
+
+            <div class="flex flex-col gap-2 sm:flex-row">
+
+              <!-- Permission search -->
+              <label class="relative block sm:w-64">
+                <span class="sr-only">Search permissions</span>
+
+                <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate/35">
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    class="h-4 w-4"
+                  >
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path
+                      stroke-linecap="round"
+                      d="m20 20-3.5-3.5"
+                    />
+                  </svg>
+                </span>
+
+                <input
+                  id="permission-search"
+                  type="search"
+                  placeholder="Search permissions..."
+                  autocomplete="off"
+                  class="h-10 w-full rounded-xl border border-slate/15 bg-white pl-9 pr-3 text-xs text-obsidian outline-none transition placeholder:text-slate/35 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+                />
+              </label>
+
+              <!-- Clear all -->
               <button
+                id="clear-all-permissions"
+                type="button"
+                class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/15 bg-white px-3 text-xs font-semibold text-slate/60 transition hover:bg-cloud hover:text-obsidian disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Clear all
+              </button>
+            </div>
+          </div>
+
+
+          <!-- Permissions -->
+          <div
+            id="permission-groups"
+            class="mt-4 space-y-4"
+          >
+            {{range .PermissionGroups}}
+
+            <section
+              class="permission-group overflow-hidden rounded-2xl border border-slate/10 bg-cloud/45"
+              data-permission-group
+            >
+
+              <!-- Group header -->
+              <div class="flex items-center justify-between gap-4 border-b border-slate/10 bg-white/70 px-4 py-3.5 sm:px-5">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h4 class="text-sm font-semibold text-obsidian">
+                      {{.Name}}
+                    </h4>
+
+                    <span
+                      class="permission-group-count rounded-full bg-cloud px-2 py-0.5 text-[0.65rem] font-semibold text-slate/50"
+                    >
+                      0 selected
+                    </span>
+                  </div>
+
+                  <p class="mt-1 text-xs leading-5 text-slate/50">
+                    {{.Description}}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  data-select-group
+                  class="shrink-0 rounded-lg border border-slate/10 bg-white px-2.5 py-1.5 text-[0.68rem] font-semibold text-slate/60 transition hover:border-slate/20 hover:text-obsidian disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Select all
+                </button>
+              </div>
+
+
+              <!-- Permissions in group -->
+              <div class="grid gap-2 p-3 sm:grid-cols-2 sm:p-4">
+
+                {{range .Permissions}}
+
+                <label
+                  class="permission-item group flex items-start gap-3 rounded-xl border border-slate/10 bg-white p-3.5 transition hover:border-slate/20 hover:shadow-sm"
+                  data-permission-item
+                  data-permission-search="{{.Label}} {{.Key}} {{.Description}}"
+                >
+
+                  <input
+                    type="checkbox"
+                    name="permissions"
+                    value="{{.Key}}"
+                    data-role-permission
+                    data-sensitive="{{if .Sensitive}}true{{else}}false{{end}}"
+                    data-create-disabled="{{if and .Sensitive (not (hasRole $.User "superadmin"))}}true{{else}}false{{end}}"
+                    class="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded-md border-slate/25 accent-obsidian focus:ring-aqua disabled:cursor-not-allowed"
+                  />
+
+                  <span class="min-w-0">
+                    <span class="flex flex-wrap items-center gap-1.5">
+                      <span class="text-sm font-semibold text-obsidian">
+                        {{.Label}}
+                      </span>
+
+                      {{if .Sensitive}}
+                      <span class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.08em] text-amber-700">
+                        Privileged
+                      </span>
+                      {{end}}
+                    </span>
+
+                    <span class="mt-1 block font-mono text-[0.65rem] text-slate/40">
+                      {{.Key}}
+                    </span>
+
+                    <span class="mt-1.5 block text-xs leading-5 text-slate/50">
+                      {{.Description}}
+                    </span>
+                  </span>
+
+                </label>
+
+                {{end}}
+              </div>
+            </section>
+
+            {{end}}
+          </div>
+
+
+          <!-- No permission search results -->
+          <div
+            id="permission-search-empty"
+            class="hidden rounded-2xl border border-dashed border-slate/20 bg-cloud/35 px-6 py-10 text-center"
+          >
+            <p class="text-sm font-semibold text-obsidian">
+              No permissions found
+            </p>
+
+            <p class="mt-1 text-xs text-slate/50">
+              Try another search term.
+            </p>
+          </div>
+        </div>
+
+
+        <!-- Modal footer -->
+        <div class="shrink-0 border-t border-slate/10 bg-white px-5 py-4 sm:px-7">
+          <div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+            <p
+              id="role-modal-footer-note"
+              class="text-xs leading-5 text-slate/45"
+            >
+              Permission changes may immediately affect assigned users.
+            </p>
+
+            <div class="flex items-center justify-end gap-2">
+
+              <button
+                type="button"
+                data-close-role-modal
+                class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/15 bg-white px-4 text-sm font-semibold text-slate/60 transition hover:bg-cloud hover:text-obsidian focus:outline-none focus:ring-4 focus:ring-aqua/15"
+              >
+                Cancel
+              </button>
+
+              <button
+                id="role-form-submit"
                 type="submit"
-                class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud shadow-sm transition hover:bg-slate focus:outline-none focus:ring-4 focus:ring-aqua/25 sm:w-auto"
+                class="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud shadow-sm transition hover:bg-slate focus:outline-none focus:ring-4 focus:ring-aqua/25"
               >
                 <svg
                   aria-hidden="true"
@@ -471,108 +995,853 @@
                   />
                 </svg>
 
-                Save changes
+                <span id="role-form-submit-label">
+                  Create role
+                </span>
               </button>
-              {{else}}
-              <span class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-cloud px-4 text-sm font-semibold text-slate/45">{{if $systemRole}}Protected role{{else}}Assigned to your account{{end}}</span>
-              {{end}}
-            </div>
-          </form>
 
-          {{if and (not $systemRole) (eq .UserCount 0)}}
-          <div class="border-t border-red-100 bg-red-50/55 px-4 py-4 sm:px-5 lg:px-6">
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p class="text-sm font-semibold text-red-800">
-                  Delete custom role
-                </p>
-
-                <p class="mt-1 text-xs leading-5 text-red-700/70">
-                  Delete this role only after confirming it is no longer assigned
-                  to active users.
-                </p>
-              </div>
-
-              <form action="/admin/roles/delete" method="post">
-                <input
-                  type="hidden"
-                  name="csrf_token"
-                  value="{{$.CSRFToken}}"
-                />
-
-                <input type="hidden" name="role_id" value="{{.ID}}" />
-
-                <button
-                  type="submit"
-                  class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-4 focus:ring-red-100 sm:w-auto"
-                >
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    class="h-4 w-4"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166M19.228 5.79 18.16 19.673A2.25 2.25 0 0 1 15.916 21H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0A48.108 48.108 0 0 0 15.75 5.4m-10.978.39a48.11 48.11 0 0 1 3.478-.39m7.5 0v-.916c0-1.18-.91-2.164-2.088-2.201a51.964 51.964 0 0 0-3.324 0C9.16 2.32 8.25 3.304 8.25 4.484V5.4m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                    />
-                  </svg>
-
-                  Delete role
-                </button>
-              </form>
             </div>
           </div>
-          {{else if and (not $systemRole) (gt .UserCount 0)}}
-          <div class="border-t border-slate/10 bg-white/55 px-4 py-3 text-xs text-slate/50 sm:px-5 lg:px-6">
-            Assigned to {{.UserCount}} user(s). Remove those assignments before deleting this role.
-          </div>
-          {{end}}
-        </article>
+        </div>
 
-        {{else}}
+      </form>
+    </div>
+  </div>
+</div>
 
-        <!-- Empty state -->
-        <div class="flex min-h-72 flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-12 text-center">
-          <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate/45 shadow-sm">
+
+
+<!-- ==============================================================
+     DELETE CONFIRMATION MODAL
+================================================================ -->
+<div
+  id="delete-role-modal"
+  class="fixed inset-0 z-[110] hidden"
+  aria-hidden="true"
+>
+  <!-- Backdrop -->
+  <div
+    data-delete-modal-backdrop
+    class="absolute inset-0 bg-obsidian/55 backdrop-blur-sm"
+  ></div>
+
+  <div class="relative flex min-h-full items-center justify-center p-4">
+
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-role-title"
+      class="relative w-full max-w-md overflow-hidden rounded-[1.5rem] border border-white/80 bg-white shadow-[0_30px_100px_rgba(11,18,21,0.3)]"
+    >
+
+      <div class="px-6 pb-5 pt-6">
+
+        <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-700">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            class="h-6 w-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166M19.228 5.79 18.16 19.673A2.25 2.25 0 0 1 15.916 21H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0A48.108 48.108 0 0 0 15.75 5.4m-10.978.39a48.11 48.11 0 0 1 3.478-.39m7.5 0v-.916c0-1.18-.91-2.164-2.088-2.201a51.964 51.964 0 0 0-3.324 0C9.16 2.32 8.25 3.304 8.25 4.484V5.4"
+            />
+          </svg>
+        </div>
+
+        <h2
+          id="delete-role-title"
+          class="mt-4 text-xl font-semibold tracking-tight text-obsidian"
+        >
+          Delete role
+        </h2>
+
+        <p class="mt-2 text-sm leading-6 text-slate/60">
+          You are about to permanently delete
+          <strong
+            id="delete-role-name-display"
+            class="font-semibold text-obsidian"
+          ></strong>.
+          This action cannot be undone.
+        </p>
+      </div>
+
+
+      <form
+        action="/admin/roles/delete"
+        method="post"
+        class="border-t border-slate/10 bg-cloud/35 px-6 py-4"
+      >
+        <input
+          type="hidden"
+          name="csrf_token"
+          value="{{.CSRFToken}}"
+        />
+
+        <input
+          id="delete-role-id"
+          type="hidden"
+          name="role_id"
+          value=""
+        />
+
+        <div class="flex justify-end gap-2">
+
+          <button
+            type="button"
+            data-close-delete-modal
+            class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/15 bg-white px-4 text-sm font-semibold text-slate/60 transition hover:bg-cloud hover:text-obsidian focus:outline-none focus:ring-4 focus:ring-aqua/15"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            class="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-red-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-red-800 focus:outline-none focus:ring-4 focus:ring-red-100"
+          >
             <svg
               aria-hidden="true"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.6"
-              class="h-7 w-7"
+              stroke-width="1.8"
+              class="h-4 w-4"
             >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
-                d="M12 3 4.5 6.75v4.875c0 4.567 3.1 8.783 7.5 9.875 4.4-1.092 7.5-5.308 7.5-9.875V6.75L12 3Z"
-              />
-
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 8.25v7.5M8.25 12h7.5"
+                d="m14.74 9-.346 9m-4.788 0L9.26 9"
               />
             </svg>
-          </div>
 
-          <h3 class="mt-4 text-lg font-semibold text-obsidian">
-            No roles found
-          </h3>
-
-          <p class="mt-2 max-w-sm text-sm leading-6 text-slate/55">
-            Create the first role using the form above. It will appear here once
-            it has been successfully created.
-          </p>
+            Delete role
+          </button>
         </div>
+      </form>
 
-        {{end}}
-      </div>
     </div>
-  </section>
-</section>
+  </div>
+</div>
+
+
+
+<!-- ==============================================================
+     PAGE BEHAVIOUR
+================================================================ -->
+<script>
+(() => {
+  "use strict";
+
+
+  /* ============================================================
+     ELEMENT REFERENCES
+  ============================================================ */
+
+  const body = document.body;
+
+  const roleModal = document.getElementById("role-modal");
+  const roleForm = document.getElementById("role-form");
+  const roleFormID = document.getElementById("role-form-id");
+  const roleFormName = document.getElementById("role-form-name");
+  const roleModalTitle = document.getElementById("role-modal-title");
+  const roleModalDescription = document.getElementById("role-modal-description");
+  const roleModalProtectedBadge = document.getElementById("role-modal-protected-badge");
+  const roleFormSubmit = document.getElementById("role-form-submit");
+  const roleFormSubmitLabel = document.getElementById("role-form-submit-label");
+  const roleModalFooterNote = document.getElementById("role-modal-footer-note");
+
+  const permissionSearch = document.getElementById("permission-search");
+  const permissionSearchEmpty = document.getElementById("permission-search-empty");
+  const clearAllPermissionsButton = document.getElementById("clear-all-permissions");
+
+  const permissionCheckboxes = Array.from(
+    document.querySelectorAll("[data-role-permission]")
+  );
+
+  const permissionGroups = Array.from(
+    document.querySelectorAll("[data-permission-group]")
+  );
+
+  const deleteRoleModal = document.getElementById("delete-role-modal");
+  const deleteRoleID = document.getElementById("delete-role-id");
+  const deleteRoleNameDisplay = document.getElementById("delete-role-name-display");
+
+  const roleSearch = document.getElementById("role-search");
+  const roleTypeFilter = document.getElementById("role-type-filter");
+  const roleRows = Array.from(document.querySelectorAll(".role-row"));
+  const roleSearchEmpty = document.getElementById("role-search-empty");
+  const visibleRoleCount = document.getElementById("visible-role-count");
+
+
+  let roleModalMode = "create";
+
+
+  /* ============================================================
+     HELPERS
+  ============================================================ */
+
+  function lockPageScroll() {
+    body.classList.add("overflow-hidden");
+  }
+
+
+  function unlockPageScrollIfPossible() {
+    const roleOpen = roleModal && !roleModal.classList.contains("hidden");
+    const deleteOpen =
+      deleteRoleModal && !deleteRoleModal.classList.contains("hidden");
+
+    if (!roleOpen && !deleteOpen) {
+      body.classList.remove("overflow-hidden");
+    }
+  }
+
+
+  function resetPermissionSearch() {
+    if (permissionSearch) {
+      permissionSearch.value = "";
+    }
+
+    permissionGroups.forEach((group) => {
+      group.classList.remove("hidden");
+
+      group
+        .querySelectorAll("[data-permission-item]")
+        .forEach((item) => item.classList.remove("hidden"));
+    });
+
+    if (permissionSearchEmpty) {
+      permissionSearchEmpty.classList.add("hidden");
+    }
+  }
+
+
+  function updatePermissionGroupCounts() {
+    permissionGroups.forEach((group) => {
+      const checkboxes = Array.from(
+        group.querySelectorAll("[data-role-permission]")
+      );
+
+      const selected = checkboxes.filter(
+        (checkbox) => checkbox.checked
+      ).length;
+
+      const countElement = group.querySelector(
+        ".permission-group-count"
+      );
+
+      if (countElement) {
+        countElement.textContent =
+          `${selected} of ${checkboxes.length} selected`;
+      }
+
+      const selectButton = group.querySelector(
+        "[data-select-group]"
+      );
+
+      if (selectButton) {
+        const editable = checkboxes.filter(
+          (checkbox) => !checkbox.disabled
+        );
+
+        const allEditableSelected =
+          editable.length > 0 &&
+          editable.every((checkbox) => checkbox.checked);
+
+        selectButton.textContent =
+          allEditableSelected ? "Clear group" : "Select all";
+
+        selectButton.disabled =
+          roleModalMode === "view" || editable.length === 0;
+      }
+    });
+  }
+
+
+  function setPermissionStateForMode(mode) {
+    permissionCheckboxes.forEach((checkbox) => {
+      const createDisabled =
+        checkbox.dataset.createDisabled === "true";
+
+      if (mode === "view") {
+        checkbox.disabled = true;
+      } else if (mode === "create") {
+        checkbox.disabled = createDisabled;
+      } else {
+        /*
+          Preserve the existing update behaviour.
+
+          The previous role-management template only disabled
+          permission editing when the role itself could not be
+          edited. It did not add a Sensitive restriction during
+          update.
+        */
+        checkbox.disabled = false;
+      }
+    });
+
+    if (clearAllPermissionsButton) {
+      clearAllPermissionsButton.disabled = mode === "view";
+    }
+  }
+
+
+  function clearAllPermissionSelections() {
+    permissionCheckboxes.forEach((checkbox) => {
+      checkbox.checked = false;
+    });
+
+    updatePermissionGroupCounts();
+  }
+
+
+  function getRolePermissionKeys(roleID) {
+    const permissionData = document.querySelector(
+      `.role-permission-data[data-role-id="${CSS.escape(String(roleID))}"]`
+    );
+
+    if (!permissionData) {
+      return new Set();
+    }
+
+    const keys = Array.from(
+      permissionData.querySelectorAll("[data-permission-key]")
+    ).map((element) => element.dataset.permissionKey);
+
+    return new Set(keys);
+  }
+
+
+  function setPermissionSelections(permissionKeys) {
+    permissionCheckboxes.forEach((checkbox) => {
+      checkbox.checked = permissionKeys.has(checkbox.value);
+    });
+
+    updatePermissionGroupCounts();
+  }
+
+
+  /* ============================================================
+     CREATE ROLE MODAL
+  ============================================================ */
+
+  function openCreateRoleModal() {
+    if (!roleModal || !roleForm) {
+      return;
+    }
+
+    roleModalMode = "create";
+
+    roleForm.action = "/admin/roles/create";
+
+    if (roleFormID) {
+      roleFormID.value = "";
+    }
+
+    if (roleFormName) {
+      roleFormName.value = "";
+      roleFormName.disabled = false;
+      roleFormName.readOnly = false;
+    }
+
+    if (roleModalTitle) {
+      roleModalTitle.textContent = "Create role";
+    }
+
+    if (roleModalDescription) {
+      roleModalDescription.textContent =
+        "Create a new authorization role and assign the permissions it should receive.";
+    }
+
+    if (roleModalProtectedBadge) {
+      roleModalProtectedBadge.classList.add("hidden");
+    }
+
+    if (roleFormSubmit) {
+      roleFormSubmit.classList.remove("hidden");
+      roleFormSubmit.disabled = false;
+    }
+
+    if (roleFormSubmitLabel) {
+      roleFormSubmitLabel.textContent = "Create role";
+    }
+
+    if (roleModalFooterNote) {
+      roleModalFooterNote.textContent =
+        "The new role will become available for user assignment after creation.";
+    }
+
+    clearAllPermissionSelections();
+    setPermissionStateForMode("create");
+    resetPermissionSearch();
+    updatePermissionGroupCounts();
+
+    roleModal.classList.remove("hidden");
+    roleModal.setAttribute("aria-hidden", "false");
+
+    lockPageScroll();
+
+    window.setTimeout(() => {
+      roleFormName?.focus();
+    }, 50);
+  }
+
+
+  /* ============================================================
+     EDIT / VIEW ROLE MODAL
+  ============================================================ */
+
+  function openExistingRoleModal(button) {
+    if (!roleModal || !roleForm) {
+      return;
+    }
+
+    const roleID = button.dataset.roleId || "";
+    const roleName = button.dataset.roleName || "";
+    const systemRole = button.dataset.systemRole === "true";
+    const editable = button.dataset.editable === "true";
+
+    roleModalMode = editable ? "edit" : "view";
+
+    roleForm.action = "/admin/roles/update";
+
+    if (roleFormID) {
+      roleFormID.value = roleID;
+    }
+
+    if (roleFormName) {
+      roleFormName.value = roleName;
+      roleFormName.disabled = false;
+      roleFormName.readOnly = !editable;
+    }
+
+    if (roleModalTitle) {
+      roleModalTitle.textContent =
+        editable ? "Edit role" : "View role";
+    }
+
+    if (roleModalDescription) {
+      if (systemRole) {
+        roleModalDescription.textContent =
+          "System roles are protected. Their names and permissions cannot be changed.";
+      } else if (!editable) {
+        roleModalDescription.textContent =
+          "This role is assigned to your account and cannot be modified from this session.";
+      } else {
+        roleModalDescription.textContent =
+          "Update the role name or configure its assigned permissions.";
+      }
+    }
+
+    if (roleModalProtectedBadge) {
+      roleModalProtectedBadge.classList.toggle(
+        "hidden",
+        !systemRole
+      );
+    }
+
+    if (roleFormSubmit) {
+      roleFormSubmit.classList.toggle(
+        "hidden",
+        !editable
+      );
+
+      roleFormSubmit.disabled = !editable;
+    }
+
+    if (roleFormSubmitLabel) {
+      roleFormSubmitLabel.textContent = "Save changes";
+    }
+
+    if (roleModalFooterNote) {
+      if (systemRole) {
+        roleModalFooterNote.textContent =
+          "System roles are protected by the application.";
+      } else if (!editable) {
+        roleModalFooterNote.textContent =
+          "This role is currently protected from changes for your account.";
+      } else {
+        roleModalFooterNote.textContent =
+          "Permission changes may immediately affect users assigned to this role.";
+      }
+    }
+
+    setPermissionStateForMode(
+      editable ? "edit" : "view"
+    );
+
+    const permissionKeys = getRolePermissionKeys(roleID);
+
+    setPermissionSelections(permissionKeys);
+    resetPermissionSearch();
+    updatePermissionGroupCounts();
+
+    roleModal.classList.remove("hidden");
+    roleModal.setAttribute("aria-hidden", "false");
+
+    lockPageScroll();
+
+    window.setTimeout(() => {
+      if (editable) {
+        roleFormName?.focus();
+        roleFormName?.select();
+      }
+    }, 50);
+  }
+
+
+  function closeRoleModal() {
+    if (!roleModal) {
+      return;
+    }
+
+    roleModal.classList.add("hidden");
+    roleModal.setAttribute("aria-hidden", "true");
+
+    unlockPageScrollIfPossible();
+  }
+
+
+  /* ============================================================
+     DELETE MODAL
+  ============================================================ */
+
+  function openDeleteModal(button) {
+    if (!deleteRoleModal) {
+      return;
+    }
+
+    const roleID = button.dataset.roleId || "";
+    const roleName = button.dataset.roleName || "";
+
+    if (deleteRoleID) {
+      deleteRoleID.value = roleID;
+    }
+
+    if (deleteRoleNameDisplay) {
+      deleteRoleNameDisplay.textContent =
+        `"${roleName}"`;
+    }
+
+    deleteRoleModal.classList.remove("hidden");
+    deleteRoleModal.setAttribute("aria-hidden", "false");
+
+    lockPageScroll();
+  }
+
+
+  function closeDeleteModal() {
+    if (!deleteRoleModal) {
+      return;
+    }
+
+    deleteRoleModal.classList.add("hidden");
+    deleteRoleModal.setAttribute("aria-hidden", "true");
+
+    unlockPageScrollIfPossible();
+  }
+
+
+  /* ============================================================
+     ROLE SEARCH / FILTER
+  ============================================================ */
+
+  function filterRoleTable() {
+    const searchTerm =
+      (roleSearch?.value || "")
+        .trim()
+        .toLowerCase();
+
+    const type =
+      roleTypeFilter?.value || "all";
+
+    let visible = 0;
+
+    roleRows.forEach((row) => {
+      const roleName =
+        (row.dataset.roleName || "").toLowerCase();
+
+      const roleType =
+        row.dataset.roleType || "";
+
+      const matchesSearch =
+        !searchTerm || roleName.includes(searchTerm);
+
+      const matchesType =
+        type === "all" || roleType === type;
+
+      const shouldShow =
+        matchesSearch && matchesType;
+
+      row.classList.toggle("hidden", !shouldShow);
+
+      if (shouldShow) {
+        visible++;
+      }
+    });
+
+    if (roleSearchEmpty) {
+      roleSearchEmpty.classList.toggle(
+        "hidden",
+        visible !== 0
+      );
+    }
+
+    if (visibleRoleCount) {
+      visibleRoleCount.textContent =
+        `${visible} role${visible === 1 ? "" : "s"}`;
+    }
+  }
+
+
+  /* ============================================================
+     PERMISSION SEARCH
+  ============================================================ */
+
+  function filterPermissions() {
+    const query =
+      (permissionSearch?.value || "")
+        .trim()
+        .toLowerCase();
+
+    let totalVisibleItems = 0;
+
+    permissionGroups.forEach((group) => {
+      const items = Array.from(
+        group.querySelectorAll("[data-permission-item]")
+      );
+
+      let visibleInsideGroup = 0;
+
+      items.forEach((item) => {
+        const searchable =
+          (item.dataset.permissionSearch || "")
+            .toLowerCase();
+
+        const matches =
+          !query || searchable.includes(query);
+
+        item.classList.toggle("hidden", !matches);
+
+        if (matches) {
+          visibleInsideGroup++;
+          totalVisibleItems++;
+        }
+      });
+
+      group.classList.toggle(
+        "hidden",
+        visibleInsideGroup === 0
+      );
+    });
+
+    if (permissionSearchEmpty) {
+      permissionSearchEmpty.classList.toggle(
+        "hidden",
+        totalVisibleItems !== 0
+      );
+    }
+  }
+
+
+  /* ============================================================
+     EVENT LISTENERS
+  ============================================================ */
+
+  document
+    .querySelectorAll("[data-open-create-role]")
+    .forEach((button) => {
+      button.addEventListener(
+        "click",
+        openCreateRoleModal
+      );
+    });
+
+
+  document
+    .querySelectorAll(".role-edit-button")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        openExistingRoleModal(button);
+      });
+    });
+
+
+  document
+    .querySelectorAll(".role-delete-button")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        openDeleteModal(button);
+      });
+    });
+
+
+  document
+    .querySelectorAll("[data-close-role-modal]")
+    .forEach((button) => {
+      button.addEventListener(
+        "click",
+        closeRoleModal
+      );
+    });
+
+
+  document
+    .querySelectorAll("[data-close-delete-modal]")
+    .forEach((button) => {
+      button.addEventListener(
+        "click",
+        closeDeleteModal
+      );
+    });
+
+
+  document
+    .querySelectorAll("[data-role-modal-backdrop]")
+    .forEach((backdrop) => {
+      backdrop.addEventListener(
+        "click",
+        closeRoleModal
+      );
+    });
+
+
+  document
+    .querySelectorAll("[data-delete-modal-backdrop]")
+    .forEach((backdrop) => {
+      backdrop.addEventListener(
+        "click",
+        closeDeleteModal
+      );
+    });
+
+
+  permissionCheckboxes.forEach((checkbox) => {
+    checkbox.addEventListener(
+      "change",
+      updatePermissionGroupCounts
+    );
+  });
+
+
+  permissionGroups.forEach((group) => {
+    const selectButton =
+      group.querySelector("[data-select-group]");
+
+    if (!selectButton) {
+      return;
+    }
+
+    selectButton.addEventListener("click", () => {
+      if (roleModalMode === "view") {
+        return;
+      }
+
+      const checkboxes = Array.from(
+        group.querySelectorAll("[data-role-permission]")
+      ).filter((checkbox) => !checkbox.disabled);
+
+      const allSelected =
+        checkboxes.length > 0 &&
+        checkboxes.every(
+          (checkbox) => checkbox.checked
+        );
+
+      checkboxes.forEach((checkbox) => {
+        checkbox.checked = !allSelected;
+      });
+
+      updatePermissionGroupCounts();
+    });
+  });
+
+
+  clearAllPermissionsButton?.addEventListener(
+    "click",
+    () => {
+      if (roleModalMode === "view") {
+        return;
+      }
+
+      permissionCheckboxes.forEach((checkbox) => {
+        if (!checkbox.disabled) {
+          checkbox.checked = false;
+        }
+      });
+
+      updatePermissionGroupCounts();
+    }
+  );
+
+
+  permissionSearch?.addEventListener(
+    "input",
+    filterPermissions
+  );
+
+
+  roleSearch?.addEventListener(
+    "input",
+    filterRoleTable
+  );
+
+
+  roleTypeFilter?.addEventListener(
+    "change",
+    filterRoleTable
+  );
+
+
+  /*
+    ESC closes whichever modal is currently open.
+  */
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    if (
+      deleteRoleModal &&
+      !deleteRoleModal.classList.contains("hidden")
+    ) {
+      closeDeleteModal();
+      return;
+    }
+
+    if (
+      roleModal &&
+      !roleModal.classList.contains("hidden")
+    ) {
+      closeRoleModal();
+    }
+  });
+
+
+  /*
+    Defensive submit handling.
+
+    A protected/view-only role should never submit even if the
+    browser DOM is manipulated unintentionally.
+    Backend authorization must of course remain authoritative.
+  */
+  roleForm?.addEventListener("submit", (event) => {
+    if (roleModalMode === "view") {
+      event.preventDefault();
+    }
+  });
+
+
+  /* ============================================================
+     INITIAL STATE
+  ============================================================ */
+
+  updatePermissionGroupCounts();
+  filterRoleTable();
+
+})();
+</script>
+
 {{end}}
