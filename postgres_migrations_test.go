@@ -53,6 +53,46 @@ func TestPostgresMigrationDiscoveryIncludesMCP(t *testing.T) {
 	}
 }
 
+func TestPostgresMigrationDiscoveryIncludesOneToOneAttendance(t *testing.T) {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		t.Fatalf("load PostgreSQL migrations: %v", err)
+	}
+
+	var found *postgresMigration
+
+	for i := range migrations {
+		if migrations[i].Version == 7 {
+			found = &migrations[i]
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("expected PostgreSQL migration 000007_one_to_one_session_attendance.sql")
+	}
+
+	if found.Filename != "000007_one_to_one_session_attendance.sql" {
+		t.Fatalf(
+			"migration 7 filename = %q, want %q",
+			found.Filename,
+			"000007_one_to_one_session_attendance.sql",
+		)
+	}
+
+	if found.Name != "one_to_one_session_attendance" {
+		t.Fatalf(
+			"migration 7 name = %q, want %q",
+			found.Name,
+			"one_to_one_session_attendance",
+		)
+	}
+
+	if found.Checksum == "" {
+		t.Fatal("migration 7 checksum must not be empty")
+	}
+}
+
 func TestPostgresMCPMigrationAppliesCleanly(t *testing.T) {
 	runPostgresMigrationHelper(t, "apply_all")
 }
@@ -150,7 +190,8 @@ func runPostgresMigrationHelperAction(action string) error {
 		}
 
 		// This now represents a real database already migrated through 000005.
-		// Running the normal production migration engine must apply 000006 only.
+		// Running the normal production migration engine must apply 000006+
+		// exactly as production startup would.
 		if err := runPostgresMigrations(db); err != nil {
 			return err
 		}
@@ -169,44 +210,81 @@ func runPostgresMigrationHelperAction(action string) error {
 		"mcp_plan_rules",
 		"mcp_plan_sessions",
 		"mcp_payment_collections",
+		"one_to_one_booking_sessions",
 	} {
 		if err := postgresRelationMustExist(db, relation); err != nil {
 			return err
 		}
 	}
 
-	var appliedCount int
+	for _, version := range []int{6, 7} {
+		var appliedCount int
 
-	if err := db.QueryRow(`
-		SELECT COUNT(*)
-		FROM schema_migrations
-		WHERE version = 6
-	`).Scan(&appliedCount); err != nil {
-		return err
+		if err := db.QueryRow(`
+			SELECT COUNT(*)
+			FROM schema_migrations
+			WHERE version = $1
+		`, version).Scan(&appliedCount); err != nil {
+			return err
+		}
+
+		if appliedCount != 1 {
+			return fmt.Errorf(
+				"expected migration %06d to be recorded once, got %d",
+				version,
+				appliedCount,
+			)
+		}
 	}
 
-	if appliedCount != 1 {
-		return fmt.Errorf(
-			"expected migration 000006 to be recorded once, got %d",
-			appliedCount,
-		)
+	expectedNames := map[int]string{
+		6: "mcp",
+		7: "one_to_one_session_attendance",
+	}
+	for version, wantName := range expectedNames {
+		var migrationName string
+
+		if err := db.QueryRow(`
+			SELECT name
+			FROM schema_migrations
+			WHERE version = $1
+		`, version).Scan(&migrationName); err != nil {
+			return err
+		}
+
+		if migrationName != wantName {
+			return fmt.Errorf(
+				"migration %06d recorded as %q, want %q",
+				version,
+				migrationName,
+				wantName,
+			)
+		}
 	}
 
-	var migrationName string
-
-	if err := db.QueryRow(`
-		SELECT name
-		FROM schema_migrations
-		WHERE version = 6
-	`).Scan(&migrationName); err != nil {
-		return err
-	}
-
-	if migrationName != "mcp" {
-		return fmt.Errorf(
-			"migration 000006 recorded as %q, want mcp",
-			migrationName,
-		)
+	for _, column := range []struct {
+		table  string
+		column string
+	}{
+		{"one_to_one_bookings", "coach_user_id"},
+		{"one_to_one_bookings", "package_status"},
+		{"one_to_one_bookings", "completed_sessions"},
+		{"one_to_one_bookings", "cancelled_sessions"},
+		{"one_to_one_booking_sessions", "coach_user_id"},
+		{"one_to_one_booking_sessions", "coach_fee"},
+		{"one_to_one_booking_sessions", "status"},
+		{"one_to_one_booking_sessions", "attendance_status"},
+		{"one_to_one_booking_sessions", "attendance_note"},
+		{"one_to_one_booking_sessions", "attendance_marked_at"},
+		{"one_to_one_booking_sessions", "attendance_marked_by_user_id"},
+		{"one_to_one_booking_sessions", "completed_at"},
+		{"one_to_one_booking_sessions", "completed_by_user_id"},
+		{"one_to_one_booking_sessions", "cancelled_at"},
+		{"one_to_one_booking_sessions", "notes"},
+	} {
+		if err := postgresColumnMustExist(db, column.table, column.column); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -229,6 +307,36 @@ func postgresRelationMustExist(
 		return fmt.Errorf(
 			"expected PostgreSQL relation %s to exist",
 			relation,
+		)
+	}
+
+	return nil
+}
+
+func postgresColumnMustExist(
+	db *sql.DB,
+	table string,
+	column string,
+) error {
+	var exists bool
+
+	if err := db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema = 'public'
+			  AND table_name = $1
+			  AND column_name = $2
+		)
+	`, table, column).Scan(&exists); err != nil {
+		return err
+	}
+
+	if !exists {
+		return fmt.Errorf(
+			"expected PostgreSQL column %s.%s to exist",
+			table,
+			column,
 		)
 	}
 
