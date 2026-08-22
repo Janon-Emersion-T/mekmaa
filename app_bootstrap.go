@@ -1709,6 +1709,7 @@ type TemplateData struct {
 	SelectedOneToOneOffering         *OneToOneOffering
 	OneToOneMode                     string
 	OneToOneBookings                 []OneToOneBooking
+	SelectedOneToOneBooking          *OneToOneBooking
 	OneToOneReceivables              []OneToOneReceivable
 	OneToOneCoaches                  []User
 	ReferralPartners                 []ReferralPartner

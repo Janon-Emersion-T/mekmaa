@@ -1453,6 +1453,76 @@ func (a *App) listOneToOneBookings() ([]OneToOneBooking, error) {
 	return bookings, rows.Err()
 }
 
+func (a *App) findOneToOneBookingByID(bookingID int64) (*OneToOneBooking, error) {
+	row := a.queryRowDB(`
+		SELECT
+			ob.id,
+			ob.schedule_id,
+			ob.offering_id,
+			ob.customer_name,
+			ob.offering_name,
+			ob.game,
+			ob.audience,
+			COALESCE(ob.occurrence, 'per_day'),
+			COALESCE(ob.max_sessions, 1),
+			ob.price,
+			CASE WHEN COALESCE(ob.discounted_price, -1) < 0 THEN ob.price ELSE ob.discounted_price END,
+			COALESCE(ob.coach_fee, 0),
+			COALESCE(ob.sessions, 1),
+			COALESCE(ob.coach_user_id, 0),
+			COALESCE(coach.name, ''),
+			COALESCE(ob.package_status, ''),
+			COALESCE(ob.completed_sessions, 0),
+			COALESCE(ob.cancelled_sessions, 0),
+			s.slot_date,
+			s.slot_hour,
+			s.status,
+			s.title,
+			s.notes,
+			ob.created_at,
+			ob.updated_at
+		FROM one_to_one_bookings ob
+		JOIN space_schedules s
+			ON s.id = ob.schedule_id
+		LEFT JOIN users coach
+			ON coach.id = ob.coach_user_id
+		WHERE ob.id = ?
+	`, bookingID)
+
+	var booking OneToOneBooking
+	if err := row.Scan(
+		&booking.ID,
+		&booking.ScheduleID,
+		&booking.OfferingID,
+		&booking.CustomerName,
+		&booking.OfferingName,
+		&booking.Game,
+		&booking.Audience,
+		&booking.Occurrence,
+		&booking.MaxSessions,
+		&booking.Price,
+		&booking.DiscountedPrice,
+		&booking.CoachFee,
+		&booking.Sessions,
+		&booking.CoachUserID,
+		&booking.CoachName,
+		&booking.PackageStatus,
+		&booking.CompletedSessions,
+		&booking.CancelledSessions,
+		&booking.SlotDate,
+		&booking.SlotHour,
+		&booking.Status,
+		&booking.Title,
+		&booking.Notes,
+		&booking.CreatedAt,
+		&booking.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	return &booking, nil
+}
+
 func resolveOneToOneCourtActivity(
 	offering OneToOneOffering,
 	games []Game,

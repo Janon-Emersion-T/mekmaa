@@ -354,6 +354,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"games-management":               "templates/dashboard/games-management.html",
 		"one-to-one-management":          "templates/dashboard/one-to-one-management.html",
 		"one-to-one-bookings":            "templates/dashboard/one-to-one-bookings.html",
+		"one-to-one-booking-detail":      "templates/dashboard/one-to-one-booking-detail.html",
 		"one-to-one-receivables":         "templates/dashboard/one-to-one-receivables.html",
 		"booking-management":             "templates/dashboard/booking-management.html",
 		"booking-requests":               "templates/dashboard/booking-requests.html",

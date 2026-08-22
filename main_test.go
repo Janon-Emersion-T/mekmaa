@@ -6478,6 +6478,61 @@ func TestOneToOneManagementHandlersRender(t *testing.T) {
 	}
 }
 
+func TestOneToOneBookingDetailHandlerRendersSelectedPackage(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	coachID := createOneToOneTestCoach(t, app)
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Private Badminton",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 4,
+		Price:        3200,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create 1 to 1 offering: %v", err)
+	}
+
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find 1 to 1 offering: %v", err)
+	}
+
+	slotDate := time.Now().AddDate(0, 0, 5).Format("2006-01-02")
+	bookingID, _, err := app.createOneToOneBooking(*offering, "Detail Page Customer", slotDate, "18:00", 3, 3000, coachID, 900, "Detail page note", "")
+	if err != nil {
+		t.Fatalf("create 1 to 1 booking: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/admin/one-to-one-bookings/view?id="+strconv.FormatInt(bookingID, 10), nil)
+	app.oneToOneBookingDetailHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	for _, needle := range []string{
+		"Package command center",
+		"Detail Page Customer",
+		"Schedule next appointment",
+		"Session timeline",
+	} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("expected %q in response body, got %s", needle, body)
+		}
+	}
+}
+
 func TestBookingHoursUseFifteenMinuteIncrements(t *testing.T) {
 	hours := bookingHours()
 	if len(hours) == 0 {

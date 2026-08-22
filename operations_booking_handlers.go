@@ -1855,6 +1855,63 @@ func (a *App) oneToOneBookingManagementHandler(w http.ResponseWriter, r *http.Re
 	a.render(w, "one-to-one-bookings", data, http.StatusOK)
 }
 
+func (a *App) oneToOneBookingDetailHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bookingID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+	if err != nil || bookingID <= 0 {
+		http.Error(w, "invalid 1 to 1 package", http.StatusBadRequest)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+	data, err := a.buildOneToOneTemplateData(w, r, user)
+	if err != nil {
+		log.Printf("build 1 to 1 booking detail data: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	selected, err := a.findOneToOneBookingByID(bookingID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		log.Printf("find 1 to 1 booking %d: %v", bookingID, err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	sessions, err := a.listOneToOneBookingSessions(selected.ID)
+	if err != nil {
+		log.Printf("list 1 to 1 booking detail sessions %d: %v", selected.ID, err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	selected.BookingSessions = sessions
+
+	data.Title = selected.CustomerName + " 1 to 1 Package"
+	data.Description = "Manage one 1 to 1 package, its financials, attendance, and next session."
+	data.SelectedOneToOneBooking = selected
+	a.render(w, "one-to-one-booking-detail", data, http.StatusOK)
+}
+
+func oneToOneBookingReturnTarget(r *http.Request, bookingID int64) string {
+	defaultTarget := "/admin/one-to-one-bookings#package-" + strconv.FormatInt(bookingID, 10)
+	returnTo := strings.TrimSpace(r.FormValue("return_to"))
+	if returnTo == "" {
+		return defaultTarget
+	}
+	if !strings.HasPrefix(returnTo, "/admin/one-to-one-bookings") {
+		return defaultTarget
+	}
+	return returnTo
+}
+
 func (a *App) oneToOneReceivablesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1970,12 +2027,13 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, _, err := a.createOneToOneBooking(*offering, customerName, slotDate, slotHour, sessions, discountedPrice, coachUserID, coachFee, notes, referralCode); err != nil {
+	bookingID, _, err := a.createOneToOneBooking(*offering, customerName, slotDate, slotHour, sessions, discountedPrice, coachUserID, coachFee, notes, referralCode)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	a.setFlash(w, "1 to 1 booking created.")
-	http.Redirect(w, r, "/admin/one-to-one-bookings", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/one-to-one-bookings/view?id="+strconv.FormatInt(bookingID, 10), http.StatusSeeOther)
 }
 
 func (a *App) scheduleNextOneToOneSessionHandler(w http.ResponseWriter, r *http.Request) {
@@ -2034,7 +2092,7 @@ func (a *App) scheduleNextOneToOneSessionHandler(w http.ResponseWriter, r *http.
 		http.Redirect(
 			w,
 			r,
-			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			oneToOneBookingReturnTarget(r, bookingID),
 			http.StatusSeeOther,
 		)
 		return
@@ -2052,7 +2110,7 @@ func (a *App) scheduleNextOneToOneSessionHandler(w http.ResponseWriter, r *http.
 		http.Redirect(
 			w,
 			r,
-			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			oneToOneBookingReturnTarget(r, bookingID),
 			http.StatusSeeOther,
 		)
 		return
@@ -2062,7 +2120,7 @@ func (a *App) scheduleNextOneToOneSessionHandler(w http.ResponseWriter, r *http.
 	http.Redirect(
 		w,
 		r,
-		"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+		oneToOneBookingReturnTarget(r, bookingID),
 		http.StatusSeeOther,
 	)
 }
@@ -2115,7 +2173,7 @@ func (a *App) completeOneToOneSessionHandler(w http.ResponseWriter, r *http.Requ
 		http.Redirect(
 			w,
 			r,
-			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			oneToOneBookingReturnTarget(r, bookingID),
 			http.StatusSeeOther,
 		)
 		return
@@ -2125,7 +2183,7 @@ func (a *App) completeOneToOneSessionHandler(w http.ResponseWriter, r *http.Requ
 	http.Redirect(
 		w,
 		r,
-		"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+		oneToOneBookingReturnTarget(r, bookingID),
 		http.StatusSeeOther,
 	)
 }
@@ -2181,7 +2239,7 @@ func (a *App) cancelOneToOneSessionHandler(w http.ResponseWriter, r *http.Reques
 		http.Redirect(
 			w,
 			r,
-			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			oneToOneBookingReturnTarget(r, bookingID),
 			http.StatusSeeOther,
 		)
 		return
@@ -2191,7 +2249,7 @@ func (a *App) cancelOneToOneSessionHandler(w http.ResponseWriter, r *http.Reques
 	http.Redirect(
 		w,
 		r,
-		"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+		oneToOneBookingReturnTarget(r, bookingID),
 		http.StatusSeeOther,
 	)
 }
@@ -2249,7 +2307,7 @@ func (a *App) saveOneToOneSessionAttendanceHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+			oneToOneBookingReturnTarget(r, bookingID),
 			http.StatusSeeOther,
 		)
 		return
@@ -2259,7 +2317,7 @@ func (a *App) saveOneToOneSessionAttendanceHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/one-to-one-bookings#package-"+strconv.FormatInt(bookingID, 10),
+		oneToOneBookingReturnTarget(r, bookingID),
 		http.StatusSeeOther,
 	)
 }

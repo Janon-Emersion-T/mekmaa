@@ -1,0 +1,240 @@
+{{define "one-to-one-booking-detail"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+{{$booking := .SelectedOneToOneBooking}}
+{{$financial := bookingFinancialForSchedule .BookingFinancials $booking.ScheduleID}}
+{{$referral := bookingReferralFor .BookingReferrals $booking.ScheduleID}}
+{{$returnTo := printf "/admin/one-to-one-bookings/view?id=%d" $booking.ID}}
+<section class="space-y-6">
+  <div class="relative overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top_left,_rgba(128,255,221,0.18),_transparent_38%),linear-gradient(135deg,_#0b1215_0%,_#10252a_52%,_#16363c_100%)] p-6 text-cloud shadow-[0_24px_80px_rgba(11,18,21,0.22)] sm:p-8">
+    <div class="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+      <div class="max-w-3xl">
+        <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Package command center</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{{$booking.CustomerName}}</h1>
+        <p class="mt-3 text-sm leading-6 text-cloud/70">{{$booking.OfferingName}} for {{activityLabel $booking.Game}}. This page keeps the package summary, money status, coach flow, attendance trail, and next-session scheduling in one place.</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <span class="rounded-full bg-white/10 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-[0.16em] text-cloud">{{$booking.PackageStatus}}</span>
+          <span class="rounded-full bg-white/10 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-[0.16em] text-cloud">{{$booking.Sessions}} purchased</span>
+          <span class="rounded-full bg-white/10 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-[0.16em] text-cloud">{{if eq $booking.Audience "foreign"}}Foreign{{else}}Local{{end}}</span>
+          <span class="rounded-full bg-white/10 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-[0.16em] text-cloud">{{if eq $booking.Occurrence "per_week"}}Per week{{else if eq $booking.Occurrence "per_month"}}Per month{{else}}Per day{{end}}</span>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/admin/one-to-one-bookings" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">All packages</a>
+        <a href="/admin/bookings?action=view&id={{$booking.ScheduleID}}&date={{$booking.SlotDate}}#schedule-view" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white px-4 text-sm font-semibold text-obsidian transition hover:bg-cloud">Open original booking</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+    <article class="rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Package value</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{money $booking.DiscountedPrice}}</p>
+      <p class="mt-2 text-sm text-slate/60">Standard {{money $booking.Price}}{{if ne $booking.Price $booking.DiscountedPrice}} · Reduced package rate applied{{end}}</p>
+    </article>
+    <article class="rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Collections</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{if $financial}}{{money $financial.TotalCollected}}{{else}}{{money 0}}{{end}}</p>
+      <p class="mt-2 text-sm text-slate/60">Outstanding {{if $financial}}{{money $financial.OutstandingAmount}}{{else}}{{money $booking.DiscountedPrice}}{{end}}</p>
+    </article>
+    <article class="rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Session progress</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{$booking.CompletedSessions}} / {{$booking.Sessions}}</p>
+      <p class="mt-2 text-sm text-slate/60">{{$booking.CancelledSessions}} cancelled session{{if ne $booking.CancelledSessions 1}}s{{end}} kept in history</p>
+    </article>
+    <article class="rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Attendance mix</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{oneToOneAttendanceCount $booking.BookingSessions "present"}}</p>
+      <p class="mt-2 text-sm text-slate/60">Late {{oneToOneAttendanceCount $booking.BookingSessions "late"}} · Excused {{oneToOneAttendanceCount $booking.BookingSessions "excused"}} · No-show {{oneToOneAttendanceCount $booking.BookingSessions "absent"}}</p>
+    </article>
+  </div>
+
+  <div class="grid gap-6 2xl:grid-cols-[1.1fr_0.9fr]">
+    <section class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Package details</p>
+          <h2 class="mt-2 text-2xl font-semibold text-obsidian">Operational summary</h2>
+        </div>
+        {{if $referral}}
+        <span class="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-emerald-800">Referral · {{$referral.PartnerCode}}</span>
+        {{end}}
+      </div>
+
+      <div class="mt-5 grid gap-4 md:grid-cols-2">
+        <div class="rounded-2xl bg-cloud/50 p-4">
+          <p class="text-xs uppercase tracking-[0.14em] text-slate/45">Booked on</p>
+          <p class="mt-2 text-sm font-semibold text-obsidian">{{formatCalendarDate $booking.SlotDate}} · {{$booking.SlotHour}}</p>
+          <p class="mt-1 text-sm text-slate/60">Created {{formatDateTime $booking.CreatedAt}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud/50 p-4">
+          <p class="text-xs uppercase tracking-[0.14em] text-slate/45">Coach budget</p>
+          <p class="mt-2 text-sm font-semibold text-obsidian">{{money $booking.CoachFee}} per scheduled session</p>
+          <p class="mt-1 text-sm text-slate/60">Configured limit {{$booking.MaxSessions}} session{{if ne $booking.MaxSessions 1}}s{{end}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud/50 p-4">
+          <p class="text-xs uppercase tracking-[0.14em] text-slate/45">Package note</p>
+          <p class="mt-2 text-sm text-slate/70">{{if $booking.Notes}}{{$booking.Notes}}{{else}}No internal package note saved.{{end}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud/50 p-4">
+          <p class="text-xs uppercase tracking-[0.14em] text-slate/45">Commercial status</p>
+          <p class="mt-2 text-sm font-semibold text-obsidian">{{if $financial}}{{$financial.PaymentStatus}}{{else}}unpaid{{end}}</p>
+          <p class="mt-1 text-sm text-slate/60">{{if $financial}}{{money $financial.OutstandingAmount}} still due{{else}}No financial row found{{end}}</p>
+        </div>
+      </div>
+
+      {{if $referral}}
+      <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <p class="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800">Referral attribution</p>
+        <p class="mt-2 text-sm font-semibold text-emerald-950">{{$referral.PartnerName}}</p>
+        <p class="mt-1 text-sm text-emerald-900/75">Code {{$referral.PartnerCode}} · Commission {{money $referral.CommissionAmount}}</p>
+      </div>
+      {{end}}
+    </section>
+
+    <section class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Schedule next</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Create the next appointment</h2>
+        <p class="mt-2 text-sm text-slate/60">Use this when the package still has remaining allowance. Cancelled sessions remain visible and free up a replacement slot.</p>
+      </div>
+
+      <form action="/admin/one-to-one-bookings/sessions/schedule" method="post" class="mt-5 grid gap-3 md:grid-cols-2">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="booking_id" value="{{$booking.ID}}" />
+        <input type="hidden" name="return_to" value="{{$returnTo}}" />
+
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Date</span>
+          <input type="date" name="slot_date" min="{{.TodayDate}}" value="{{.TodayDate}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        </label>
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Time</span>
+          <select name="slot_hour" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+            {{range .Hours}}<option value="{{.}}">{{.}}</option>{{end}}
+          </select>
+        </label>
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Coach</span>
+          <select name="coach_user_id" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+            <option value="">Select coach</option>
+            {{range .OneToOneCoaches}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
+        </label>
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Coach fee</span>
+          <input type="number" name="coach_fee" min="0" step="0.01" value="{{$booking.CoachFee}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        </label>
+        <label class="md:col-span-2">
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Session note</span>
+          <input type="text" name="notes" placeholder="Optional note for this appointment" class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        </label>
+        <div class="md:col-span-2">
+          <button class="inline-flex h-11 items-center justify-center rounded-xl bg-obsidian px-5 text-sm font-bold text-cloud transition hover:bg-slate">Schedule next appointment</button>
+        </div>
+      </form>
+
+      <form action="/admin/one-to-one-bookings/delete" method="post" class="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4" onsubmit="return confirm('Delete this 1 to 1 package? Payments already collected will block deletion.');">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="schedule_id" value="{{$booking.ScheduleID}}" />
+        <p class="text-xs font-bold uppercase tracking-[0.16em] text-red-700">Danger zone</p>
+        <p class="mt-2 text-sm text-red-900/75">Delete is only allowed when finance state and related booking records permit it.</p>
+        <button class="mt-4 inline-flex h-11 items-center justify-center rounded-xl border border-red-300 bg-white px-4 text-sm font-bold text-red-700 transition hover:bg-red-100">Delete package</button>
+      </form>
+    </section>
+  </div>
+
+  <section class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Session timeline</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Every appointment on this package</h2>
+      </div>
+      <p class="rounded-full border border-slate/10 bg-cloud/60 px-3 py-1.5 text-xs font-bold text-slate">{{len $booking.BookingSessions}} record{{if ne (len $booking.BookingSessions) 1}}s{{end}}</p>
+    </div>
+
+    <div class="mt-5 grid gap-4">
+      {{range $booking.BookingSessions}}
+      <article id="session-{{.ID}}" class="rounded-[1.5rem] border border-slate/10 bg-cloud/25 p-4 sm:p-5">
+        <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-bold text-obsidian">Session #{{.SessionNumber}}</span>
+              <span class="rounded-full px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] {{if eq .Status "completed"}}bg-emerald-100 text-emerald-800{{else if eq .Status "cancelled"}}bg-red-100 text-red-700{{else}}bg-amber-100 text-amber-800{{end}}">{{.Status}}</span>
+              <span class="rounded-full px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] {{if eq .AttendanceStatus "present"}}bg-emerald-100 text-emerald-800{{else if eq .AttendanceStatus "late"}}bg-amber-100 text-amber-800{{else if eq .AttendanceStatus "excused"}}bg-sky-100 text-sky-800{{else if eq .AttendanceStatus "absent"}}bg-rose-100 text-rose-700{{else}}bg-slate-100 text-slate-600{{end}}">Attendance · {{oneToOneAttendanceStatusLabel .AttendanceStatus}}</span>
+            </div>
+            <p class="mt-2 text-sm font-semibold text-slate">{{formatCalendarDate .SlotDate}} · {{.SlotHour}}</p>
+            <p class="mt-1 text-sm text-slate/60">Coach {{if .CoachName}}{{.CoachName}}{{else}}Not assigned{{end}} · Fee {{money .CoachFee}}</p>
+            {{if .Notes}}<p class="mt-2 text-sm text-slate/60">{{.Notes}}</p>{{end}}
+            {{if .AttendanceNote}}<p class="mt-2 text-sm text-slate/55">Attendance note: {{.AttendanceNote}}</p>{{end}}
+            {{if .AttendanceMarkedAt.IsZero}}
+            <p class="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-slate/45">Attendance not recorded yet</p>
+            {{else}}
+            <p class="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-slate/45">Attendance saved {{.AttendanceMarkedAt.Format "02 Jan 2006 15:04"}}{{if .AttendanceMarkedByUserName}} · {{.AttendanceMarkedByUserName}}{{end}}</p>
+            {{end}}
+          </div>
+
+          <div class="flex flex-wrap gap-2">
+            <a href="/admin/bookings?action=view&id={{.ScheduleID}}&date={{.SlotDate}}#schedule-view" class="inline-flex items-center rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-bold text-slate">Open booking</a>
+            {{if ne .Status "completed"}}
+            {{if ne .Status "cancelled"}}
+            <form action="/admin/one-to-one-bookings/sessions/complete" method="post" onsubmit="return confirm('Mark this session as completed?');">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+              <input type="hidden" name="booking_id" value="{{$booking.ID}}" />
+              <input type="hidden" name="session_id" value="{{.ID}}" />
+              <input type="hidden" name="return_to" value="{{$returnTo}}#session-{{.ID}}" />
+              <button class="inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">Complete</button>
+            </form>
+
+            <form action="/admin/one-to-one-bookings/sessions/cancel" method="post" class="flex flex-wrap gap-2" onsubmit="return confirm('Cancel this appointment? The package allowance will become available for a replacement session.');">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+              <input type="hidden" name="booking_id" value="{{$booking.ID}}" />
+              <input type="hidden" name="session_id" value="{{.ID}}" />
+              <input type="hidden" name="return_to" value="{{$returnTo}}#session-{{.ID}}" />
+              <input type="text" name="reason" placeholder="Cancellation reason" class="h-9 min-w-44 rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-red-300" />
+              <button class="inline-flex items-center rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">Cancel</button>
+            </form>
+            {{end}}
+            {{end}}
+          </div>
+        </div>
+
+        {{if ne .Status "cancelled"}}
+        <form action="/admin/one-to-one-bookings/sessions/attendance" method="post" class="mt-4 rounded-2xl border border-slate/10 bg-white p-4">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+          <input type="hidden" name="booking_id" value="{{$booking.ID}}" />
+          <input type="hidden" name="session_id" value="{{.ID}}" />
+          <input type="hidden" name="return_to" value="{{$returnTo}}#session-{{.ID}}" />
+
+          <div class="flex flex-col gap-3 xl:flex-row xl:items-end">
+            <label class="xl:w-56">
+              <span class="mb-1 block text-xs font-semibold text-slate/55">Attendance</span>
+              <select name="attendance_status" class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+                <option value="present" {{if eq .AttendanceStatus "present"}}selected{{end}}>Present</option>
+                <option value="late" {{if eq .AttendanceStatus "late"}}selected{{end}}>Late</option>
+                <option value="excused" {{if eq .AttendanceStatus "excused"}}selected{{end}}>Excused</option>
+                <option value="absent" {{if eq .AttendanceStatus "absent"}}selected{{end}}>No-show</option>
+              </select>
+            </label>
+            <label class="xl:flex-1">
+              <span class="mb-1 block text-xs font-semibold text-slate/55">Attendance note</span>
+              <input type="text" name="attendance_note" value="{{.AttendanceNote}}" placeholder="Optional attendance note" class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+            </label>
+            <div class="xl:w-52">
+              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl bg-obsidian px-4 text-xs font-bold uppercase tracking-[0.14em] text-cloud transition hover:bg-slate">Save attendance</button>
+            </div>
+          </div>
+          <p class="mt-3 text-xs leading-5 text-slate/52">Saving attendance also completes a scheduled session so package progress and attendance stay synchronized.</p>
+        </form>
+        {{end}}
+      </article>
+      {{else}}
+      <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-12 text-center">
+        <p class="text-base font-semibold text-obsidian">No appointment records yet.</p>
+        <p class="mt-2 text-sm text-slate/55">Use the scheduling form above to create the next appointment on this package.</p>
+      </div>
+      {{end}}
+    </div>
+  </section>
+</section>
+{{end}}

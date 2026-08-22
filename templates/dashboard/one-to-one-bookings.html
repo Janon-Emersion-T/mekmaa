@@ -165,6 +165,10 @@
           </div>
 
           <div class="flex flex-wrap gap-2">
+            <a href="/admin/one-to-one-bookings/view?id={{.ID}}"
+               class="inline-flex items-center rounded-xl border border-aqua/30 bg-aqua/10 px-3 py-2 text-xs font-bold text-emerald-900 transition hover:bg-aqua/20">
+              Open package
+            </a>
             <a href="/admin/bookings?action=view&id={{.ScheduleID}}&date={{.SlotDate}}#schedule-view"
                class="inline-flex items-center rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-bold text-slate">
               Open original booking
