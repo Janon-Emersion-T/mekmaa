@@ -194,17 +194,6 @@
           {{end}}
         </div>
         {{end}}
-        <a href="{{scopedURL "/admin/student-payments" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Student payments</span><span class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-aqua text-obsidian{{else}}bg-amber/15 text-amber-700{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Ledger</span>
-        </a>
-        <a href="/admin/finance/receivables" class="{{if isCurrentPath .CurrentPath "/admin/finance/receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Booking Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
-        </a>
-        {{if hasPermission .User "mcp_receivables.manage"}}
-        <a href="/admin/mcp-receivables" class="{{if isCurrentPath .CurrentPath "/admin/mcp-receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>MCP Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">MCP</span>
-        </a>
-        {{end}}
         <a href="/admin/finance/customers" class="{{if isCurrentPath .CurrentPath "/admin/finance/customers"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Customers</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Follow-up</span>
         </a>
@@ -227,6 +216,28 @@
         {{end}}
         <a href="/admin/referrals" class="{{if isCurrentPath .CurrentPath "/admin/referrals"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Referral payouts</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Ledger</span>
+        </a>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+
+    {{if hasPermission .User "finance.manage"}}
+    <div>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Receivables</p>
+      <div class="space-y-1">
+        <a href="{{scopedURL "/admin/student-payments" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Student payments</span><span class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-aqua text-obsidian{{else}}bg-amber/15 text-amber-700{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Ledger</span>
+        </a>
+        <a href="/admin/one-to-one-receivables" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>1 to 1 Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
+        </a>
+        <a href="/admin/finance/receivables" class="{{if isCurrentPath .CurrentPath "/admin/finance/receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Booking receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
+        </a>
+        {{if hasPermission .User "mcp_receivables.manage"}}
+        <a href="/admin/mcp-receivables" class="{{if isCurrentPath .CurrentPath "/admin/mcp-receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>MCP Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">MCP</span>
         </a>
         {{end}}
       </div>
