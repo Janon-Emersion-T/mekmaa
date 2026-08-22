@@ -128,59 +128,59 @@ func main() {
 	mux.Handle("/dashboard", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.dashboardHandler), "dashboard.view")))
 	mux.Handle("/editor", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.editorHandler), "editor.access")))
 	mux.Handle("/admin", app.sessionMiddleware(http.HandlerFunc(app.adminRedirectHandler)))
-	mux.Handle("/admin/users", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.userManagementHandler), "users.manage")))
-	mux.Handle("/admin/roles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.roleManagementHandler), "roles.manage")))
-	mux.Handle("/admin/sms-gateway", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.smsGatewayManagementHandler), "users.manage")))
-	mux.Handle("/admin/sms-gateway/test", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.smsGatewayTestHandler), "users.manage")))
-	mux.Handle("/admin/users/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createManagedUserHandler), "users.manage")))
-	mux.Handle("/admin/users/roles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateRolesHandler), "users.manage")))
-	mux.Handle("/admin/roles/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createRoleHandler), "roles.manage")))
-	mux.Handle("/admin/roles/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateRoleHandler), "roles.manage")))
-	mux.Handle("/admin/roles/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteRoleHandler), "roles.manage")))
-	mux.Handle("/admin/admissions", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.admissionManagementHandler), "admissions.manage")))
-	mux.Handle("/admin/students", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.admissionManagementHandler), "admissions.manage")))
-	mux.Handle("/admin/admissions/student-id", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentIDCardHandler), "admissions.manage")))
-	mux.Handle("/admin/students/student-id", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentIDCardHandler), "admissions.manage")))
-	mux.Handle("/admin/student-leaves", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentLeaveManagementHandler), "admissions.manage")))
-	mux.Handle("/admin/admissions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.manage")))
-	mux.Handle("/admin/students/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.manage")))
-	mux.Handle("/admin/admissions/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateAdmissionHandler), "admissions.manage")))
-	mux.Handle("/admin/students/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateAdmissionHandler), "admissions.manage")))
-	mux.Handle("/admin/admissions/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteAdmissionHandler), "admissions.manage")))
-	mux.Handle("/admin/students/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteAdmissionHandler), "admissions.manage")))
-	mux.Handle("/admin/enrollments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.enrollmentManagementHandler), "admissions.manage")))
-	mux.Handle("/admin/enrollments/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createEnrollmentHandler), "admissions.manage")))
-	mux.Handle("/admin/enrollments/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEnrollmentHandler), "admissions.manage")))
-	mux.Handle("/admin/enrollments/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEnrollmentHandler), "admissions.manage")))
-	mux.Handle("/admin/enrollments/collect-admission", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectEnrollmentAdmissionPaymentHandler), "admissions.manage")))
-	mux.Handle("/admin/staff", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffDirectoryHandler), "coaches.manage")))
-	mux.Handle("/admin/payroll", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollManagementHandler), "payroll.manage")))
-	mux.Handle("/admin/payroll/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createPayrollRunHandler), "payroll.manage")))
-	mux.Handle("/admin/payroll/run", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollRunHandler), "payroll.manage")))
-	mux.Handle("/admin/payroll/generate", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.generatePayrollRunHandler), "payroll.manage")))
-	mux.Handle("/admin/payroll/quantity", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePayrollQuantityHandler), "payroll.manage")))
-	mux.Handle("/admin/payroll/adjustment/add", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.addPayrollAdjustmentHandler), "payroll.manage")))
-	mux.Handle("/admin/payroll/adjustment/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deletePayrollAdjustmentHandler), "payroll.manage")))
-	mux.Handle("/admin/payroll/approve", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.approvePayrollRunHandler), "payroll.manage")))
-	mux.Handle("/admin/payroll/pay", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payPayrollPaymentHandler), "payroll.manage")))
-	mux.Handle("/admin/payroll/slip", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollSalarySlipHandler), "payroll.manage")))
-	mux.Handle("/admin/staff/salary-profiles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.salaryProfileManagementHandler), "payroll.manage")))
-	mux.Handle("/admin/staff/salary-profiles/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createSalaryProfileHandler), "payroll.manage")))
-	mux.Handle("/admin/staff/salary-profiles/toggle", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.toggleSalaryProfileHandler), "payroll.manage")))
-	mux.Handle("/admin/staff/attendance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffAttendanceManagementHandler), "coaches.manage")))
-	mux.Handle("/admin/staff/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveStaffAttendanceHandler), "coaches.manage")))
-	mux.Handle("/admin/staff/attendance/report", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffAttendanceReportHandler), "coaches.manage")))
-	mux.Handle("/admin/coaches", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.coachManagementHandler), "coaches.manage")))
-	mux.Handle("/admin/coaches/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createCoachHandler), "coaches.manage")))
-	mux.Handle("/admin/coaches/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateCoachHandler), "coaches.manage")))
-	mux.Handle("/admin/coaches/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteCoachHandler), "coaches.manage")))
-	mux.Handle("/admin/coaches/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveCoachAttendanceHandler), "coaches.manage")))
+	mux.Handle("/admin/users", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.userManagementHandler), "users.view")))
+	mux.Handle("/admin/roles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.roleManagementHandler), "roles.view")))
+	mux.Handle("/admin/sms-gateway", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.smsGatewayManagementHandler), "users.update")))
+	mux.Handle("/admin/sms-gateway/test", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.smsGatewayTestHandler), "users.update")))
+	mux.Handle("/admin/users/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createManagedUserHandler), "users.create")))
+	mux.Handle("/admin/users/roles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateRolesHandler), "users.update")))
+	mux.Handle("/admin/roles/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createRoleHandler), "roles.create")))
+	mux.Handle("/admin/roles/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateRoleHandler), "roles.update")))
+	mux.Handle("/admin/roles/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteRoleHandler), "roles.delete")))
+	mux.Handle("/admin/admissions", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.admissionManagementHandler), "admissions.view")))
+	mux.Handle("/admin/students", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.admissionManagementHandler), "admissions.view")))
+	mux.Handle("/admin/admissions/student-id", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentIDCardHandler), "admissions.view")))
+	mux.Handle("/admin/students/student-id", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentIDCardHandler), "admissions.view")))
+	mux.Handle("/admin/student-leaves", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentLeaveManagementHandler), "student_leaves.view")))
+	mux.Handle("/admin/admissions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.create")))
+	mux.Handle("/admin/students/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.create")))
+	mux.Handle("/admin/admissions/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateAdmissionHandler), "admissions.update")))
+	mux.Handle("/admin/students/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateAdmissionHandler), "admissions.update")))
+	mux.Handle("/admin/admissions/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteAdmissionHandler), "admissions.delete")))
+	mux.Handle("/admin/students/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteAdmissionHandler), "admissions.delete")))
+	mux.Handle("/admin/enrollments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.enrollmentManagementHandler), "enrollments.view")))
+	mux.Handle("/admin/enrollments/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createEnrollmentHandler), "enrollments.create")))
+	mux.Handle("/admin/enrollments/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEnrollmentHandler), "enrollments.update")))
+	mux.Handle("/admin/enrollments/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEnrollmentHandler), "enrollments.delete")))
+	mux.Handle("/admin/enrollments/collect-admission", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectEnrollmentAdmissionPaymentHandler), "enrollments.update")))
+	mux.Handle("/admin/staff", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffDirectoryHandler), "coaches.view")))
+	mux.Handle("/admin/payroll", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollManagementHandler), "payroll.view")))
+	mux.Handle("/admin/payroll/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createPayrollRunHandler), "payroll.create")))
+	mux.Handle("/admin/payroll/run", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollRunHandler), "payroll.view")))
+	mux.Handle("/admin/payroll/generate", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.generatePayrollRunHandler), "payroll.create")))
+	mux.Handle("/admin/payroll/quantity", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updatePayrollQuantityHandler), "payroll.update")))
+	mux.Handle("/admin/payroll/adjustment/add", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.addPayrollAdjustmentHandler), "payroll.create")))
+	mux.Handle("/admin/payroll/adjustment/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deletePayrollAdjustmentHandler), "payroll.delete")))
+	mux.Handle("/admin/payroll/approve", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.approvePayrollRunHandler), "payroll.update")))
+	mux.Handle("/admin/payroll/pay", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payPayrollPaymentHandler), "payroll.update")))
+	mux.Handle("/admin/payroll/slip", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollSalarySlipHandler), "payroll.view")))
+	mux.Handle("/admin/staff/salary-profiles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.salaryProfileManagementHandler), "payroll.view")))
+	mux.Handle("/admin/staff/salary-profiles/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createSalaryProfileHandler), "payroll.create")))
+	mux.Handle("/admin/staff/salary-profiles/toggle", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.toggleSalaryProfileHandler), "payroll.update")))
+	mux.Handle("/admin/staff/attendance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffAttendanceManagementHandler), "coaches.view")))
+	mux.Handle("/admin/staff/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveStaffAttendanceHandler), "coaches.update")))
+	mux.Handle("/admin/staff/attendance/report", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffAttendanceReportHandler), "coaches.view")))
+	mux.Handle("/admin/coaches", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.coachManagementHandler), "coaches.view")))
+	mux.Handle("/admin/coaches/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createCoachHandler), "coaches.create")))
+	mux.Handle("/admin/coaches/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateCoachHandler), "coaches.update")))
+	mux.Handle("/admin/coaches/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteCoachHandler), "coaches.delete")))
+	mux.Handle("/admin/coaches/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveCoachAttendanceHandler), "coaches.update")))
 	mux.Handle(
 		"/admin/training-programs",
 		app.sessionMiddleware(
 			app.requirePermission(
 				http.HandlerFunc(app.trainingProgramManagementHandler),
-				"training_programs.manage",
+				"training_programs.view",
 			),
 		),
 	)
@@ -190,7 +190,7 @@ func main() {
 		app.sessionMiddleware(
 			app.requirePermission(
 				http.HandlerFunc(app.createTrainingProgramHandler),
-				"training_programs.manage",
+				"training_programs.create",
 			),
 		),
 	)
@@ -200,7 +200,7 @@ func main() {
 		app.sessionMiddleware(
 			app.requirePermission(
 				http.HandlerFunc(app.updateTrainingProgramHandler),
-				"training_programs.manage",
+				"training_programs.update",
 			),
 		),
 	)
@@ -210,7 +210,7 @@ func main() {
 		app.sessionMiddleware(
 			app.requirePermission(
 				http.HandlerFunc(app.toggleTrainingProgramHandler),
-				"training_programs.manage",
+				"training_programs.update",
 			),
 		),
 	)
@@ -220,28 +220,28 @@ func main() {
 		app.sessionMiddleware(
 			app.requirePermission(
 				http.HandlerFunc(app.deleteTrainingProgramHandler),
-				"training_programs.manage",
+				"training_programs.delete",
 			),
 		),
 	)
-	mux.Handle("/admin/student-groups", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentGroupManagementHandler), "student_groups.manage")))
-	mux.Handle("/admin/training-groups", app.sessionMiddleware(app.requirePermission(app.studentGroupFriendlyHandler(divisionCodeSports), "student_groups.manage")))
-	mux.Handle("/admin/classes", app.sessionMiddleware(app.requirePermission(app.studentGroupFriendlyHandler(divisionCodeKEC), "student_groups.manage")))
-	mux.Handle("/admin/batches", app.sessionMiddleware(app.requirePermission(app.studentGroupFriendlyHandler(divisionCodeChess), "student_groups.manage")))
-	mux.Handle("/admin/student-groups/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentGroupHandler), "student_groups.manage")))
-	mux.Handle("/admin/student-groups/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateStudentGroupHandler), "student_groups.manage")))
-	mux.Handle("/admin/student-groups/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentGroupHandler), "student_groups.manage")))
-	mux.Handle("/admin/attendance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.attendanceManagementHandler), "attendance.manage")))
-	mux.Handle("/admin/attendance/search", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.attendanceSearchHandler), "attendance.manage")))
-	mux.Handle("/admin/attendance/report", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentAttendanceReportHandler), "attendance.manage")))
-	mux.Handle("/admin/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAttendanceHandler), "attendance.manage")))
+	mux.Handle("/admin/student-groups", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentGroupManagementHandler), "student_groups.view")))
+	mux.Handle("/admin/training-groups", app.sessionMiddleware(app.requirePermission(app.studentGroupFriendlyHandler(divisionCodeSports), "student_groups.view")))
+	mux.Handle("/admin/classes", app.sessionMiddleware(app.requirePermission(app.studentGroupFriendlyHandler(divisionCodeKEC), "student_groups.view")))
+	mux.Handle("/admin/batches", app.sessionMiddleware(app.requirePermission(app.studentGroupFriendlyHandler(divisionCodeChess), "student_groups.view")))
+	mux.Handle("/admin/student-groups/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentGroupHandler), "student_groups.create")))
+	mux.Handle("/admin/student-groups/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateStudentGroupHandler), "student_groups.update")))
+	mux.Handle("/admin/student-groups/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentGroupHandler), "student_groups.delete")))
+	mux.Handle("/admin/attendance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.attendanceManagementHandler), "attendance.view")))
+	mux.Handle("/admin/attendance/search", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.attendanceSearchHandler), "attendance.view")))
+	mux.Handle("/admin/attendance/report", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentAttendanceReportHandler), "attendance.view")))
+	mux.Handle("/admin/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAttendanceHandler), "attendance.update")))
 	mux.Handle(
 		"/admin/courts",
 		app.sessionMiddleware(
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.courtManagementHandler),
-					"courts.manage",
+					"courts.view",
 				),
 			),
 		),
@@ -252,7 +252,7 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.createCourtHandler),
-					"courts.manage",
+					"courts.create",
 				),
 			),
 		),
@@ -263,7 +263,7 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.updateCourtHandler),
-					"courts.manage",
+					"courts.update",
 				),
 			),
 		),
@@ -274,7 +274,7 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.createCourtLayoutHandler),
-					"courts.manage",
+					"courts.update",
 				),
 			),
 		),
@@ -286,7 +286,7 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.updateCourtLayoutHandler),
-					"courts.manage",
+					"courts.update",
 				),
 			),
 		),
@@ -298,7 +298,7 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.toggleCourtLayoutHandler),
-					"courts.manage",
+					"courts.update",
 				),
 			),
 		),
@@ -310,7 +310,7 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.deleteCourtLayoutHandler),
-					"courts.manage",
+					"courts.delete",
 				),
 			),
 		),
@@ -322,7 +322,7 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.createCourtClosureHandler),
-					"courts.manage",
+					"courts.create",
 				),
 			),
 		),
@@ -334,7 +334,7 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.updateCourtClosureHandler),
-					"courts.manage",
+					"courts.update",
 				),
 			),
 		),
@@ -346,7 +346,7 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.toggleCourtClosureHandler),
-					"courts.manage",
+					"courts.update",
 				),
 			),
 		),
@@ -358,116 +358,123 @@ func main() {
 			app.requireSportsOperationalAccess(
 				app.requirePermission(
 					http.HandlerFunc(app.deleteCourtClosureHandler),
-					"courts.manage",
+					"courts.delete",
 				),
 			),
 		),
 	)
-	mux.Handle("/admin/courts/activities/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createCourtActivityHandler), "courts.manage"))))
-	mux.Handle("/admin/courts/activities/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateCourtActivityHandler), "courts.manage"))))
-	mux.Handle("/admin/courts/activities/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteCourtActivityHandler), "courts.manage"))))
-	mux.Handle("/admin/courts/activities/auto-accept", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateCourtActivityAutoAcceptHandler), "courts.manage"))))
-	mux.Handle("/admin/courts/activities/game", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateCourtActivityGameHandler), "courts.manage"))))
-	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/games", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.gameManagementHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/games/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createGameHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/games/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateGameHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/games/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteGameHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.oneToOneManagementHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createOneToOneOfferingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateOneToOneOfferingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteOneToOneOfferingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.oneToOneBookingManagementHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings/view", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.oneToOneBookingDetailHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings/export", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.oneToOneBookingExportHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-receivables", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.oneToOneReceivablesHandler), "finance.manage", "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createOneToOneBookingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateOneToOneBookingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings/sessions/schedule", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.scheduleNextOneToOneSessionHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings/sessions/complete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.completeOneToOneSessionHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings/sessions/cancel", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.cancelOneToOneSessionHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings/sessions/attendance", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.saveOneToOneSessionAttendanceHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/one-to-one-bookings/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteOneToOneBookingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/bookings/options", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminBookingOptionsHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/mcp", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminMCPManagementHandler), "mcp.manage"))))
-	mux.Handle("/admin/mcp/pricing", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminMCPPricingHandler), "mcp_pricing.manage"))))
-	mux.Handle("/admin/mcp-receivables", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminMCPReceivablesHandler), "mcp_receivables.manage"))))
+	mux.Handle("/admin/courts/activities/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createCourtActivityHandler), "courts.create"))))
+	mux.Handle("/admin/courts/activities/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateCourtActivityHandler), "courts.update"))))
+	mux.Handle("/admin/courts/activities/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteCourtActivityHandler), "courts.delete"))))
+	mux.Handle("/admin/courts/activities/auto-accept", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateCourtActivityAutoAcceptHandler), "courts.update"))))
+	mux.Handle("/admin/courts/activities/game", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateCourtActivityGameHandler), "courts.update"))))
+	mux.Handle("/admin/bookings", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.bookingManagementHandler), "space_bookings.view"))))
+	mux.Handle("/admin/games", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.gameManagementHandler), "games.view"))))
+	mux.Handle("/admin/games/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createGameHandler), "games.create"))))
+	mux.Handle("/admin/games/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateGameHandler), "games.update"))))
+	mux.Handle("/admin/games/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteGameHandler), "games.delete"))))
+	mux.Handle("/admin/one-to-one", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.oneToOneManagementHandler), "one_to_one.view"))))
+	mux.Handle("/admin/one-to-one/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createOneToOneOfferingHandler), "one_to_one.create"))))
+	mux.Handle("/admin/one-to-one/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateOneToOneOfferingHandler), "one_to_one.update"))))
+	mux.Handle("/admin/one-to-one/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteOneToOneOfferingHandler), "one_to_one.delete"))))
+	mux.Handle("/admin/one-to-one-bookings", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.oneToOneBookingManagementHandler), "one_to_one_bookings.view"))))
+	mux.Handle("/admin/one-to-one-bookings/view", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.oneToOneBookingDetailHandler), "one_to_one_bookings.view"))))
+	mux.Handle("/admin/one-to-one-bookings/export", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.oneToOneBookingExportHandler), "one_to_one_bookings.view"))))
+	mux.Handle("/admin/one-to-one-receivables", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.oneToOneReceivablesHandler), "finance.view", "one_to_one_bookings.view"))))
+	mux.Handle("/admin/tournaments", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.tournamentManagementHandler), "tournaments.view"))))
+	mux.Handle("/admin/tournaments/view", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.tournamentDetailHandler), "tournaments.view"))))
+	mux.Handle("/admin/tournaments/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createTournamentHandler), "tournaments.create"))))
+	mux.Handle("/admin/tournaments/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateTournamentHandler), "tournaments.update"))))
+	mux.Handle("/admin/tournaments/sponsorships/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createTournamentSponsorshipHandler), "tournaments.create"))))
+	mux.Handle("/admin/tournaments/official-payments/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createTournamentOfficialPaymentHandler), "tournaments.create"))))
+	mux.Handle("/admin/tournaments/expenses/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createTournamentExpenseHandler), "tournaments.create"))))
+	mux.Handle("/admin/one-to-one-bookings/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createOneToOneBookingHandler), "one_to_one_bookings.create"))))
+	mux.Handle("/admin/one-to-one-bookings/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateOneToOneBookingHandler), "one_to_one_bookings.update"))))
+	mux.Handle("/admin/one-to-one-bookings/sessions/schedule", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.scheduleNextOneToOneSessionHandler), "one_to_one_bookings.update"))))
+	mux.Handle("/admin/one-to-one-bookings/sessions/complete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.completeOneToOneSessionHandler), "one_to_one_bookings.update"))))
+	mux.Handle("/admin/one-to-one-bookings/sessions/cancel", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.cancelOneToOneSessionHandler), "one_to_one_bookings.update"))))
+	mux.Handle("/admin/one-to-one-bookings/sessions/attendance", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.saveOneToOneSessionAttendanceHandler), "one_to_one_bookings.update"))))
+	mux.Handle("/admin/one-to-one-bookings/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteOneToOneBookingHandler), "one_to_one_bookings.delete"))))
+	mux.Handle("/admin/bookings/options", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminBookingOptionsHandler), "space_bookings.view"))))
+	mux.Handle("/admin/mcp", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminMCPManagementHandler), "mcp.view"))))
+	mux.Handle("/admin/mcp/pricing", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminMCPPricingHandler), "mcp_pricing.view"))))
+	mux.Handle("/admin/mcp-receivables", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.adminMCPReceivablesHandler), "mcp_receivables.view"))))
 	mux.Handle("/admin/bookings/communications/resend", app.sessionMiddleware(app.requireSportsOperationalAccess(http.HandlerFunc(app.resendBookingCommunicationHandler))))
-	mux.Handle("/admin/bookings/access/rotate", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.rotateBookingAccessHandler), "space_bookings.manage", "booking_requests.manage"))))
-	mux.Handle("/admin/bookings/access/revoke", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.revokeBookingAccessHandler), "space_bookings.manage", "booking_requests.manage"))))
-	mux.Handle("/admin/bookings/cancel", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.cancelBookingHandler), "space_bookings.manage", "booking_requests.manage"))))
-	mux.Handle("/admin/bookings/complete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.completeBookingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/bookings/no-show", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.noShowBookingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/bookings/cancellation-requests/approve", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.approveBookingCancellationRequestHandler), "space_bookings.manage", "booking_requests.manage"))))
-	mux.Handle("/admin/bookings/cancellation-requests/reject", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.rejectBookingCancellationRequestHandler), "space_bookings.manage", "booking_requests.manage"))))
-	mux.Handle("/admin/bookings/payments/collect", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance.manage", "space_bookings.manage", "booking_requests.manage"))))
-	mux.Handle("/admin/bookings/payments/void", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.voidBookingPaymentHandler), "finance.manage"))))
-	mux.Handle("/admin/bookings/payments/receipt", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage", "space_bookings.manage", "booking_requests.manage"))))
-	mux.Handle("/admin/admissions/payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidAdmissionPaymentHandler), "finance.manage")))
-	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.manage"))))
-	mux.Handle("/admin/booking-requests", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.bookingRequestsHandler), "booking_requests.manage"))))
-	mux.Handle("/admin/booking-requests/hold", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.holdBookingRequestHandler), "booking_requests.manage"))))
-	mux.Handle("/admin/booking-requests/reschedule", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.rescheduleBookingRequestHandler), "booking_requests.manage"))))
-	mux.Handle("/admin/booking-requests/reschedule-confirm", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.rescheduleAndConfirmBookingRequestHandler), "booking_requests.manage"))))
-	mux.Handle("/admin/booking-requests/confirm", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.confirmBookingRequestHandler), "booking_requests.manage"))))
-	mux.Handle("/admin/booking-requests/reject", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.rejectBookingRequestHandler), "booking_requests.manage"))))
-	mux.Handle("/admin/pricing", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.pricingManagementHandler), "pricing.manage"))))
-	mux.Handle("/admin/pricing/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createPricingHandler), "pricing.manage"))))
-	mux.Handle("/admin/pricing/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updatePricingHandler), "pricing.manage"))))
-	mux.Handle("/admin/pricing/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deletePricingHandler), "pricing.manage"))))
-	mux.Handle("/admin/pricing/settings", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updatePricingSettingsHandler), "pricing.manage"))))
-	mux.Handle("/admin/events", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.eventManagementHandler), "events.manage")))
-	mux.Handle("/admin/events/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createEventHandler), "events.manage")))
-	mux.Handle("/admin/events/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEventHandler), "events.manage")))
-	mux.Handle("/admin/events/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEventHandler), "events.manage")))
-	mux.Handle("/admin/finance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.manage")))
-	mux.Handle("/admin/finance/ledger", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeLedgerHandler), "finance.manage")))
-	mux.Handle("/admin/finance/specified-ledgers", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeSpecifiedLedgersHandler), "finance.manage")))
-	mux.Handle("/admin/finance/specified-ledgers/", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeSpecifiedLedgerDetailHandler), "finance.manage")))
-	mux.Handle("/admin/finance/profit-and-loss", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeProfitAndLossHandler), "finance.manage")))
-	mux.Handle("/admin/finance/balance-sheet", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeBalanceSheetHandler), "finance.manage")))
-	mux.Handle("/admin/finance/receivables", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReceivablesHandler), "finance.manage")))
-	mux.Handle("/admin/finance/customers", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeCustomersHandler), "finance.manage")))
-	mux.Handle("/admin/finance/transfers", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeTransfersHandler), "finance.manage")))
-	mux.Handle("/admin/finance/reconciliations", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReconciliationsHandler), "finance.manage")))
-	mux.Handle("/admin/finance/accounts", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountsHandler), "finance.manage")))
-	mux.Handle("/admin/finance/categories", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeCategoriesHandler), "finance.manage")))
-	mux.Handle("/admin/finance/transactions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransactionHandler), "finance.manage")))
-	mux.Handle("/admin/finance/transactions/approve", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.approveFinanceTransactionHandler), "finance.manage")))
-	mux.Handle("/admin/finance/transactions/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransactionHandler), "finance.manage")))
-	mux.Handle("/admin/finance/period-lock", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateFinancePeriodLockHandler), "finance.manage")))
-	mux.Handle("/admin/finance/categories/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceCategoryHandler), "finance.manage")))
-	mux.Handle("/admin/finance/categories/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateFinanceCategoryHandler), "finance.manage")))
-	mux.Handle("/admin/finance/categories/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteFinanceCategoryHandler), "finance.manage")))
-	mux.Handle("/admin/finance/transfers/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransferHandler), "finance.manage")))
-	mux.Handle("/admin/finance/transfers/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransferHandler), "finance.manage")))
-	mux.Handle("/admin/finance/accounts/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAccountHandler), "finance.manage")))
-	mux.Handle("/admin/finance/accounts/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateFinanceAccountHandler), "finance.manage")))
-	mux.Handle("/admin/finance/accounts/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteFinanceAccountHandler), "finance.manage")))
-	mux.Handle("/admin/finance/accounts/opening-balance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceOpeningBalanceHandler), "finance.manage")))
-	mux.Handle("/admin/finance/accounts/adjustment", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAdjustmentHandler), "finance.manage")))
-	mux.Handle("/admin/finance/accounts/statement", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountStatementHandler), "finance.manage")))
-	mux.Handle("/admin/finance/reconciliations/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createCashReconciliationHandler), "finance.manage")))
-	mux.Handle("/admin/finance/reconciliations/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidCashReconciliationHandler), "finance.manage")))
-	mux.Handle("/admin/finance/bookings/collect", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance.manage", "space_bookings.manage", "booking_requests.manage")))
-	mux.Handle("/admin/finance/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeExportHandler), "finance.manage")))
+	mux.Handle("/admin/bookings/access/rotate", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.rotateBookingAccessHandler), "space_bookings.update", "booking_requests.update"))))
+	mux.Handle("/admin/bookings/access/revoke", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.revokeBookingAccessHandler), "space_bookings.update", "booking_requests.update"))))
+	mux.Handle("/admin/bookings/cancel", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.cancelBookingHandler), "space_bookings.update", "booking_requests.update"))))
+	mux.Handle("/admin/bookings/complete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.completeBookingHandler), "space_bookings.update"))))
+	mux.Handle("/admin/bookings/no-show", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.noShowBookingHandler), "space_bookings.update"))))
+	mux.Handle("/admin/bookings/cancellation-requests/approve", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.approveBookingCancellationRequestHandler), "space_bookings.update", "booking_requests.update"))))
+	mux.Handle("/admin/bookings/cancellation-requests/reject", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.rejectBookingCancellationRequestHandler), "space_bookings.update", "booking_requests.update"))))
+	mux.Handle("/admin/bookings/payments/collect", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance_transactions.create", "space_bookings.update", "booking_requests.update"))))
+	mux.Handle("/admin/bookings/payments/void", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.voidBookingPaymentHandler), "finance_transactions.delete"))))
+	mux.Handle("/admin/bookings/payments/receipt", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.view", "finance_transactions.view", "space_bookings.view", "booking_requests.view"))))
+	mux.Handle("/admin/admissions/payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidAdmissionPaymentHandler), "finance_transactions.delete")))
+	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.create"))))
+	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.update"))))
+	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.delete"))))
+	mux.Handle("/admin/booking-requests", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.bookingRequestsHandler), "booking_requests.view"))))
+	mux.Handle("/admin/booking-requests/hold", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.holdBookingRequestHandler), "booking_requests.update"))))
+	mux.Handle("/admin/booking-requests/reschedule", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.rescheduleBookingRequestHandler), "booking_requests.update"))))
+	mux.Handle("/admin/booking-requests/reschedule-confirm", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.rescheduleAndConfirmBookingRequestHandler), "booking_requests.update"))))
+	mux.Handle("/admin/booking-requests/confirm", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.confirmBookingRequestHandler), "booking_requests.update"))))
+	mux.Handle("/admin/booking-requests/reject", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.rejectBookingRequestHandler), "booking_requests.update"))))
+	mux.Handle("/admin/pricing", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.pricingManagementHandler), "pricing.view"))))
+	mux.Handle("/admin/pricing/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createPricingHandler), "pricing.create"))))
+	mux.Handle("/admin/pricing/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updatePricingHandler), "pricing.update"))))
+	mux.Handle("/admin/pricing/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deletePricingHandler), "pricing.delete"))))
+	mux.Handle("/admin/pricing/settings", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updatePricingSettingsHandler), "pricing.update"))))
+	mux.Handle("/admin/events", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.eventManagementHandler), "events.view")))
+	mux.Handle("/admin/events/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createEventHandler), "events.create")))
+	mux.Handle("/admin/events/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEventHandler), "events.update")))
+	mux.Handle("/admin/events/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEventHandler), "events.delete")))
+	mux.Handle("/admin/finance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeManagementHandler), "finance.view")))
+	mux.Handle("/admin/finance/ledger", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeLedgerHandler), "finance.view")))
+	mux.Handle("/admin/finance/specified-ledgers", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeSpecifiedLedgersHandler), "finance.view")))
+	mux.Handle("/admin/finance/specified-ledgers/", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeSpecifiedLedgerDetailHandler), "finance.view")))
+	mux.Handle("/admin/finance/profit-and-loss", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeProfitAndLossHandler), "finance.view")))
+	mux.Handle("/admin/finance/balance-sheet", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeBalanceSheetHandler), "finance.view")))
+	mux.Handle("/admin/finance/receivables", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReceivablesHandler), "finance.view")))
+	mux.Handle("/admin/finance/customers", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeCustomersHandler), "finance.view")))
+	mux.Handle("/admin/finance/transfers", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeTransfersHandler), "finance_transfers.view")))
+	mux.Handle("/admin/finance/reconciliations", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeReconciliationsHandler), "finance_reconciliations.view")))
+	mux.Handle("/admin/finance/accounts", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountsHandler), "finance_accounts.view")))
+	mux.Handle("/admin/finance/categories", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeCategoriesHandler), "finance_categories.view")))
+	mux.Handle("/admin/finance/transactions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransactionHandler), "finance_transactions.create")))
+	mux.Handle("/admin/finance/transactions/approve", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.approveFinanceTransactionHandler), "finance_transactions.update")))
+	mux.Handle("/admin/finance/transactions/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransactionHandler), "finance_transactions.delete")))
+	mux.Handle("/admin/finance/period-lock", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateFinancePeriodLockHandler), "finance.update")))
+	mux.Handle("/admin/finance/categories/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceCategoryHandler), "finance_categories.create")))
+	mux.Handle("/admin/finance/categories/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateFinanceCategoryHandler), "finance_categories.update")))
+	mux.Handle("/admin/finance/categories/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteFinanceCategoryHandler), "finance_categories.delete")))
+	mux.Handle("/admin/finance/transfers/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceTransferHandler), "finance_transfers.create")))
+	mux.Handle("/admin/finance/transfers/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidFinanceTransferHandler), "finance_transfers.delete")))
+	mux.Handle("/admin/finance/accounts/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAccountHandler), "finance_accounts.create")))
+	mux.Handle("/admin/finance/accounts/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateFinanceAccountHandler), "finance_accounts.update")))
+	mux.Handle("/admin/finance/accounts/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteFinanceAccountHandler), "finance_accounts.delete")))
+	mux.Handle("/admin/finance/accounts/opening-balance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceOpeningBalanceHandler), "finance_accounts.create")))
+	mux.Handle("/admin/finance/accounts/adjustment", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createFinanceAdjustmentHandler), "finance_accounts.update")))
+	mux.Handle("/admin/finance/accounts/statement", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeAccountStatementHandler), "finance_accounts.view")))
+	mux.Handle("/admin/finance/reconciliations/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createCashReconciliationHandler), "finance_reconciliations.create")))
+	mux.Handle("/admin/finance/reconciliations/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidCashReconciliationHandler), "finance_reconciliations.delete")))
+	mux.Handle("/admin/finance/bookings/collect", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance_transactions.create", "space_bookings.update", "booking_requests.update")))
+	mux.Handle("/admin/finance/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeExportHandler), "finance.view")))
 	mux.Handle("/admin/reports", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsHandler), "reports.view")))
-	mux.Handle("/admin/reports/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsExportHandler), "reports.view")))
-	mux.Handle("/admin/referrals", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.referralCommissionsHandler), "finance.manage"))))
-	mux.Handle("/admin/referrals/settings", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateReferralSettingsHandler), "finance.manage"))))
-	mux.Handle("/admin/referrals/partners/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createReferralPartnerHandler), "finance.manage"))))
-	mux.Handle("/admin/referrals/partners/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateReferralPartnerHandler), "finance.manage"))))
-	mux.Handle("/admin/referrals/partners/toggle", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.toggleReferralPartnerHandler), "finance.manage"))))
-	mux.Handle("/admin/referrals/pay", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.payReferralCommissionHandler), "finance.manage"))))
-	mux.Handle("/admin/referrals/payments/void", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.voidReferralCommissionPaymentHandler), "finance.manage"))))
-	mux.Handle("/admin/student-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentPaymentsHandler), "finance.manage")))
-	mux.Handle("/admin/student-payments/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStudentPaymentHandler), "finance.manage")))
-	mux.Handle("/admin/student-leaves/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentEnrollmentLeaveHandler), "admissions.manage")))
-	mux.Handle("/admin/student-leaves/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentEnrollmentLeaveHandler), "admissions.manage")))
-	mux.Handle("/admin/student-payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidStudentPaymentHandler), "finance.manage")))
-	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.manage", "finance.manage", "space_bookings.manage", "booking_requests.manage")))
+	mux.Handle("/admin/reports/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsExportHandler), "reports.export")))
+	mux.Handle("/admin/referrals", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.referralCommissionsHandler), "referrals.view"))))
+	mux.Handle("/admin/referrals/settings", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateReferralSettingsHandler), "referrals.update"))))
+	mux.Handle("/admin/referrals/partners/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createReferralPartnerHandler), "referrals.create"))))
+	mux.Handle("/admin/referrals/partners/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateReferralPartnerHandler), "referrals.update"))))
+	mux.Handle("/admin/referrals/partners/toggle", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.toggleReferralPartnerHandler), "referrals.update"))))
+	mux.Handle("/admin/referrals/pay", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.payReferralCommissionHandler), "referrals.update"))))
+	mux.Handle("/admin/referrals/payments/void", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.voidReferralCommissionPaymentHandler), "referrals.delete"))))
+	mux.Handle("/admin/student-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentPaymentsHandler), "student_payments.view")))
+	mux.Handle("/admin/student-payments/collect", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStudentPaymentHandler), "student_payments.create")))
+	mux.Handle("/admin/student-leaves/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createStudentEnrollmentLeaveHandler), "student_leaves.create")))
+	mux.Handle("/admin/student-leaves/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStudentEnrollmentLeaveHandler), "student_leaves.delete")))
+	mux.Handle("/admin/student-payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidStudentPaymentHandler), "student_payments.delete")))
+	mux.Handle("/admin/finance/receipt", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.view", "finance_transactions.view", "space_bookings.view", "booking_requests.view")))
 
 	log.Printf("server listening on %s", deps.RuntimeConfig.Addr)
 	if err := http.ListenAndServe(deps.RuntimeConfig.Addr, app.securityHeaders(mux)); err != nil {

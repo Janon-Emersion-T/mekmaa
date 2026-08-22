@@ -1086,9 +1086,9 @@ func (a *App) financeReceiptHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "receipt not found", http.StatusNotFound)
 		return
 	}
-	canViewAdmission := transaction.Category == "admission_payment" && containsPermission(user.Permissions, "admissions.manage")
-	canViewBooking := transaction.Category == "booking_payment" && (containsPermission(user.Permissions, "finance.manage") || containsPermission(user.Permissions, "space_bookings.manage") || containsPermission(user.Permissions, "booking_requests.manage"))
-	canViewFinance := containsPermission(user.Permissions, "finance.manage")
+	canViewAdmission := transaction.Category == "admission_payment" && containsPermission(user.Permissions, "admissions.view")
+	canViewBooking := transaction.Category == "booking_payment" && (containsPermission(user.Permissions, "finance.view") || containsPermission(user.Permissions, "space_bookings.view") || containsPermission(user.Permissions, "booking_requests.view"))
+	canViewFinance := containsPermission(user.Permissions, "finance.view")
 	if user == nil || (!canViewAdmission && !canViewBooking && !canViewFinance) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return

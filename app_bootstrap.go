@@ -48,122 +48,189 @@ var (
 	studentPhotoPattern = regexp.MustCompile(`^student-photo-[a-z0-9_-]{12,64}\.(jpg|png|webp)$`)
 	studentQRPattern    = regexp.MustCompile(`^student-qr-[a-z0-9_-]{12,64}\.png$`)
 	allRoles            = []string{"superadmin", "admin", "editor", "coach", "customer"}
-	allPermissions      = []string{
-		"dashboard.view",
-		"editor.access",
-		"users.manage",
-		"roles.manage",
-		"user_divisions.manage",
-		"divisions.manage",
-		"admissions.manage",
-		"coaches.manage",
-		"payroll.manage",
-		"training_programs.manage",
-		"student_groups.manage",
-		"attendance.manage",
-		"courts.manage",
-		"space_bookings.manage",
-		"booking_requests.manage",
-		"mcp.manage",
-		"mcp_pricing.manage",
-		"mcp_receivables.manage",
-		"pricing.manage",
-		"finance.manage",
-		"finance.consolidated",
-		"reports.view",
-		"events.manage",
-	}
+	allPermissions      = permissionCatalogKeys(permissionGroups)
 )
 
-var permissionGroups = []PermissionGroup{
-	{Name: "Workspace", Description: "Core authenticated workspace access.", Permissions: []PermissionDefinition{
-		{Key: "dashboard.view", Label: "View dashboard", Description: "Open the authenticated dashboard and account overview."},
-		{Key: "editor.access", Label: "Access editor", Description: "Open the protected content editor workspace."},
-	}},
-	{Name: "Administration", Description: "High-trust identity and authorization controls.", Permissions: []PermissionDefinition{
-		{Key: "users.manage", Label: "Manage users", Description: "Create accounts and change user role assignments.", Sensitive: true},
-		{Key: "roles.manage", Label: "Manage roles", Description: "Create, update, and remove custom authorization roles.", Sensitive: true},
-		{Key: "user_divisions.manage", Label: "Manage user divisions", Description: "Assign which divisions each user may access.", Sensitive: true},
-		{Key: "divisions.manage", Label: "Manage divisions", Description: "Maintain division configuration and availability.", Sensitive: true},
-	}},
-	{Name: "Students", Description: "Student intake, programmes, staff assignments, attendance, and billing operations.", Permissions: []PermissionDefinition{
+var permissionGroups = buildPermissionGroups()
+
+func permissionCatalogKeys(groups []PermissionGroup) []string {
+	keys := make([]string, 0)
+	for _, group := range groups {
+		for _, permission := range group.Permissions {
+			keys = append(keys, permission.Key)
+		}
+	}
+	return normalizePermissions(keys)
+}
+
+func permissionDef(
+	key string,
+	label string,
+	description string,
+	sensitive bool,
+) PermissionDefinition {
+	return PermissionDefinition{
+		Key:         key,
+		Label:       label,
+		Description: description,
+		Sensitive:   sensitive,
+	}
+}
+
+func crudPermissionSet(
+	prefix string,
+	label string,
+	subject string,
+	sensitive bool,
+) []PermissionDefinition {
+	return []PermissionDefinition{
+		permissionDef(prefix+".manage", "Manage "+label, "Full control over "+subject+".", sensitive),
+		permissionDef(prefix+".view", "View "+label, "Open and review "+subject+".", sensitive),
+		permissionDef(prefix+".create", "Create "+label, "Create new "+subject+".", sensitive),
+		permissionDef(prefix+".update", "Update "+label, "Edit and change existing "+subject+".", sensitive),
+		permissionDef(prefix+".delete", "Delete "+label, "Delete or permanently remove "+subject+".", sensitive),
+	}
+}
+
+func viewUpdatePermissionSet(
+	prefix string,
+	label string,
+	subject string,
+	sensitive bool,
+) []PermissionDefinition {
+	return []PermissionDefinition{
+		permissionDef(prefix+".manage", "Manage "+label, "Full control over "+subject+".", sensitive),
+		permissionDef(prefix+".view", "View "+label, "Open and review "+subject+".", sensitive),
+		permissionDef(prefix+".update", "Update "+label, "Change existing "+subject+".", sensitive),
+	}
+}
+
+func buildPermissionGroups() []PermissionGroup {
+	return []PermissionGroup{
 		{
-			Key:         "admissions.manage",
-			Label:       "Manage admissions",
-			Description: "Create, update, archive, and collect admission payments.",
+			Name:        "Workspace",
+			Description: "Core authenticated workspace access.",
+			Permissions: []PermissionDefinition{
+				permissionDef("dashboard.view", "View dashboard", "Open the authenticated dashboard and account overview.", false),
+				permissionDef("editor.access", "Access editor", "Open the protected content editor workspace.", false),
+			},
 		},
 		{
-			Key:         "coaches.manage",
-			Label:       "Manage operational staff",
-			Description: "Access operational staff directories, assignments, and compatible coach administration.",
+			Name:        "Administration",
+			Description: "High-trust identity and authorization controls.",
+			Permissions: append(
+				append(
+					append(
+						crudPermissionSet("users", "users", "user accounts and their assigned roles", true),
+						crudPermissionSet("roles", "roles", "authorization roles", true)...,
+					),
+					crudPermissionSet("user_divisions", "user divisions", "user division assignments", true)...,
+				),
+				crudPermissionSet("divisions", "divisions", "division records and availability", true)...,
+			),
 		},
 		{
-			Key:         "payroll.manage",
-			Label:       "Manage payroll",
-			Description: "Manage staff salary profiles, payroll calculations, approvals, and salary payments.",
-			Sensitive:   true,
+			Name:        "Students",
+			Description: "Student intake, programmes, staff assignments, attendance, and billing operations.",
+			Permissions: append(
+				append(
+					append(
+						append(
+							append(
+								append(
+									crudPermissionSet("admissions", "admissions", "student admissions", false),
+									crudPermissionSet("enrollments", "enrollments", "student enrollment records", false)...,
+								),
+								crudPermissionSet("student_leaves", "student leaves", "student leave records", false)...,
+							),
+							crudPermissionSet("coaches", "coaches", "coach and staff records", false)...,
+						),
+						crudPermissionSet("payroll", "payroll", "payroll runs, salary profiles, and salary payments", true)...,
+					),
+					crudPermissionSet("training_programs", "training programmes", "training programme records", false)...,
+				),
+				append(
+					crudPermissionSet("student_groups", "student groups", "student groups and class rosters", false),
+					viewUpdatePermissionSet("attendance", "attendance", "attendance records and attendance reports", false)...,
+				)...,
+			),
 		},
 		{
-			Key:         "training_programs.manage",
-			Label:       "Manage training programmes",
-			Description: "Create, update, activate, deactivate, and price training programmes.",
+			Name:        "Bookings",
+			Description: "Court configuration, facility scheduling, and customer booking operations.",
+			Permissions: append(
+				append(
+					append(
+						append(
+							append(
+								append(
+									crudPermissionSet("courts", "courts", "court layouts, activities, and closures", false),
+									crudPermissionSet("games", "games", "bookable games and activities", false)...,
+								),
+								crudPermissionSet("space_bookings", "booking calendar", "facility booking calendar entries", false)...,
+							),
+							viewUpdatePermissionSet("booking_requests", "booking requests", "incoming booking requests and their state changes", false)...,
+						),
+						crudPermissionSet("one_to_one", "1 to 1 offerings", "1 to 1 setup packages", false)...,
+					),
+					crudPermissionSet("one_to_one_bookings", "1 to 1 bookings", "1 to 1 booking packages and sessions", false)...,
+				),
+				crudPermissionSet("mcp", "monthly court plans", "monthly court plan records and sessions", false)...,
+			),
 		},
 		{
-			Key:         "student_groups.manage",
-			Label:       "Manage student groups",
-			Description: "Create groups and maintain student memberships.",
+			Name:        "Finance",
+			Description: "Pricing, collections, ledger, referrals, tournaments, and reporting.",
+			Permissions: append(
+				append(
+					append(
+						append(
+							append(
+								append(
+									append(
+										append(
+											append(
+												append(
+													crudPermissionSet("mcp_pricing", "MCP pricing", "monthly court plan pricing bands", false),
+													crudPermissionSet("mcp_receivables", "MCP receivables", "monthly court plan receivables and collections", false)...,
+												),
+												crudPermissionSet("pricing", "booking pricing", "booking pricing rules and pricing settings", false)...,
+											),
+											crudPermissionSet("finance", "finance", "shared finance pages and ledger workflows", true)...,
+										),
+										crudPermissionSet("finance_transactions", "finance transactions", "manual finance entries and ledger transactions", true)...,
+									),
+									crudPermissionSet("finance_accounts", "finance accounts", "finance accounts and balances", true)...,
+								),
+								crudPermissionSet("finance_categories", "finance categories", "finance categories", true)...,
+							),
+							crudPermissionSet("finance_transfers", "finance transfers", "cash and bank transfer records", true)...,
+						),
+						crudPermissionSet("finance_reconciliations", "finance reconciliations", "cash reconciliation records", true)...,
+					),
+					append(
+						append(
+							append(
+								crudPermissionSet("student_payments", "student payments", "student payment collections and voids", true),
+								crudPermissionSet("referrals", "referrals", "referral partners and referral payouts", true)...,
+							),
+							crudPermissionSet("tournaments", "tournaments", "tournament ledgers, sponsorships, and expenses", true)...,
+						),
+						permissionDef("finance.consolidated", "View consolidated finance", "Access cross-division and shared finance views.", true),
+					)...,
+				),
+				[]PermissionDefinition{
+					permissionDef("reports.view", "View reports", "Open operational reports.", false),
+					permissionDef("reports.export", "Export reports", "Export operational reports.", false),
+				}...,
+			),
 		},
 		{
-			Key:         "attendance.manage",
-			Label:       "Manage attendance",
-			Description: "Record and update daily attendance registers.",
+			Name:        "Content",
+			Description: "Public website content operations.",
+			Permissions: crudPermissionSet("events", "events", "public event content", false),
 		},
-	}},
-	{Name: "Bookings", Description: "Court configuration, facility scheduling, and customer booking operations.", Permissions: []PermissionDefinition{
-		{
-			Key:         "courts.manage",
-			Label:       "Manage courts",
-			Description: "Configure courts, activities, and the combinations that may operate simultaneously.",
-		},
-		{
-			Key:         "space_bookings.manage",
-			Label:       "Manage booking calendar",
-			Description: "Create, update, and remove facility schedule entries.",
-		},
-		{
-			Key:         "booking_requests.manage",
-			Label:       "Manage booking requests",
-			Description: "Review, confirm, and reject customer booking requests.",
-		},
-		{
-			Key:         "mcp.manage",
-			Label:       "Manage monthly court plans",
-			Description: "Create customers, review monthly plans, confirm sessions, and continue plans into a new month.",
-		},
-	}},
-	{Name: "Finance", Description: "Pricing, collections, ledger, referrals, and reporting.", Permissions: []PermissionDefinition{
-		{
-			Key:         "mcp_pricing.manage",
-			Label:       "Manage MCP pricing",
-			Description: "Maintain monthly court plan pricing bands across enabled tiers.",
-		},
-		{
-			Key:         "mcp_receivables.manage",
-			Label:       "Manage MCP receivables",
-			Description: "Collect MCP payments, view receipts, and follow outstanding monthly plan balances.",
-		},
-		{
-			Key:         "pricing.manage",
-			Label:       "Manage booking pricing",
-			Description: "Maintain facility booking rates and peak-hour pricing.",
-		},
-		{Key: "finance.manage", Label: "Manage finance", Description: "Manage payments, expenses, receipts, referrals, and exports."},
-		{Key: "finance.consolidated", Label: "View consolidated finance", Description: "Access cross-division and shared finance views."},
-		{Key: "reports.view", Label: "View and export reports", Description: "Open operational reports and export report data."},
-	}},
-	{Name: "Content", Description: "Public website content operations.", Permissions: []PermissionDefinition{
-		{Key: "events.manage", Label: "Manage events", Description: "Create, publish, update, and remove public events."},
-	}},
+	}
 }
 
 func parseAppEnvironment(raw string) (AppEnvironment, error) {
@@ -1276,6 +1343,77 @@ type OneToOneBookingSession struct {
 	UpdatedAt                  time.Time
 }
 
+type Tournament struct {
+	ID                           int64
+	Name                         string
+	GameID                       int64
+	GameName                     string
+	ParticipantCount             int
+	EntryFee                     float64
+	TournamentDate               string
+	EntryFeeFinanceTransactionID int64
+	EntryFeeFinanceAccountID     int64
+	EntryFeeFinanceAccountName   string
+	EntryFeeRecordedAt           time.Time
+	Notes                        string
+	EntryIncomeTotal             float64
+	SponsorshipIncomeTotal       float64
+	OfficialExpenseTotal         float64
+	OtherExpenseTotal            float64
+	TotalIncome                  float64
+	TotalExpense                 float64
+	NetIncome                    float64
+	Sponsorships                 []TournamentSponsorship
+	OfficialPayments             []TournamentOfficialPayment
+	Expenses                     []TournamentExpense
+	CreatedAt                    time.Time
+	UpdatedAt                    time.Time
+}
+
+type TournamentSponsorship struct {
+	ID                   int64
+	TournamentID         int64
+	SponsorName          string
+	Description          string
+	Amount               float64
+	FinanceTransactionID int64
+	FinanceAccountID     int64
+	FinanceAccountName   string
+	RecordedAt           time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
+type TournamentOfficialPayment struct {
+	ID                   int64
+	TournamentID         int64
+	PersonName           string
+	Role                 string
+	Description          string
+	Amount               float64
+	FinanceTransactionID int64
+	FinanceAccountID     int64
+	FinanceAccountName   string
+	RecordedAt           time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
+type TournamentExpense struct {
+	ID                   int64
+	TournamentID         int64
+	ExpenseType          string
+	ItemName             string
+	Description          string
+	Amount               float64
+	FinanceTransactionID int64
+	FinanceAccountID     int64
+	FinanceAccountName   string
+	RecordedAt           time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
 type ReferralPartner struct {
 	ID        int64
 	Name      string
@@ -1712,6 +1850,8 @@ type TemplateData struct {
 	SelectedOneToOneBooking          *OneToOneBooking
 	OneToOneReceivables              []OneToOneReceivable
 	OneToOneCoaches                  []User
+	Tournaments                      []Tournament
+	SelectedTournament               *Tournament
 	ReferralPartners                 []ReferralPartner
 	ReferralPartnerRows              []ReferralPartnerSummary
 	BookingReferrals                 []BookingReferral

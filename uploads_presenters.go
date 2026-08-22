@@ -452,6 +452,8 @@ func financeCategoryLabel(value string) string {
 		return "Referral commission"
 	case "manual_income":
 		return "Other income"
+	case "tournament_entry_income":
+		return "Tournament entry income"
 	case "sponsorship_income":
 		return "Sponsorship income"
 	case "other_income":
@@ -813,6 +815,14 @@ func financeSourceTypeLabel(value string) string {
 		return "Booking collection"
 	case "booking_referral_payment":
 		return "Referral payout"
+	case "tournament":
+		return "Tournament"
+	case "tournament_sponsorship":
+		return "Tournament sponsorship"
+	case "tournament_official_payment":
+		return "Tournament official payment"
+	case "tournament_expense":
+		return "Tournament expense"
 	case "finance_transfer":
 		return "Transfer"
 	case "finance_adjustment":

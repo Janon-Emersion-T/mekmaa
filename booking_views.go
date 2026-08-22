@@ -439,13 +439,13 @@ func bookingCanCollectPayment(user *User, schedule *SpaceSchedule) bool {
 	if !bookingPaymentCollectibleStatus(schedule.Status) {
 		return false
 	}
-	return containsPermission(user.Permissions, "finance.manage") ||
-		containsPermission(user.Permissions, "space_bookings.manage") ||
-		containsPermission(user.Permissions, "booking_requests.manage")
+	return containsPermission(user.Permissions, "finance_transactions.create") ||
+		containsPermission(user.Permissions, "space_bookings.update") ||
+		containsPermission(user.Permissions, "booking_requests.update")
 }
 
 func bookingCanVoidPayment(user *User) bool {
-	return user != nil && containsPermission(user.Permissions, "finance.manage")
+	return user != nil && containsPermission(user.Permissions, "finance_transactions.delete")
 }
 
 func bookingPaymentInactiveMessage(schedule *SpaceSchedule) string {
@@ -1233,9 +1233,113 @@ func bookingReferralIsPending(referral BookingReferral) bool {
 	return !referral.Paid && referral.BookingStatus == bookingStatusPending
 }
 
+var explicitPermissionAliases = map[string][]string{
+	"admissions.manage": {
+		"enrollments.view",
+		"enrollments.create",
+		"enrollments.update",
+		"enrollments.delete",
+		"student_leaves.view",
+		"student_leaves.create",
+		"student_leaves.update",
+		"student_leaves.delete",
+	},
+	"coaches.manage": {
+		"staff.view",
+	},
+	"space_bookings.manage": {
+		"games.view",
+		"games.create",
+		"games.update",
+		"games.delete",
+		"one_to_one.view",
+		"one_to_one.create",
+		"one_to_one.update",
+		"one_to_one.delete",
+		"one_to_one_bookings.view",
+		"one_to_one_bookings.create",
+		"one_to_one_bookings.update",
+		"one_to_one_bookings.delete",
+	},
+	"finance.manage": {
+		"student_payments.view",
+		"student_payments.create",
+		"student_payments.update",
+		"student_payments.delete",
+		"referrals.view",
+		"referrals.create",
+		"referrals.update",
+		"referrals.delete",
+		"tournaments.view",
+		"tournaments.create",
+		"tournaments.update",
+		"tournaments.delete",
+		"finance_transactions.view",
+		"finance_transactions.create",
+		"finance_transactions.update",
+		"finance_transactions.delete",
+		"finance_accounts.view",
+		"finance_accounts.create",
+		"finance_accounts.update",
+		"finance_accounts.delete",
+		"finance_categories.view",
+		"finance_categories.create",
+		"finance_categories.update",
+		"finance_categories.delete",
+		"finance_transfers.view",
+		"finance_transfers.create",
+		"finance_transfers.update",
+		"finance_transfers.delete",
+		"finance_reconciliations.view",
+		"finance_reconciliations.create",
+		"finance_reconciliations.update",
+		"finance_reconciliations.delete",
+	},
+	"reports.view": {
+		"reports.export",
+	},
+}
+
+func permissionGrants(granted string, target string) bool {
+	granted = strings.TrimSpace(granted)
+	target = strings.TrimSpace(target)
+	if granted == "" || target == "" {
+		return false
+	}
+	if granted == target {
+		return true
+	}
+
+	if strings.HasSuffix(granted, ".manage") {
+		prefix := strings.TrimSuffix(granted, ".manage")
+		for _, action := range []string{"view", "create", "update", "delete"} {
+			if target == prefix+"."+action {
+				return true
+			}
+		}
+	}
+
+	if strings.HasSuffix(target, ".manage") {
+		prefix := strings.TrimSuffix(target, ".manage")
+		for _, action := range []string{"view", "create", "update", "delete"} {
+			if granted == prefix+"."+action {
+				return true
+			}
+		}
+	}
+
+	for _, implied := range explicitPermissionAliases[granted] {
+		if implied == target {
+			return true
+		}
+	}
+
+	return false
+}
+
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
-		if permission == target {
+		if permissionGrants(permission, target) {
 			return true
 		}
 	}

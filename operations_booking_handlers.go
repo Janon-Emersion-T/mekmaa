@@ -2697,7 +2697,7 @@ func (a *App) resendBookingCommunicationHandler(w http.ResponseWriter, r *http.R
 	}
 
 	currentUser, _ := a.currentUser(r.Context())
-	if currentUser == nil || (!containsPermission(currentUser.Permissions, "space_bookings.manage") && !containsPermission(currentUser.Permissions, "booking_requests.manage")) {
+	if currentUser == nil || (!containsPermission(currentUser.Permissions, "space_bookings.update") && !containsPermission(currentUser.Permissions, "booking_requests.update")) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

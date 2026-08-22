@@ -97,8 +97,16 @@ func financeDirectionForTransaction(transaction FinanceTransaction) string {
 	return "income"
 }
 
-func financeHighRiskAuthorized(user *User) bool {
-	return user != nil && containsPermission(user.Permissions, "finance.manage") && containsRole(user.Roles, "superadmin")
+func financeHighRiskAuthorized(user *User, permissions ...string) bool {
+	if user == nil || !containsRole(user.Roles, "superadmin") {
+		return false
+	}
+	for _, permission := range permissions {
+		if containsPermission(user.Permissions, permission) {
+			return true
+		}
+	}
+	return false
 }
 
 func financeAccountBalanceEffect(transaction FinanceTransaction) float64 {
@@ -3153,7 +3161,7 @@ func (a *App) createFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance_accounts.create") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3192,7 +3200,7 @@ func (a *App) updateFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance_accounts.update") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3238,7 +3246,7 @@ func (a *App) deleteFinanceAccountHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance_accounts.delete") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3278,7 +3286,7 @@ func (a *App) createFinanceOpeningBalanceHandler(w http.ResponseWriter, r *http.
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance_accounts.create") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3331,7 +3339,7 @@ func (a *App) createFinanceAdjustmentHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance_accounts.update") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3428,7 +3436,7 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance_transactions.delete") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3519,7 +3527,7 @@ func (a *App) voidFinanceTransferHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance_transfers.delete") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3566,7 +3574,7 @@ func (a *App) approveFinanceTransactionHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance_transactions.update") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3594,7 +3602,7 @@ func (a *App) updateFinancePeriodLockHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance.update") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -3621,7 +3629,7 @@ func (a *App) voidCashReconciliationHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "finance_reconciliations.delete") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

@@ -124,19 +124,19 @@
               <p class="mt-2 text-sm leading-7 text-slate/72">Open the protected editor surface available to editor and admin roles.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "users.manage"}}
+            {{if hasPermission .User "users.view"}}
             <a href="{{scopedURL "/admin/users" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">User Manager</p>
               <p class="mt-2 text-sm leading-7 text-slate/72">Open the account management section to review users, verification state, and role assignments.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "roles.manage"}}
+            {{if hasPermission .User "roles.view"}}
             <a href="{{scopedURL "/admin/roles" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">Role Manager</p>
               <p class="mt-2 text-sm leading-7 text-slate/72">Jump directly to role definitions, assignment rules, and elevated access controls.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "admissions.manage"}}
+            {{if hasPermission .User "admissions.view"}}
             <a href="{{scopedURL "/admin/students" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">Students</p>
               <p class="mt-2 text-sm leading-7 text-slate/72">Open shared student identities, profile details, and workspace enrollment context.</p>
@@ -146,37 +146,37 @@
               <p class="mt-2 text-sm leading-7 text-slate/72">Assign programmes and manage workspace enrollment fees.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "student_groups.manage"}}
+            {{if hasPermission .User "student_groups.view"}}
             <a href="{{scopedURL (workspaceGroupPath .User .SelectedDivision .SelectedDivisionScope) .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">{{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
               <p class="mt-2 text-sm leading-7 text-slate/72">Organize students into active {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}} for teaching, coaching, and attendance.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "attendance.manage"}}
+            {{if hasPermission .User "attendance.view"}}
             <a href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">Attendance</p>
               <p class="mt-2 text-sm leading-7 text-slate/72">Record daily attendance for students by {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "space_bookings.manage"}}
+            {{if hasPermission .User "space_bookings.view"}}
             <a href="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">Booking Calendar</p>
               <p class="mt-2 text-sm leading-7 text-slate/72">Manage sports court bookings, training blocks, and day schedules.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "pricing.manage"}}
+            {{if hasPermission .User "pricing.view"}}
             <a href="{{scopedURL "/admin/pricing" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">Pricing</p>
               <p class="mt-2 text-sm leading-7 text-slate/72">Manage weekday, weekend, peak, and off-peak booking rates.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "finance.manage"}}
+            {{if hasPermission .User "finance.view"}}
             <a href="{{scopedURL "/admin/finance/ledger" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">Finance</p>
               <p class="mt-2 text-sm leading-7 text-slate/72">Review workspace income, expenses, receipts, and receivables.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "booking_requests.manage"}}
+            {{if hasPermission .User "booking_requests.view"}}
             <a href="{{scopedURL "/admin/booking-requests" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
               <p class="text-lg font-semibold">Booking Requests</p>
               <p class="mt-2 text-sm leading-7 text-slate/72">Review customer booking requests and confirm or reject them.</p>

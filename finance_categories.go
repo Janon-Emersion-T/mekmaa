@@ -14,6 +14,7 @@ var errFinanceCategoryLocked = errors.New("finance category is linked to existin
 func defaultFinanceCategories() []FinanceCategory {
 	return []FinanceCategory{
 		{Code: "manual_income", Name: "Manual income", Direction: "income", Active: true},
+		{Code: "tournament_entry_income", Name: "Tournament entry income", Direction: "income", Active: true},
 		{Code: "sponsorship_income", Name: "Sponsorship income", Direction: "income", Active: true},
 		{Code: "other_income", Name: "Other income", Direction: "income", Active: true},
 		{Code: "mcp_payment", Name: "Monthly court plan payment", Direction: "income", Active: true},

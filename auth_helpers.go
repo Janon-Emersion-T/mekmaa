@@ -127,9 +127,11 @@ func (a *App) normalizeExistingRoles(
 }
 
 func normalizePermissions(permissions []string) []string {
-	allowed := make(map[string]struct{}, len(allPermissions))
-	for _, permission := range allPermissions {
-		allowed[permission] = struct{}{}
+	allowed := make(map[string]struct{})
+	for _, group := range permissionGroups {
+		for _, permission := range group.Permissions {
+			allowed[permission.Key] = struct{}{}
+		}
 	}
 
 	seen := map[string]struct{}{}
@@ -150,7 +152,16 @@ func normalizePermissions(permissions []string) []string {
 }
 
 func containsSensitivePermission(permissions []string) bool {
-	return containsPermission(permissions, "users.manage") || containsPermission(permissions, "roles.manage")
+	for _, permission := range permissions {
+		permission = strings.ToLower(strings.TrimSpace(permission))
+		if strings.HasPrefix(permission, "users.") ||
+			strings.HasPrefix(permission, "roles.") ||
+			strings.HasPrefix(permission, "user_divisions.") ||
+			strings.HasPrefix(permission, "divisions.") {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizePositiveIDs(values []string) []int64 {

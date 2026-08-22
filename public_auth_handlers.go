@@ -244,7 +244,7 @@ func (a *App) checkUploadReadiness() error {
 }
 
 func (a *App) setupWarningsForUser(user *User) []SetupWarning {
-	if user == nil || !containsPermission(user.Permissions, "pricing.manage") {
+	if user == nil || !containsPermission(user.Permissions, "pricing.view") {
 		return nil
 	}
 	unpricedOptions, err := a.listActiveUnpricedBookingOptions()
@@ -1034,7 +1034,7 @@ func (a *App) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data.Stats = a.buildDashboardStats(user, selectedDivision, scopeDivisionIDs, now)
-	if containsPermission(user.Permissions, "booking_requests.manage") || containsPermission(user.Permissions, "space_bookings.manage") {
+	if containsPermission(user.Permissions, "booking_requests.view") || containsPermission(user.Permissions, "space_bookings.view") {
 		requests, err := a.listPendingSpaceSchedulesByDivisionIDs(scopeDivisionIDs)
 		if err == nil {
 			pendingCount, _ := a.countPendingSpaceSchedulesByDivisionIDs(scopeDivisionIDs)
@@ -1192,20 +1192,20 @@ func (a *App) adminRedirectHandler(w http.ResponseWriter, r *http.Request) {
 		permission string
 		path       string
 	}{
-		{"users.manage", "/admin/users"},
-		{"roles.manage", "/admin/roles"},
-		{"admissions.manage", "/admin/admissions"},
-		{"coaches.manage", "/admin/coaches"},
-		{"training_programs.manage", "/admin/training-programs"},
-		{"student_groups.manage", "/admin/student-groups"},
-		{"attendance.manage", "/admin/attendance"},
-		{"courts.manage", "/admin/courts"},
-		{"space_bookings.manage", "/admin/bookings"},
-		{"booking_requests.manage", "/admin/booking-requests"},
-		{"finance.manage", "/admin/finance/ledger"},
-		{"pricing.manage", "/admin/pricing"},
+		{"users.view", "/admin/users"},
+		{"roles.view", "/admin/roles"},
+		{"admissions.view", "/admin/admissions"},
+		{"coaches.view", "/admin/coaches"},
+		{"training_programs.view", "/admin/training-programs"},
+		{"student_groups.view", "/admin/student-groups"},
+		{"attendance.view", "/admin/attendance"},
+		{"courts.view", "/admin/courts"},
+		{"space_bookings.view", "/admin/bookings"},
+		{"booking_requests.view", "/admin/booking-requests"},
+		{"finance.view", "/admin/finance/ledger"},
+		{"pricing.view", "/admin/pricing"},
 		{"reports.view", "/admin/reports"},
-		{"events.manage", "/admin/events"},
+		{"events.view", "/admin/events"},
 	}
 	for _, destination := range destinations {
 		if containsPermission(user.Permissions, destination.permission) {

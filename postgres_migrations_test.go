@@ -93,6 +93,37 @@ func TestPostgresMigrationDiscoveryIncludesOneToOneAttendance(t *testing.T) {
 	}
 }
 
+func TestPostgresMigrationDiscoveryIncludesTournaments(t *testing.T) {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		t.Fatalf("load PostgreSQL migrations: %v", err)
+	}
+
+	var found *postgresMigration
+	for i := range migrations {
+		if migrations[i].Version == 9 {
+			found = &migrations[i]
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("expected PostgreSQL migration 000009_tournaments.sql")
+	}
+
+	if found.Filename != "000009_tournaments.sql" {
+		t.Fatalf("migration 9 filename = %q, want %q", found.Filename, "000009_tournaments.sql")
+	}
+
+	if found.Name != "tournaments" {
+		t.Fatalf("migration 9 name = %q, want %q", found.Name, "tournaments")
+	}
+
+	if found.Checksum == "" {
+		t.Fatal("migration 9 checksum must not be empty")
+	}
+}
+
 func TestPostgresMCPMigrationAppliesCleanly(t *testing.T) {
 	runPostgresMigrationHelper(t, "apply_all")
 }
@@ -211,13 +242,17 @@ func runPostgresMigrationHelperAction(action string) error {
 		"mcp_plan_sessions",
 		"mcp_payment_collections",
 		"one_to_one_booking_sessions",
+		"tournaments",
+		"tournament_sponsorships",
+		"tournament_official_payments",
+		"tournament_expenses",
 	} {
 		if err := postgresRelationMustExist(db, relation); err != nil {
 			return err
 		}
 	}
 
-	for _, version := range []int{6, 7} {
+	for _, version := range []int{6, 7, 9} {
 		var appliedCount int
 
 		if err := db.QueryRow(`
@@ -240,6 +275,7 @@ func runPostgresMigrationHelperAction(action string) error {
 	expectedNames := map[int]string{
 		6: "mcp",
 		7: "one_to_one_session_attendance",
+		9: "tournaments",
 	}
 	for version, wantName := range expectedNames {
 		var migrationName string
@@ -281,6 +317,11 @@ func runPostgresMigrationHelperAction(action string) error {
 		{"one_to_one_booking_sessions", "completed_by_user_id"},
 		{"one_to_one_booking_sessions", "cancelled_at"},
 		{"one_to_one_booking_sessions", "notes"},
+		{"tournaments", "tournament_date"},
+		{"tournaments", "entry_fee_finance_transaction_id"},
+		{"tournament_sponsorships", "finance_transaction_id"},
+		{"tournament_official_payments", "finance_transaction_id"},
+		{"tournament_expenses", "expense_type"},
 	} {
 		if err := postgresColumnMustExist(db, column.table, column.column); err != nil {
 			return err

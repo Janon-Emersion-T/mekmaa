@@ -193,7 +193,7 @@
             Manage assignments
           </a>
 
-          {{if hasPermission $.User "users.manage"}}
+          {{if hasPermission $.User "users.view"}}
           <a
             href="/admin/users#user-{{.User.ID}}"
             class="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud sm:flex-none"
@@ -220,7 +220,7 @@
           assignments.
         </p>
 
-        {{if hasPermission .User "users.manage"}}
+        {{if hasPermission .User "users.view"}}
         <a
           href="/admin/users"
           class="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"

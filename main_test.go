@@ -12531,3 +12531,260 @@ func TestSMSGatewayTemplateDoesNotExposeCredentials(t *testing.T) {
 		t.Fatal("SMS gateway template must not expose SMS_API_KEY")
 	}
 }
+
+func TestCreateTournamentCreatesLinkedEntryFeeFinanceTransaction(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	now := time.Now().UTC()
+	result, err := app.db.Exec(`
+		INSERT INTO games (name, activity, description, active, sort_order, created_at, updated_at)
+		VALUES (?, ?, '', 1, 1, ?, ?)
+	`, "Tournament Badminton", "tournament_badminton", now, now)
+	if err != nil {
+		t.Fatalf("insert test game: %v", err)
+	}
+	gameID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read test game id: %v", err)
+	}
+
+	accounts, err := app.listFinanceAccounts(true)
+	if err != nil {
+		t.Fatalf("list finance accounts: %v", err)
+	}
+	var cashAccountID int64
+	for _, account := range accounts {
+		if account.DivisionCode == divisionCodeSports && account.AccountType == financeAccountTypeCash {
+			cashAccountID = account.ID
+			break
+		}
+	}
+	if cashAccountID <= 0 {
+		t.Fatal("expected a sports cash account")
+	}
+
+	recordedAt := time.Date(2026, 7, 15, 10, 0, 0, 0, time.Local)
+	tournamentID, err := app.createTournament(
+		"Badminton Open 2026",
+		gameID,
+		"2026-07-15",
+		8,
+		2500,
+		cashAccountID,
+		recordedAt,
+		"Opening tournament ledger",
+		0,
+	)
+	if err != nil {
+		t.Fatalf("create tournament: %v", err)
+	}
+
+	tournament, err := app.findTournamentByID(tournamentID)
+	if err != nil {
+		t.Fatalf("find tournament: %v", err)
+	}
+
+	if tournament.EntryIncomeTotal != 20000 {
+		t.Fatalf("entry income total = %.2f, want 20000.00", tournament.EntryIncomeTotal)
+	}
+	if tournament.TotalIncome != 20000 {
+		t.Fatalf("total income = %.2f, want 20000.00", tournament.TotalIncome)
+	}
+	if tournament.EntryFeeFinanceTransactionID <= 0 {
+		t.Fatal("expected linked entry fee finance transaction")
+	}
+
+	var (
+		category       string
+		sourceType     string
+		sourceID       int64
+		referenceType  string
+		referenceID    int64
+		financeAccount int64
+		amount         float64
+		description    string
+	)
+	if err := app.db.QueryRow(`
+		SELECT
+			category,
+			source_type,
+			COALESCE(source_id, 0),
+			reference_type,
+			COALESCE(reference_id, 0),
+			finance_account_id,
+			amount,
+			description
+		FROM finance_transactions
+		WHERE id = ?
+	`, tournament.EntryFeeFinanceTransactionID).Scan(
+		&category,
+		&sourceType,
+		&sourceID,
+		&referenceType,
+		&referenceID,
+		&financeAccount,
+		&amount,
+		&description,
+	); err != nil {
+		t.Fatalf("load tournament finance transaction: %v", err)
+	}
+
+	if category != "tournament_entry_income" {
+		t.Fatalf("category = %q", category)
+	}
+	if sourceType != "tournament" || sourceID != tournamentID {
+		t.Fatalf("source linkage = %q/%d", sourceType, sourceID)
+	}
+	if referenceType != "tournament" || referenceID != tournamentID {
+		t.Fatalf("reference linkage = %q/%d", referenceType, referenceID)
+	}
+	if financeAccount != cashAccountID {
+		t.Fatalf("finance account = %d, want %d", financeAccount, cashAccountID)
+	}
+	if amount != 20000 {
+		t.Fatalf("amount = %.2f, want 20000.00", amount)
+	}
+	if !strings.Contains(description, "Badminton Open 2026") {
+		t.Fatalf("description = %q", description)
+	}
+}
+
+func TestTournamentLineItemsRollUpIntoTotalsAndFinance(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	now := time.Now().UTC()
+	result, err := app.db.Exec(`
+		INSERT INTO games (name, activity, description, active, sort_order, created_at, updated_at)
+		VALUES (?, ?, '', 1, 1, ?, ?)
+	`, "Tournament Table Tennis", "tournament_table_tennis", now, now)
+	if err != nil {
+		t.Fatalf("insert test game: %v", err)
+	}
+	gameID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read test game id: %v", err)
+	}
+
+	accounts, err := app.listFinanceAccounts(true)
+	if err != nil {
+		t.Fatalf("list finance accounts: %v", err)
+	}
+	var cashAccountID, bankAccountID int64
+	for _, account := range accounts {
+		if account.DivisionCode != divisionCodeSports {
+			continue
+		}
+		if account.AccountType == financeAccountTypeCash && cashAccountID <= 0 {
+			cashAccountID = account.ID
+		}
+		if account.AccountType == financeAccountTypeBank && bankAccountID <= 0 {
+			bankAccountID = account.ID
+		}
+	}
+	if cashAccountID <= 0 || bankAccountID <= 0 {
+		t.Fatal("expected sports cash and bank accounts")
+	}
+
+	tournamentID, err := app.createTournament(
+		"Indoor Sports Masters",
+		gameID,
+		"2026-07-20",
+		10,
+		1500,
+		cashAccountID,
+		time.Date(2026, 7, 20, 9, 0, 0, 0, time.Local),
+		"",
+		0,
+	)
+	if err != nil {
+		t.Fatalf("create tournament: %v", err)
+	}
+
+	if err := app.createTournamentSponsorship(
+		tournamentID,
+		"North Sponsor",
+		"Main banner sponsor",
+		5000,
+		bankAccountID,
+		time.Date(2026, 7, 20, 11, 0, 0, 0, time.Local),
+		0,
+	); err != nil {
+		t.Fatalf("create sponsorship: %v", err)
+	}
+
+	if err := app.createTournamentOfficialPayment(
+		tournamentID,
+		"Lead Referee",
+		"Referee",
+		"Final match supervision",
+		2000,
+		cashAccountID,
+		time.Date(2026, 7, 20, 18, 0, 0, 0, time.Local),
+		0,
+	); err != nil {
+		t.Fatalf("create official payment: %v", err)
+	}
+
+	if err := app.createTournamentExpense(
+		tournamentID,
+		"prizes",
+		"Trophies",
+		"Winner and runner-up",
+		3000,
+		cashAccountID,
+		time.Date(2026, 7, 20, 19, 0, 0, 0, time.Local),
+		0,
+	); err != nil {
+		t.Fatalf("create tournament expense: %v", err)
+	}
+
+	tournament, err := app.findTournamentByID(tournamentID)
+	if err != nil {
+		t.Fatalf("reload tournament: %v", err)
+	}
+
+	if tournament.EntryIncomeTotal != 15000 {
+		t.Fatalf("entry income total = %.2f, want 15000.00", tournament.EntryIncomeTotal)
+	}
+	if tournament.SponsorshipIncomeTotal != 5000 {
+		t.Fatalf("sponsorship total = %.2f, want 5000.00", tournament.SponsorshipIncomeTotal)
+	}
+	if tournament.OfficialExpenseTotal != 2000 {
+		t.Fatalf("official total = %.2f, want 2000.00", tournament.OfficialExpenseTotal)
+	}
+	if tournament.OtherExpenseTotal != 3000 {
+		t.Fatalf("other expense total = %.2f, want 3000.00", tournament.OtherExpenseTotal)
+	}
+	if tournament.TotalIncome != 20000 {
+		t.Fatalf("total income = %.2f, want 20000.00", tournament.TotalIncome)
+	}
+	if tournament.TotalExpense != 5000 {
+		t.Fatalf("total expense = %.2f, want 5000.00", tournament.TotalExpense)
+	}
+	if tournament.NetIncome != 15000 {
+		t.Fatalf("net income = %.2f, want 15000.00", tournament.NetIncome)
+	}
+	if len(tournament.Sponsorships) != 1 || len(tournament.OfficialPayments) != 1 || len(tournament.Expenses) != 1 {
+		t.Fatalf(
+			"unexpected line item counts: sponsors=%d officials=%d expenses=%d",
+			len(tournament.Sponsorships),
+			len(tournament.OfficialPayments),
+			len(tournament.Expenses),
+		)
+	}
+
+	var transactionCount int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM finance_transactions
+		WHERE reference_type = 'tournament'
+		  AND reference_id = ?
+		  AND voided_at IS NULL
+	`, tournamentID).Scan(&transactionCount); err != nil {
+		t.Fatalf("count tournament finance transactions: %v", err)
+	}
+
+	if transactionCount != 4 {
+		t.Fatalf("active tournament finance transactions = %d, want 4", transactionCount)
+	}
+}

@@ -1,0 +1,223 @@
+{{define "tournament-detail"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+{{$t := .SelectedTournament}}
+<section class="space-y-6">
+  <div class="relative overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top_left,_rgba(250,204,21,0.18),_transparent_38%),linear-gradient(135deg,_#101517_0%,_#18353b_52%,_#204f58_100%)] p-6 text-cloud shadow-[0_24px_80px_rgba(10,16,18,0.18)] sm:p-8">
+    <div class="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+      <div class="max-w-3xl">
+        <p class="text-xs font-bold uppercase tracking-[0.28em] text-amber-200">Tournament command center</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{{$t.Name}}</h1>
+        <p class="mt-3 text-sm leading-6 text-cloud/75">{{$t.GameName}} tournament on {{formatCalendarDate $t.TournamentDate}}. Entry fees, sponsorship income, referee and scorer payouts, gifts, certificates, refreshments, and all other operating costs are linked here and posted into finance.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/admin/tournaments" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">All tournaments</a>
+        {{if gt $t.EntryFeeFinanceTransactionID 0}}<a href="/admin/finance/receipt?transaction_id={{$t.EntryFeeFinanceTransactionID}}" class="inline-flex h-11 items-center rounded-2xl bg-amber px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Open entry receipt</a>{{end}}
+      </div>
+    </div>
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+    <article class="rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Entry income</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{money $t.EntryIncomeTotal}}</p>
+      <p class="mt-2 text-sm text-slate/60">{{$t.ParticipantCount}} entries at {{money $t.EntryFee}}</p>
+    </article>
+    <article class="rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Sponsorships</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{money $t.SponsorshipIncomeTotal}}</p>
+      <p class="mt-2 text-sm text-slate/60">{{len $t.Sponsorships}} sponsor record{{if ne (len $t.Sponsorships) 1}}s{{end}}</p>
+    </article>
+    <article class="rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Total expense</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{money $t.TotalExpense}}</p>
+      <p class="mt-2 text-sm text-slate/60">Officials {{money $t.OfficialExpenseTotal}} · Other {{money $t.OtherExpenseTotal}}</p>
+    </article>
+    <article class="rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Net result</p>
+      <p class="mt-3 text-3xl font-semibold text-obsidian">{{money $t.NetIncome}}</p>
+      <p class="mt-2 text-sm text-slate/60">Income {{money $t.TotalIncome}} less expenses {{money $t.TotalExpense}}</p>
+    </article>
+  </div>
+
+  <div class="grid gap-6 2xl:grid-cols-[1fr_1fr]">
+    <section class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Tournament profile</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Edit headline details</h2>
+      </div>
+      <form action="/admin/tournaments/update" method="post" class="mt-5 grid gap-4 md:grid-cols-2">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="tournament_id" value="{{$t.ID}}" />
+        <label class="md:col-span-2">
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Tournament name</span>
+          <input type="text" name="name" value="{{$t.Name}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        </label>
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Game</span>
+          <select name="game_id" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+            {{range .Games}}<option value="{{.ID}}" {{if eq .ID $t.GameID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </label>
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Tournament date</span>
+          <input type="date" name="tournament_date" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{$t.TournamentDate}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        </label>
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Participants / teams</span>
+          <input type="number" name="participant_count" min="0" value="{{$t.ParticipantCount}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        </label>
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Entry fee</span>
+          <input type="number" name="entry_fee" min="0" step="0.01" value="{{$t.EntryFee}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        </label>
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Entry fee finance account</span>
+          <select name="entry_fee_finance_account_id" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+            {{range .FinanceAccounts}}<option value="{{.ID}}" {{if eq .ID $t.EntryFeeFinanceAccountID}}selected{{end}}>{{.Name}} · {{.AccountCode}}</option>{{end}}
+          </select>
+        </label>
+        <label>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Entry fee transaction date</span>
+          <input type="date" name="entry_fee_recorded_at" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{$t.EntryFeeRecordedAt.Format "2006-01-02"}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        </label>
+        <label class="md:col-span-2">
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Notes</span>
+          <textarea name="notes" rows="4" class="w-full rounded-2xl border border-slate/10 bg-white px-3 py-3 text-sm outline-none focus:border-aqua">{{$t.Notes}}</textarea>
+        </label>
+        <div class="md:col-span-2">
+          <button class="inline-flex h-11 items-center justify-center rounded-xl bg-obsidian px-5 text-sm font-bold text-cloud transition hover:bg-slate">Save tournament details</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Finance anchors</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Core ledger status</h2>
+      </div>
+      <div class="mt-5 grid gap-4">
+        <div class="rounded-2xl bg-cloud/55 p-4">
+          <p class="text-xs uppercase tracking-[0.14em] text-slate/45">Entry fee account</p>
+          <p class="mt-2 text-sm font-semibold text-obsidian">{{if $t.EntryFeeFinanceAccountName}}{{$t.EntryFeeFinanceAccountName}}{{else}}No account linked yet{{end}}</p>
+          <p class="mt-1 text-sm text-slate/60">Posted on {{if $t.EntryFeeRecordedAt.IsZero}}Not recorded{{else}}{{formatDateTime $t.EntryFeeRecordedAt}}{{end}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud/55 p-4">
+          <p class="text-xs uppercase tracking-[0.14em] text-slate/45">Income formula</p>
+          <p class="mt-2 text-sm font-semibold text-obsidian">Entry fee × number of participants/teams + sponsorships</p>
+          <p class="mt-1 text-sm text-slate/60">{{money $t.EntryIncomeTotal}} + {{money $t.SponsorshipIncomeTotal}} = {{money $t.TotalIncome}}</p>
+        </div>
+        <div class="rounded-2xl bg-cloud/55 p-4">
+          <p class="text-xs uppercase tracking-[0.14em] text-slate/45">Expense formula</p>
+          <p class="mt-2 text-sm font-semibold text-obsidian">Officials + gifts/shields/certificates/cash/vouchers + refreshments + other</p>
+          <p class="mt-1 text-sm text-slate/60">{{money $t.TotalExpense}} total spent so far</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid gap-6 2xl:grid-cols-3">
+    <section class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Income</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Add sponsorship</h2>
+      </div>
+      <form action="/admin/tournaments/sponsorships/create" method="post" class="mt-5 grid gap-3">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="tournament_id" value="{{$t.ID}}" />
+        <input type="text" name="sponsor_name" placeholder="Sponsor name" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <input type="number" name="amount" min="0" step="0.01" placeholder="Amount" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <input type="date" name="recorded_at" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{.TodayDate}}" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <select name="finance_account_id" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+          <option value="">Select finance account</option>
+          {{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}} · {{.AccountCode}}</option>{{end}}
+        </select>
+        <textarea name="description" rows="3" placeholder="Sponsorship note" class="rounded-2xl border border-slate/10 bg-white px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+        <button class="inline-flex h-11 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700">Add sponsorship</button>
+      </form>
+
+      <div class="mt-5 space-y-3">
+        {{range $t.Sponsorships}}
+        <div class="rounded-2xl border border-slate/10 bg-cloud/35 p-4">
+          <p class="text-sm font-semibold text-obsidian">{{.SponsorName}} · {{money .Amount}}</p>
+          <p class="mt-1 text-xs text-slate/55">{{formatDateTime .RecordedAt}} · {{.FinanceAccountName}}</p>
+          {{if .Description}}<p class="mt-2 text-sm text-slate/65">{{.Description}}</p>{{end}}
+        </div>
+        {{else}}
+        <div class="rounded-2xl border border-dashed border-slate/20 bg-cloud/35 px-4 py-8 text-center text-sm text-slate/55">No sponsorships recorded yet.</div>
+        {{end}}
+      </div>
+    </section>
+
+    <section class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Officials</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Referees and scorers</h2>
+      </div>
+      <form action="/admin/tournaments/official-payments/create" method="post" class="mt-5 grid gap-3">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="tournament_id" value="{{$t.ID}}" />
+        <input type="text" name="person_name" placeholder="Person name" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <input type="text" name="role" placeholder="Referee / scorer / official" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <input type="number" name="amount" min="0" step="0.01" placeholder="Amount" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <input type="date" name="recorded_at" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{.TodayDate}}" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <select name="finance_account_id" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+          <option value="">Select finance account</option>
+          {{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}} · {{.AccountCode}}</option>{{end}}
+        </select>
+        <textarea name="description" rows="3" placeholder="Payment note" class="rounded-2xl border border-slate/10 bg-white px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+        <button class="inline-flex h-11 items-center justify-center rounded-xl bg-rose-600 px-4 text-sm font-bold text-white transition hover:bg-rose-700">Add official payment</button>
+      </form>
+
+      <div class="mt-5 space-y-3">
+        {{range $t.OfficialPayments}}
+        <div class="rounded-2xl border border-slate/10 bg-cloud/35 p-4">
+          <p class="text-sm font-semibold text-obsidian">{{.PersonName}} · {{.Role}} · {{money .Amount}}</p>
+          <p class="mt-1 text-xs text-slate/55">{{formatDateTime .RecordedAt}} · {{.FinanceAccountName}}</p>
+          {{if .Description}}<p class="mt-2 text-sm text-slate/65">{{.Description}}</p>{{end}}
+        </div>
+        {{else}}
+        <div class="rounded-2xl border border-dashed border-slate/20 bg-cloud/35 px-4 py-8 text-center text-sm text-slate/55">No referee or scorer payments recorded yet.</div>
+        {{end}}
+      </div>
+    </section>
+
+    <section class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Expenses</p>
+        <h2 class="mt-2 text-2xl font-semibold text-obsidian">Awards, refreshments, other</h2>
+      </div>
+      <form action="/admin/tournaments/expenses/create" method="post" class="mt-5 grid gap-3">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="tournament_id" value="{{$t.ID}}" />
+        <select name="expense_type" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+          <option value="prizes">Gifts / shields / certificates / cash / vouchers</option>
+          <option value="refreshments">Refreshments</option>
+          <option value="other">Other</option>
+        </select>
+        <input type="text" name="item_name" placeholder="Expense item" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <input type="number" name="amount" min="0" step="0.01" placeholder="Amount" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <input type="date" name="recorded_at" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{.TodayDate}}" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+        <select name="finance_account_id" required class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+          <option value="">Select finance account</option>
+          {{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}} · {{.AccountCode}}</option>{{end}}
+        </select>
+        <textarea name="description" rows="3" placeholder="Expense note" class="rounded-2xl border border-slate/10 bg-white px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
+        <button class="inline-flex h-11 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-bold text-cloud transition hover:bg-slate">Add expense</button>
+      </form>
+
+      <div class="mt-5 space-y-3">
+        {{range $t.Expenses}}
+        <div class="rounded-2xl border border-slate/10 bg-cloud/35 p-4">
+          <p class="text-sm font-semibold text-obsidian">{{tournamentExpenseTypeLabel .ExpenseType}} · {{.ItemName}} · {{money .Amount}}</p>
+          <p class="mt-1 text-xs text-slate/55">{{formatDateTime .RecordedAt}} · {{.FinanceAccountName}}</p>
+          {{if .Description}}<p class="mt-2 text-sm text-slate/65">{{.Description}}</p>{{end}}
+        </div>
+        {{else}}
+        <div class="rounded-2xl border border-dashed border-slate/20 bg-cloud/35 px-4 py-8 text-center text-sm text-slate/55">No expense lines recorded yet.</div>
+        {{end}}
+      </div>
+    </section>
+  </div>
+</section>
+{{end}}
