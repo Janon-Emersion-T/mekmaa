@@ -6534,6 +6534,58 @@ func TestOneToOneBookingDetailHandlerRendersSelectedPackage(t *testing.T) {
 	}
 }
 
+func TestOneToOneBookingExportHandlerReturnsCSV(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Private Badminton",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 4,
+		Price:        3200,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create 1 to 1 offering: %v", err)
+	}
+
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find 1 to 1 offering: %v", err)
+	}
+
+	slotDate := time.Now().AddDate(0, 0, -3).Format("2006-01-02")
+	bookingID, _, err := app.createOneToOneBooking(*offering, "Export Customer", slotDate, "18:00", 3, 3000, coachID, 900, "Export note", "")
+	if err != nil {
+		t.Fatalf("create 1 to 1 booking: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/admin/one-to-one-bookings/export?id="+strconv.FormatInt(bookingID, 10), nil)
+	app.oneToOneBookingExportHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "text/csv") {
+		t.Fatalf("content type = %q, want text/csv", got)
+	}
+	body := rec.Body.String()
+	for _, needle := range []string{
+		"Section,Field,Value",
+		"Export Customer",
+		"Payments",
+		"Sessions",
+		"Final price",
+	} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("expected %q in export body, got %s", needle, body)
+		}
+	}
+}
+
 func TestBookingHoursUseFifteenMinuteIncrements(t *testing.T) {
 	hours := bookingHours()
 	if len(hours) == 0 {
@@ -12006,6 +12058,214 @@ func TestSaveOneToOneSessionAttendanceMarksSessionCompleted(t *testing.T) {
 	}
 	if attendanceNote != "Recovered and finished strongly" {
 		t.Fatalf("updated attendance note = %q", attendanceNote)
+	}
+}
+
+func TestUpdateOneToOneBookingPackageUpdatesCommercialAndSummaryFields(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	initialCoachID := createOneToOneTestCoach(t, app)
+	updatedCoach, err := app.createCoach(User{
+		Name:      "1 to 1 Updated Coach",
+		Email:     "one-to-one-updated-coach@example.com",
+		CoachType: "main",
+		Active:    true,
+	}, "password-123")
+	if err != nil {
+		t.Fatalf("create updated 1 to 1 test coach: %v", err)
+	}
+	updatedCoachID := updatedCoach.ID
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Editable Private Badminton",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 10,
+		Price:        5000,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create offering: %v", err)
+	}
+
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find offering: %v", err)
+	}
+
+	slotDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
+	bookingID, scheduleID, err := app.createOneToOneBooking(
+		*offering,
+		"Original Customer",
+		slotDate,
+		"18:00",
+		1,
+		4500,
+		initialCoachID,
+		900,
+		"Original package note",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+
+	if err := app.updateOneToOneBookingPackage(
+		bookingID,
+		"Updated Customer",
+		10,
+		4200,
+		updatedCoachID,
+		1100,
+		"Updated package note",
+	); err != nil {
+		t.Fatalf("update package: %v", err)
+	}
+
+	var (
+		customerName    string
+		sessions        int
+		discountedPrice float64
+		coachUserID     int64
+		coachFee        float64
+	)
+	if err := app.db.QueryRow(`
+		SELECT
+			customer_name,
+			sessions,
+			discounted_price,
+			coach_user_id,
+			coach_fee
+		FROM one_to_one_bookings
+		WHERE id = ?
+	`, bookingID).Scan(
+		&customerName,
+		&sessions,
+		&discountedPrice,
+		&coachUserID,
+		&coachFee,
+	); err != nil {
+		t.Fatalf("reload updated package: %v", err)
+	}
+
+	if customerName != "Updated Customer" {
+		t.Fatalf("customer name = %q", customerName)
+	}
+	if sessions != 10 {
+		t.Fatalf("sessions = %d, want 10", sessions)
+	}
+	if discountedPrice != 4200 {
+		t.Fatalf("discounted price = %.2f, want 4200.00", discountedPrice)
+	}
+	if coachUserID != updatedCoachID {
+		t.Fatalf("coach user id = %d, want %d", coachUserID, updatedCoachID)
+	}
+	if coachFee != 1100 {
+		t.Fatalf("coach fee = %.2f, want 1100.00", coachFee)
+	}
+
+	var (
+		title         string
+		requesterName string
+		scheduleNotes string
+	)
+	if err := app.db.QueryRow(`
+		SELECT title, requester_name, notes
+		FROM space_schedules
+		WHERE id = ?
+	`, scheduleID).Scan(&title, &requesterName, &scheduleNotes); err != nil {
+		t.Fatalf("reload linked schedule: %v", err)
+	}
+
+	if !strings.Contains(title, "Updated Customer") {
+		t.Fatalf("linked schedule title = %q", title)
+	}
+	if requesterName != "Updated Customer" {
+		t.Fatalf("requester name = %q", requesterName)
+	}
+	if !strings.Contains(scheduleNotes, "Updated package note") {
+		t.Fatalf("linked schedule notes = %q", scheduleNotes)
+	}
+
+	var quotedAmount float64
+	if err := app.db.QueryRow(`
+		SELECT quoted_amount
+		FROM booking_financials
+		WHERE schedule_id = ?
+	`, scheduleID).Scan(&quotedAmount); err != nil {
+		t.Fatalf("reload linked financial: %v", err)
+	}
+
+	if quotedAmount != 4200 {
+		t.Fatalf("quoted amount = %.2f, want 4200.00", quotedAmount)
+	}
+}
+
+func TestUpdateOneToOneBookingPackageRejectsReducingBelowExistingAppointments(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
+
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Reduction Guard Package",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 6,
+		Price:        4800,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create offering: %v", err)
+	}
+
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find offering: %v", err)
+	}
+
+	slotDate := time.Now().AddDate(0, 0, 4).Format("2006-01-02")
+	bookingID, _, err := app.createOneToOneBooking(
+		*offering,
+		"Protected Customer",
+		slotDate,
+		"18:00",
+		3,
+		4500,
+		coachID,
+		900,
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+
+	if _, _, err := app.scheduleNextOneToOneSession(
+		bookingID,
+		time.Now().AddDate(0, 0, 6).Format("2006-01-02"),
+		"19:00",
+		0,
+		900,
+		"",
+	); err != nil {
+		t.Fatalf("schedule second appointment: %v", err)
+	}
+
+	err = app.updateOneToOneBookingPackage(
+		bookingID,
+		"Protected Customer",
+		1,
+		4500,
+		coachID,
+		900,
+		"",
+	)
+	if err == nil {
+		t.Fatal("expected update to reject reducing below active appointment count")
+	}
+
+	if !strings.Contains(err.Error(), "appointments already exist") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

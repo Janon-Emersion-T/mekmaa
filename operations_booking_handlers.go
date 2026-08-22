@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1887,6 +1888,7 @@ func (a *App) oneToOneBookingDetailHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	selected.Notes = extractOneToOneBookingNote(selected.Notes)
 
 	sessions, err := a.listOneToOneBookingSessions(selected.ID)
 	if err != nil {
@@ -1900,6 +1902,170 @@ func (a *App) oneToOneBookingDetailHandler(w http.ResponseWriter, r *http.Reques
 	data.Description = "Manage one 1 to 1 package, its financials, attendance, and next session."
 	data.SelectedOneToOneBooking = selected
 	a.render(w, "one-to-one-booking-detail", data, http.StatusOK)
+}
+
+func (a *App) oneToOneBookingExportHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bookingID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+	if err != nil || bookingID <= 0 {
+		http.Error(w, "invalid 1 to 1 package", http.StatusBadRequest)
+		return
+	}
+
+	booking, err := a.findOneToOneBookingByID(bookingID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	sessions, err := a.listOneToOneBookingSessions(booking.ID)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	financials, err := a.listBookingFinancialsForScheduleIDs([]int64{booking.ScheduleID})
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	var financial *BookingFinancial
+	if len(financials) > 0 {
+		financial = &financials[0]
+	}
+
+	collections, err := a.listBookingPaymentCollectionsForScheduleIDs([]int64{booking.ScheduleID})
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	referrals, err := a.listBookingReferralsForScheduleIDs([]int64{booking.ScheduleID})
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	var referral *BookingReferral
+	if len(referrals) > 0 {
+		referral = &referrals[0]
+	}
+
+	filename := fmt.Sprintf(
+		"mekmaa-one-to-one-package-%d-%s.csv",
+		booking.ID,
+		strings.ReplaceAll(strings.ToLower(strings.TrimSpace(booking.CustomerName)), " ", "-"),
+	)
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	_ = writer.Write([]string{"Section", "Field", "Value"})
+	summaryRows := [][]string{
+		{"package", "Booking ID", strconv.FormatInt(booking.ID, 10)},
+		{"package", "Schedule ID", strconv.FormatInt(booking.ScheduleID, 10)},
+		{"package", "Customer name", csvSafeCell(booking.CustomerName)},
+		{"package", "Offering", csvSafeCell(booking.OfferingName)},
+		{"package", "Game", csvSafeCell(activityLabel(booking.Game))},
+		{"package", "Audience", csvSafeCell(func() string {
+			if booking.Audience == "foreign" {
+				return "Foreign"
+			}
+			return "Local"
+		}())},
+		{"package", "Occurrence", csvSafeCell(func() string {
+			if booking.Occurrence == "per_week" {
+				return "Per week"
+			}
+			if booking.Occurrence == "per_month" {
+				return "Per month"
+			}
+			return "Per day"
+		}())},
+		{"package", "Booked date", booking.SlotDate},
+		{"package", "Booked time", booking.SlotHour},
+		{"package", "Package status", csvSafeCell(booking.PackageStatus)},
+		{"package", "Schedule status", csvSafeCell(booking.Status)},
+		{"package", "Sessions purchased", strconv.Itoa(booking.Sessions)},
+		{"package", "Completed sessions", strconv.Itoa(booking.CompletedSessions)},
+		{"package", "Cancelled sessions", strconv.Itoa(booking.CancelledSessions)},
+		{"package", "Standard price", fmt.Sprintf("%.2f", booking.Price)},
+		{"package", "Final price", fmt.Sprintf("%.2f", booking.DiscountedPrice)},
+		{"package", "Default coach fee", fmt.Sprintf("%.2f", booking.CoachFee)},
+		{"package", "Package note", csvSafeCell(booking.Notes)},
+		{"package", "Created at", formatDateTime(booking.CreatedAt)},
+		{"package", "Updated at", formatDateTime(booking.UpdatedAt)},
+	}
+	if financial != nil {
+		summaryRows = append(summaryRows,
+			[]string{"finance", "Quoted amount", fmt.Sprintf("%.2f", financial.QuotedAmount)},
+			[]string{"finance", "Total collected", fmt.Sprintf("%.2f", financial.TotalCollected)},
+			[]string{"finance", "Outstanding amount", fmt.Sprintf("%.2f", financial.OutstandingAmount)},
+			[]string{"finance", "Payment status", csvSafeCell(financial.PaymentStatus)},
+			[]string{"finance", "Active payment count", strconv.Itoa(financial.ActivePaymentCount)},
+			[]string{"finance", "Voided payment count", strconv.Itoa(financial.VoidedPaymentCount)},
+		)
+	}
+	if referral != nil {
+		summaryRows = append(summaryRows,
+			[]string{"referral", "Partner name", csvSafeCell(referral.PartnerName)},
+			[]string{"referral", "Partner code", csvSafeCell(referral.PartnerCode)},
+			[]string{"referral", "Commission amount", fmt.Sprintf("%.2f", referral.CommissionAmount)},
+			[]string{"referral", "Commission paid", fmt.Sprintf("%t", referral.Paid)},
+			[]string{"referral", "Commission paid at", formatDateTime(referral.PaidAt)},
+		)
+	}
+	for _, row := range summaryRows {
+		_ = writer.Write(row)
+	}
+
+	_ = writer.Write([]string{})
+	_ = writer.Write([]string{"Payments"})
+	_ = writer.Write([]string{"Collection ID", "Collected at", "Amount", "Payment method", "Collected by", "Note", "Voided", "Void reason", "Voided by", "Voided at"})
+	for _, collection := range bookingPaymentsForSchedule(collections, booking.ScheduleID) {
+		_ = writer.Write([]string{
+			strconv.FormatInt(collection.ID, 10),
+			formatDateTime(collection.CollectedAt),
+			fmt.Sprintf("%.2f", collection.Amount),
+			csvSafeCell(paymentMethodLabel(collection.PaymentMethod)),
+			csvSafeCell(collection.CollectedByUserName),
+			csvSafeCell(collection.PaymentNote),
+			fmt.Sprintf("%t", collection.Voided),
+			csvSafeCell(collection.VoidReason),
+			csvSafeCell(collection.VoidedByUserName),
+			formatDateTime(collection.VoidedAt),
+		})
+	}
+
+	_ = writer.Write([]string{})
+	_ = writer.Write([]string{"Sessions"})
+	_ = writer.Write([]string{"Session #", "Slot date", "Slot time", "Status", "Attendance", "Coach", "Coach fee", "Session note", "Attendance note", "Attendance marked at", "Attendance marked by", "Completed at", "Cancelled at"})
+	for _, session := range sessions {
+		_ = writer.Write([]string{
+			strconv.Itoa(session.SessionNumber),
+			session.SlotDate,
+			session.SlotHour,
+			csvSafeCell(session.Status),
+			csvSafeCell(oneToOneAttendanceStatusLabel(session.AttendanceStatus)),
+			csvSafeCell(session.CoachName),
+			fmt.Sprintf("%.2f", session.CoachFee),
+			csvSafeCell(session.Notes),
+			csvSafeCell(session.AttendanceNote),
+			formatDateTime(session.AttendanceMarkedAt),
+			csvSafeCell(session.AttendanceMarkedByUserName),
+			formatDateTime(session.CompletedAt),
+			formatDateTime(session.CancelledAt),
+		})
+	}
 }
 
 func oneToOneBookingReturnTarget(r *http.Request, bookingID int64) string {
@@ -2036,6 +2202,54 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 	}
 	a.setFlash(w, "1 to 1 booking created.")
 	http.Redirect(w, r, "/admin/one-to-one-bookings/view?id="+strconv.FormatInt(bookingID, 10), http.StatusSeeOther)
+}
+
+func (a *App) updateOneToOneBookingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	bookingID, customerName, sessions, discountedPrice, coachUserID, coachFee, notes, err := oneToOneBookingUpdateFormValues(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := a.updateOneToOneBookingPackage(
+		bookingID,
+		customerName,
+		sessions,
+		discountedPrice,
+		coachUserID,
+		coachFee,
+		notes,
+	); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(
+			w,
+			r,
+			oneToOneBookingReturnTarget(r, bookingID),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(w, "1 to 1 package updated.")
+	http.Redirect(
+		w,
+		r,
+		oneToOneBookingReturnTarget(r, bookingID),
+		http.StatusSeeOther,
+	)
 }
 
 func (a *App) scheduleNextOneToOneSessionHandler(w http.ResponseWriter, r *http.Request) {

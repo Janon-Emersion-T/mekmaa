@@ -301,6 +301,58 @@ func oneToOneBookingFormValues(r *http.Request) (int64, string, string, string, 
 		nil
 }
 
+func oneToOneBookingUpdateFormValues(
+	r *http.Request,
+) (int64, string, int, float64, int64, float64, string, error) {
+	bookingID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("booking_id")),
+		10,
+		64,
+	)
+	if err != nil || bookingID <= 0 {
+		return 0, "", 0, 0, 0, 0, "", errors.New("valid 1 to 1 package is required")
+	}
+
+	sessions, err := strconv.Atoi(strings.TrimSpace(r.FormValue("sessions")))
+	if err != nil || sessions <= 0 {
+		return 0, "", 0, 0, 0, 0, "", errors.New("valid sessions count is required")
+	}
+
+	discountedPrice, err := strconv.ParseFloat(
+		strings.TrimSpace(r.FormValue("discounted_price")),
+		64,
+	)
+	if err != nil {
+		return 0, "", 0, 0, 0, 0, "", errors.New("valid final package price is required")
+	}
+
+	coachUserID, err := strconv.ParseInt(
+		strings.TrimSpace(r.FormValue("coach_user_id")),
+		10,
+		64,
+	)
+	if err != nil || coachUserID <= 0 {
+		return 0, "", 0, 0, 0, 0, "", errors.New("select a coach")
+	}
+
+	coachFee, err := strconv.ParseFloat(
+		strings.TrimSpace(r.FormValue("coach_fee")),
+		64,
+	)
+	if err != nil {
+		return 0, "", 0, 0, 0, 0, "", errors.New("valid coach fee is required")
+	}
+
+	return bookingID,
+		strings.TrimSpace(r.FormValue("customer_name")),
+		sessions,
+		discountedPrice,
+		coachUserID,
+		coachFee,
+		strings.TrimSpace(r.FormValue("notes")),
+		nil
+}
+
 func bookingActivityExists(activity string, activities []CourtActivity) bool {
 	activity = strings.TrimSpace(activity)
 	for _, candidate := range activities {

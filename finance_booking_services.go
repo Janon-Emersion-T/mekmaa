@@ -2419,6 +2419,219 @@ func (a *App) scheduleNextOneToOneSession(
 	return sessionID, scheduleID, nil
 }
 
+func (a *App) updateOneToOneBookingPackage(
+	bookingID int64,
+	customerName string,
+	sessions int,
+	discountedPrice float64,
+	coachUserID int64,
+	coachFee float64,
+	notes string,
+) error {
+	if bookingID <= 0 {
+		return errors.New("invalid 1 to 1 package")
+	}
+
+	customerName = strings.TrimSpace(customerName)
+	if customerName == "" {
+		return errors.New("customer name is required")
+	}
+
+	if sessions <= 0 {
+		return errors.New("valid sessions count is required")
+	}
+
+	if coachUserID <= 0 {
+		return errors.New("select a coach")
+	}
+
+	if coachFee < 0 {
+		return errors.New("coach fee must be zero or greater")
+	}
+
+	notes = strings.TrimSpace(notes)
+
+	var booking OneToOneBooking
+	if err := a.queryRowDB(`
+		SELECT
+			id,
+			schedule_id,
+			offering_id,
+			customer_name,
+			offering_name,
+			game,
+			audience,
+			COALESCE(occurrence, 'per_day'),
+			COALESCE(max_sessions, 1),
+			price,
+			CASE WHEN COALESCE(discounted_price, -1) < 0 THEN price ELSE discounted_price END,
+			COALESCE(coach_fee, 0),
+			COALESCE(sessions, 1),
+			COALESCE(coach_user_id, 0),
+			COALESCE(package_status, ''),
+			COALESCE(completed_sessions, 0),
+			COALESCE(cancelled_sessions, 0),
+			created_at,
+			updated_at
+		FROM one_to_one_bookings
+		WHERE id = ?
+	`, bookingID).Scan(
+		&booking.ID,
+		&booking.ScheduleID,
+		&booking.OfferingID,
+		&booking.CustomerName,
+		&booking.OfferingName,
+		&booking.Game,
+		&booking.Audience,
+		&booking.Occurrence,
+		&booking.MaxSessions,
+		&booking.Price,
+		&booking.DiscountedPrice,
+		&booking.CoachFee,
+		&booking.Sessions,
+		&booking.CoachUserID,
+		&booking.PackageStatus,
+		&booking.CompletedSessions,
+		&booking.CancelledSessions,
+		&booking.CreatedAt,
+		&booking.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("1 to 1 package was not found")
+		}
+		return err
+	}
+
+	if booking.Occurrence == "per_day" {
+		sessions = 1
+	}
+
+	if booking.MaxSessions <= 0 {
+		booking.MaxSessions = 1
+	}
+
+	if sessions > booking.MaxSessions {
+		return fmt.Errorf(
+			"sessions cannot exceed the configured limit of %d",
+			booking.MaxSessions,
+		)
+	}
+
+	if discountedPrice < 0 {
+		return errors.New("final package price must be zero or greater")
+	}
+
+	if discountedPrice > booking.Price {
+		return errors.New("final package price cannot exceed the standard price")
+	}
+
+	var consumingSessionCount int
+	if err := a.queryRowDB(`
+		SELECT COUNT(*)
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+		  AND status <> 'cancelled'
+	`, bookingID).Scan(&consumingSessionCount); err != nil {
+		return err
+	}
+
+	if sessions < consumingSessionCount {
+		return fmt.Errorf(
+			"sessions cannot be reduced below %d because that many appointments already exist on this package",
+			consumingSessionCount,
+		)
+	}
+
+	if sessions < booking.CompletedSessions {
+		return fmt.Errorf(
+			"sessions cannot be reduced below %d completed appointments",
+			booking.CompletedSessions,
+		)
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	packageNotes := buildOneToOneBookingNotes(
+		OneToOneOffering{
+			Name:         booking.OfferingName,
+			Game:         booking.Game,
+			Audience:     booking.Audience,
+			Occurrence:   booking.Occurrence,
+			SessionCount: booking.MaxSessions,
+			Price:        booking.Price,
+		},
+		sessions,
+		discountedPrice,
+		coachFee,
+		notes,
+	)
+
+	if _, err := a.execTxDB(tx, `
+		UPDATE one_to_one_bookings
+		SET
+			customer_name = ?,
+			discounted_price = ?,
+			coach_user_id = ?,
+			coach_fee = ?,
+			sessions = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		customerName,
+		discountedPrice,
+		coachUserID,
+		coachFee,
+		sessions,
+		now,
+		bookingID,
+	); err != nil {
+		return err
+	}
+
+	if _, err := a.execTxDB(tx, `
+		UPDATE space_schedules
+		SET
+			title = ?,
+			notes = ?,
+			requester_name = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		fmt.Sprintf("1 to 1 · %s · %s", booking.OfferingName, customerName),
+		packageNotes,
+		customerName,
+		now,
+		booking.ScheduleID,
+	); err != nil {
+		return err
+	}
+
+	if _, err := a.execTxDB(tx, `
+		UPDATE booking_financials
+		SET
+			quoted_amount = ?,
+			updated_at = ?
+		WHERE schedule_id = ?
+	`,
+		discountedPrice,
+		now,
+		booking.ScheduleID,
+	); err != nil {
+		return err
+	}
+
+	if err := a.refreshOneToOnePackageProgressTx(tx, bookingID, now); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (a *App) refreshOneToOnePackageProgressTx(
 	tx *sql.Tx,
 	bookingID int64,
@@ -2676,6 +2889,21 @@ func buildOneToOneBookingNotes(offering OneToOneOffering, sessions int, discount
 		return base
 	}
 	return base + "\nNotes: " + notes
+}
+
+func extractOneToOneBookingNote(notes string) string {
+	notes = strings.TrimSpace(notes)
+	if notes == "" {
+		return ""
+	}
+
+	const marker = "\nNotes: "
+	idx := strings.LastIndex(notes, marker)
+	if idx == -1 {
+		return ""
+	}
+
+	return strings.TrimSpace(notes[idx+len(marker):])
 }
 
 func (a *App) countReschedulePendingSpaceSchedules() (int, error) {
