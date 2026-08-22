@@ -207,7 +207,7 @@ func loadOperationalDivisionsTx(tx *sql.Tx) ([]Division, error) {
 	rows, err := tx.Query(`
 		SELECT id, code, slug, name, COALESCE(description, ''), COALESCE(active, 1), created_at, updated_at
 		FROM divisions
-		WHERE UPPER(code) IN (?, ?, ?, ?)
+		WHERE UPPER(code) IN ($1, $2, $3, $4)
 		ORDER BY name ASC, id ASC
 	`, divisionCodeSports, divisionCodeKEC, divisionCodeChess, divisionCodeCorporate)
 	if err != nil {
@@ -232,7 +232,7 @@ func loadDivisionByIDQuery(queryer sqlQueryer, divisionID int64) (*Division, err
 	row := queryer.QueryRow(`
 		SELECT id, code, slug, name, COALESCE(description, ''), COALESCE(active, 1), created_at, updated_at
 		FROM divisions
-		WHERE id = ?
+		WHERE id = $1
 	`, divisionID)
 	var division Division
 	var active int
@@ -427,7 +427,7 @@ func migrateFinanceAccountOwnershipTx(tx *sql.Tx) error {
 		distinctRows, err := tx.Query(`
 			SELECT DISTINCT division_id
 			FROM finance_transactions
-			WHERE finance_account_id = ?
+			WHERE finance_account_id = $1
 			  AND COALESCE(division_id, 0) > 0
 			ORDER BY division_id ASC
 		`, account.ID)
@@ -702,10 +702,10 @@ func migrateFinanceCashbook(db *sql.DB) error {
 		return err
 	}
 	var cashAccountID, bankAccountID int64
-	if err := tx.QueryRow(`SELECT id FROM finance_accounts WHERE division_id = ? AND LOWER(name) = LOWER(?) LIMIT 1`, sportsID, financeAccountCashInHand).Scan(&cashAccountID); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM finance_accounts WHERE division_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1`, sportsID, financeAccountCashInHand).Scan(&cashAccountID); err != nil {
 		return err
 	}
-	if err := tx.QueryRow(`SELECT id FROM finance_accounts WHERE division_id = ? AND LOWER(name) = LOWER(?) LIMIT 1`, sportsID, financeAccountMainBank).Scan(&bankAccountID); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM finance_accounts WHERE division_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1`, sportsID, financeAccountMainBank).Scan(&bankAccountID); err != nil {
 		return err
 	}
 
@@ -719,26 +719,26 @@ func migrateFinanceCashbook(db *sql.DB) error {
 	if _, err := tx.Exec(`UPDATE finance_transactions SET source_id = reference_id WHERE source_id IS NULL AND reference_id IS NOT NULL`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE finance_transactions SET updated_at = COALESCE(updated_at, created_at, recorded_at, ?)`, now); err != nil {
+	if _, err := tx.Exec(`UPDATE finance_transactions SET updated_at = COALESCE(updated_at, created_at, recorded_at, $1)`, now); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE finance_transactions SET approval_status = COALESCE(NULLIF(approval_status, ''), 'approved')`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE finance_transactions SET approved_at = COALESCE(approved_at, created_at, recorded_at, ?) WHERE approval_status = 'approved'`, now); err != nil {
+	if _, err := tx.Exec(`UPDATE finance_transactions SET approved_at = COALESCE(approved_at, created_at, recorded_at, $1) WHERE approval_status = 'approved'`, now); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE finance_transactions SET payment_method = 'cash' WHERE TRIM(COALESCE(payment_method, '')) = ''`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE finance_accounts SET account_code = CASE WHEN LOWER(account_type) = 'cash' THEN 'CASH-' || printf('%03d', finance_accounts.id) ELSE 'BANK-' || printf('%03d', finance_accounts.id) END WHERE TRIM(COALESCE(account_code, '')) = ''`); err != nil {
+	if _, err := tx.Exec(`UPDATE finance_accounts SET account_code = CASE WHEN LOWER(account_type) = 'cash' THEN 'CASH-' || SUBSTR('000' || CAST(finance_accounts.id AS TEXT), LENGTH('000' || CAST(finance_accounts.id AS TEXT)) - 2, 3) ELSE 'BANK-' || SUBSTR('000' || CAST(finance_accounts.id AS TEXT), LENGTH('000' || CAST(finance_accounts.id AS TEXT)) - 2, 3) END WHERE TRIM(COALESCE(account_code, '')) = ''`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`
 		UPDATE finance_accounts
 		SET account_code = CASE
-			WHEN LOWER(account_type) = 'cash' THEN 'CASH-' || printf('%03d', finance_accounts.id)
-			ELSE 'BANK-' || printf('%03d', finance_accounts.id)
+			WHEN LOWER(account_type) = 'cash' THEN 'CASH-' || SUBSTR('000' || CAST(finance_accounts.id AS TEXT), LENGTH('000' || CAST(finance_accounts.id AS TEXT)) - 2, 3)
+			ELSE 'BANK-' || SUBSTR('000' || CAST(finance_accounts.id AS TEXT), LENGTH('000' || CAST(finance_accounts.id AS TEXT)) - 2, 3)
 		END
 		WHERE id IN (
 			SELECT fa.id
@@ -799,7 +799,7 @@ func migrateFinanceCashbook(db *sql.DB) error {
 		if amount < 0 && paymentMethod == "bank_transfer" {
 			accountID = bankAccountID
 		}
-		if _, err := tx.Exec(`UPDATE finance_transactions SET finance_account_id = ? WHERE id = ?`, accountID, transactionID); err != nil {
+		if _, err := tx.Exec(`UPDATE finance_transactions SET finance_account_id = $1 WHERE id = $2`, accountID, transactionID); err != nil {
 			return err
 		}
 	}
@@ -1000,7 +1000,7 @@ func financeSourceDuplicateCount(db *sql.DB, sourceType string) (int, error) {
 		FROM (
 			SELECT source_id
 			FROM finance_transactions
-			WHERE source_type = ?
+			WHERE source_type = $1
 			  AND COALESCE(source_id, 0) <> 0
 			GROUP BY source_id
 			HAVING COUNT(*) > 1
@@ -1902,8 +1902,8 @@ func loadStudentPaymentLedgerRepairState(ctx context.Context, db *sql.DB, paymen
 func int64INClause(template string, values []int64) (string, []any) {
 	placeholders := make([]string, 0, len(values))
 	args := make([]any, 0, len(values))
-	for _, value := range values {
-		placeholders = append(placeholders, "?")
+	for i, value := range values {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
 		args = append(args, value)
 	}
 	return fmt.Sprintf(template, strings.Join(placeholders, ",")), args
@@ -2554,7 +2554,7 @@ func (a *App) voidFinanceTransferGroup(groupID string, reason string, voidedByUs
 	rows, err := tx.Query(`
 		SELECT id, transaction_type, amount
 		FROM finance_transactions
-		WHERE transfer_group_id = ?
+		WHERE transfer_group_id = $1
 		ORDER BY id ASC
 	`, groupID)
 	if err != nil {
@@ -2705,7 +2705,7 @@ func (a *App) createFinanceOpeningBalance(accountID int64, amount float64, recor
 	if err := tx.QueryRow(`
 		SELECT COUNT(*)
 		FROM finance_transactions
-		WHERE finance_account_id = ?
+		WHERE finance_account_id = $1
 		  AND transaction_type = 'opening_balance'
 		  AND voided_at IS NULL
 	`, accountID).Scan(&existingCount); err != nil {
