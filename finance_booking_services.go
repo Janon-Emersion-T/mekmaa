@@ -1758,7 +1758,10 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 		ORDER BY ots.session_number ASC, ots.id ASC
 	`, bookingID)
 	if err != nil {
-		return nil, err
+		return a.listOneToOneBookingSessionsCompatibility(
+			bookingID,
+			err,
+		)
 	}
 	defer rows.Close()
 
@@ -1814,6 +1817,159 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 	}
 
 	return sessions, nil
+}
+
+func (a *App) listOneToOneBookingSessionsCompatibility(
+	bookingID int64,
+	queryErr error,
+) ([]OneToOneBookingSession, error) {
+	legacySessions, err := a.listOneToOneBookingSessionsLegacy(
+		bookingID,
+	)
+	if err == nil {
+		return legacySessions, nil
+	}
+
+	derivedSessions, deriveErr := a.listOneToOneBookingSessionsDerived(
+		bookingID,
+	)
+	if deriveErr == nil {
+		return derivedSessions, nil
+	}
+
+	return nil, queryErr
+}
+
+func (a *App) listOneToOneBookingSessionsLegacy(
+	bookingID int64,
+) ([]OneToOneBookingSession, error) {
+	rows, err := a.queryDB(`
+		SELECT
+			ots.id,
+			ots.booking_id,
+			ots.schedule_id,
+			ots.session_number,
+			COALESCE(ots.coach_user_id, 0),
+			COALESCE(u.name, ''),
+			COALESCE(ots.coach_fee, 0),
+			ss.slot_date,
+			ss.slot_hour,
+			ots.status,
+			COALESCE(ots.notes, ''),
+			ots.completed_at,
+			COALESCE(ots.completed_by_user_id, 0),
+			ots.cancelled_at,
+			ots.created_at,
+			ots.updated_at
+		FROM one_to_one_booking_sessions ots
+		JOIN space_schedules ss
+			ON ss.id = ots.schedule_id
+		LEFT JOIN users u
+			ON u.id = ots.coach_user_id
+		WHERE ots.booking_id = ?
+		ORDER BY ots.session_number ASC, ots.id ASC
+	`, bookingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sessions := make([]OneToOneBookingSession, 0)
+
+	for rows.Next() {
+		var session OneToOneBookingSession
+		var completedAt sql.NullTime
+		var cancelledAt sql.NullTime
+
+		if err := rows.Scan(
+			&session.ID,
+			&session.BookingID,
+			&session.ScheduleID,
+			&session.SessionNumber,
+			&session.CoachUserID,
+			&session.CoachName,
+			&session.CoachFee,
+			&session.SlotDate,
+			&session.SlotHour,
+			&session.Status,
+			&session.Notes,
+			&completedAt,
+			&session.CompletedByUserID,
+			&cancelledAt,
+			&session.CreatedAt,
+			&session.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		if completedAt.Valid {
+			session.CompletedAt = completedAt.Time
+		}
+		if cancelledAt.Valid {
+			session.CancelledAt = cancelledAt.Time
+		}
+
+		sessions = append(sessions, session)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return sessions, nil
+}
+
+func (a *App) listOneToOneBookingSessionsDerived(
+	bookingID int64,
+) ([]OneToOneBookingSession, error) {
+	var session OneToOneBookingSession
+
+	err := a.queryRowDB(`
+		SELECT
+			ob.id,
+			ob.id,
+			ob.schedule_id,
+			1,
+			0,
+			'',
+			COALESCE(ob.coach_fee, 0),
+			ss.slot_date,
+			ss.slot_hour,
+			ss.status,
+			ss.notes,
+			ss.created_at,
+			ss.updated_at
+		FROM one_to_one_bookings ob
+		JOIN space_schedules ss
+			ON ss.id = ob.schedule_id
+		WHERE ob.id = ?
+	`, bookingID).Scan(
+		&session.ID,
+		&session.BookingID,
+		&session.ScheduleID,
+		&session.SessionNumber,
+		&session.CoachUserID,
+		&session.CoachName,
+		&session.CoachFee,
+		&session.SlotDate,
+		&session.SlotHour,
+		&session.Status,
+		&session.Notes,
+		&session.CreatedAt,
+		&session.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	switch strings.ToLower(strings.TrimSpace(session.Status)) {
+	case "completed":
+		session.CompletedAt = session.UpdatedAt
+	case "cancelled":
+		session.CancelledAt = session.UpdatedAt
+	}
+
+	return []OneToOneBookingSession{session}, nil
 }
 
 func (a *App) saveOneToOneSessionAttendance(

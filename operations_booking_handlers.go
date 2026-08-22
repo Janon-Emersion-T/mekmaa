@@ -1479,11 +1479,12 @@ func (a *App) buildOneToOneTemplateData(w http.ResponseWriter, r *http.Request, 
 	for i := range bookings {
 		sessions, err := a.listOneToOneBookingSessions(bookings[i].ID)
 		if err != nil {
-			return TemplateData{}, fmt.Errorf(
-				"list sessions for 1 to 1 booking %d: %w",
+			log.Printf(
+				"list sessions for 1 to 1 booking %d: %v",
 				bookings[i].ID,
 				err,
 			)
+			sessions = nil
 		}
 		bookings[i].BookingSessions = sessions
 	}
