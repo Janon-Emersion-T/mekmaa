@@ -58,38 +58,7 @@ func seedPostgresRoles(db *sql.DB) error {
 		}
 	}
 
-	rolePermissions := map[string][]string{
-		"customer": {
-			"dashboard.view",
-		},
-		"editor": {
-			"dashboard.view",
-			"editor.access",
-		},
-		"coach": {
-			"dashboard.view",
-			"attendance.manage",
-		},
-		"admin": {
-			"dashboard.view",
-			"editor.access",
-			"users.manage",
-			"roles.manage",
-			"user_divisions.manage",
-			"admissions.manage",
-			"coaches.manage",
-			"training_programs.manage",
-			"student_groups.manage",
-			"attendance.manage",
-			"space_bookings.manage",
-			"booking_requests.manage",
-			"pricing.manage",
-			"finance.manage",
-			"reports.view",
-			"events.manage",
-		},
-		"superadmin": allPermissions,
-	}
+	rolePermissions := postgresRolePermissions()
 
 	for roleName, permissions := range rolePermissions {
 		var roleID int64
@@ -117,6 +86,85 @@ func seedPostgresRoles(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func postgresCRUDPermissionBundle(prefix string) []string {
+	return []string{
+		prefix + ".manage",
+		prefix + ".view",
+		prefix + ".create",
+		prefix + ".update",
+		prefix + ".delete",
+	}
+}
+
+func postgresViewUpdatePermissionBundle(prefix string) []string {
+	return []string{
+		prefix + ".manage",
+		prefix + ".view",
+		prefix + ".update",
+	}
+}
+
+func postgresRolePermissions() map[string][]string {
+	coachPermissions := []string{"dashboard.view"}
+	coachPermissions = append(coachPermissions, postgresViewUpdatePermissionBundle("attendance")...)
+
+	adminPermissions := []string{
+		"dashboard.view",
+		"editor.access",
+		"reports.view",
+		"reports.export",
+		"finance.consolidated",
+	}
+	for _, prefix := range []string{
+		"users",
+		"roles",
+		"user_divisions",
+		"admissions",
+		"enrollments",
+		"student_leaves",
+		"coaches",
+		"payroll",
+		"training_programs",
+		"student_groups",
+		"space_bookings",
+		"games",
+		"one_to_one",
+		"one_to_one_bookings",
+		"pricing",
+		"finance",
+		"finance_transactions",
+		"finance_accounts",
+		"finance_categories",
+		"finance_transfers",
+		"finance_reconciliations",
+		"student_payments",
+		"referrals",
+		"tournaments",
+		"events",
+	} {
+		adminPermissions = append(adminPermissions, postgresCRUDPermissionBundle(prefix)...)
+	}
+	for _, prefix := range []string{
+		"attendance",
+		"booking_requests",
+	} {
+		adminPermissions = append(adminPermissions, postgresViewUpdatePermissionBundle(prefix)...)
+	}
+
+	return map[string][]string{
+		"customer": {
+			"dashboard.view",
+		},
+		"editor": {
+			"dashboard.view",
+			"editor.access",
+		},
+		"coach":      normalizePermissions(coachPermissions),
+		"admin":      normalizePermissions(adminPermissions),
+		"superadmin": allPermissions,
+	}
 }
 
 func seedPostgresCoreBookingData(db *sql.DB) error {
