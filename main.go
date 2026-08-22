@@ -114,6 +114,7 @@ func main() {
 	mux.HandleFunc("/coaching/", app.legacyCoachingRedirectHandler)
 	mux.HandleFunc("/privacy-policy", app.privacyPolicyHandler)
 	mux.HandleFunc("/refund-policy", app.refundPolicyHandler)
+	mux.HandleFunc("/mystudent", app.publicStudentHandler)
 	mux.HandleFunc("/register", app.registerHandler)
 	mux.HandleFunc("/login", app.loginHandler)
 	mux.HandleFunc("/sports", app.sportsHandler)

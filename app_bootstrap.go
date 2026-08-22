@@ -1032,11 +1032,17 @@ type StudentMonthlyPayment struct {
 	ID                   int64
 	AdmissionID          int64
 	EnrollmentID         int64
+	TrainingProgramName  string
+	DivisionName         string
 	PaymentMonth         string
 	Amount               float64
 	PaymentMethod        string
 	FinanceTransactionID int64
 	CollectedByUserID    int64
+	CollectedByUserName  string
+	Voided               bool
+	VoidReason           string
+	VoidedAt             time.Time
 	CollectedAt          time.Time
 	CreatedAt            time.Time
 }
@@ -1813,6 +1819,9 @@ type TemplateData struct {
 	AttendanceSheets                 []AttendanceSheetSummary
 	AttendanceSearchStudentID        string
 	AttendanceSearchNotFound         bool
+	PublicStudentSearchStudentID     string
+	PublicStudentSearchNotFound      bool
+	PublicStudentPaymentHistory      []StudentMonthlyPayment
 	Courts                           []Court
 	SelectedCourt                    *Court
 	CourtMode                        string

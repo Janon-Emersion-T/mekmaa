@@ -318,6 +318,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"gallery":                        "templates/pages/gallery.html",
 		"events":                         "templates/pages/events.html",
 		"login":                          "templates/login.html",
+		"mystudent":                      "templates/pages/mystudent.html",
 		"privacy-policy":                 "templates/pages/privacy-policy.html",
 		"register":                       "templates/register.html",
 		"refund-policy":                  "templates/pages/refund-policy.html",
