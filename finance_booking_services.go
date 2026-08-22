@@ -5753,7 +5753,7 @@ func (a *App) transitionBookingRequestStatus(
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
+	result, err := a.execTxDB(tx, `
 		UPDATE space_schedules
 		SET
 			status = ?,
@@ -5860,7 +5860,7 @@ func (a *App) rescheduleBookingRequest(
 		QuotedAmount float64
 		Paid         bool
 	}
-	financialErr := tx.QueryRow(`
+	financialErr := a.queryRowTxDB(tx, `
 		SELECT id, quoted_amount, paid
 		FROM booking_financials
 		WHERE schedule_id = ?
@@ -5952,7 +5952,7 @@ func (a *App) rescheduleBookingRequest(
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
+	result, err := a.execTxDB(tx, `
 		UPDATE space_schedules
 		SET
 			slot_date = ?,
@@ -5994,7 +5994,7 @@ func (a *App) rescheduleBookingRequest(
 		return nil, errors.New("booking request is no longer awaiting action")
 	}
 
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		UPDATE booking_financials
 		SET quoted_amount = ?, updated_at = ?
 		WHERE id = ?
