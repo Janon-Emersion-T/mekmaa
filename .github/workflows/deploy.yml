@@ -60,6 +60,26 @@ jobs:
             -count=1 \
             -v
 
+      - name: Install PostgreSQL test tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common postgresql-client
+          command -v pg_virtualenv
+
+      - name: Verify PostgreSQL migrations
+        run: |
+          go test \
+            -run '^(TestPostgresMigrationDiscoveryIncludesMCP|TestPostgresMigrationDiscoveryIncludesOneToOneAttendance|TestPostgresMigrationDiscoveryIncludesTournaments|TestPostgresMCPMigrationAppliesCleanly|TestPostgresMCPMigrationUpgradeFrom000005)$' \
+            -count=1 \
+            -timeout 120s \
+            -v
+
+      - name: Run full Go test suite
+        run: |
+          go test ./... \
+            -count=1 \
+            -timeout 120s
+
   deploy:
     name: Deploy to VPS
     needs: validate
