@@ -2967,6 +2967,71 @@ func TestBuildFinanceSummaryAggregatesSystemAccountBalancesAcrossDivisions(t *te
 	}
 }
 
+func TestBuildFinanceSectionDataUsesAllAllowedDivisionAccountsForOverview(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("lookup sports division: %v", err)
+	}
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("lookup kec division: %v", err)
+	}
+	sportsDivision, err := app.findDivisionByID(sportsID)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	kecDivision, err := app.findDivisionByID(kecID)
+	if err != nil {
+		t.Fatalf("find kec division: %v", err)
+	}
+
+	kecCashID := financeAccountIDByDivisionAndName(t, app, divisionCodeKEC, financeAccountCashInHand)
+	if _, err := app.createManualFinanceTransactionForAccountWithApprovalInDivision(
+		"manual_income",
+		"KEC desk",
+		"KEC cash receipt",
+		"",
+		kecCashID,
+		4200,
+		kecID,
+		time.Date(2026, 8, 20, 9, 0, 0, 0, time.Local),
+		0,
+		financeApprovalApproved,
+	); err != nil {
+		t.Fatalf("create kec cash income: %v", err)
+	}
+
+	user := &User{
+		ID:          77,
+		Name:        "Finance User",
+		Permissions: []string{"finance.view"},
+		DivisionIDs: []int64{sportsID, kecID},
+		Divisions:   []Division{*sportsDivision, *kecDivision},
+	}
+
+	for _, page := range []string{"ledger", "specified-ledgers"} {
+		req := httptest.NewRequest(http.MethodGet, "/admin/finance/"+page, nil)
+		req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+		rec := httptest.NewRecorder()
+
+		data, err := app.buildFinanceSectionData(rec, req, user, req.Context(), time.Now(), page)
+		if err != nil {
+			t.Fatalf("build finance section data for %s: %v", page, err)
+		}
+		if data.FinanceSummary.CashBalance != 4200 {
+			t.Fatalf("%s cash balance = %.2f, want 4200.00", page, data.FinanceSummary.CashBalance)
+		}
+		if data.FinanceSummary.TotalAvailableFunds != 4200 {
+			t.Fatalf("%s available funds = %.2f, want 4200.00", page, data.FinanceSummary.TotalAvailableFunds)
+		}
+		if len(data.FinanceAccounts) == 0 {
+			t.Fatalf("%s expected finance accounts to be loaded", page)
+		}
+	}
+}
+
 func TestCashReconciliationCalculatesStatusesAndRequiresNotes(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 1000, time.Date(2026, 8, 1, 10, 0, 0, 0, time.Local), 0); err != nil {

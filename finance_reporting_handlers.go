@@ -270,19 +270,11 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	if selectedDivision != nil {
 		accountDivisionIDs = []int64{selectedDivision.ID}
 	} else if !canViewAllDivisions(user) {
-		if len(allowedDivisionIDs) == 1 {
-			accountDivisionIDs = append(accountDivisionIDs, allowedDivisionIDs[0])
-		} else if primary := userPrimaryDivision(user); primary != nil {
-			accountDivisionIDs = []int64{primary.ID}
-			if data.SelectedDivision == nil {
-				data.SelectedDivision = primary
-				data.SelectedDivisionScope = primary.Slug
-			}
-		}
+		accountDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
 	}
 
 	needOperationalSummary := page == "ledger" || page == "specified-ledgers" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "profit-loss" || page == "balance-sheet"
-	needAccounts := page == "ledger" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "balance-sheet"
+	needAccounts := needOperationalSummary
 	needAllTransactions := page == "ledger" || page == "specified-ledgers" || page == "accounts" || page == "transfers" || page == "reconciliations" || page == "profit-loss" || page == "balance-sheet"
 	needBookingFinancials := page == "receivables" || page == "customers"
 	needMonthlyRows := false // Student monthly fees are managed exclusively from /admin/student-payments.
