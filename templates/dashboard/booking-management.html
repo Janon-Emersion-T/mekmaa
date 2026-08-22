@@ -516,7 +516,7 @@
             {{end}}
 
             {{if and (eq (len .Closures) 0) (eq (len .Confirmed) 0) (eq (len .Pending) 0) (eq (len .Training) 0)}}
-            <div class="rounded-[1.2rem] border border-dashed border-slate/15 bg-white/70 p-4 text-sm text-slate/55">
+            <div class="rounded-[1.2rem] border border-dashed border-slate/15 bg-white/70 p-4 text-sm text-slate/55" data-hour-empty>
               No operational entries are recorded for this hour yet.
             </div>
             {{end}}
@@ -669,6 +669,7 @@
     const filterRoot = document.querySelector("[data-calendar-filters]");
     if (filterRoot) {
       const buttons = Array.from(filterRoot.querySelectorAll("[data-filter]"));
+      const rows = Array.from(document.querySelectorAll("[data-hour-row]"));
       const items = Array.from(document.querySelectorAll("[data-hour-item]"));
       const applyFilter = (value) => {
         items.forEach((item) => {
@@ -685,6 +686,16 @@
           if (value === "unpaid") visible = kind === "confirmed" && unpaid;
           item.classList.toggle("hidden", !visible);
         });
+        rows.forEach((row) => {
+          const rowItems = Array.from(row.querySelectorAll("[data-hour-item]"));
+          const emptyState = row.querySelector("[data-hour-empty]");
+          const visibleItemCount = rowItems.filter((item) => !item.classList.contains("hidden")).length;
+          if (emptyState) {
+            const showEmptyState = value === "all" && rowItems.length === 0;
+            emptyState.classList.toggle("hidden", !showEmptyState);
+          }
+          row.classList.toggle("hidden", visibleItemCount === 0 && value !== "all");
+        });
         buttons.forEach((button) => {
           const active = button.getAttribute("data-filter") === value;
           button.classList.toggle("bg-obsidian", active);
@@ -698,6 +709,7 @@
       buttons.forEach((button) => {
         button.addEventListener("click", () => applyFilter(button.getAttribute("data-filter") || "all"));
       });
+      applyFilter("all");
     }
   })();
 </script>
