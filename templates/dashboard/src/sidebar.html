@@ -42,28 +42,41 @@
 
     {{if or (hasPermission .User "admissions.view") (hasPermission .User "coaches.view") (hasPermission .User "payroll.view") (hasPermission .User "training_programs.view") (hasPermission .User "student_groups.view") (hasPermission .User "attendance.view")}}
     <div>
-      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">{{workspaceOperationsLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">People & Programmes</p>
       <div class="space-y-1">
         {{if hasPermission .User "admissions.view"}}
         <a href="{{scopedURL "/admin/students" .SelectedDivision .SelectedDivisionScope}}" class="{{if or (isCurrentPath .CurrentPath "/admin/admissions") (isCurrentPath .CurrentPath "/admin/students")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Students</span><span class="{{if or (isCurrentPath .CurrentPath "/admin/admissions") (isCurrentPath .CurrentPath "/admin/students")}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Master</span>
+          <span>Students</span>
         </a>
         <a href="{{scopedURL "/admin/enrollments" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/enrollments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Enrollments</span><span class="{{if isCurrentPath .CurrentPath "/admin/enrollments"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Active</span>
+          <span>Enrollments</span>
         </a>
         <a href="{{scopedURL "/admin/student-leaves" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/student-leaves"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Student leaves</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Breaks</span>
+          <span>Student Leaves</span>
         </a>
         {{end}}
 
         {{if hasPermission .User "training_programs.view"}}
         <a href="{{scopedURL "/admin/training-programs" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Courses</span><span class="{{if isCurrentPath .CurrentPath "/admin/training-programs"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/45{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Catalog</span>
+          <span>Courses</span>
+        </a>
+        {{end}}
+        {{if hasPermission .User "student_groups.view"}}
+        <a href="{{scopedURL (workspaceGroupPath .User .SelectedDivision .SelectedDivisionScope) .SelectedDivision .SelectedDivisionScope}}" class="{{if or (isCurrentPath .CurrentPath "/admin/student-groups") (isCurrentPath .CurrentPath "/admin/training-groups") (isCurrentPath .CurrentPath "/admin/classes") (isCurrentPath .CurrentPath "/admin/batches")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>{{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}</span>
+        </a>
+        {{end}}
+        {{if hasPermission .User "attendance.view"}}
+        <a href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/attendance"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Attendance</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Daily</span>
+        </a>
+        <a href="{{scopedURL "/admin/attendance/search" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/attendance/search"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Search Attendance</span>
         </a>
         {{end}}
         {{if hasPermission .User "coaches.view"}}
         <a href="{{scopedURL "/admin/staff" .SelectedDivision .SelectedDivisionScope}}" class="{{if or (isCurrentPath .CurrentPath "/admin/staff") (isCurrentPath .CurrentPath "/admin/coaches")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>{{workspaceStaffLabel .User .SelectedDivision .SelectedDivisionScope}}</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Staff</span>
+          <span>{{workspaceStaffLabel .User .SelectedDivision .SelectedDivisionScope}}</span>
         </a>
         <a href="{{scopedURL "/admin/staff/attendance" .SelectedDivision .SelectedDivisionScope}}" class="{{if and (isCurrentPath .CurrentPath "/admin/staff/attendance") (not (isCurrentPath .CurrentPath "/admin/staff/attendance/report"))}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Staff Attendance</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Daily</span>
@@ -76,30 +89,16 @@
 
         {{if hasPermission .User "payroll.view"}}
         <a href="/admin/staff/salary-profiles" class="{{if isCurrentPath .CurrentPath "/admin/staff/salary-profiles"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Salary Profiles</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Payroll</span>
-        </a>
-        {{end}}
-
-        {{if hasPermission .User "student_groups.view"}}
-        <a href="{{scopedURL (workspaceGroupPath .User .SelectedDivision .SelectedDivisionScope) .SelectedDivision .SelectedDivisionScope}}" class="{{if or (isCurrentPath .CurrentPath "/admin/student-groups") (isCurrentPath .CurrentPath "/admin/training-groups") (isCurrentPath .CurrentPath "/admin/classes") (isCurrentPath .CurrentPath "/admin/batches")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>{{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Roster</span>
-        </a>
-        {{end}}
-        {{if hasPermission .User "attendance.view"}}
-        <a href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/attendance"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Attendance</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Daily</span>
-        </a>
-        <a href="{{scopedURL "/admin/attendance/search" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/attendance/search"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Search Attendance</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Student</span>
+          <span>Salary Profiles</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Setup</span>
         </a>
         {{end}}
       </div>
     </div>
     {{end}}
 
-    {{if and (userCanAccessSportsSilo .User) (or (hasPermission .User "courts.view") (hasPermission .User "space_bookings.view") (hasPermission .User "pricing.view"))}}
+    {{if and (userCanAccessSportsSilo .User) (or (hasPermission .User "courts.view") (hasPermission .User "space_bookings.view") (hasPermission .User "pricing.view") (hasPermission .User "mcp_pricing.view"))}}
     <div>
-      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Booking Setup</p>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Court & Booking Setup</p>
       <div class="space-y-1">
         {{if hasPermission .User "courts.view"}}
 <a href="/admin/courts" class="{{if isCurrentPath .CurrentPath "/admin/courts"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
@@ -111,10 +110,7 @@
 {{end}}
         {{if hasPermission .User "space_bookings.view"}}
         <a href="/admin/games" class="{{if isCurrentPath .CurrentPath "/admin/games"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Games</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Catalog</span>
-        </a>
-        <a href="/admin/one-to-one" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>1 to 1 offerings</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Catalog</span>
+          <span>Games</span>
         </a>
         {{end}}
         {{if hasPermission .User "pricing.view"}}
@@ -122,33 +118,45 @@
           <span>Pricing</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Rates</span>
         </a>
         {{end}}
+        {{if hasPermission .User "space_bookings.view"}}
+        <a href="/admin/one-to-one" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>1-to-1 Offerings</span>
+        </a>
+        {{end}}
+        {{if hasPermission .User "mcp_pricing.view"}}
+        <a href="/admin/mcp/pricing" class="{{if isCurrentPath .CurrentPath "/admin/mcp/pricing"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>MCP Pricing</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">MCP</span>
+        </a>
+        {{end}}
       </div>
     </div>
     {{end}}
 
-    {{if and (userCanAccessSportsSilo .User) (or (hasPermission .User "space_bookings.view") (hasPermission .User "booking_requests.view"))}}
+    {{if and (userCanAccessSportsSilo .User) (or (hasPermission .User "space_bookings.view") (hasPermission .User "booking_requests.view") (hasPermission .User "mcp.view") (hasPermission .User "finance.view"))}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Booking Operations</p>
       <div class="space-y-1">
         {{if hasPermission .User "space_bookings.view"}}
         <a href="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/bookings"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Booking calendar</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Slots</span>
+          <span>Booking Calendar</span>
         </a>
         <a href="/admin/one-to-one-bookings" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-bookings"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>1 to 1 bookings</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Sessions</span>
-        </a>
-        <a href="/admin/one-to-one-receivables" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>1 to 1 receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
+          <span>1-to-1 Bookings</span>
         </a>
         {{end}}
         {{if hasPermission .User "booking_requests.view"}}
         <a href="{{scopedURL "/admin/booking-requests" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/booking-requests"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Booking requests</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Review</span>
+          <span>Booking Requests</span>
         </a>
         {{end}}
         {{if hasPermission .User "mcp.view"}}
         <a href="/admin/mcp" class="{{if isCurrentPath .CurrentPath "/admin/mcp"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Monthly court plans</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">MCP</span>
+          <span>Monthly Court Plans</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">MCP</span>
+        </a>
+        {{end}}
+        {{if hasPermission .User "finance.view"}}
+        <a href="/admin/tournaments" class="{{if hasPathPrefix .CurrentPath "/admin/tournaments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Tournaments</span>
         </a>
         {{end}}
       </div>
@@ -161,10 +169,10 @@
       <div class="space-y-1">
         {{if hasPermission .User "finance.view"}}
         <a href="/admin/finance/ledger" class="{{if isCurrentPath .CurrentPath "/admin/finance" "/admin/finance/ledger" "/admin/finance/receipt"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>General ledger</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Core</span>
+          <span>General Ledger</span>
         </a>
         <a href="/admin/finance/specified-ledgers" class="{{if hasPathPrefix .CurrentPath "/admin/finance/specified-ledgers"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Specified ledgers</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">T-accounts</span>
+          <span>Specified Ledgers</span>
         </a>
         {{if .FinanceSpecifiedLedgers}}
         <div class="ml-3 mt-2 space-y-1 border-l border-slate/10 pl-3">
@@ -195,7 +203,10 @@
         </div>
         {{end}}
         <a href="/admin/finance/customers" class="{{if isCurrentPath .CurrentPath "/admin/finance/customers"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Customers</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Follow-up</span>
+          <span>Customers</span>
+        </a>
+        <a href="/admin/finance/accounts" class="{{if isCurrentPath .CurrentPath "/admin/finance/accounts"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Accounts</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Balances</span>
         </a>
         <a href="/admin/finance/transfers" class="{{if isCurrentPath .CurrentPath "/admin/finance/transfers"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Transfers</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Bank</span>
@@ -203,22 +214,11 @@
         <a href="/admin/finance/reconciliations" class="{{if isCurrentPath .CurrentPath "/admin/finance/reconciliations"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Reconciliations</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Cash</span>
         </a>
-        <a href="/admin/finance/accounts" class="{{if isCurrentPath .CurrentPath "/admin/finance/accounts"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Accounts</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Balances</span>
-        </a>
         <a href="/admin/finance/categories" class="{{if isCurrentPath .CurrentPath "/admin/finance/categories"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Categories</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Setup</span>
         </a>
-        {{if hasPermission .User "mcp_pricing.view"}}
-        <a href="/admin/mcp/pricing" class="{{if isCurrentPath .CurrentPath "/admin/mcp/pricing"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>MCP Pricing</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Bands</span>
-        </a>
-        {{end}}
         <a href="/admin/referrals" class="{{if isCurrentPath .CurrentPath "/admin/referrals"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Referral payouts</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Ledger</span>
-        </a>
-        <a href="/admin/tournaments" class="{{if hasPathPrefix .CurrentPath "/admin/tournaments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Tournaments</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Sports</span>
+          <span>Referral Payouts</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Ledger</span>
         </a>
         {{end}}
       </div>
@@ -230,13 +230,13 @@
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Receivables</p>
       <div class="space-y-1">
         <a href="{{scopedURL "/admin/student-payments" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Student payments</span><span class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-aqua text-obsidian{{else}}bg-amber/15 text-amber-700{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Ledger</span>
+          <span>Student Payments</span><span class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-aqua text-obsidian{{else}}bg-amber/15 text-amber-700{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Ledger</span>
         </a>
         <a href="/admin/one-to-one-receivables" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>1 to 1 Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
+          <span>1-to-1 Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
         </a>
         <a href="/admin/finance/receivables" class="{{if isCurrentPath .CurrentPath "/admin/finance/receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Booking receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
+          <span>Booking Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
         </a>
         {{if hasPermission .User "mcp_receivables.view"}}
         <a href="/admin/mcp-receivables" class="{{if isCurrentPath .CurrentPath "/admin/mcp-receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
@@ -253,12 +253,12 @@
       <div class="space-y-1">
         {{if hasPermission .User "users.view"}}
         <a href="/admin/users" class="{{if isCurrentPath .CurrentPath "/admin/users"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Users</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Access</span>
+          <span>Users</span>
         </a>
         {{end}}
         {{if hasPermission .User "roles.view"}}
         <a href="/admin/roles" class="{{if isCurrentPath .CurrentPath "/admin/roles"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
-          <span>Roles & permissions</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">RBAC</span>
+          <span>Roles & Permissions</span>
         </a>
         {{end}}
         {{if hasPermission .User "users.view"}}
