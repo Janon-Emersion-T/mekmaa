@@ -12591,9 +12591,9 @@ func TestBuildBookingConfirmationSMSBody(t *testing.T) {
 		)
 	}
 
-	if utf8.RuneCountInString(got) >= maxSMSMessageLength {
+	if utf8.RuneCountInString(got) > maxSMSMessageLength {
 		t.Fatalf(
-			"confirmation SMS length = %d, want < %d",
+			"confirmation SMS length = %d, want <= %d",
 			utf8.RuneCountInString(got),
 			maxSMSMessageLength,
 		)
@@ -12609,9 +12609,9 @@ func TestBuildBookingConfirmationSMSBodyNeverExceedsLimit(t *testing.T) {
 
 	got := buildBookingConfirmationSMSBody(schedule)
 
-	if utf8.RuneCountInString(got) >= maxSMSMessageLength {
+	if utf8.RuneCountInString(got) > maxSMSMessageLength {
 		t.Fatalf(
-			"confirmation SMS length = %d, want < %d: %q",
+			"confirmation SMS length = %d, want <= %d: %q",
 			utf8.RuneCountInString(got),
 			maxSMSMessageLength,
 			got,
@@ -12666,7 +12666,7 @@ func TestSMSBalanceAlertMessagesStayWithinLimit(t *testing.T) {
 	}
 
 	for _, message := range tests {
-		if utf8.RuneCountInString(message) >= maxSMSMessageLength {
+		if utf8.RuneCountInString(message) > maxSMSMessageLength {
 			t.Fatalf(
 				"balance alert SMS too long: %d characters: %q",
 				utf8.RuneCountInString(message),
@@ -12676,7 +12676,7 @@ func TestSMSBalanceAlertMessagesStayWithinLimit(t *testing.T) {
 	}
 }
 
-func TestSendSMSMessageInternalRejectsExactLimit(t *testing.T) {
+func TestSendSMSMessageInternalAllowsExactLimit(t *testing.T) {
 	app := &App{
 		sms: SMSConfig{
 			Enabled: true,
@@ -12685,21 +12685,92 @@ func TestSendSMSMessageInternalRejectsExactLimit(t *testing.T) {
 
 	message := strings.Repeat("A", maxSMSMessageLength)
 
-	err := app.sendSMSMessageInternal("+94770000000", message, false)
+	err := app.sendSMSMessageInternal("12345", message, false)
 	if err == nil {
-		t.Fatal("sendSMSMessageInternal() error = nil, want length validation error")
+		t.Fatal("sendSMSMessageInternal() error = nil, want phone validation error")
 	}
 
-	want := fmt.Sprintf(
-		"sms message must be under %d characters",
-		maxSMSMessageLength,
-	)
+	want := "customer phone number is invalid; use 07xxxxxxxx or +947xxxxxxxx"
 	if err.Error() != want {
 		t.Fatalf(
 			"sendSMSMessageInternal() error = %q, want %q",
 			err.Error(),
 			want,
 		)
+	}
+}
+
+func TestSendSMSMessageInternalRejectsAboveLimit(t *testing.T) {
+	app := &App{
+		sms: SMSConfig{
+			Enabled: true,
+		},
+	}
+
+	message := strings.Repeat("A", maxSMSMessageLength+1)
+
+	err := app.sendSMSMessageInternal("+94770000000", message, false)
+	if err == nil {
+		t.Fatal("sendSMSMessageInternal() error = nil, want length validation error")
+	}
+
+	want := fmt.Sprintf("sms message exceeds %d characters", maxSMSMessageLength)
+	if err.Error() != want {
+		t.Fatalf(
+			"sendSMSMessageInternal() error = %q, want %q",
+			err.Error(),
+			want,
+		)
+	}
+}
+
+func TestBookingTrackingSMSLinkUsesShortPath(t *testing.T) {
+	got := bookingTrackingSMSLink("https://www.mekmaa.com/booking/status?token=abc123")
+	want := "www.mekmaa.com/b?t=abc123"
+	if got != want {
+		t.Fatalf("bookingTrackingSMSLink() = %q, want %q", got, want)
+	}
+}
+
+func TestBookingCommunicationSMSBodiesStayWithinLimit(t *testing.T) {
+	app := &App{
+		bookingMessages: BookingCommunicationSettings{
+			ContactPhone: "+94772207297",
+		},
+	}
+	schedule := SpaceSchedule{
+		ID:       42,
+		SlotDate: "2026-08-30",
+		SlotHour: "18:00",
+		Activity: strings.Repeat("VeryLongActivityName", 8),
+		Quantity: 1,
+	}
+	trackingURL := "https://www.mekmaa.com/booking/status?token=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-token"
+
+	for _, eventType := range []string{
+		bookingCommEventRequestReceived,
+		bookingCommEventConfirmed,
+	} {
+		content, err := app.buildBookingCommunicationContent(
+			schedule,
+			nil,
+			nil,
+			nil,
+			eventType,
+			trackingURL,
+		)
+		if err != nil {
+			t.Fatalf("buildBookingCommunicationContent(%s): %v", eventType, err)
+		}
+		if utf8.RuneCountInString(content.SMSBody) > maxSMSMessageLength {
+			t.Fatalf(
+				"%s SMS length = %d, want <= %d: %q",
+				eventType,
+				utf8.RuneCountInString(content.SMSBody),
+				maxSMSMessageLength,
+				content.SMSBody,
+			)
+		}
 	}
 }
 

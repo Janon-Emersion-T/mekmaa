@@ -643,6 +643,19 @@ func (a *App) publicBookingStatusHandler(w http.ResponseWriter, r *http.Request)
 	a.render(w, "booking-status", data, http.StatusOK)
 }
 
+func (a *App) publicBookingStatusShortHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/b" {
+		http.NotFound(w, r)
+		return
+	}
+	token := strings.TrimSpace(r.URL.Query().Get("t"))
+	if token == "" {
+		http.Redirect(w, r, "/booking/status", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/booking/status?token="+url.QueryEscape(token), http.StatusSeeOther)
+}
+
 func (a *App) redirectPublicBookingStatus(w http.ResponseWriter, r *http.Request, rawToken string, message string) {
 	if strings.TrimSpace(message) != "" {
 		a.setFlash(w, message)

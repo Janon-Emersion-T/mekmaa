@@ -104,6 +104,7 @@ func main() {
 	mux.HandleFunc("/book", app.publicBookingHandler)
 	mux.HandleFunc("/book/request", app.publicBookingRequestHandler)
 	mux.HandleFunc("/booking/status", app.publicBookingStatusHandler)
+	mux.HandleFunc("/b", app.publicBookingStatusShortHandler)
 	mux.HandleFunc("/booking/status/cancellation-request", app.publicBookingCancellationRequestHandler)
 	mux.HandleFunc("/booking", app.legacyBookingRedirectHandler)
 	mux.HandleFunc("/contact", app.contactHandler)

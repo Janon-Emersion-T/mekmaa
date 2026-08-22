@@ -79,6 +79,48 @@ func (a *App) bookingTrackingURL(rawToken string) string {
 	return base + "/booking/status?token=" + url.QueryEscape(rawToken)
 }
 
+func bookingTrackingSMSLink(trackingURL string) string {
+	trackingURL = strings.TrimSpace(trackingURL)
+	if trackingURL == "" {
+		return ""
+	}
+	trackingURL = strings.Replace(trackingURL, "/booking/status?token=", "/b?t=", 1)
+	trackingURL = strings.TrimPrefix(trackingURL, "https://")
+	trackingURL = strings.TrimPrefix(trackingURL, "http://")
+	return trackingURL
+}
+
+func bookingSMSDateTime(schedule SpaceSchedule) string {
+	dateLabel := strings.TrimSpace(schedule.SlotDate)
+	timeLabel := strings.TrimSpace(schedule.SlotHour)
+	switch {
+	case dateLabel != "" && timeLabel != "":
+		return dateLabel + " " + timeLabel
+	case dateLabel != "":
+		return dateLabel
+	default:
+		return timeLabel
+	}
+}
+
+func buildBookingEventSMS(status string, reference string, dateTime string, link string) string {
+	parts := []string{
+		"Mekmaa",
+		strings.TrimSpace(status),
+		"Ref:" + strings.TrimSpace(reference),
+		strings.TrimSpace(dateTime),
+		strings.TrimSpace(link),
+	}
+	compacted := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			compacted = append(compacted, part)
+		}
+	}
+	return strings.Join(compacted, " ")
+}
+
 func (a *App) bookingAccessTokenExpiry(schedule *SpaceSchedule) time.Time {
 	now := time.Now().UTC()
 	expiresAt := now.Add(a.bookingAccess.TokenTTL)
@@ -703,7 +745,7 @@ func buildBookingConfirmationSMSBody(schedule *SpaceSchedule) string {
 		timeLabel,
 	)
 
-	maxActivityLength := (maxSMSMessageLength - 1) -
+	maxActivityLength := maxSMSMessageLength -
 		utf8.RuneCountInString(prefix) -
 		utf8.RuneCountInString(suffix)
 
@@ -830,9 +872,9 @@ func (a *App) sendSMSMessageInternal(
 		return errors.New("sms message is empty")
 	}
 
-	if utf8.RuneCountInString(message) >= maxSMSMessageLength {
+	if utf8.RuneCountInString(message) > maxSMSMessageLength {
 		return fmt.Errorf(
-			"sms message must be under %d characters",
+			"sms message exceeds %d characters",
 			maxSMSMessageLength,
 		)
 	}
@@ -1251,6 +1293,8 @@ func (a *App) buildBookingCommunicationContent(
 	if title == "" {
 		title = bookingProductLabel(schedule.Activity, schedule.Quantity)
 	}
+	smsDateTime := bookingSMSDateTime(schedule)
+	smsTrackingLink := bookingTrackingSMSLink(trackingURL)
 
 	content := bookingCommunicationContent{TrackingURL: trackingURL}
 	switch eventType {
@@ -1279,7 +1323,7 @@ func (a *App) buildBookingCommunicationContent(
 			"We will contact you once the request has been reviewed.",
 			"Mekmaa contact: " + a.bookingMessages.ContactPhone + " • " + a.bookingMessages.ContactEmail,
 		}
-		content.SMSBody = fmt.Sprintf("Your Mekmaa booking request has been received. Reference: %s. Activity: %s. Date: %s. Time: %s. Awaiting confirmation. Track: %s", reference, bookingProductLabel(schedule.Activity, schedule.Quantity), schedule.SlotDate, schedule.SlotHour, trackingURL)
+		content.SMSBody = buildBookingEventSMS("request received.", reference, smsDateTime, smsTrackingLink)
 	case bookingCommEventHeld:
 		content.Subject = "Mekmaa booking request on hold - " + reference
 		content.Heading = "Your booking request is on hold"
@@ -1298,7 +1342,7 @@ func (a *App) buildBookingCommunicationContent(
 			"The slot is still under review and is not confirmed yet.",
 			"Mekmaa will update you again shortly.",
 		}
-		content.SMSBody = fmt.Sprintf("Your Mekmaa booking request is on hold while our team reviews availability. Reference: %s. Activity: %s. Date: %s. Time: %s. Track: %s", reference, bookingProductLabel(schedule.Activity, schedule.Quantity), schedule.SlotDate, schedule.SlotHour, trackingURL)
+		content.SMSBody = buildBookingEventSMS("on hold.", reference, smsDateTime, smsTrackingLink)
 	case bookingCommEventConfirmed:
 		content.Subject = "Mekmaa booking confirmed - " + reference
 		content.Heading = "Your booking is confirmed"
@@ -1322,15 +1366,7 @@ func (a *App) buildBookingCommunicationContent(
 			"Please arrive 10 to 15 minutes early and keep your booking reference ready.",
 			"Need help before arrival? Contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
 		}
-		content.SMSBody = fmt.Sprintf(
-			"Your Mekmaa booking is confirmed. Reference: %s. Activity: %s. Date: %s. Time: %s. Amount: %s. Payment will be collected in cash. Track: %s",
-			reference,
-			bookingProductLabel(schedule.Activity, schedule.Quantity),
-			schedule.SlotDate,
-			schedule.SlotHour,
-			amountLabel,
-			trackingURL,
-		)
+		content.SMSBody = buildBookingEventSMS("confirmed.", reference, smsDateTime, smsTrackingLink)
 	case bookingCommEventRejected:
 		content.Subject = "Mekmaa booking request update - " + reference
 		content.Heading = "Your booking request was not approved"
@@ -1347,7 +1383,7 @@ func (a *App) buildBookingCommunicationContent(
 		content.Notes = []string{
 			"If you would like help with another booking request, contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
 		}
-		content.SMSBody = fmt.Sprintf("Your Mekmaa booking request could not be accepted. Reference: %s. Reason: %s. Contact %s if you need assistance. Track: %s", reference, strings.TrimSpace(schedule.CustomerMessage), a.bookingMessages.ContactPhone, trackingURL)
+		content.SMSBody = fmt.Sprintf("Mekmaa declined. Ref:%s Call:%s", reference, a.bookingMessages.ContactPhone)
 	case bookingCommEventRescheduledPending:
 		change, err := latestRelevantBookingRequestChange(changes, "rescheduled")
 		if err != nil {
@@ -1369,7 +1405,7 @@ func (a *App) buildBookingCommunicationContent(
 			"The new slot remains pending until Mekmaa confirms it.",
 			"Contact us at " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + " if you need assistance.",
 		}
-		content.SMSBody = fmt.Sprintf("Your Mekmaa booking has been rescheduled and is awaiting confirmation. Reference: %s. New activity: %s. New date: %s. New time: %s. Amount: %s. Track: %s", reference, bookingProductLabel(schedule.Activity, schedule.Quantity), schedule.SlotDate, schedule.SlotHour, amountLabel, trackingURL)
+		content.SMSBody = buildBookingEventSMS("rescheduled pending.", reference, smsDateTime, smsTrackingLink)
 	case bookingCommEventRescheduledConfirmed:
 		change, err := latestRelevantBookingRequestChange(changes, "rescheduled_confirmed")
 		if err != nil {
@@ -1395,15 +1431,7 @@ func (a *App) buildBookingCommunicationContent(
 			"Please arrive 10 to 15 minutes early and keep your booking reference ready.",
 			"Need help before arrival? Contact " + a.bookingMessages.ContactPhone + " or " + a.bookingMessages.ContactEmail + ".",
 		}
-		content.SMSBody = fmt.Sprintf(
-			"Your Mekmaa booking has been rescheduled. Reference: %s. New activity: %s. New date: %s. New time: %s. Amount: %s. Payment will be collected in cash. Track: %s",
-			reference,
-			bookingProductLabel(schedule.Activity, schedule.Quantity),
-			schedule.SlotDate,
-			schedule.SlotHour,
-			amountLabel,
-			trackingURL,
-		)
+		content.SMSBody = buildBookingEventSMS("rescheduled confirmed.", reference, smsDateTime, smsTrackingLink)
 	case bookingCommEventCancellationRequested:
 		content.Subject = "Mekmaa booking cancellation request received - " + reference
 		content.Heading = "Your cancellation request was received"
@@ -1434,7 +1462,7 @@ func (a *App) buildBookingCommunicationContent(
 			"The booking no longer holds court capacity.",
 			"Any cash handling is managed manually by Mekmaa and is not processed automatically through this system.",
 		}
-		content.SMSBody = fmt.Sprintf("Your Mekmaa booking has been cancelled. Reference: %s. Activity: %s. Date: %s. Time: %s. Track: %s", reference, bookingProductLabel(schedule.Activity, schedule.Quantity), schedule.SlotDate, schedule.SlotHour, trackingURL)
+		content.SMSBody = buildBookingEventSMS("cancelled.", reference, "", smsTrackingLink)
 	case bookingCommEventCancellationRejected:
 		content.Subject = "Mekmaa booking cancellation request update - " + reference
 		content.Heading = "Your cancellation request was not approved"
@@ -1463,7 +1491,7 @@ func (a *App) buildBookingCommunicationContent(
 		content.Notes = []string{
 			"Thank you for booking with Mekmaa.",
 		}
-		content.SMSBody = fmt.Sprintf("Your Mekmaa booking is marked completed. Reference: %s. Thank you for playing with Mekmaa. Track: %s", reference, trackingURL)
+		content.SMSBody = buildBookingEventSMS("completed.", reference, "", smsTrackingLink)
 	case bookingCommEventNoShow:
 		content.Subject = "Mekmaa booking no-show - " + reference
 		content.Heading = "Your booking was marked no-show"
@@ -1473,7 +1501,7 @@ func (a *App) buildBookingCommunicationContent(
 			{Label: "Status", Value: "No-show"},
 			{Label: "Booked slot", Value: buildSlotLabel(schedule.SlotDate, schedule.SlotHour, schedule.Activity, schedule.Quantity)},
 		}
-		content.SMSBody = fmt.Sprintf("Your Mekmaa booking was marked no-show. Reference: %s. Track: %s", reference, trackingURL)
+		content.SMSBody = buildBookingEventSMS("no-show.", reference, "", smsTrackingLink)
 	case bookingCommEventExpired:
 		content.Subject = "Mekmaa booking request expired - " + reference
 		content.Heading = "Your booking request expired"
@@ -1486,7 +1514,7 @@ func (a *App) buildBookingCommunicationContent(
 		content.Notes = []string{
 			"Submit a new request if you still need a court.",
 		}
-		content.SMSBody = fmt.Sprintf("Your Mekmaa booking request expired because the requested playing time passed before confirmation. Reference: %s. Track: %s", reference, trackingURL)
+		content.SMSBody = buildBookingEventSMS("request expired.", reference, "", smsTrackingLink)
 	default:
 		return bookingCommunicationContent{}, fmt.Errorf("unsupported booking communication event: %s", eventType)
 	}
