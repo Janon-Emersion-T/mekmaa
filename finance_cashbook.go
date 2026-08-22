@@ -1361,6 +1361,9 @@ func validateFinanceRecordedAt(recordedAt time.Time, label string) error {
 	if recordedAt.IsZero() {
 		return errors.New(label + " is required")
 	}
+	if err := validateHistoricalEntryTime(recordedAt, label); err != nil {
+		return err
+	}
 	if !financeDateNotInFuture(recordedAt) {
 		return errors.New(label + " cannot be in the future")
 	}

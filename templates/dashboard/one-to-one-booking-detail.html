@@ -106,7 +106,7 @@
 
         <label>
           <span class="mb-1 block text-xs font-semibold text-slate/55">Date</span>
-          <input type="date" name="slot_date" min="{{.TodayDate}}" value="{{.TodayDate}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+          <input type="date" name="slot_date" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{.TodayDate}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
         </label>
         <label>
           <span class="mb-1 block text-xs font-semibold text-slate/55">Time</span>

@@ -185,6 +185,7 @@ func (a *App) newTemplateData(w http.ResponseWriter, r *http.Request, user *User
 		Flash:         a.consumeFlash(r),
 		OTPCodeLength: 6,
 	}
+	data.HistoricalStartDate = companyHistoricalEntryStartDate
 	query := r.URL.Query()
 	queryKeys := make([]string, 0, len(query))
 	for key := range query {

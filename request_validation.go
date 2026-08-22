@@ -1258,7 +1258,38 @@ func validateReferralPartner(partner ReferralPartner) error {
 	}
 }
 
-const adminHistoricalBookingStartDate = "2026-07-01"
+const companyHistoricalEntryStartDate = "2026-07-01"
+
+func historicalEntryStartDate() (time.Time, error) {
+	return time.Parse("2006-01-02", companyHistoricalEntryStartDate)
+}
+
+func validateHistoricalEntryDateValue(
+	value string,
+	label string,
+) error {
+	parsed, err := time.Parse("2006-01-02", strings.TrimSpace(value))
+	if err != nil {
+		return errors.New("valid " + label + " is required")
+	}
+	return validateHistoricalEntryTime(parsed, label)
+}
+
+func validateHistoricalEntryTime(
+	value time.Time,
+	label string,
+) error {
+	historicalStart, err := historicalEntryStartDate()
+	if err != nil {
+		return errors.New("invalid historical booking configuration")
+	}
+	localValue := time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.Local)
+	localStart := time.Date(historicalStart.Year(), historicalStart.Month(), historicalStart.Day(), 0, 0, 0, 0, time.Local)
+	if localValue.Before(localStart) {
+		return fmt.Errorf("%s cannot be before %s", label, companyHistoricalEntryStartDate)
+	}
+	return nil
+}
 
 func validateAdminScheduleDate(schedule SpaceSchedule) error {
 	slotDate, err := time.Parse("2006-01-02", schedule.SlotDate)
@@ -1266,10 +1297,7 @@ func validateAdminScheduleDate(schedule SpaceSchedule) error {
 		return errors.New("valid booking date is required")
 	}
 
-	historicalStart, err := time.Parse(
-		"2006-01-02",
-		adminHistoricalBookingStartDate,
-	)
+	historicalStart, err := historicalEntryStartDate()
 	if err != nil {
 		return errors.New("invalid historical booking configuration")
 	}
@@ -1277,7 +1305,7 @@ func validateAdminScheduleDate(schedule SpaceSchedule) error {
 	if slotDate.Before(historicalStart) {
 		return fmt.Errorf(
 			"bookings before %s cannot be entered",
-			adminHistoricalBookingStartDate,
+			companyHistoricalEntryStartDate,
 		)
 	}
 

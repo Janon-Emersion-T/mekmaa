@@ -49,6 +49,9 @@ func normalizeStaffAttendanceDate(value string) (string, error) {
 			"future staff attendance cannot be recorded",
 		)
 	}
+	if err := validateHistoricalEntryTime(parsed, "staff attendance date"); err != nil {
+		return "", err
+	}
 
 	return parsed.Format("2006-01-02"), nil
 }

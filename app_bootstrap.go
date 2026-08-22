@@ -1793,6 +1793,7 @@ type TemplateData struct {
 	PreviousDate                     string
 	NextDate                         string
 	TodayDate                        string
+	HistoricalStartDate              string
 	SelectedCoach                    *User
 	DailyStats                       []Stat
 	BookingRequestStats              []Stat

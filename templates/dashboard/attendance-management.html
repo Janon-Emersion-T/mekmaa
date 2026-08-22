@@ -47,7 +47,7 @@
             {{end}}
             {{end}}
           </select>
-          <input type="date" name="date" value="{{.AttendanceDate}}" max="{{.TodayDate}}" class="h-12 rounded-2xl border border-white/12 bg-white/92 px-4 text-sm text-obsidian outline-none focus:border-aqua" />
+          <input type="date" name="date" value="{{.AttendanceDate}}" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" class="h-12 rounded-2xl border border-white/12 bg-white/92 px-4 text-sm text-obsidian outline-none focus:border-aqua" />
           <button type="submit" class="rounded-2xl bg-aqua px-5 py-3 text-sm font-semibold text-obsidian transition hover:bg-mint">Load sheet</button>
         </form>
       </div>

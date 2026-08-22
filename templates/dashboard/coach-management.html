@@ -119,7 +119,7 @@
           <p class="mt-1 text-sm text-slate/60">Attendance is saved only for active coaches. Inactive coaches stay in the directory but drop out of the daily sheet.</p>
         </div>
         <form action="/admin/coaches" method="get" class="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <input type="date" name="date" value="{{.AttendanceDate}}" max="{{.TodayDate}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+          <input type="date" name="date" value="{{.AttendanceDate}}" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
           <button type="submit" class="rounded-2xl bg-aqua px-5 py-3 text-sm font-semibold text-obsidian transition hover:bg-mint">Load date</button>
         </form>
       </div>

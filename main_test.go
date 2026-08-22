@@ -2096,6 +2096,7 @@ func TestBookingRequestsPreventPastAndConflictingSlots(t *testing.T) {
 		activities,
 		layouts,
 		nil,
+		false,
 	)
 
 	if len(days) != 7 || days[0].IsPast {

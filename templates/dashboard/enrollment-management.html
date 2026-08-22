@@ -142,8 +142,9 @@
             <input
               type="date"
               name="enrollment_date"
-              value="{{todayDate}}"
-              max="{{todayDate}}"
+              value="{{.TodayDate}}"
+              min="{{.HistoricalStartDate}}"
+              max="{{.TodayDate}}"
               required
               class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua"
             />
@@ -270,8 +271,9 @@
               id="enrollment-date"
               type="date"
               name="enrollment_date"
-              value="{{todayDate}}"
-              max="{{todayDate}}"
+              value="{{.TodayDate}}"
+              min="{{.HistoricalStartDate}}"
+              max="{{.TodayDate}}"
               required
               class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm font-semibold text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
             />

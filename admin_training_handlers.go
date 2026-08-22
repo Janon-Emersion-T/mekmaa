@@ -31,6 +31,8 @@ func (a *App) coachManagementHandler(w http.ResponseWriter, r *http.Request) {
 	parsedDate, err := time.Parse("2006-01-02", selectedDate)
 	if err != nil || parsedDate.Format("2006-01-02") > time.Now().Format("2006-01-02") {
 		selectedDate = time.Now().Format("2006-01-02")
+	} else if err := validateHistoricalEntryTime(parsedDate, "attendance date"); err != nil {
+		selectedDate = companyHistoricalEntryStartDate
 	}
 
 	coachIDs := make([]int64, 0, len(coaches))
@@ -378,6 +380,11 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
+	if err := validateHistoricalEntryDateValue(enrollmentDate, "enrollment date"); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
 
 	enrollment := StudentEnrollment{
 		AdmissionID:          admissionID,
@@ -620,6 +627,16 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	if enrollmentDate > time.Now().Format("2006-01-02") {
 		a.setFlash(w, "Enrollment date cannot be in the future.")
+		http.Redirect(
+			w,
+			r,
+			target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+	if err := validateHistoricalEntryDateValue(enrollmentDate, "enrollment date"); err != nil {
+		a.setFlash(w, err.Error())
 		http.Redirect(
 			w,
 			r,

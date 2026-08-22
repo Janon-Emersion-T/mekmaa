@@ -47,7 +47,7 @@
         <textarea name="notes" rows="2" maxlength="400" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
       </label>
       <label class="text-xs font-medium text-slate/60">Date
-        <input name="recorded_date" type="date" value="{{.TodayDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+        <input name="recorded_date" type="date" value="{{.TodayDate}}" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
       </label>
       <div class="grid gap-2 sm:grid-cols-2">
         <button name="submit_action" value="pending" class="h-11 rounded-xl border border-slate/10 bg-white text-sm font-semibold text-slate transition hover:bg-cloud">Save pending</button>
@@ -88,7 +88,7 @@
     <form method="post" action="/admin/finance/period-lock" class="grid gap-3 xl:grid-cols-[14rem_minmax(0,1fr)_auto] xl:items-end">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <label class="text-xs font-medium text-slate/60">Locked through
-        <input name="locked_until" type="date" value="{{if .FinancePeriodLock}}{{.FinancePeriodLock.LockedUntil}}{{end}}" max="{{.TodayDate}}" class="mt-1 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+        <input name="locked_until" type="date" value="{{if .FinancePeriodLock}}{{.FinancePeriodLock.LockedUntil}}{{end}}" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" class="mt-1 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
       </label>
       <label class="text-xs font-medium text-slate/60">Lock note
         <input name="notes" value="{{if .FinancePeriodLock}}{{.FinancePeriodLock.Notes}}{{end}}" placeholder="Month closed after review" class="mt-1 h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">

@@ -2297,7 +2297,7 @@ func (a *App) scheduleNextOneToOneSession(
 		return 0, 0, err
 	}
 
-	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+	if err := validateAdminScheduleDate(schedule); err != nil {
 		return 0, 0, err
 	}
 

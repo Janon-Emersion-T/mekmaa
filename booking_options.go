@@ -241,6 +241,7 @@ func buildBookingSlotAvailability(
 	activities []CourtActivity,
 	layouts []CourtLayout,
 	closures []CourtClosure,
+	allowHistorical bool,
 ) []BookingSlotAvailability {
 	var availability []BookingSlotAvailability
 	now := time.Now()
@@ -262,13 +263,18 @@ func buildBookingSlotAvailability(
 			Schedules: existing,
 		}
 
-		if validateBookableScheduleTime(
-			SpaceSchedule{
-				SlotDate: slotDate,
-				SlotHour: hour,
-			},
-			now,
-		) != nil {
+		candidate := SpaceSchedule{
+			SlotDate: slotDate,
+			SlotHour: hour,
+		}
+		if allowHistorical {
+			slot.IsPast = validateBookableScheduleTime(candidate, now) != nil
+			if err := validateAdminScheduleDate(candidate); err != nil {
+				slot.BlockedReason = err.Error()
+				availability = append(availability, slot)
+				continue
+			}
+		} else if validateBookableScheduleTime(candidate, now) != nil {
 			slot.IsPast = true
 			slot.BlockedReason =
 				"This time has already started"
@@ -340,13 +346,15 @@ func buildBookingWeekDays(
 	activities []CourtActivity,
 	layouts []CourtLayout,
 	closures []CourtClosure,
+	allowHistorical bool,
 ) []CalendarDay {
 	start := selectedDate.AddDate(0, 0, -3)
 
 	todayDate := time.Now()
 	today := todayDate.Format("2006-01-02")
 
-	if selectedDate.Format("2006-01-02") >= today &&
+	if !allowHistorical &&
+		selectedDate.Format("2006-01-02") >= today &&
 		start.Format("2006-01-02") < today {
 		start = todayDate
 	}
@@ -364,6 +372,7 @@ func buildBookingWeekDays(
 			activities,
 			layouts,
 			closures,
+			allowHistorical,
 		)
 
 		openCount := 0
@@ -399,10 +408,10 @@ func buildBookingWeekDays(
 
 func bookingCalendarWindow(selectedDate time.Time) (time.Time, time.Time) {
 	start := selectedDate.AddDate(0, 0, -3)
-	today := time.Now()
-	if selectedDate.Format("2006-01-02") >= today.Format("2006-01-02") &&
-		start.Format("2006-01-02") < today.Format("2006-01-02") {
-		start = today
+	historicalStart, err := historicalEntryStartDate()
+	if err == nil &&
+		start.Format("2006-01-02") < historicalStart.Format("2006-01-02") {
+		start = historicalStart
 	}
 	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
 	end := start.AddDate(0, 0, 6)
@@ -924,6 +933,7 @@ func buildPricedBookingWeekDays(
 		activities,
 		layouts,
 		closures,
+		false,
 	)
 
 	for i := range days {
@@ -934,6 +944,7 @@ func buildPricedBookingWeekDays(
 			activities,
 			layouts,
 			closures,
+			false,
 		)
 
 		slots = filterPricedBookingSlots(

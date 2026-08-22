@@ -249,6 +249,8 @@ func (a *App) attendanceManagementHandler(w http.ResponseWriter, r *http.Request
 		data.AttendanceDate = data.TodayDate
 	} else if parsedDate.Format("2006-01-02") > data.TodayDate {
 		data.AttendanceDate = data.TodayDate
+	} else if err := validateHistoricalEntryTime(parsedDate, "attendance date"); err != nil {
+		data.AttendanceDate = companyHistoricalEntryStartDate
 	} else {
 		data.AttendanceDate = parsedDate.Format("2006-01-02")
 	}
@@ -2023,7 +2025,7 @@ func (a *App) createOneToOneBookingHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+	if err := validateAdminScheduleDate(schedule); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -2087,7 +2089,7 @@ func (a *App) scheduleNextOneToOneSessionHandler(w http.ResponseWriter, r *http.
 		SlotDate: slotDate,
 		SlotHour: slotHour,
 	}
-	if err := validateBookableScheduleTime(schedule, time.Now()); err != nil {
+	if err := validateAdminScheduleDate(schedule); err != nil {
 		a.setFlash(w, err.Error())
 		http.Redirect(
 			w,
@@ -3744,6 +3746,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	data.Activities = bookingActivities()
 	data.Hours = bookingHours()
 	data.TodayDate = time.Now().Format("2006-01-02")
+	data.HistoricalStartDate = companyHistoricalEntryStartDate
 	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
 	if data.CalendarDate == "" {
 		data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("slot_date"))
@@ -3756,8 +3759,16 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 		selectedDate = time.Now()
 		data.CalendarDate = selectedDate.Format("2006-01-02")
 	}
+	historicalStart, historicalErr := historicalEntryStartDate()
+	if historicalErr == nil && data.CalendarDate < data.HistoricalStartDate {
+		selectedDate = historicalStart
+		data.CalendarDate = data.HistoricalStartDate
+	}
 	data.PreviousDate = selectedDate.AddDate(0, 0, -1).Format("2006-01-02")
 	data.NextDate = selectedDate.AddDate(0, 0, 1).Format("2006-01-02")
+	if data.PreviousDate < data.HistoricalStartDate {
+		data.PreviousDate = data.HistoricalStartDate
+	}
 
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	selectedScheduleID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
@@ -3838,6 +3849,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 			courtActivities,
 			courtLayouts,
 			filteredClosures,
+			true,
 		)
 		data.BookingSlots = buildBookingSlotAvailability(
 			activeSchedules,
@@ -3846,6 +3858,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 			courtActivities,
 			courtLayouts,
 			filteredClosures,
+			true,
 		)
 		data.AdminCalendarHours = buildAdminCalendarHours(
 			data.CalendarDate,
@@ -3933,6 +3946,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 			courtActivities,
 			courtLayouts,
 			courtClosures,
+			true,
 		)
 		data.BookingSlots = buildBookingSlotAvailability(
 			activeSchedules,
@@ -3941,6 +3955,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 			courtActivities,
 			courtLayouts,
 			courtClosures,
+			true,
 		)
 	}
 
@@ -4085,6 +4100,7 @@ func (a *App) buildPublicBookingData(
 			courtActivities,
 			courtLayouts,
 			courtClosures,
+			false,
 		),
 		data.CalendarDate,
 		pricings,
@@ -6030,6 +6046,11 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, withQueryValue(withQueryValue(target, "group_id", strconv.FormatInt(groupID, 10)), "session_id", strconv.FormatInt(sessionID, 10)), http.StatusSeeOther)
 		return
 	}
+	if err := validateHistoricalEntryTime(parsedAttendanceDate, "attendance date"); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, withQueryValue(withQueryValue(target, "group_id", strconv.FormatInt(groupID, 10)), "session_id", strconv.FormatInt(sessionID, 10)), http.StatusSeeOther)
+		return
+	}
 
 	group, err := a.findStudentGroupByIDForDivisionIDs(groupID, divisionIDs)
 	if err != nil {
@@ -6110,6 +6131,10 @@ func (a *App) saveCoachAttendanceHandler(w http.ResponseWriter, r *http.Request)
 	today := time.Now().Format("2006-01-02")
 	if parsedAttendanceDate.Format("2006-01-02") > today {
 		http.Error(w, "attendance date cannot be in the future", http.StatusBadRequest)
+		return
+	}
+	if err := validateHistoricalEntryTime(parsedAttendanceDate, "attendance date"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
