@@ -11345,6 +11345,49 @@ func TestValidateBookableScheduleTimeAllowsFuturePublicSlot(t *testing.T) {
 	}
 }
 
+func TestBookingManagementTemplateAllowsFutureAdminDates(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	data := TemplateData{
+		CSRFToken:           "test-token",
+		CalendarDate:        "2026-08-30",
+		TodayDate:           "2026-08-22",
+		HistoricalStartDate: companyHistoricalEntryStartDate,
+		Hours:               []string{"18:00"},
+		WeekDays:            []CalendarDay{{Date: "2026-08-30", DayLabel: "Sun", MonthLabel: "Aug", DayNumber: "30", OpenSlotCount: 1, IsSelected: true}},
+		DailyStats:          []Stat{{Label: "Open hours", Value: "1"}},
+		ScheduleMode:        "new",
+		DraftSchedule: &SpaceSchedule{
+			SlotDate:  "2026-08-30",
+			SlotHour:  "18:00",
+			EntryType: "booking",
+			Activity:  "badminton",
+			Quantity:  1,
+		},
+		SelectedSchedule: &SpaceSchedule{
+			ID:        99,
+			SlotDate:  "2026-08-30",
+			SlotHour:  "18:00",
+			EntryType: "booking",
+			Activity:  "badminton",
+			Quantity:  1,
+			Title:     "Future admin booking",
+		},
+	}
+
+	html := renderTemplateToString(t, templates, "booking-management", data)
+
+	if strings.Contains(html, `name="slot_date" data-slot-date min="`+companyHistoricalEntryStartDate+`" max="2026-08-22"`) {
+		t.Fatal("booking management template should not cap admin booking dates at today")
+	}
+	if !strings.Contains(html, `name="slot_date" data-slot-date min="`+companyHistoricalEntryStartDate+`" value="2026-08-30"`) {
+		t.Fatal("booking management template should preserve the future admin booking date")
+	}
+}
+
 func TestScheduleNextOneToOneSessionCreatesIndependentAppointment(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	coachID := createOneToOneTestCoach(t, app)
