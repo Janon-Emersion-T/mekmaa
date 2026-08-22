@@ -3022,19 +3022,18 @@ func (a *App) buildFinanceStatement(accountID int64, from, to string) (*financeS
 }
 
 func financeAccountDisplayBalance(accounts []FinanceAccount, transactions []FinanceTransaction, name string) float64 {
-	var accountID int64
+	accountIDs := make(map[int64]struct{})
 	for _, account := range accounts {
 		if strings.EqualFold(account.Name, name) {
-			accountID = account.ID
-			break
+			accountIDs[account.ID] = struct{}{}
 		}
 	}
-	if accountID == 0 {
+	if len(accountIDs) == 0 {
 		return 0
 	}
 	total := 0.0
 	for _, transaction := range transactions {
-		if transaction.FinanceAccountID == accountID && listFinanceBalancesInclude(transaction) {
+		if _, ok := accountIDs[transaction.FinanceAccountID]; ok && listFinanceBalancesInclude(transaction) {
 			total = normalizeMoney(total + transaction.Amount)
 		}
 	}

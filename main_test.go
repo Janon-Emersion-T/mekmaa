@@ -2898,6 +2898,75 @@ func TestVoidedTransactionsOpeningBalancesAndAdjustmentsAffectBalancesSafely(t *
 	}
 }
 
+func TestBuildFinanceSummaryAggregatesSystemAccountBalancesAcrossDivisions(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("lookup sports division: %v", err)
+	}
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("lookup kec division: %v", err)
+	}
+
+	sportsCashID := financeAccountIDByDivisionAndName(t, app, divisionCodeSports, financeAccountCashInHand)
+	kecCashID := financeAccountIDByDivisionAndName(t, app, divisionCodeKEC, financeAccountCashInHand)
+	sportsBankID := financeAccountIDByDivisionAndName(t, app, divisionCodeSports, financeAccountMainBank)
+	kecBankID := financeAccountIDByDivisionAndName(t, app, divisionCodeKEC, financeAccountMainBank)
+
+	recordedAt := time.Date(2026, 8, 20, 9, 0, 0, 0, time.Local)
+	tx, err := app.db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback()
+
+	insertEntry := func(receipt string, divisionID, accountID int64, person string, amount float64, paymentMethod string) {
+		t.Helper()
+		if _, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
+			ReceiptNumber:    receipt,
+			ReferenceNumber:  receipt,
+			DivisionID:       divisionID,
+			Category:         "manual_income",
+			ApprovalStatus:   financeApprovalApproved,
+			TransactionType:  financeTxnTypeIncome,
+			FinanceAccountID: accountID,
+			PersonName:       person,
+			Description:      person,
+			PaymentMethod:    paymentMethod,
+			Amount:           amount,
+			RecordedAt:       recordedAt,
+			ApprovedAt:       recordedAt,
+		}); err != nil {
+			t.Fatalf("insert finance entry %s: %v", receipt, err)
+		}
+	}
+	insertEntry("TEST-SUM-SC-001", sportsID, sportsCashID, "Sports cash", 1000, "cash")
+	insertEntry("TEST-SUM-KC-001", kecID, kecCashID, "KEC cash", 2500, "cash")
+	insertEntry("TEST-SUM-SB-001", sportsID, sportsBankID, "Sports bank", 3000, "bank_transfer")
+	insertEntry("TEST-SUM-KB-001", kecID, kecBankID, "KEC bank", 4500, "bank_transfer")
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
+
+	allTransactions, err := app.listFinanceTransactions()
+	if err != nil {
+		t.Fatalf("list finance transactions: %v", err)
+	}
+	summary := buildFinanceSummary(mustFinanceAccounts(t, app), allTransactions, nil, nil, nil, nil)
+
+	if summary.CashBalance != 3500 {
+		t.Fatalf("cash balance = %.2f, want 3500.00", summary.CashBalance)
+	}
+	if summary.BankBalance != 7500 {
+		t.Fatalf("bank balance = %.2f, want 7500.00", summary.BankBalance)
+	}
+	if summary.TotalAvailableFunds != 11000 {
+		t.Fatalf("available funds = %.2f, want 11000.00", summary.TotalAvailableFunds)
+	}
+}
+
 func TestCashReconciliationCalculatesStatusesAndRequiresNotes(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 1000, time.Date(2026, 8, 1, 10, 0, 0, 0, time.Local), 0); err != nil {
