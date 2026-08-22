@@ -446,7 +446,7 @@ func (a *App) listMCPMonthlyCustomers() ([]MCPMonthlyCustomer, error) {
 	rows, err := a.db.Query(`
 		SELECT id, user_id, name, email, phone, active, notes, created_at, updated_at
 		FROM mcp_customers
-		ORDER BY active DESC, name COLLATE NOCASE, id DESC
+		ORDER BY active DESC, LOWER(name), id DESC
 	`)
 	if err != nil {
 		return nil, err
