@@ -1,1 +1,762 @@
-in
+{{define "booking-management"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6">
+  <div class="relative overflow-hidden rounded-[2rem] bg-obsidian p-6 text-cloud shadow-[0_24px_80px_rgba(11,18,21,0.18)] sm:p-8">
+    <div class="pointer-events-none absolute -right-24 -top-32 h-80 w-80 rounded-full border-[48px] border-aqua/10"></div>
+    <div class="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Venue operations</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Booking calendar</h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/65">One operational view for confirmed bookings, pending holds, and internal training blocks.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/admin/booking-requests" class="relative inline-flex h-11 items-center rounded-2xl border border-white/10 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">
+          Request inbox
+          {{if .PendingRequestCount}}<span class="ml-2 rounded-full bg-amber px-2 py-0.5 text-[0.65rem] font-bold text-obsidian">{{.PendingRequestCount}}</span>{{end}}
+        </a>
+        <a href="{{scopedURL (printf "/admin/bookings?action=new&date=%s" .CalendarDate) .SelectedDivision .SelectedDivisionScope}}#schedule-form" class="inline-flex h-11 items-center rounded-2xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Add schedule</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-5">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.22em] text-slate/40">Selected operational day</p>
+          <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{formatCalendarDate .CalendarDate}}</h2>
+        </div>
+        <div class="flex items-center gap-2">
+          <a href="{{scopedURL (printf "/admin/bookings?date=%s" .PreviousDate) .SelectedDivision .SelectedDivisionScope}}" class="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate transition hover:bg-cloud" aria-label="Previous day"><svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4.5 7 10l5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          <form action="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" method="get" class="flex min-w-0 gap-2">
+            {{if .SelectedDivision}}<input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />{{else if eq .SelectedDivisionScope "all"}}<input type="hidden" name="division" value="all" />{{end}}
+            <input type="date" name="date" value="{{.CalendarDate}}" class="h-11 min-w-0 rounded-2xl border border-slate/10 bg-cloud/45 px-3 text-sm outline-none focus:border-aqua" />
+            <button class="h-11 rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud">Go</button>
+          </form>
+          <a href="{{scopedURL (printf "/admin/bookings?date=%s" .NextDate) .SelectedDivision .SelectedDivisionScope}}" class="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate transition hover:bg-cloud" aria-label="Next day"><svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7.5 4.5 13 10l-5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        </div>
+      </div>
+
+      <div class="flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {{range .WeekDays}}
+        <a href="{{scopedURL (printf "/admin/bookings?date=%s" .Date) $.SelectedDivision $.SelectedDivisionScope}}" class="{{if .IsSelected}}border-obsidian bg-obsidian text-cloud shadow-lg{{else}}border-slate/10 bg-cloud/40 text-obsidian hover:border-aqua hover:bg-mint/35{{end}} min-w-[7.4rem] flex-1 snap-start rounded-[1.35rem] border p-3 transition">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-50">{{.DayLabel}}</span>
+            {{if .IsToday}}<span class="rounded-full bg-aqua px-2 py-0.5 text-[0.52rem] font-bold uppercase text-obsidian">Today</span>{{end}}
+          </div>
+          <p class="mt-2 text-xl font-semibold">{{.DayNumber}} <span class="text-xs opacity-45">{{.MonthLabel}}</span></p>
+          <div class="mt-2 flex items-center justify-between text-[0.62rem]">
+            <span class="{{if .IsSelected}}text-aqua{{else}}text-emerald-700{{end}}">{{.OpenSlotCount}} open</span>
+            <span class="opacity-45">{{.BusySlotCount}} full</span>
+          </div>
+        </a>
+        {{end}}
+      </div>
+    </div>
+  </div>
+
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    {{range .DailyStats}}
+    <article class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm">
+      <p class="text-3xl font-semibold text-obsidian">{{.Value}}</p>
+      <p class="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-slate/45">{{.Label}}</p>
+    </article>
+    {{end}}
+  </div>
+
+  {{if eq .ScheduleMode "new"}}
+  <div id="schedule-form" class="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+    <a href="{{scopedURL (printf "/admin/bookings?date=%s" .CalendarDate) .SelectedDivision .SelectedDivisionScope}}" class="absolute inset-0 bg-obsidian/55 backdrop-blur-sm" aria-label="Close create schedule"></a>
+    <div class="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-[1.5rem] border border-white/80 bg-white shadow-[0_30px_100px_rgba(11,18,21,0.32)] sm:rounded-[2rem]">
+      <div class="min-h-0 flex-1 overflow-y-auto">
+    <div class="flex items-center justify-between bg-mint/60 px-5 py-4 sm:px-6">
+      <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-800/55">New calendar entry</p><h2 class="mt-1 text-xl font-semibold text-obsidian">Reserve inventory</h2></div>
+      <a href="{{scopedURL (printf "/admin/bookings?date=%s" .CalendarDate) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a>
+    </div>
+    <form action="/admin/bookings/create" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3" data-admin-booking-form data-options-url="/admin/bookings/options">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+      <input type="hidden" name="action" value="new" />
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Entry type</span><select name="entry_type" data-entry-type required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua"><option value="booking" {{if or (not .DraftSchedule) (eq .DraftSchedule.EntryType "booking")}}selected{{end}}>Direct booking</option><option value="training" {{if and .DraftSchedule (eq .DraftSchedule.EntryType "training")}}selected{{end}}>Internal training</option></select></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Date</span><input type="date" name="slot_date" data-slot-date min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{if and .DraftSchedule .DraftSchedule.SlotDate}}{{.DraftSchedule.SlotDate}}{{else}}{{.CalendarDate}}{{end}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Start time</span><select name="slot_hour" data-slot-hour required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">{{range .Hours}}<option value="{{.}}" {{if and $.DraftSchedule (eq $.DraftSchedule.SlotHour .)}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <div class="md:col-span-2 xl:col-span-3 rounded-[1.6rem] border border-slate/10 bg-cloud/35 p-4 sm:p-5" data-admin-options-root data-selected-activity="{{if .DraftSchedule}}{{.DraftSchedule.Activity}}{{end}}" data-selected-quantity="{{if .DraftSchedule}}{{.DraftSchedule.Quantity}}{{else}}1{{end}}">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Valid slot options</p>
+            <h3 class="mt-1 text-lg font-semibold text-obsidian">Choose from available combinations only</h3>
+          </div>
+          <button type="submit" formmethod="get" formaction="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua">Refresh valid options</button>
+        </div>
+        <p class="mt-2 text-xs leading-5 text-slate/55">The list below is derived from active layouts, current schedules, closures, and pricing for the selected slot.</p>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-admin-options-list>
+          {{range .AdminBookingOptions}}
+          <label class="group block cursor-pointer">
+            <input type="radio" name="booking_option" value="{{.Activity}}:{{.Quantity}}" class="peer sr-only" {{if and $.DraftSchedule (eq $.DraftSchedule.Activity .Activity) (eq $.DraftSchedule.Quantity .Quantity)}}checked{{end}} />
+            <span class="flex min-h-[10rem] flex-col justify-between rounded-[1.25rem] border border-slate/10 bg-white p-4 text-obsidian transition peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud group-hover:border-aqua group-hover:shadow-lg">
+              <span>
+                <span class="flex items-start justify-between gap-3">
+                  <span>
+                    <span class="block text-base font-semibold">{{.Label}}</span>
+                    <span class="mt-1 block text-[0.68rem] uppercase tracking-[0.14em] opacity-50">{{.AvailabilityState}}</span>
+                  </span>
+                  <span class="text-sm font-bold {{if eq .PriceLabel "Internal"}}text-slate/55 peer-checked:text-aqua{{else}}text-emerald-700 peer-checked:text-aqua{{end}}">{{.PriceLabel}}</span>
+                </span>
+                {{if .RemainingCapacityLabel}}<span class="mt-4 block text-xs leading-5 opacity-60">{{.RemainingCapacityLabel}}</span>{{end}}
+              </span>
+              <span class="mt-4 flex items-center justify-between border-t border-slate/10 pt-3 text-xs font-bold peer-checked:border-white/10"><span>Select option</span><span>{{optionSummary .}}</span></span>
+            </span>
+          </label>
+          {{end}}
+        </div>
+        <p class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 {{if .AdminBookingBlockedReason}}{{else}}hidden{{end}}" data-admin-options-message>{{if .AdminBookingBlockedReason}}{{.AdminBookingBlockedReason}}{{else}}No valid options remain for this slot.{{end}}</p>
+      </div>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Schedule title</span><input type="text" name="title" value="{{if .DraftSchedule}}{{.DraftSchedule.Title}}{{end}}" placeholder="Customer, team or training name" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Referrer <span class="font-normal text-slate/35">(optional for direct bookings)</span></span><select name="referral_code" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua"><option value="">No referrer</option>{{range .ReferralPartners}}{{if .Active}}<option value="{{.Code}}" {{if and $.DraftSchedule (eq $.DraftSchedule.ReferralCode .Code)}}selected{{end}}>{{.Name}} · {{.Code}}</option>{{end}}{{end}}</select></label>
+      <label class="md:col-span-2 xl:col-span-3"><span class="mb-1.5 block text-xs font-semibold text-slate/55">Operations note <span class="font-normal text-slate/35">(optional)</span></span><textarea name="notes" rows="3" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{if .DraftSchedule}}{{.DraftSchedule.Notes}}{{end}}</textarea></label>
+      <div class="md:col-span-2 xl:col-span-3 flex justify-end"><button class="h-12 rounded-2xl bg-obsidian px-6 text-sm font-bold text-cloud transition hover:bg-slate">Create schedule</button></div>
+    </form>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  {{if and (eq .ScheduleMode "view") .SelectedSchedule}}
+  {{$financial := bookingFinancialForSchedule .BookingFinancials .SelectedSchedule.ID}}
+  {{$payments := bookingPaymentsForSchedule .BookingPaymentCollections .SelectedSchedule.ID}}
+  {{$referral := bookingReferralFor .BookingReferrals .SelectedSchedule.ID}}
+  <div id="schedule-view" class="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+    <a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="absolute inset-0 bg-obsidian/55 backdrop-blur-sm" aria-label="Close booking details"></a>
+    <div class="relative flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[1.5rem] border border-white/80 bg-white shadow-[0_30px_100px_rgba(11,18,21,0.32)] sm:rounded-[2rem]">
+      <div class="min-h-0 flex-1 overflow-y-auto">
+    <div class="flex items-center justify-between border-b border-slate/10 px-5 py-4 sm:px-6">
+      <div><p class="font-mono text-xs font-bold text-slate/40">{{if .SelectedSchedule.RequesterName}}{{bookingReference .SelectedSchedule.ID}}{{else}}INTERNAL-{{.SelectedSchedule.ID}}{{end}}</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div>
+      <a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-cloud px-3 py-2 text-xs font-bold text-slate">Close</a>
+    </div>
+    <div class="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
+      <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Date & time</p><p class="mt-2 text-sm font-semibold">{{formatCalendarDate .SelectedSchedule.SlotDate}} · {{.SelectedSchedule.SlotHour}}</p></div>
+      <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Inventory</p><p class="mt-2 text-sm font-semibold">{{bookingProductLabelForGames .Games .SelectedSchedule.Activity .SelectedSchedule.Quantity}}</p></div>
+      <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Type & status</p><p class="mt-2 text-sm font-semibold capitalize">{{.SelectedSchedule.EntryType}} · {{.SelectedSchedule.Status}}</p></div>
+      <div class="rounded-2xl bg-emerald-50 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800/45">Quoted amount</p><p class="mt-2 text-sm font-bold text-emerald-900">{{if eq .SelectedSchedule.EntryType "booking"}}{{quotedPriceForSchedule .BookingFinancials .SelectedSchedule.ID}}{{else}}Internal{{end}}</p></div>
+      {{if and $financial (eq .SelectedSchedule.EntryType "booking")}}
+      <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Payment status</p><p class="mt-2 text-sm font-semibold">{{bookingPaymentStatusBadge $financial.PaymentStatus}}</p><p class="mt-1 text-xs text-slate/55">Collected {{money $financial.TotalCollected}} · Outstanding {{money $financial.OutstandingAmount}}</p></div>
+      {{end}}
+      {{if .SelectedSchedule.RequesterName}}<div class="rounded-2xl bg-cloud/60 p-4 sm:col-span-2"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Customer</p><p class="mt-2 text-sm font-semibold">{{.SelectedSchedule.RequesterName}}</p><p class="mt-1 text-xs text-slate/55">{{.SelectedSchedule.RequesterEmail}} · {{.SelectedSchedule.RequesterPhone}}</p></div>{{end}}
+      {{if $referral}}<div class="rounded-2xl border border-aqua/20 bg-aqua/10 p-4 {{if .SelectedSchedule.RequesterName}}sm:col-span-2{{else}}sm:col-span-2{{end}}"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800/55">Referrer</p><p class="mt-2 text-sm font-semibold text-obsidian">{{$referral.PartnerName}} · {{$referral.PartnerCode}}</p><p class="mt-1 text-xs text-slate/60">Commission {{money $referral.CommissionAmount}} is linked to this booking and will appear in the referral payouts dashboard.</p></div>{{end}}
+      <div class="rounded-2xl bg-cloud/60 p-4 {{if .SelectedSchedule.RequesterName}}sm:col-span-2{{else}}sm:col-span-2 xl:col-span-4{{end}}"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Notes</p><p class="mt-2 text-sm leading-6 text-slate/65">{{if .SelectedSchedule.Notes}}{{.SelectedSchedule.Notes}}{{else}}No notes provided.{{end}}</p></div>
+      {{if .SelectedSchedule.CustomerMessage}}<div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:col-span-2 xl:col-span-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800/55">Customer-facing message</p><p class="mt-2 text-sm leading-6 text-emerald-950">{{.SelectedSchedule.CustomerMessage}}</p></div>{{end}}
+      {{if and $financial (eq .SelectedSchedule.EntryType "booking")}}
+      <div class="rounded-2xl border border-slate/10 bg-white p-4 sm:col-span-2 xl:col-span-4">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Booking payments</p>
+              <span class="rounded-full px-2.5 py-1 text-[0.62rem] font-bold {{bookingPaymentStatusTone $financial.PaymentStatus}}">{{bookingPaymentStatusBadge $financial.PaymentStatus}}</span>
+              {{if and (eq .SelectedSchedule.Status "cancelled") (gt $financial.TotalCollected 0.0)}}<span class="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[0.62rem] font-bold text-amber-900">Payment was previously collected</span>{{end}}
+            </div>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div class="rounded-xl bg-cloud/40 p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Quoted</p><p class="mt-1 text-sm font-semibold text-obsidian">{{money $financial.QuotedAmount}}</p></div>
+              <div class="rounded-xl bg-cloud/40 p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Collected</p><p class="mt-1 text-sm font-semibold text-emerald-800">{{money $financial.TotalCollected}}</p></div>
+              <div class="rounded-xl bg-cloud/40 p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Outstanding</p><p class="mt-1 text-sm font-semibold {{if gt $financial.OutstandingAmount 0.0}}text-amber-900{{else}}text-emerald-800{{end}}">{{money $financial.OutstandingAmount}}</p></div>
+              <div class="rounded-xl bg-cloud/40 p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Last payment</p><p class="mt-1 text-sm font-semibold text-obsidian">{{if $financial.LastPaymentDate.IsZero}}No payment collected{{else}}{{formatDateTime $financial.LastPaymentDate}}{{end}}</p></div>
+            </div>
+            {{if gt $financial.OutstandingAmount 0.0}}
+            <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">This booking still has an outstanding balance. Status actions remain available, but the balance is not cleared automatically.</p>
+            {{end}}
+          </div>
+          {{if bookingCanCollectPayment .User .SelectedSchedule}}
+          <form method="post" action="/admin/bookings/payments/collect" class="w-full max-w-md rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+            <input type="hidden" name="return_to" value="{{scopedURL (printf "/admin/bookings?action=view&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-view" />
+            <p class="text-sm font-semibold text-obsidian">Record payment</p>
+            <p class="mt-1 text-xs leading-5 text-slate/55">Cash, bank transfer, and QR pay are supported. Partial payments are supported and every collection creates its own receipt.</p>
+            <div class="mt-3 grid gap-3">
+              <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Payment method</span><select name="payment_method" class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="qr_pay">QR pay</option></select></label>
+              <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Amount received</span><input name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
+              <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Payment note</span><textarea name="payment_note" rows="2" class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-sm outline-none focus:border-aqua" placeholder="Optional note shown on the receipt"></textarea></label>
+              <label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-950"><input type="checkbox" name="allow_overpayment" value="1" class="mt-0.5 h-4 w-4 rounded border-amber-300 text-obsidian focus:ring-amber-300" /><span>Confirm intentional overpayment if the received amount exceeds {{money $financial.OutstandingAmount}}.</span></label>
+            </div>
+            <button class="mt-3 h-11 w-full rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Record payment</button>
+          </form>
+          {{else}}
+          <div class="w-full max-w-md rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
+            <p class="text-sm font-semibold text-obsidian">Payment collection</p>
+            <p class="mt-2 text-sm leading-6 text-slate/60">{{bookingPaymentInactiveMessage .SelectedSchedule}}</p>
+          </div>
+          {{end}}
+        </div>
+        <div class="mt-4 grid gap-2">
+          {{range $payments}}
+          <div class="rounded-xl border {{if .Voided}}border-red-200 bg-red-50/70{{else}}border-slate/10 bg-cloud/35{{end}} p-3">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="font-mono text-[0.68rem] font-bold text-obsidian">{{.ReceiptNumber}}</p>
+                  <span class="rounded-full bg-white px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-slate">{{paymentMethodLabel .PaymentMethod}}</span>
+                  {{if .Voided}}<span class="rounded-full border border-red-200 bg-white px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-red-700">Voided</span>{{else}}<span class="rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-emerald-700">Active</span>{{end}}
+                </div>
+                <p class="mt-2 text-sm font-semibold text-obsidian">{{money .Amount}}</p>
+                <p class="mt-1 text-xs text-slate/60">{{formatDateTime .CollectedAt}}{{if .CollectedByUserName}} · {{.CollectedByUserName}}{{end}}</p>
+                {{if .PaymentNote}}<p class="mt-2 text-xs leading-5 text-slate/65">{{.PaymentNote}}</p>{{end}}
+                {{if .Voided}}<p class="mt-2 text-xs leading-5 text-red-800">Voided {{formatDateTime .VoidedAt}}{{if .VoidedByUserName}} by {{.VoidedByUserName}}{{end}}. Reason: {{.VoidReason}}</p>{{end}}
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <a href="/admin/bookings/payments/receipt?id={{.FinanceTransactionID}}" class="inline-flex h-9 items-center rounded-lg border border-slate/10 bg-white px-3 text-[0.65rem] font-bold text-slate">Receipt</a>
+                {{if and (bookingCanVoidPayment $.User) (not .Voided)}}
+                <form method="post" action="/admin/bookings/payments/void" class="grid gap-2 sm:min-w-[14rem]" onsubmit="return confirm('Void this payment collection? The original receipt and transaction will remain in history, and the booking balance will be recalculated.');">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="collection_id" value="{{.ID}}" />
+                  <input type="hidden" name="return_to" value="{{scopedURL (printf "/admin/bookings?action=view&id=%d&date=%s" $.SelectedSchedule.ID $.SelectedSchedule.SlotDate) $.SelectedDivision $.SelectedDivisionScope}}#schedule-view" />
+                  <label class="sr-only" for="void-reason-booking-{{.ID}}">Void reason</label>
+                  <input id="void-reason-booking-{{.ID}}" type="text" name="void_reason" required placeholder="Void reason" class="h-9 rounded-lg border border-red-200 bg-white px-3 text-[0.65rem] outline-none focus:border-red-400" />
+                  <button class="h-9 rounded-lg border border-red-200 bg-white px-3 text-[0.65rem] font-bold text-red-700">Void collection</button>
+                </form>
+                {{end}}
+              </div>
+            </div>
+          </div>
+          {{else}}
+          <p class="rounded-xl border border-dashed border-slate/15 bg-cloud/25 px-4 py-4 text-sm text-slate/55">No cash collections have been recorded for this booking yet.</p>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+      <div class="rounded-2xl bg-cloud/40 p-4 sm:col-span-2 xl:col-span-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Communication history</p>
+            <p class="mt-1 text-xs text-slate/55">Every automatic send and manual resend for this booking.</p>
+          </div>
+          {{if .SelectedSchedule.RequesterEmail}}
+          <form action="/admin/bookings/communications/resend" method="post">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+            <button class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold text-slate">Resend latest message</button>
+          </form>
+          {{end}}
+        </div>
+        <div class="mt-4 grid gap-2">
+          {{range bookingCommunicationsFor .BookingCommunications .SelectedSchedule.ID}}
+          <div class="rounded-xl border px-3 py-3 {{bookingCommunicationStatusTone .Status}}">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-[0.68rem] font-bold uppercase tracking-wider">{{bookingCommunicationEventLabel .}}</p>
+                <span class="rounded-full bg-white/80 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider">{{.Channel}}</span>
+              </div>
+              <p class="text-[0.68rem]">{{if .LastAttemptAt.IsZero}}{{relativeTime .CreatedAt}}{{else}}{{relativeTime .LastAttemptAt}}{{end}}</p>
+            </div>
+            <p class="mt-2 text-xs break-all">{{.Recipient}}</p>
+            <p class="mt-1 text-xs">Attempt {{.AttemptCount}} · {{.Status}}</p>
+            {{if .ProviderMessage}}<p class="mt-1 text-xs leading-5">{{.ProviderMessage}}</p>{{end}}
+          </div>
+          {{else}}
+          <p class="text-sm text-slate/55">No customer communication has been recorded for this booking yet.</p>
+          {{end}}
+        </div>
+      </div>
+      {{$access := bookingAccessTokenFor .BookingAccessTokens .SelectedSchedule.ID}}
+      {{$cancelReq := pendingCancellationRequestFor .BookingCancellationRequests .SelectedSchedule.ID}}
+      <div class="rounded-2xl border border-slate/10 bg-white p-4 sm:col-span-2 xl:col-span-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Secure customer status link</p>
+            {{if $access}}
+            <p class="mt-1 text-xs text-slate/55">Expires {{formatDateTime $access.ExpiresAt}} · {{if $access.LastAccessedAt.IsZero}}Not opened yet{{else}}Last opened {{relativeTime $access.LastAccessedAt}}{{end}}</p>
+            {{else}}
+            <p class="mt-1 text-xs text-slate/55">No active status link has been issued for this booking yet.</p>
+            {{end}}
+          </div>
+          <div class="grid gap-2 sm:grid-cols-2">
+            <form action="/admin/bookings/access/rotate" method="post">
+              <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+              <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+              <button class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-cloud px-4 text-xs font-bold text-slate">Rotate link</button>
+            </form>
+            <form action="/admin/bookings/access/revoke" method="post">
+              <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+              <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+              <button class="inline-flex h-10 items-center rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700">Revoke link</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {{if $cancelReq}}
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:col-span-2 xl:col-span-4">
+        <p class="text-[0.62rem] font-bold uppercase tracking-wider text-amber-800/55">Pending customer cancellation request</p>
+        <p class="mt-2 text-sm text-amber-950">{{$cancelReq.RequestReason}}</p>
+        <p class="mt-1 text-xs text-amber-900/70">Requested {{relativeTime $cancelReq.RequestedAt}}</p>
+        <div class="mt-4 grid gap-3 lg:grid-cols-2">
+          <form action="/admin/bookings/cancellation-requests/approve" method="post" class="grid gap-2">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="request_id" value="{{$cancelReq.ID}}" />
+            <input type="hidden" name="return_to" value="{{scopedURL (printf "/admin/bookings?action=view&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-view" />
+            <textarea name="customer_message" rows="3" placeholder="Customer-facing approval message" required class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
+            <input type="text" name="cancellation_finance_note" placeholder="Optional internal cash handling note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+            <input type="text" name="review_note" placeholder="Optional admin note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+            <button class="h-10 rounded-xl bg-obsidian px-4 text-xs font-bold text-cloud">Approve cancellation</button>
+          </form>
+          <form action="/admin/bookings/cancellation-requests/reject" method="post" class="grid gap-2">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="request_id" value="{{$cancelReq.ID}}" />
+            <input type="hidden" name="return_to" value="{{scopedURL (printf "/admin/bookings?action=view&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-view" />
+            <input type="text" name="review_note" placeholder="Internal rejection note" required class="h-10 w-full rounded-xl border border-red-200 bg-white px-3 text-xs outline-none focus:border-red-400" />
+            <textarea name="customer_message" rows="3" placeholder="Customer-facing rejection message" required class="w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-xs outline-none focus:border-red-400"></textarea>
+            <button class="h-10 rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700">Reject request</button>
+          </form>
+        </div>
+      </div>
+      {{end}}
+    </div>
+    <div class="flex flex-wrap justify-end gap-2 border-t border-slate/10 px-5 py-4 sm:px-6">
+      {{if eq .SelectedSchedule.Status "confirmed"}}
+      <form action="/admin/bookings/cancel" method="post" class="flex flex-wrap gap-2">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+        <input type="text" name="cancellation_reason" placeholder="Cancellation reason" required class="h-10 rounded-xl border border-red-200 bg-white px-3 text-xs outline-none focus:border-red-400" />
+        <input type="text" name="cancellation_finance_note" placeholder="Optional cash handling note" class="h-10 rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+        <input type="text" name="customer_message" placeholder="Customer-facing cancellation message" class="h-10 rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+        <button class="h-10 rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700">Cancel booking</button>
+      </form>
+      <form action="/admin/bookings/complete" method="post" class="flex flex-wrap gap-2">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+        <input type="text" name="customer_message" placeholder="Optional completion message" class="h-10 rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+        <button class="h-10 rounded-xl border border-sky-200 bg-white px-4 text-xs font-bold text-sky-700">Mark completed</button>
+      </form>
+      <form action="/admin/bookings/no-show" method="post" class="flex flex-wrap gap-2">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
+        <input type="text" name="customer_message" placeholder="Optional no-show message" class="h-10 rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
+        <button class="h-10 rounded-xl border border-orange-200 bg-white px-4 text-xs font-bold text-orange-700">Mark no-show</button>
+      </form>
+      {{end}}
+      <a href="{{scopedURL (printf "/admin/bookings?action=edit&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-edit" class="h-10 rounded-xl border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Edit schedule</a>
+      {{if ne .SelectedSchedule.EntryType "booking"}}<form action="/admin/bookings/delete" method="post" onsubmit="return confirm('Permanently delete this schedule?')"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" /><button class="h-10 rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700">Delete</button></form>{{end}}
+    </div>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  {{if and (eq .ScheduleMode "edit") .SelectedSchedule}}
+  <div id="schedule-edit" class="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+    <a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="absolute inset-0 bg-obsidian/55 backdrop-blur-sm" aria-label="Close edit schedule"></a>
+    <div class="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-[1.5rem] border border-white/80 bg-white shadow-[0_30px_100px_rgba(11,18,21,0.32)] sm:rounded-[2rem]">
+      <div class="min-h-0 flex-1 overflow-y-auto">
+    <div class="flex items-center justify-between bg-cloud/70 px-5 py-4 sm:px-6"><div><p class="text-xs font-bold uppercase tracking-wider text-slate/40">Edit inventory</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div><a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a></div>
+    <form action="/admin/bookings/update" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3" data-admin-booking-form data-options-url="/admin/bookings/options">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" /><input type="hidden" name="id" value="{{.SelectedSchedule.ID}}" /><input type="hidden" name="action" value="edit" />
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Entry type</span><select name="entry_type" data-entry-type required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm"><option value="booking" {{if eq .SelectedSchedule.EntryType "booking"}}selected{{end}}>Booking</option><option value="training" {{if eq .SelectedSchedule.EntryType "training"}}selected{{end}}>Training</option></select></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Date</span><input type="date" name="slot_date" data-slot-date min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{.SelectedSchedule.SlotDate}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm" /></label>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Start time</span><select name="slot_hour" data-slot-hour required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm">{{range .Hours}}<option value="{{.}}" {{if eq $.SelectedSchedule.SlotHour .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <div class="md:col-span-2 xl:col-span-3 rounded-[1.6rem] border border-slate/10 bg-cloud/35 p-4 sm:p-5" data-admin-options-root data-selected-activity="{{.SelectedSchedule.Activity}}" data-selected-quantity="{{.SelectedSchedule.Quantity}}">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Valid slot options</p>
+            <h3 class="mt-1 text-lg font-semibold text-obsidian">Edit only within current capacity</h3>
+          </div>
+          <button type="submit" formmethod="get" formaction="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua">Refresh valid options</button>
+        </div>
+        <p class="mt-2 text-xs leading-5 text-slate/55">The current selection is revalidated against layouts, pending holds, confirmed bookings, closures, and pricing before save.</p>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-admin-options-list>
+          {{range .AdminBookingOptions}}
+          <label class="group block cursor-pointer">
+            <input type="radio" name="booking_option" value="{{.Activity}}:{{.Quantity}}" class="peer sr-only" {{if and $.SelectedSchedule (eq $.SelectedSchedule.Activity .Activity) (eq $.SelectedSchedule.Quantity .Quantity)}}checked{{end}} />
+            <span class="flex min-h-[10rem] flex-col justify-between rounded-[1.25rem] border border-slate/10 bg-white p-4 text-obsidian transition peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud group-hover:border-aqua group-hover:shadow-lg">
+              <span>
+                <span class="flex items-start justify-between gap-3">
+                  <span>
+                    <span class="block text-base font-semibold">{{.Label}}</span>
+                    <span class="mt-1 block text-[0.68rem] uppercase tracking-[0.14em] opacity-50">{{.AvailabilityState}}</span>
+                  </span>
+                  <span class="text-sm font-bold {{if eq .PriceLabel "Internal"}}text-slate/55 peer-checked:text-aqua{{else}}text-emerald-700 peer-checked:text-aqua{{end}}">{{.PriceLabel}}</span>
+                </span>
+                {{if .RemainingCapacityLabel}}<span class="mt-4 block text-xs leading-5 opacity-60">{{.RemainingCapacityLabel}}</span>{{end}}
+              </span>
+              <span class="mt-4 flex items-center justify-between border-t border-slate/10 pt-3 text-xs font-bold peer-checked:border-white/10"><span>Select option</span><span>{{optionSummary .}}</span></span>
+            </span>
+          </label>
+          {{end}}
+        </div>
+        <p class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 {{if .AdminBookingBlockedReason}}{{else}}hidden{{end}}" data-admin-options-message>{{if .AdminBookingBlockedReason}}{{.AdminBookingBlockedReason}}{{else}}No valid options remain for this slot.{{end}}</p>
+      </div>
+      <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Title</span><input type="text" name="title" value="{{.SelectedSchedule.Title}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm" /></label>
+      <label class="md:col-span-2 xl:col-span-3"><span class="mb-1.5 block text-xs font-semibold text-slate/55">Notes</span><textarea name="notes" rows="3" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">{{.SelectedSchedule.Notes}}</textarea></label>
+      <div class="md:col-span-2 xl:col-span-3 flex justify-end"><button class="h-12 rounded-2xl bg-obsidian px-6 text-sm font-bold text-cloud">Save changes</button></div>
+    </form>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  <div class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.22em] text-slate/40">Daily schedule</p>
+          <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{formatCalendarDate .CalendarDate}}</h2>
+          <p class="mt-1 text-sm text-slate/55">Bookings, customer requests, training blocks, closures, capacity and revenue in one operational table.</p>
+        </div>
+        <div class="flex flex-wrap gap-2" data-calendar-filters>
+          <button type="button" data-filter="all" class="rounded-full bg-obsidian px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-cloud">All</button>
+          <button type="button" data-filter="confirmed" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Confirmed</button>
+          <button type="button" data-filter="cancelled" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Cancelled</button>
+          <button type="button" data-filter="completed" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Completed</button>
+          <button type="button" data-filter="no_show" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">No-show</button>
+          <button type="button" data-filter="pending" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Pending</button>
+          <button type="button" data-filter="training" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Training</button>
+          <button type="button" data-filter="closures" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Closures</button>
+          <button type="button" data-filter="unpaid" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Unpaid</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[1180px] text-left text-sm">
+        <thead>
+          <tr class="border-b border-slate/10 bg-cloud/55">
+            <th class="px-5 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45 sm:px-6">Time</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Entry</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Type / status</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Customer / details</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Financial</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Availability</th>
+            <th class="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-[0.12em] text-slate/45 sm:px-6">Actions</th>
+          </tr>
+        </thead>
+
+        {{range .AdminCalendarHours}}
+        {{$hour := .}}
+        <tbody data-hour-row class="border-b border-slate/10">
+          <tr class="bg-cloud/35">
+            <td class="px-5 py-3 sm:px-6">
+              <div class="flex items-center gap-2">
+                <span class="text-base font-semibold text-obsidian">{{.Hour}}</span>
+                <span class="rounded-full bg-white px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-slate">{{.StateLabel}}</span>
+              </div>
+            </td>
+            <td colspan="3" class="px-4 py-3">
+              <div class="flex flex-wrap gap-2 text-[0.62rem] font-bold uppercase tracking-wider">
+                {{if .ConfirmedCount}}<span class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800">{{.ConfirmedCount}} confirmed</span>{{end}}
+                {{if .PendingCount}}<span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{{.PendingCount}} pending</span>{{end}}
+                {{if .TrainingCount}}<span class="rounded-full bg-slate-200 px-2.5 py-1 text-slate-700">{{.TrainingCount}} training</span>{{end}}
+                {{if .UnpaidCount}}<span class="rounded-full bg-red-100 px-2.5 py-1 text-red-700">{{.UnpaidCount}} unpaid</span>{{end}}
+                {{if .BlockedReason}}<span class="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800">Restricted</span>{{end}}
+              </div>
+            </td>
+            <td class="px-4 py-3">
+              <p class="text-xs text-slate/55">Quoted <span class="font-semibold text-obsidian">{{money .ExpectedRevenue}}</span></p>
+              <p class="mt-1 text-xs text-slate/55">Collected <span class="font-semibold text-emerald-800">{{money .CollectedRevenue}}</span></p>
+            </td>
+            <td class="px-4 py-3">
+              <p class="text-xs font-medium text-slate/70">{{.RemainingSummary}}</p>
+              {{if .AvailableOptions}}
+              <details class="mt-1">
+                <summary class="cursor-pointer text-[0.68rem] font-semibold text-slate/50 hover:text-obsidian">View valid options</summary>
+                <div class="mt-2 grid gap-1.5">
+                  {{range .AvailableOptions}}
+                  <div class="rounded-lg border border-slate/10 bg-white px-2.5 py-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-xs font-semibold text-obsidian">{{.Label}}</span>
+                      <span class="text-xs font-semibold text-emerald-700">{{.PriceLabel}}</span>
+                    </div>
+                    {{if .RemainingCapacityLabel}}<p class="mt-1 text-[0.65rem] text-slate/50">{{.RemainingCapacityLabel}}</p>{{end}}
+                  </div>
+                  {{end}}
+                </div>
+              </details>
+              {{end}}
+            </td>
+            <td class="px-5 py-3 sm:px-6">
+              <div class="flex flex-wrap justify-end gap-1.5">
+                {{if .CanAddDirect}}<a href="{{.AddDirectURL}}" class="rounded-lg bg-obsidian px-2.5 py-2 text-[0.65rem] font-bold text-cloud">Add booking</a>{{end}}
+                {{if .CanAddTraining}}<a href="{{.AddTrainingURL}}" class="rounded-lg border border-slate/10 bg-white px-2.5 py-2 text-[0.65rem] font-bold text-slate">Add training</a>{{end}}
+                <a href="{{.ManageClosuresURL}}" class="rounded-lg border border-slate/10 bg-white px-2.5 py-2 text-[0.65rem] font-bold text-slate">Closures</a>
+              </div>
+            </td>
+          </tr>
+
+          {{range .Closures}}
+          <tr class="bg-rose-50/45 transition hover:bg-rose-50" data-hour-item data-item-kind="closures" data-item-unpaid="false">
+            <td class="px-5 py-4 align-top sm:px-6">
+              <span class="font-semibold text-obsidian">{{formatClockTime .StartHour}}</span>
+              <span class="block text-xs text-slate/45">to {{formatClockTime .EndHour}}</span>
+            </td>
+            <td class="px-4 py-4 align-top">
+              <p class="font-semibold text-obsidian">{{.Title}}</p>
+              {{if .Reason}}<p class="mt-1 max-w-sm text-xs leading-5 text-slate/55">{{.Reason}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top"><span class="rounded-full bg-rose-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-rose-800">Closure</span></td>
+            <td class="px-4 py-4 align-top text-xs text-slate/60">{{if .Activity}}{{gameNameFor $.Games .Activity}}{{else}}Whole court{{end}}</td>
+            <td class="px-4 py-4 align-top text-xs text-slate/45">—</td>
+            <td class="px-4 py-4 align-top text-xs text-slate/55">Inventory blocked</td>
+            <td class="px-5 py-4 text-right align-top sm:px-6"><a href="/admin/courts" class="rounded-lg border border-slate/10 bg-white px-3 py-2 text-[0.65rem] font-bold text-slate">Open courts</a></td>
+          </tr>
+          {{end}}
+
+          {{range .Confirmed}}
+          <tr class="bg-white transition hover:bg-cloud/35" data-hour-item data-item-kind="confirmed" data-item-status="{{.Status}}" data-item-unpaid="{{if .IsUnpaid}}true{{else}}false{{end}}">
+            <td class="px-5 py-4 align-top sm:px-6"><span class="font-semibold text-obsidian">{{$hour.Hour}}</span></td>
+            <td class="px-4 py-4 align-top">
+              <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/40">{{.Reference}}</p>
+              <p class="mt-1 font-semibold text-obsidian">{{.Title}}</p>
+              {{if .ReviewNote}}<p class="mt-1 max-w-sm text-xs leading-5 text-slate/55">{{.ReviewNote}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top">
+              <div class="flex flex-wrap gap-1.5">
+                <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800">{{.Status}}</span>
+                {{if .ReferralCode}}<span class="rounded-full bg-aqua/20 px-2.5 py-1 text-[0.62rem] font-bold text-obsidian">Referral {{.ReferralCode}}</span>{{end}}
+              </div>
+            </td>
+            <td class="px-4 py-4 align-top">
+              <p class="text-xs font-medium text-slate/70">{{.Summary}}</p>
+              {{if .RequesterName}}<p class="mt-1 text-xs text-slate/55">{{.RequesterName}}{{if .RequesterPhone}} · {{.RequesterPhone}}{{end}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top">
+              <p class="text-xs text-slate/55">Quoted <span class="font-semibold text-obsidian">{{.PriceLabel}}</span></p>
+              <span class="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[0.62rem] font-semibold {{.PaymentTone}}">{{.PaymentLabel}}</span>
+            </td>
+            <td class="px-4 py-4 align-top text-xs text-slate/55">{{$hour.RemainingSummary}}</td>
+            <td class="px-5 py-4 align-top sm:px-6">
+              <div class="flex justify-end gap-2">
+                <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
+                <a href="{{.EditURL}}" class="rounded-lg border border-slate/10 bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Edit</a>
+              </div>
+            </td>
+          </tr>
+          {{end}}
+
+          {{range .Pending}}
+          <tr class="bg-amber-50/25 transition hover:bg-amber-50/45" data-hour-item data-item-kind="pending" data-item-unpaid="{{if .IsUnpaid}}true{{else}}false{{end}}">
+            <td class="px-5 py-4 align-top sm:px-6"><span class="font-semibold text-obsidian">{{$hour.Hour}}</span></td>
+            <td class="px-4 py-4 align-top">
+              <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/40">{{.Reference}}</p>
+              <p class="mt-1 font-semibold text-obsidian">{{.Title}}</p>
+              {{if .ReviewNote}}<p class="mt-1 max-w-sm text-xs leading-5 text-slate/55">{{.ReviewNote}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top"><span class="rounded-full bg-amber-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-amber-800">Pending request</span></td>
+            <td class="px-4 py-4 align-top">
+              <p class="text-xs font-medium text-slate/70">{{.Summary}}</p>
+              {{if .RequesterName}}<p class="mt-1 text-xs text-slate/55">{{.RequesterName}}{{if .RequesterPhone}} · {{.RequesterPhone}}{{end}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top">
+              <p class="text-xs text-slate/55">Quoted <span class="font-semibold text-obsidian">{{.PriceLabel}}</span></p>
+              <span class="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[0.62rem] font-semibold {{.PaymentTone}}">{{.PaymentLabel}}</span>
+            </td>
+            <td class="px-4 py-4 align-top text-xs text-slate/55">{{$hour.RemainingSummary}}</td>
+            <td class="px-5 py-4 align-top sm:px-6">
+              <div class="flex justify-end gap-2">
+                {{if .RequestURL}}<a href="{{.RequestURL}}" class="rounded-lg bg-amber px-3 py-2 text-[0.65rem] font-bold text-obsidian">Open request</a>{{end}}
+                <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
+              </div>
+            </td>
+          </tr>
+          {{end}}
+
+          {{range .Training}}
+          <tr class="bg-slate/5 transition hover:bg-cloud/45" data-hour-item data-item-kind="training" data-item-unpaid="false">
+            <td class="px-5 py-4 align-top sm:px-6"><span class="font-semibold text-obsidian">{{$hour.Hour}}</span></td>
+            <td class="px-4 py-4 align-top">
+              <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/40">{{.Reference}}</p>
+              <p class="mt-1 font-semibold text-obsidian">{{.Title}}</p>
+              {{if .ReviewNote}}<p class="mt-1 max-w-sm text-xs leading-5 text-slate/55">{{.ReviewNote}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top"><span class="rounded-full bg-slate-200 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-slate-700">Internal training</span></td>
+            <td class="px-4 py-4 align-top text-xs text-slate/60">{{.Summary}}</td>
+            <td class="px-4 py-4 align-top">
+              <span class="text-xs font-semibold text-slate/55">{{.PriceLabel}}</span>
+              <span class="mt-1 block text-[0.62rem] {{.PaymentTone}}">{{.PaymentLabel}}</span>
+            </td>
+            <td class="px-4 py-4 align-top text-xs text-slate/55">{{$hour.RemainingSummary}}</td>
+            <td class="px-5 py-4 align-top sm:px-6">
+              <div class="flex justify-end gap-2">
+                <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
+                <a href="{{.EditURL}}" class="rounded-lg border border-slate/10 bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Edit</a>
+              </div>
+            </td>
+          </tr>
+          {{end}}
+
+          {{if and (eq (len .Closures) 0) (eq (len .Confirmed) 0) (eq (len .Pending) 0) (eq (len .Training) 0)}}
+          <tr class="bg-white" data-hour-empty>
+            <td class="px-5 py-4 sm:px-6"><span class="font-semibold text-obsidian">{{.Hour}}</span></td>
+            <td colspan="4" class="px-4 py-4 text-sm text-slate/50">No operational entries are recorded for this hour yet.</td>
+            <td class="px-4 py-4 text-xs text-slate/55">{{.RemainingSummary}}</td>
+            <td class="px-5 py-4 sm:px-6"></td>
+          </tr>
+          {{end}}
+        </tbody>
+        {{end}}
+      </table>
+    </div>
+  </div>
+</section>
+
+<script>
+  (() => {
+    {{if or (eq .ScheduleMode "new") (eq .ScheduleMode "view") (eq .ScheduleMode "edit")}}
+    document.body.classList.add("overflow-hidden");
+    {{end}}
+    const escapeHTML = (value) =>
+      String(value).replace(/[&<>\"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;",
+      }[char]));
+
+    document.querySelectorAll("[data-admin-booking-form]").forEach((form) => {
+      const type = form.querySelector("[data-entry-type]");
+      const slotDate = form.querySelector("[data-slot-date]");
+      const slotHour = form.querySelector("[data-slot-hour]");
+      const optionsRoot = form.querySelector("[data-admin-options-root]");
+      const optionsList = form.querySelector("[data-admin-options-list]");
+      const message = form.querySelector("[data-admin-options-message]");
+      const optionsURL = form.dataset.optionsUrl;
+      if (!type || !slotDate || !slotHour || !optionsRoot || !optionsList || !message || !optionsURL) return;
+
+      let requestCounter = 0;
+
+      const currentSelection = () => {
+        const checked = optionsList.querySelector('input[name="booking_option"]:checked');
+        if (checked) return checked.value;
+        const activity = optionsRoot.dataset.selectedActivity || "";
+        const quantity = optionsRoot.dataset.selectedQuantity || "1";
+        return activity ? `${activity}:${quantity}` : "";
+      };
+
+      const renderOptions = (options, selectedValue) => {
+        optionsList.innerHTML = "";
+        if (!Array.isArray(options) || options.length === 0) return;
+        options.forEach((option) => {
+          const value = `${option.Activity}:${option.Quantity}`;
+          const checked = value === selectedValue;
+          const card = document.createElement("label");
+          card.className = "group block cursor-pointer";
+          card.innerHTML = `
+            <input type="radio" name="booking_option" value="${escapeHTML(value)}" class="peer sr-only" ${checked ? "checked" : ""} />
+            <span class="flex min-h-[10rem] flex-col justify-between rounded-[1.25rem] border border-slate/10 bg-white p-4 text-obsidian transition peer-checked:border-obsidian peer-checked:bg-obsidian peer-checked:text-cloud group-hover:border-aqua group-hover:shadow-lg">
+              <span>
+                <span class="flex items-start justify-between gap-3">
+                  <span>
+                    <span class="block text-base font-semibold">${escapeHTML(option.Label)}</span>
+                    <span class="mt-1 block text-[0.68rem] uppercase tracking-[0.14em] opacity-50">${escapeHTML(option.AvailabilityState || "Available")}</span>
+                  </span>
+                  <span class="text-sm font-bold text-emerald-700 peer-checked:text-aqua">${escapeHTML(option.PriceLabel || "")}</span>
+                </span>
+                ${option.RemainingCapacityLabel ? `<span class="mt-4 block text-xs leading-5 opacity-60">${escapeHTML(option.RemainingCapacityLabel)}</span>` : ""}
+              </span>
+              <span class="mt-4 flex items-center justify-between border-t border-slate/10 pt-3 text-xs font-bold peer-checked:border-white/10"><span>Select option</span><span>${escapeHTML(option.Label)}</span></span>
+            </span>
+          `;
+          optionsList.appendChild(card);
+        });
+      };
+
+      const updateOptions = async () => {
+        const selectedValue = currentSelection();
+        const params = new URLSearchParams({
+          slot_date: slotDate.value,
+          slot_hour: slotHour.value,
+          entry_type: type.value,
+        });
+        const scheduleID = form.querySelector('input[name="schedule_id"]');
+        if (scheduleID && scheduleID.value) params.set("schedule_id", scheduleID.value);
+        const requestID = ++requestCounter;
+        message.hidden = false;
+        message.textContent = "Refreshing valid options...";
+        try {
+          const response = await fetch(`${optionsURL}?${params.toString()}`, {
+            headers: { Accept: "application/json" },
+            credentials: "same-origin",
+          });
+          if (!response.ok) throw new Error("request failed");
+          const payload = await response.json();
+          if (requestID !== requestCounter) return;
+          renderOptions(payload.options || [], selectedValue);
+          const hasOptions = Array.isArray(payload.options) && payload.options.length > 0;
+          const nextSelected = optionsList.querySelector(`input[name="booking_option"][value="${CSS.escape(selectedValue)}"]`);
+          if (!nextSelected) {
+            const firstOption = optionsList.querySelector('input[name="booking_option"]');
+            if (firstOption) firstOption.checked = true;
+          }
+          if (hasOptions) {
+            message.hidden = !payload.blocked_reason;
+            message.textContent = payload.blocked_reason || "";
+          } else {
+            message.hidden = false;
+            message.textContent = payload.blocked_reason || "No valid options remain for this slot.";
+          }
+          optionsRoot.dataset.selectedActivity = "";
+          optionsRoot.dataset.selectedQuantity = "";
+        } catch (error) {
+          if (requestID !== requestCounter) return;
+          message.hidden = false;
+          message.textContent = "Could not refresh valid options automatically. Use \"Refresh valid options\".";
+        }
+      };
+
+      [type, slotDate, slotHour].forEach((field) => {
+        field.addEventListener("change", updateOptions);
+      });
+
+      form.addEventListener("change", (event) => {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement)) return;
+        if (input.name !== "booking_option" || !input.checked) return;
+        const [activity, quantity] = input.value.split(":");
+        optionsRoot.dataset.selectedActivity = activity || "";
+        optionsRoot.dataset.selectedQuantity = quantity || "1";
+      });
+    });
+
+    const filterRoot = document.querySelector("[data-calendar-filters]");
+    if (filterRoot) {
+      const buttons = Array.from(filterRoot.querySelectorAll("[data-filter]"));
+      const rows = Array.from(document.querySelectorAll("[data-hour-row]"));
+      const items = Array.from(document.querySelectorAll("[data-hour-item]"));
+      const applyFilter = (value) => {
+        items.forEach((item) => {
+          const kind = item.getAttribute("data-item-kind");
+          const unpaid = item.getAttribute("data-item-unpaid") === "true";
+          let visible = value === "all";
+          if (value === "confirmed") visible = kind === "confirmed";
+          if (value === "cancelled") visible = kind === "confirmed" && item.getAttribute("data-item-status") === "cancelled";
+          if (value === "completed") visible = kind === "confirmed" && item.getAttribute("data-item-status") === "completed";
+          if (value === "no_show") visible = kind === "confirmed" && item.getAttribute("data-item-status") === "no_show";
+          if (value === "pending") visible = kind === "pending";
+          if (value === "training") visible = kind === "training";
+          if (value === "closures") visible = kind === "closures";
+          if (value === "unpaid") visible = kind === "confirmed" && unpaid;
+          item.classList.toggle("hidden", !visible);
+        });
+        rows.forEach((row) => {
+          const rowItems = Array.from(row.querySelectorAll("[data-hour-item]"));
+          const emptyState = row.querySelector("[data-hour-empty]");
+          const visibleItemCount = rowItems.filter((item) => !item.classList.contains("hidden")).length;
+          if (emptyState) {
+            const showEmptyState = value === "all" && rowItems.length === 0;
+            emptyState.classList.toggle("hidden", !showEmptyState);
+          }
+          row.classList.toggle("hidden", visibleItemCount === 0 && value !== "all");
+        });
+        buttons.forEach((button) => {
+          const active = button.getAttribute("data-filter") === value;
+          button.classList.toggle("bg-obsidian", active);
+          button.classList.toggle("text-cloud", active);
+          button.classList.toggle("border", !active);
+          button.classList.toggle("border-slate/10", !active);
+          button.classList.toggle("bg-white", !active);
+          button.classList.toggle("text-slate", !active);
+        });
+      };
+      buttons.forEach((button) => {
+        button.addEventListener("click", () => applyFilter(button.getAttribute("data-filter") || "all"));
+      });
+      applyFilter("all");
+    }
+  })();
+</script>
+{{end}}
