@@ -15,7 +15,7 @@
           Request inbox
           {{if .PendingRequestCount}}<span class="ml-2 rounded-full bg-amber px-2 py-0.5 text-[0.65rem] font-bold text-obsidian">{{.PendingRequestCount}}</span>{{end}}
         </a>
-        <a href="/admin/bookings?action=new&date={{.CalendarDate}}#schedule-form" class="inline-flex h-11 items-center rounded-2xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Add schedule</a>
+        <a href="{{scopedURL (printf "/admin/bookings?action=new&date=%s" .CalendarDate) .SelectedDivision .SelectedDivisionScope}}#schedule-form" class="inline-flex h-11 items-center rounded-2xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Add schedule</a>
       </div>
     </div>
   </div>
@@ -28,18 +28,19 @@
           <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{formatCalendarDate .CalendarDate}}</h2>
         </div>
         <div class="flex items-center gap-2">
-          <a href="/admin/bookings?date={{.PreviousDate}}" class="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate transition hover:bg-cloud" aria-label="Previous day"><svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4.5 7 10l5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
-          <form action="/admin/bookings" method="get" class="flex min-w-0 gap-2">
+          <a href="{{scopedURL (printf "/admin/bookings?date=%s" .PreviousDate) .SelectedDivision .SelectedDivisionScope}}" class="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate transition hover:bg-cloud" aria-label="Previous day"><svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4.5 7 10l5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          <form action="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" method="get" class="flex min-w-0 gap-2">
+            {{if .SelectedDivision}}<input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />{{else if eq .SelectedDivisionScope "all"}}<input type="hidden" name="division" value="all" />{{end}}
             <input type="date" name="date" value="{{.CalendarDate}}" class="h-11 min-w-0 rounded-2xl border border-slate/10 bg-cloud/45 px-3 text-sm outline-none focus:border-aqua" />
             <button class="h-11 rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud">Go</button>
           </form>
-          <a href="/admin/bookings?date={{.NextDate}}" class="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate transition hover:bg-cloud" aria-label="Next day"><svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7.5 4.5 13 10l-5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          <a href="{{scopedURL (printf "/admin/bookings?date=%s" .NextDate) .SelectedDivision .SelectedDivisionScope}}" class="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate transition hover:bg-cloud" aria-label="Next day"><svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7.5 4.5 13 10l-5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
         </div>
       </div>
 
       <div class="flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {{range .WeekDays}}
-        <a href="/admin/bookings?date={{.Date}}" class="{{if .IsSelected}}border-obsidian bg-obsidian text-cloud shadow-lg{{else}}border-slate/10 bg-cloud/40 text-obsidian hover:border-aqua hover:bg-mint/35{{end}} min-w-[7.4rem] flex-1 snap-start rounded-[1.35rem] border p-3 transition">
+        <a href="{{scopedURL (printf "/admin/bookings?date=%s" .Date) $.SelectedDivision $.SelectedDivisionScope}}" class="{{if .IsSelected}}border-obsidian bg-obsidian text-cloud shadow-lg{{else}}border-slate/10 bg-cloud/40 text-obsidian hover:border-aqua hover:bg-mint/35{{end}} min-w-[7.4rem] flex-1 snap-start rounded-[1.35rem] border p-3 transition">
           <div class="flex items-center justify-between gap-2">
             <span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-50">{{.DayLabel}}</span>
             {{if .IsToday}}<span class="rounded-full bg-aqua px-2 py-0.5 text-[0.52rem] font-bold uppercase text-obsidian">Today</span>{{end}}
@@ -68,7 +69,7 @@
   <div id="schedule-form" class="overflow-hidden rounded-[2rem] border border-aqua/35 bg-white/95 shadow-[0_20px_60px_rgba(11,18,21,0.1)]">
     <div class="flex items-center justify-between bg-mint/60 px-5 py-4 sm:px-6">
       <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-800/55">New calendar entry</p><h2 class="mt-1 text-xl font-semibold text-obsidian">Reserve inventory</h2></div>
-      <a href="/admin/bookings?date={{.CalendarDate}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a>
+      <a href="{{scopedURL (printf "/admin/bookings?date=%s" .CalendarDate) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a>
     </div>
     <form action="/admin/bookings/create" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3" data-admin-booking-form data-options-url="/admin/bookings/options">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
@@ -82,7 +83,7 @@
             <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Valid slot options</p>
             <h3 class="mt-1 text-lg font-semibold text-obsidian">Choose from available combinations only</h3>
           </div>
-          <button type="submit" formmethod="get" formaction="/admin/bookings" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua">Refresh valid options</button>
+          <button type="submit" formmethod="get" formaction="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua">Refresh valid options</button>
         </div>
         <p class="mt-2 text-xs leading-5 text-slate/55">The list below is derived from active layouts, current schedules, closures, and pricing for the selected slot.</p>
         <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-admin-options-list>
@@ -122,7 +123,7 @@
   <div id="schedule-view" class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/95 shadow-sm">
     <div class="flex items-center justify-between border-b border-slate/10 px-5 py-4 sm:px-6">
       <div><p class="font-mono text-xs font-bold text-slate/40">{{if .SelectedSchedule.RequesterName}}{{bookingReference .SelectedSchedule.ID}}{{else}}INTERNAL-{{.SelectedSchedule.ID}}{{end}}</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div>
-      <a href="/admin/bookings?date={{.SelectedSchedule.SlotDate}}" class="rounded-xl bg-cloud px-3 py-2 text-xs font-bold text-slate">Close</a>
+      <a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-cloud px-3 py-2 text-xs font-bold text-slate">Close</a>
     </div>
     <div class="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
       <div class="rounded-2xl bg-cloud/60 p-4"><p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Date & time</p><p class="mt-2 text-sm font-semibold">{{formatCalendarDate .SelectedSchedule.SlotDate}} · {{.SelectedSchedule.SlotHour}}</p></div>
@@ -159,7 +160,7 @@
           <form method="post" action="/admin/bookings/payments/collect" class="w-full max-w-md rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
             <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
-            <input type="hidden" name="return_to" value="/admin/bookings?action=view&id={{.SelectedSchedule.ID}}&date={{.SelectedSchedule.SlotDate}}#schedule-view" />
+            <input type="hidden" name="return_to" value="{{scopedURL (printf "/admin/bookings?action=view&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-view" />
             <p class="text-sm font-semibold text-obsidian">Record payment</p>
             <p class="mt-1 text-xs leading-5 text-slate/55">Cash, bank transfer, and QR pay are supported. Partial payments are supported and every collection creates its own receipt.</p>
             <div class="mt-3 grid gap-3">
@@ -198,7 +199,7 @@
                 <form method="post" action="/admin/bookings/payments/void" class="grid gap-2 sm:min-w-[14rem]" onsubmit="return confirm('Void this payment collection? The original receipt and transaction will remain in history, and the booking balance will be recalculated.');">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="collection_id" value="{{.ID}}" />
-                  <input type="hidden" name="return_to" value="/admin/bookings?action=view&id={{$.SelectedSchedule.ID}}&date={{$.SelectedSchedule.SlotDate}}#schedule-view" />
+                  <input type="hidden" name="return_to" value="{{scopedURL (printf "/admin/bookings?action=view&id=%d&date=%s" $.SelectedSchedule.ID $.SelectedSchedule.SlotDate) $.SelectedDivision $.SelectedDivisionScope}}#schedule-view" />
                   <label class="sr-only" for="void-reason-booking-{{.ID}}">Void reason</label>
                   <input id="void-reason-booking-{{.ID}}" type="text" name="void_reason" required placeholder="Void reason" class="h-9 rounded-lg border border-red-200 bg-white px-3 text-[0.65rem] outline-none focus:border-red-400" />
                   <button class="h-9 rounded-lg border border-red-200 bg-white px-3 text-[0.65rem] font-bold text-red-700">Void collection</button>
@@ -281,7 +282,7 @@
           <form action="/admin/bookings/cancellation-requests/approve" method="post" class="grid gap-2">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
             <input type="hidden" name="request_id" value="{{$cancelReq.ID}}" />
-            <input type="hidden" name="return_to" value="/admin/bookings?action=view&id={{.SelectedSchedule.ID}}&date={{.SelectedSchedule.SlotDate}}#schedule-view" />
+            <input type="hidden" name="return_to" value="{{scopedURL (printf "/admin/bookings?action=view&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-view" />
             <textarea name="customer_message" rows="3" placeholder="Customer-facing approval message" required class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs outline-none focus:border-aqua"></textarea>
             <input type="text" name="cancellation_finance_note" placeholder="Optional internal cash handling note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
             <input type="text" name="review_note" placeholder="Optional admin note" class="h-10 w-full rounded-xl border border-slate/10 bg-white px-3 text-xs outline-none focus:border-aqua" />
@@ -290,7 +291,7 @@
           <form action="/admin/bookings/cancellation-requests/reject" method="post" class="grid gap-2">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
             <input type="hidden" name="request_id" value="{{$cancelReq.ID}}" />
-            <input type="hidden" name="return_to" value="/admin/bookings?action=view&id={{.SelectedSchedule.ID}}&date={{.SelectedSchedule.SlotDate}}#schedule-view" />
+            <input type="hidden" name="return_to" value="{{scopedURL (printf "/admin/bookings?action=view&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-view" />
             <input type="text" name="review_note" placeholder="Internal rejection note" required class="h-10 w-full rounded-xl border border-red-200 bg-white px-3 text-xs outline-none focus:border-red-400" />
             <textarea name="customer_message" rows="3" placeholder="Customer-facing rejection message" required class="w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-xs outline-none focus:border-red-400"></textarea>
             <button class="h-10 rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700">Reject request</button>
@@ -322,7 +323,7 @@
         <button class="h-10 rounded-xl border border-orange-200 bg-white px-4 text-xs font-bold text-orange-700">Mark no-show</button>
       </form>
       {{end}}
-      <a href="/admin/bookings?action=edit&id={{.SelectedSchedule.ID}}&date={{.SelectedSchedule.SlotDate}}#schedule-edit" class="h-10 rounded-xl border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Edit schedule</a>
+      <a href="{{scopedURL (printf "/admin/bookings?action=edit&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-edit" class="h-10 rounded-xl border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Edit schedule</a>
       {{if ne .SelectedSchedule.EntryType "booking"}}<form action="/admin/bookings/delete" method="post" onsubmit="return confirm('Permanently delete this schedule?')"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" /><button class="h-10 rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700">Delete</button></form>{{end}}
     </div>
   </div>
@@ -330,7 +331,7 @@
 
   {{if and (eq .ScheduleMode "edit") .SelectedSchedule}}
   <div id="schedule-edit" class="overflow-hidden rounded-[2rem] border border-aqua/30 bg-white/95 shadow-sm">
-    <div class="flex items-center justify-between bg-cloud/70 px-5 py-4 sm:px-6"><div><p class="text-xs font-bold uppercase tracking-wider text-slate/40">Edit inventory</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div><a href="/admin/bookings?date={{.SelectedSchedule.SlotDate}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a></div>
+    <div class="flex items-center justify-between bg-cloud/70 px-5 py-4 sm:px-6"><div><p class="text-xs font-bold uppercase tracking-wider text-slate/40">Edit inventory</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div><a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a></div>
     <form action="/admin/bookings/update" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3" data-admin-booking-form data-options-url="/admin/bookings/options">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" /><input type="hidden" name="id" value="{{.SelectedSchedule.ID}}" /><input type="hidden" name="action" value="edit" />
       <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Entry type</span><select name="entry_type" data-entry-type required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm"><option value="booking" {{if eq .SelectedSchedule.EntryType "booking"}}selected{{end}}>Booking</option><option value="training" {{if eq .SelectedSchedule.EntryType "training"}}selected{{end}}>Training</option></select></label>
@@ -342,7 +343,7 @@
             <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Valid slot options</p>
             <h3 class="mt-1 text-lg font-semibold text-obsidian">Edit only within current capacity</h3>
           </div>
-          <button type="submit" formmethod="get" formaction="/admin/bookings" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua">Refresh valid options</button>
+          <button type="submit" formmethod="get" formaction="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua">Refresh valid options</button>
         </div>
         <p class="mt-2 text-xs leading-5 text-slate/55">The current selection is revalidated against layouts, pending holds, confirmed bookings, closures, and pricing before save.</p>
         <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-admin-options-list>
