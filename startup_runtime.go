@@ -181,7 +181,7 @@ func applyBootstrapData(db *sql.DB) error {
 	if err := seedTrainingPrograms(db); err != nil {
 		return fmt.Errorf("seed training programmes: %w", err)
 	}
-	if err := seedFinanceCategories(db); err != nil {
+	if err := seedFinanceCategories(db, databaseDriverSQLite); err != nil {
 		return fmt.Errorf("seed finance categories: %w", err)
 	}
 	bootstrapSeed, err := loadBootstrapSuperadminSeed()

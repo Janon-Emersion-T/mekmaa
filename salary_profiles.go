@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -419,53 +418,7 @@ func (a *App) createStaffSalaryProfile(
 		studentBasis = SalaryStudentBasisActiveEnrollment
 	}
 
-	var profileID int64
-
-	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
-		err := a.queryRowDB(
-			`
-			INSERT INTO staff_salary_profiles (
-				user_id,
-				division_id,
-				training_program_id,
-				compensation_type,
-				rate,
-				student_basis,
-				effective_from,
-				effective_to,
-				active,
-				notes,
-				created_by_user_id,
-				updated_by_user_id,
-				created_at,
-				updated_at
-			)
-			VALUES (
-				?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-				?, ?, ?, ?
-			)
-			RETURNING id
-			`,
-			profile.UserID,
-			nullIfZero(profile.DivisionID),
-			nullIfZero(profile.TrainingProgramID),
-			normalizeSalaryType(profile.CompensationType),
-			profile.Rate,
-			studentBasis,
-			strings.TrimSpace(profile.EffectiveFrom),
-			strings.TrimSpace(profile.EffectiveTo),
-			boolToInt(profile.Active),
-			strings.TrimSpace(profile.Notes),
-			nullIfZero(actorUserID),
-			nullIfZero(actorUserID),
-			now,
-			now,
-		).Scan(&profileID)
-
-		return profileID, err
-	}
-
-	result, err := a.execDB(
+	profileID, err := a.insertAndReturnID(
 		`
 		INSERT INTO staff_salary_profiles (
 			user_id,
@@ -502,14 +455,6 @@ func (a *App) createStaffSalaryProfile(
 	)
 	if err != nil {
 		return 0, err
-	}
-
-	profileID, err = result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf(
-			"read salary profile id: %w",
-			err,
-		)
 	}
 
 	return profileID, nil

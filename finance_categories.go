@@ -40,18 +40,27 @@ func defaultFinanceCategories() []FinanceCategory {
 	}
 }
 
-func seedFinanceCategories(db *sql.DB) error {
+func seedFinanceCategories(db *sql.DB, driver DatabaseDriver) error {
 	now := time.Now().UTC()
+	query := rebindDatabaseQuery(driver, `
+		INSERT INTO finance_categories (code, name, direction, active, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(code) DO UPDATE SET
+			name = excluded.name,
+			direction = excluded.direction,
+			active = excluded.active,
+			updated_at = excluded.updated_at
+	`)
 	for _, category := range defaultFinanceCategories() {
-		if _, err := db.Exec(`
-			INSERT INTO finance_categories (code, name, direction, active, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-			ON CONFLICT(code) DO UPDATE SET
-				name = excluded.name,
-				direction = excluded.direction,
-				active = excluded.active,
-				updated_at = excluded.updated_at
-		`, category.Code, category.Name, category.Direction, boolToInt(category.Active), now, now); err != nil {
+		if _, err := db.Exec(
+			query,
+			category.Code,
+			category.Name,
+			category.Direction,
+			boolToInt(category.Active),
+			now,
+			now,
+		); err != nil {
 			return err
 		}
 	}
@@ -110,7 +119,7 @@ func (a *App) listFinanceCategories(activeOnly bool) ([]FinanceCategory, error) 
 	}
 	query += ` ORDER BY CASE fc.direction WHEN 'income' THEN 0 ELSE 1 END, fc.name , fc.id`
 
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.queryDB(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +200,7 @@ func (a *App) updateFinanceCategory(categoryID int64, name, direction string, ac
 	if code == "" {
 		return errors.New("category name must contain letters or numbers")
 	}
-	result, err := a.db.Exec(`
+	result, err := a.execDB(`
 		UPDATE finance_categories
 		SET code = ?, name = ?, direction = ?, active = ?, updated_at = ?
 		WHERE id = ?
@@ -223,7 +232,7 @@ func (a *App) deleteFinanceCategory(categoryID int64) error {
 	if locked {
 		return errFinanceCategoryLocked
 	}
-	result, err := a.db.Exec(`DELETE FROM finance_categories WHERE id = ?`, categoryID)
+	result, err := a.execDB(`DELETE FROM finance_categories WHERE id = ?`, categoryID)
 	if err != nil {
 		return err
 	}
@@ -239,7 +248,7 @@ func (a *App) deleteFinanceCategory(categoryID int64) error {
 
 func (a *App) financeCategoryLinked(categoryID int64) (bool, error) {
 	var count int
-	if err := a.db.QueryRow(`
+	if err := a.queryRowDB(`
 		SELECT COUNT(*)
 		FROM finance_transactions ft
 		INNER JOIN finance_categories fc ON fc.code = ft.category

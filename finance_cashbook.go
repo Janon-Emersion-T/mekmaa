@@ -288,19 +288,19 @@ func ensureFinanceSystemAccountsTx(tx *sql.Tx) error {
 			err := tx.QueryRow(`
 				SELECT id
 				FROM finance_accounts
-				WHERE division_id = ? AND LOWER(name) = LOWER(?)
+				WHERE division_id = $1 AND LOWER(name) = LOWER($2)
 				LIMIT 1
 			`, account.DivisionID, account.Name).Scan(&existingID)
 			if err == nil {
 				if _, updateErr := tx.Exec(`
 					UPDATE finance_accounts
-					SET account_code = COALESCE(NULLIF(account_code, ''), ?),
-					    account_type = COALESCE(NULLIF(account_type, ''), ?),
-					    description = CASE WHEN TRIM(COALESCE(description, '')) = '' THEN ? ELSE description END,
+					SET account_code = COALESCE(NULLIF(account_code, ''), $1),
+					    account_type = COALESCE(NULLIF(account_type, ''), $2),
+					    description = CASE WHEN TRIM(COALESCE(description, '')) = '' THEN $3 ELSE description END,
 					    is_system = 1,
 					    is_active = 1,
-					    updated_at = ?
-					WHERE id = ?
+					    updated_at = $4
+					WHERE id = $5
 				`, account.AccountCode, account.AccountType, account.Description, now, existingID); updateErr != nil {
 					return updateErr
 				}
@@ -313,7 +313,7 @@ func ensureFinanceSystemAccountsTx(tx *sql.Tx) error {
 				INSERT INTO finance_accounts (
 					division_id, account_code, name, account_type, description, opening_balance, is_system, is_active,
 					created_at, updated_at, created_by_user_id, updated_by_user_id
-				) VALUES (?, ?, ?, ?, ?, 0, 1, 1, ?, ?, NULL, NULL)
+				) VALUES ($1, $2, $3, $4, $5, 0, 1, 1, $6, $7, NULL, NULL)
 			`, account.DivisionID, account.AccountCode, account.Name, account.AccountType, account.Description, now, now); err != nil {
 				return err
 			}
@@ -348,12 +348,13 @@ func ensureFinanceAccountForDivisionTx(tx *sql.Tx, account *FinanceAccount, divi
 		accountCode = financeSystemAccountCode(division.Code, account.AccountType)
 	}
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
-		INSERT INTO finance_accounts (
+	var accountID int64
+	err = tx.QueryRow(
+		`INSERT INTO finance_accounts (
 			division_id, account_code, name, account_type, description, opening_balance, is_system, is_active,
 			created_at, updated_at, created_by_user_id, updated_by_user_id
-		) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
-	`,
+		) VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10, $11)
+		RETURNING id`,
 		divisionID,
 		accountCode,
 		account.Name,
@@ -365,11 +366,11 @@ func ensureFinanceAccountForDivisionTx(tx *sql.Tx, account *FinanceAccount, divi
 		now,
 		nullIfZero(account.CreatedByUserID),
 		nullIfZero(account.UpdatedByUserID),
-	)
+	).Scan(&accountID)
 	if err != nil {
 		return 0, err
 	}
-	return result.LastInsertId()
+	return accountID, nil
 }
 
 func migrateFinanceAccountOwnershipTx(tx *sql.Tx) error {
@@ -458,7 +459,7 @@ func migrateFinanceAccountOwnershipTx(tx *sql.Tx) error {
 				break
 			}
 		}
-		if _, err := tx.Exec(`UPDATE finance_accounts SET division_id = ? WHERE id = ?`, keepDivisionID, account.ID); err != nil {
+		if _, err := tx.Exec(`UPDATE finance_accounts SET division_id = $1 WHERE id = $2`, keepDivisionID, account.ID); err != nil {
 			return err
 		}
 		account.DivisionID = keepDivisionID
@@ -473,9 +474,9 @@ func migrateFinanceAccountOwnershipTx(tx *sql.Tx) error {
 			}
 			if _, err := tx.Exec(`
 				UPDATE finance_transactions
-				SET finance_account_id = ?
-				WHERE finance_account_id = ?
-				  AND division_id = ?
+				SET finance_account_id = $1
+				WHERE finance_account_id = $2
+				  AND division_id = $3
 			`, targetAccountID, account.ID, divisionID); err != nil {
 				return err
 			}
@@ -531,7 +532,7 @@ func migrateFinanceAccountOwnershipTx(tx *sql.Tx) error {
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`UPDATE finance_transactions SET finance_account_id = ? WHERE id = ?`, targetAccountID, transactionID); err != nil {
+		if _, err := tx.Exec(`UPDATE finance_transactions SET finance_account_id = $1 WHERE id = $2`, targetAccountID, transactionID); err != nil {
 			return err
 		}
 	}
@@ -539,7 +540,7 @@ func migrateFinanceAccountOwnershipTx(tx *sql.Tx) error {
 		return err
 	}
 
-	if _, err := tx.Exec(`UPDATE finance_accounts SET division_id = ? WHERE COALESCE(division_id, 0) <= 0`, sportsID); err != nil {
+	if _, err := tx.Exec(`UPDATE finance_accounts SET division_id = $1 WHERE COALESCE(division_id, 0) <= 0`, sportsID); err != nil {
 		return err
 	}
 	return nil
@@ -1189,7 +1190,7 @@ func (a *App) updateFinanceAccount(accountID int64, accountCode, name, accountTy
 		accountCode = account.AccountCode
 	}
 	var transactionCount int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE finance_account_id = ?`, accountID).Scan(&transactionCount); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE finance_account_id = $1`, accountID).Scan(&transactionCount); err != nil {
 		return err
 	}
 	if transactionCount > 0 && (!strings.EqualFold(name, account.Name) || accountType != account.AccountType || !strings.EqualFold(accountCode, account.AccountCode)) {
@@ -1202,8 +1203,8 @@ func (a *App) updateFinanceAccount(accountID int64, accountCode, name, accountTy
 	}
 	_, err = tx.Exec(`
 		UPDATE finance_accounts
-		SET account_code = ?, name = ?, account_type = ?, description = ?, is_active = ?, updated_at = ?, updated_by_user_id = ?
-		WHERE id = ?
+		SET account_code = $1, name = $2, account_type = $3, description = $4, is_active = $5, updated_at = $6, updated_by_user_id = $7
+		WHERE id = $8
 	`, accountCode, name, accountType, description, boolToInt(isActive), time.Now().UTC(), nullIfZero(updatedByUserID), accountID)
 	if err != nil {
 		if isUniqueConstraintError(err) {
@@ -1236,7 +1237,7 @@ func (a *App) deleteFinanceAccount(accountID int64) error {
 	}
 
 	var transactionCount int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE finance_account_id = ?`, accountID).Scan(&transactionCount); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM finance_transactions WHERE finance_account_id = $1`, accountID).Scan(&transactionCount); err != nil {
 		return err
 	}
 	if transactionCount > 0 {
@@ -1244,14 +1245,14 @@ func (a *App) deleteFinanceAccount(accountID int64) error {
 	}
 
 	var reconciliationCount int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM cash_reconciliations WHERE finance_account_id = ?`, accountID).Scan(&reconciliationCount); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM cash_reconciliations WHERE finance_account_id = $1`, accountID).Scan(&reconciliationCount); err != nil {
 		return err
 	}
 	if reconciliationCount > 0 {
 		return errors.New("linked accounts cannot be deleted")
 	}
 
-	result, err := tx.Exec(`DELETE FROM finance_accounts WHERE id = ?`, accountID)
+	result, err := tx.Exec(`DELETE FROM finance_accounts WHERE id = $1`, accountID)
 	if err != nil {
 		return err
 	}
@@ -1312,7 +1313,7 @@ func financeAccountBalanceTx(tx *sql.Tx, accountID int64) (float64, error) {
 	if err := tx.QueryRow(`
 		SELECT COALESCE(SUM(amount), 0)
 		FROM finance_transactions
-		WHERE finance_account_id = ?
+		WHERE finance_account_id = $1
 		  AND voided_at IS NULL
 		  AND approval_status = 'approved'
 	`, accountID).Scan(&balance); err != nil {
@@ -1348,10 +1349,10 @@ func financeAccountBalanceAsOfTx(tx *sql.Tx, accountID int64, cutoff time.Time) 
 	if err := tx.QueryRow(`
 		SELECT COALESCE(SUM(amount), 0)
 		FROM finance_transactions
-		WHERE finance_account_id = ?
+		WHERE finance_account_id = $1
 		  AND voided_at IS NULL
 		  AND approval_status = 'approved'
-		  AND recorded_at <= ?
+		  AND recorded_at <= $2
 	`, accountID, cutoff.UTC()).Scan(&balance); err != nil {
 		return 0, err
 	}
@@ -1383,7 +1384,7 @@ func syncFinanceAccountOpeningBalanceMetadataTx(tx *sql.Tx, accountID int64) err
 	if err := tx.QueryRow(`
 		SELECT COALESCE(amount, 0)
 		FROM finance_transactions
-		WHERE finance_account_id = ?
+		WHERE finance_account_id = $1
 		  AND transaction_type = 'opening_balance'
 		  AND voided_at IS NULL
 		ORDER BY recorded_at DESC, finance_transactions.id DESC
@@ -1395,7 +1396,7 @@ func syncFinanceAccountOpeningBalanceMetadataTx(tx *sql.Tx, accountID int64) err
 			return err
 		}
 	}
-	_, err := tx.Exec(`UPDATE finance_accounts SET opening_balance = ?, updated_at = ? WHERE id = ?`, normalizeMoney(openingBalance), time.Now().UTC(), accountID)
+	_, err := tx.Exec(`UPDATE finance_accounts SET opening_balance = $1, updated_at = $2 WHERE id = $3`, normalizeMoney(openingBalance), time.Now().UTC(), accountID)
 	return err
 }
 
@@ -1407,7 +1408,7 @@ func reserveFinanceOperationTx(tx *sql.Tx, scope string, userID int64, fingerpri
 	now := time.Now().UTC()
 	_, err := tx.Exec(`
 		INSERT INTO finance_operation_keys (operation_scope, user_id, fingerprint, created_at)
-		VALUES (?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4)
 	`, scope, userID, fingerprint, now)
 	if err == nil {
 		return "", false, nil
@@ -1419,7 +1420,7 @@ func reserveFinanceOperationTx(tx *sql.Tx, scope string, userID int64, fingerpri
 	if scanErr := tx.QueryRow(`
 		SELECT result_ref
 		FROM finance_operation_keys
-		WHERE operation_scope = ? AND user_id = ? AND fingerprint = ?
+		WHERE operation_scope = $1 AND user_id = $2 AND fingerprint = $3
 		LIMIT 1
 	`, scope, userID, fingerprint).Scan(&existing); scanErr != nil {
 		return "", false, scanErr
@@ -1430,8 +1431,8 @@ func reserveFinanceOperationTx(tx *sql.Tx, scope string, userID int64, fingerpri
 func completeFinanceOperationTx(tx *sql.Tx, scope string, userID int64, fingerprint string, resultRef string) error {
 	_, err := tx.Exec(`
 		UPDATE finance_operation_keys
-		SET result_ref = ?
-		WHERE operation_scope = ? AND user_id = ? AND fingerprint = ?
+		SET result_ref = $1
+		WHERE operation_scope = $2 AND user_id = $3 AND fingerprint = $4
 	`, strings.TrimSpace(resultRef), scope, userID, strings.TrimSpace(fingerprint))
 	return err
 }
@@ -1552,7 +1553,7 @@ func voidFinanceTransactionTx(tx *sql.Tx, transactionID int64, reason string, vo
 	}
 	var alreadyVoided int
 	var recordedAt time.Time
-	if err := tx.QueryRow(`SELECT CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END, recorded_at FROM finance_transactions WHERE id = ?`, transactionID).Scan(&alreadyVoided, &recordedAt); err != nil {
+	if err := tx.QueryRow(`SELECT CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END, recorded_at FROM finance_transactions WHERE id = $1`, transactionID).Scan(&alreadyVoided, &recordedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("finance transaction not found")
 		}
@@ -1566,8 +1567,8 @@ func voidFinanceTransactionTx(tx *sql.Tx, transactionID int64, reason string, vo
 	}
 	_, err := tx.Exec(`
 		UPDATE finance_transactions
-		SET voided_at = ?, voided_by_user_id = ?, void_reason = ?, updated_at = ?
-		WHERE id = ? AND voided_at IS NULL
+		SET voided_at = $1, voided_by_user_id = $2, void_reason = $3, updated_at = $4
+		WHERE id = $5 AND voided_at IS NULL
 	`, time.Now().UTC(), nullableExistingUserIDTx(tx, voidedByUserID), reason, time.Now().UTC(), transactionID)
 	return err
 }
@@ -1607,37 +1608,37 @@ func financeTransactionSourceExistsQuery(queryer sqlQueryer, transaction *Financ
 	switch transaction.SourceType {
 	case "admission":
 		var count int
-		if err := queryer.QueryRow(`SELECT COUNT(*) FROM admissions WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM admissions WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
 			return false, err
 		}
 		return count > 0, nil
 	case "student_enrollment":
 		var count int
-		if err := queryer.QueryRow(`SELECT COUNT(*) FROM student_enrollments WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM student_enrollments WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
 			return false, err
 		}
 		return count > 0, nil
 	case "student_monthly_payment":
 		var count int
-		if err := queryer.QueryRow(`SELECT COUNT(*) FROM student_monthly_payments WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM student_monthly_payments WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
 			return false, err
 		}
 		return count > 0, nil
 	case "booking_payment_collection":
 		var count int
-		if err := queryer.QueryRow(`SELECT COUNT(*) FROM booking_payment_collections WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM booking_payment_collections WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
 			return false, err
 		}
 		return count > 0, nil
 	case "booking_referral_payment":
 		var count int
-		if err := queryer.QueryRow(`SELECT COUNT(*) FROM booking_referrals WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM booking_referrals WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
 			return false, err
 		}
 		return count > 0, nil
 	case "mcp_payment_collection":
 		var count int
-		if err := queryer.QueryRow(`SELECT COUNT(*) FROM mcp_payment_collections WHERE id = ?`, transaction.SourceID).Scan(&count); err != nil {
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM mcp_payment_collections WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
 			return false, err
 		}
 		return count > 0, nil
@@ -1665,9 +1666,9 @@ func financeTransactionNeedsLedgerRepairQuery(queryer sqlQueryer, transaction *F
 		if err := queryer.QueryRow(`
 			SELECT COUNT(*)
 			FROM admissions
-			WHERE id = ?
+			WHERE id = $1
 			  AND payment_collected = 1
-			  AND COALESCE(finance_transaction_id, 0) = ?
+			  AND COALESCE(finance_transaction_id, 0) = $2
 		`, transaction.SourceID, transaction.ID).Scan(&count); err != nil {
 			return false, err
 		}
@@ -1677,9 +1678,9 @@ func financeTransactionNeedsLedgerRepairQuery(queryer sqlQueryer, transaction *F
 		if err := queryer.QueryRow(`
 			SELECT COUNT(*)
 			FROM student_enrollments
-			WHERE id = ?
+			WHERE id = $1
 			  AND payment_collected = 1
-			  AND COALESCE(finance_transaction_id, 0) = ?
+			  AND COALESCE(finance_transaction_id, 0) = $2
 		`, transaction.SourceID, transaction.ID).Scan(&count); err != nil {
 			return false, err
 		}
@@ -1689,9 +1690,9 @@ func financeTransactionNeedsLedgerRepairQuery(queryer sqlQueryer, transaction *F
 		if err := queryer.QueryRow(`
 			SELECT COUNT(*)
 			FROM student_monthly_payments
-			WHERE id = ?
+			WHERE id = $1
 			  AND voided = 0
-			  AND finance_transaction_id = ?
+			  AND finance_transaction_id = $2
 		`, transaction.SourceID, transaction.ID).Scan(&count); err != nil {
 			return false, err
 		}
@@ -1919,12 +1920,12 @@ func syncLegacyAdmissionPaymentVoidStateTx(tx *sql.Tx, admissionID int64, financ
 			    payment_collected_at = NULL,
 			    admission_payment_amount = 0,
 			    finance_transaction_id = NULL,
-			    payment_void_reason = ?,
-			    payment_voided_by_user_id = ?,
-			    payment_voided_at = ?,
-			    updated_at = ?
-			WHERE id = ?
-			  AND COALESCE(finance_transaction_id, 0) = ?
+			    payment_void_reason = $1,
+			    payment_voided_by_user_id = $2,
+			    payment_voided_at = $3,
+			    updated_at = $4
+			WHERE id = $5
+			  AND COALESCE(finance_transaction_id, 0) = $6
 		`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, now, admissionID, financeTransactionID); err != nil {
 			return err
 		}
@@ -1933,22 +1934,22 @@ func syncLegacyAdmissionPaymentVoidStateTx(tx *sql.Tx, admissionID int64, financ
 	_, err := tx.Exec(`
 		UPDATE admissions
 		SET payment_void_reason = CASE
-				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN ?
+				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN $1
 				ELSE payment_void_reason
 			END,
 		    payment_voided_by_user_id = CASE
-				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN ?
+				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN $2
 				ELSE payment_voided_by_user_id
 			END,
 		    payment_voided_at = CASE
-				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN ?
+				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN $3
 				ELSE payment_voided_at
 			END,
 		    updated_at = CASE
-				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN ?
+				WHEN COALESCE(payment_collected, 0) = 1 OR payment_voided_at IS NOT NULL THEN $4
 				ELSE updated_at
 			END
-		WHERE id = ?
+		WHERE id = $5
 	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, now, admissionID)
 	return err
 }
@@ -1958,7 +1959,7 @@ func resolveEnrollmentAdmissionPaymentByAdmissionTx(tx *sql.Tx, admissionID int6
 	if err := tx.QueryRow(`
 		SELECT COALESCE(finance_transaction_id, 0)
 		FROM admissions
-		WHERE id = ?
+		WHERE id = $1
 	`, admissionID).Scan(&legacyFinanceTransactionID); err != nil {
 		return nil, err
 	}
@@ -1968,9 +1969,9 @@ func resolveEnrollmentAdmissionPaymentByAdmissionTx(tx *sql.Tx, admissionID int6
 		err := tx.QueryRow(`
 			SELECT se.id
 			FROM student_enrollments se
-			WHERE se.admission_id = ?
+			WHERE se.admission_id = $1
 			  AND COALESCE(se.payment_collected, 0) = 1
-			  AND COALESCE(se.finance_transaction_id, 0) = ?
+			  AND COALESCE(se.finance_transaction_id, 0) = $2
 			ORDER BY se.id
 			LIMIT 1
 		`, admissionID, legacyFinanceTransactionID).Scan(&enrollmentID)
@@ -1985,7 +1986,7 @@ func resolveEnrollmentAdmissionPaymentByAdmissionTx(tx *sql.Tx, admissionID int6
 	rows, err := tx.Query(`
 		SELECT se.id
 		FROM student_enrollments se
-		WHERE se.admission_id = ?
+		WHERE se.admission_id = $1
 		  AND COALESCE(se.payment_collected, 0) = 1
 		ORDER BY se.id
 	`, admissionID)
@@ -2029,7 +2030,7 @@ func voidStudentEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment *StudentEnro
 			SELECT COUNT(*)
 			FROM finance_transactions
 			WHERE source_type = 'student_enrollment'
-			  AND source_id = ?
+			  AND source_id = $1
 			  AND category = 'admission_payment'
 			  AND voided_at IS NOT NULL
 		`, enrollment.ID).Scan(&priorVoidCount); err != nil {
@@ -2048,8 +2049,8 @@ func voidStudentEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment *StudentEnro
 		    payment_collected_at = NULL,
 		    admission_payment_amount = 0,
 		    finance_transaction_id = NULL,
-		    updated_at = ?
-		WHERE id = ? AND payment_collected = 1
+		    updated_at = $1
+		WHERE id = $2 AND payment_collected = 1
 	`, now, enrollment.ID); err != nil {
 		return err
 	}
@@ -2113,7 +2114,7 @@ func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUse
 	if err := tx.QueryRow(`
 		SELECT COALESCE(finance_transaction_id, 0), COALESCE(payment_collected, 0), payment_voided_at
 		FROM admissions
-		WHERE id = ?
+		WHERE id = $1
 	`, admissionID).Scan(&financeTransactionID, &paymentCollected, &paymentVoidedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("admission payment was not found")
@@ -2133,11 +2134,11 @@ func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUse
 		    payment_collected_at = NULL,
 		    admission_payment_amount = 0,
 		    finance_transaction_id = NULL,
-		    payment_void_reason = ?,
-		    payment_voided_by_user_id = ?,
-		    payment_voided_at = ?,
-		    updated_at = ?
-		WHERE id = ? AND payment_collected = 1
+		    payment_void_reason = $1,
+		    payment_voided_by_user_id = $2,
+		    payment_voided_at = $3,
+		    updated_at = $4
+		WHERE id = $5 AND payment_collected = 1
 	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, now, admissionID); err != nil {
 		return err
 	}
@@ -2165,7 +2166,7 @@ func (a *App) voidStudentMonthlyPayment(paymentID int64, reason string, voidedBy
 	if err := tx.QueryRow(`
 		SELECT finance_transaction_id, voided
 		FROM student_monthly_payments
-		WHERE id = ?
+		WHERE id = $1
 	`, paymentID).Scan(&financeTransactionID, &alreadyVoided); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("student payment was not found")
@@ -2178,8 +2179,8 @@ func (a *App) voidStudentMonthlyPayment(paymentID int64, reason string, voidedBy
 	now := time.Now().UTC()
 	if _, err := tx.Exec(`
 		UPDATE student_monthly_payments
-		SET voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ?
-		WHERE id = ? AND voided = 0
+		SET voided = 1, void_reason = $1, voided_by_user_id = $2, voided_at = $3
+		WHERE id = $4 AND voided = 0
 	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, paymentID); err != nil {
 		return err
 	}
@@ -2206,7 +2207,7 @@ func (a *App) voidReferralCommissionPayment(referralID int64, reason string, voi
 	if err := tx.QueryRow(`
 		SELECT COALESCE(finance_transaction_id, 0), paid, voided_at
 		FROM booking_referrals
-		WHERE id = ?
+		WHERE id = $1
 	`, referralID).Scan(&financeTransactionID, &paid, &voidedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("referral payment was not found")
@@ -2226,10 +2227,10 @@ func (a *App) voidReferralCommissionPayment(referralID int64, reason string, voi
 		    paid_at = NULL,
 		    payment_method = '',
 		    finance_transaction_id = NULL,
-		    void_reason = ?,
-		    voided_by_user_id = ?,
-		    voided_at = ?
-		WHERE id = ? AND paid = 1
+		    void_reason = $1,
+		    voided_by_user_id = $2,
+		    voided_at = $3
+		WHERE id = $4 AND paid = 1
 	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, referralID); err != nil {
 		return err
 	}
@@ -2253,7 +2254,7 @@ func (a *App) voidCashReconciliation(reconciliationID int64, reason string, void
 	defer tx.Rollback()
 	var alreadyVoided int
 	var reconciliationDate string
-	if err := tx.QueryRow(`SELECT CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END, reconciliation_date FROM cash_reconciliations WHERE id = ?`, reconciliationID).Scan(&alreadyVoided, &reconciliationDate); err != nil {
+	if err := tx.QueryRow(`SELECT CASE WHEN voided_at IS NULL THEN 0 ELSE 1 END, reconciliation_date FROM cash_reconciliations WHERE id = $1`, reconciliationID).Scan(&alreadyVoided, &reconciliationDate); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("cash reconciliation was not found")
 		}
@@ -2271,8 +2272,8 @@ func (a *App) voidCashReconciliation(reconciliationID int64, reason string, void
 	}
 	_, err = tx.Exec(`
 		UPDATE cash_reconciliations
-		SET void_reason = ?, voided_by_user_id = ?, voided_at = ?, superseded_by_reconciliation_id = ?
-		WHERE id = ? AND voided_at IS NULL
+		SET void_reason = $1, voided_by_user_id = $2, voided_at = $3, superseded_by_reconciliation_id = $4
+		WHERE id = $5 AND voided_at IS NULL
 	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), time.Now().UTC(), nullIfZero(supersededByID), reconciliationID)
 	if err != nil {
 		return err
@@ -2880,20 +2881,26 @@ func (a *App) createCashReconciliation(accountID int64, reconciliationDate strin
 		status = "over"
 	}
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
-		INSERT INTO cash_reconciliations (
+	id, err := a.insertAndReturnIDTx(
+		tx,
+		`INSERT INTO cash_reconciliations (
 			finance_account_id, reconciliation_date, expected_balance, counted_balance, difference,
 			notes, status, reconciled_by_user_id, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, account.ID, reconciliationDate, expected, countedBalance, diff, strings.TrimSpace(notes), status, nullableExistingUserIDTx(tx, reconciledByUserID), now)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		account.ID,
+		reconciliationDate,
+		expected,
+		countedBalance,
+		diff,
+		strings.TrimSpace(notes),
+		status,
+		nullableExistingUserIDTx(tx, reconciledByUserID),
+		now,
+	)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			return 0, errors.New("a cash reconciliation already exists for this account and date")
 		}
-		return 0, err
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
 		return 0, err
 	}
 	if err := completeFinanceOperationTx(tx, "cash_reconciliation", reconciledByUserID, fingerprint, strconv.FormatInt(id, 10)); err != nil {

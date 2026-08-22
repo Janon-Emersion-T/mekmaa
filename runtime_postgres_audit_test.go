@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -105,6 +106,20 @@ func runRuntimePostgresAuditWorkflow() error {
 		return fmt.Errorf("finance account id = %d", accountID)
 	}
 
+	badmintonGameID, err := app.createGame(Game{
+		Name:        "Runtime Audit Badminton",
+		Activity:    "badminton",
+		Description: "runtime audit",
+		Active:      true,
+		SortOrder:   999,
+	})
+	if err != nil {
+		return fmt.Errorf("create game: %w", err)
+	}
+	if badmintonGameID <= 0 {
+		return fmt.Errorf("game id = %d", badmintonGameID)
+	}
+
 	courtID, err := app.createCourt(Court{
 		Name:        "Runtime Audit Court",
 		Code:        "RUNTIME_AUDIT_COURT",
@@ -177,6 +192,76 @@ func runRuntimePostgresAuditWorkflow() error {
 	}
 	if payrollRunID <= 0 {
 		return fmt.Errorf("payroll run id = %d", payrollRunID)
+	}
+
+	tournamentID, err := app.createTournament(
+		"Runtime Audit Tournament",
+		badmintonGameID,
+		"2026-08-10",
+		8,
+		2500,
+		accountID,
+		time.Date(2026, time.August, 10, 9, 0, 0, 0, time.UTC),
+		"runtime audit",
+		user.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("create tournament: %w", err)
+	}
+	if tournamentID <= 0 {
+		return fmt.Errorf("tournament id = %d", tournamentID)
+	}
+
+	if err := app.createTournamentSponsorship(
+		tournamentID,
+		"Runtime Audit Sponsor",
+		"runtime audit",
+		5000,
+		accountID,
+		time.Date(2026, time.August, 11, 10, 0, 0, 0, time.UTC),
+		user.ID,
+	); err != nil {
+		return fmt.Errorf("create tournament sponsorship: %w", err)
+	}
+
+	if err := app.createTournamentOfficialPayment(
+		tournamentID,
+		"Runtime Audit Referee",
+		"Referee",
+		"runtime audit",
+		1800,
+		accountID,
+		time.Date(2026, time.August, 12, 11, 0, 0, 0, time.UTC),
+		user.ID,
+	); err != nil {
+		return fmt.Errorf("create tournament official payment: %w", err)
+	}
+
+	if err := app.createTournamentExpense(
+		tournamentID,
+		"refreshments",
+		"Runtime Audit Drinks",
+		"runtime audit",
+		1200,
+		accountID,
+		time.Date(2026, time.August, 13, 12, 0, 0, 0, time.UTC),
+		user.ID,
+	); err != nil {
+		return fmt.Errorf("create tournament expense: %w", err)
+	}
+
+	reconciliationID, err := app.createCashReconciliation(
+		accountID,
+		"2026-08-14",
+		22000,
+		"runtime audit reconciliation",
+		user.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("create cash reconciliation: %w", err)
+	}
+	if reconciliationID <= 0 {
+		return fmt.Errorf("cash reconciliation id = %d", reconciliationID)
 	}
 
 	return nil

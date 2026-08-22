@@ -232,7 +232,7 @@ func financeInt64InClause(column string, size int) string {
 }
 
 func (a *App) listFinanceBookingActivities() ([]CourtActivity, error) {
-	rows, err := a.db.Query(`
+	rows, err := a.queryDB(`
 		SELECT activity, MAX(display_name)
 		FROM (
 			SELECT activity, COALESCE(NULLIF(display_name, ''), '') AS display_name

@@ -25,7 +25,7 @@ func listFinanceBalancesInclude(transaction FinanceTransaction) bool {
 }
 
 func (a *App) currentFinancePeriodLock() (*FinancePeriodLock, error) {
-	row := a.db.QueryRow(`
+	row := a.queryRowDB(`
 		SELECT fpl.id, COALESCE(locked_until, ''), COALESCE(notes, ''), COALESCE(updated_by_user_id, 0), COALESCE(u.name, ''), updated_at
 		FROM finance_period_locks fpl
 		LEFT JOIN users u ON u.id = fpl.updated_by_user_id
@@ -108,13 +108,13 @@ func (a *App) updateFinancePeriodLock(lockedUntil, notes string, updatedByUserID
 		return err
 	}
 	if lock == nil {
-		_, err = a.db.Exec(`
+		_, err = a.execDB(`
 			INSERT INTO finance_period_locks (locked_until, notes, updated_by_user_id, updated_at)
 			VALUES (?, ?, ?, ?)
 		`, nullIfBlank(lockedUntil), notes, nullIfZero(updatedByUserID), now)
 		return err
 	}
-	_, err = a.db.Exec(`
+	_, err = a.execDB(`
 		UPDATE finance_period_locks
 		SET locked_until = ?, notes = ?, updated_by_user_id = ?, updated_at = ?
 		WHERE id = ?
@@ -126,7 +126,7 @@ func (a *App) approveFinanceTransaction(transactionID, approvedByUserID int64) e
 	if transactionID <= 0 {
 		return errors.New("finance transaction not found")
 	}
-	result, err := a.db.Exec(`
+	result, err := a.execDB(`
 		UPDATE finance_transactions
 		SET approval_status = ?, approved_by_user_id = ?, approved_at = ?, updated_at = ?
 		WHERE id = ? AND approval_status = ? AND voided_at IS NULL

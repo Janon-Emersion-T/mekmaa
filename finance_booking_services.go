@@ -4458,12 +4458,12 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 				training_program_id,
 				created_at
 			)
-			SELECT ?, ?, ?
+			SELECT $1, $2, $3
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM admission_training_programs
-				WHERE admission_id = ?
-				  AND training_program_id = ?
+				WHERE admission_id = $4
+				  AND training_program_id = $5
 			)
 		`, existing.AdmissionID, enrollment.TrainingProgramID, time.Now().UTC(), existing.AdmissionID, enrollment.TrainingProgramID); err != nil {
 			return err
@@ -4490,7 +4490,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 		SELECT COUNT(*)
 		FROM finance_transactions
 		WHERE reference_type = 'student_enrollment'
-		  AND reference_id = ?
+		  AND reference_id = $1
 	`, enrollmentID).Scan(&admissionPaymentCount); err != nil {
 		return false, err
 	}
@@ -4499,7 +4499,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 	if err := tx.QueryRow(`
 		SELECT COUNT(*)
 		FROM student_monthly_payments
-		WHERE enrollment_id = ?
+		WHERE enrollment_id = $1
 		  AND COALESCE(voided, 0) = 0
 	`, enrollmentID).Scan(&monthlyPaymentCount); err != nil {
 		return false, err
@@ -4509,8 +4509,8 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 		result, err := tx.Exec(`
 			UPDATE student_enrollments
 			SET active = 0,
-			    updated_at = ?
-			WHERE id = ?
+			    updated_at = $1
+			WHERE id = $2
 		`, time.Now().UTC(), enrollmentID)
 		if err != nil {
 			return false, err
@@ -4525,7 +4525,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 		return true, tx.Commit()
 	}
 
-	result, err := tx.Exec(`DELETE FROM student_enrollments WHERE id = ?`, enrollmentID)
+	result, err := tx.Exec(`DELETE FROM student_enrollments WHERE id = $1`, enrollmentID)
 	if err != nil {
 		return false, err
 	}
@@ -4757,32 +4757,13 @@ func (a *App) createAdmissionWithOptionalPayment(
 		now,
 	}
 
-	var admissionID int64
-
-	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
-		err = tx.QueryRow(
-			rebindDatabaseQuery(
-				databaseDriverPostgres,
-				insertQuery+" RETURNING id",
-			),
-			insertArgs...,
-		).Scan(&admissionID)
-		if err != nil {
-			return 0, 0, err
-		}
-	} else {
-		result, execErr := tx.Exec(
-			insertQuery,
-			insertArgs...,
-		)
-		if execErr != nil {
-			return 0, 0, execErr
-		}
-
-		admissionID, err = result.LastInsertId()
-		if err != nil {
-			return 0, 0, err
-		}
+	admissionID, err := a.insertAndReturnIDTx(
+		tx,
+		insertQuery,
+		insertArgs...,
+	)
+	if err != nil {
+		return 0, 0, err
 	}
 
 	admission.ID = admissionID
@@ -5658,7 +5639,7 @@ func (a *App) voidBookingPayment(collectionID int64, reason string, voidedByUser
 	var scheduleID int64
 	var financeTransactionID int64
 	var voided int
-	if err := tx.QueryRow(`
+	if err := a.queryRowTxDB(tx, `
 		SELECT schedule_id, finance_transaction_id, voided
 		FROM booking_payment_collections
 		WHERE id = ?
@@ -5672,7 +5653,7 @@ func (a *App) voidBookingPayment(collectionID int64, reason string, voidedByUser
 		return errors.New("booking payment has already been voided")
 	}
 	voidedByRef := nullableExistingUserIDTx(tx, voidedByUserID)
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		UPDATE booking_payment_collections
 		SET voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ?
 		WHERE id = ? AND voided = 0

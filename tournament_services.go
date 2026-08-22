@@ -25,7 +25,7 @@ func findGameByIDQuery(queryer sqlQueryer, gameID int64) (*Game, error) {
 	row := queryer.QueryRow(`
 		SELECT id, name, activity, COALESCE(description, ''), active, sort_order, created_at, updated_at
 		FROM games
-		WHERE id = ?
+		WHERE id = $1
 	`, gameID)
 
 	var game Game
@@ -443,7 +443,7 @@ func loadTournamentBaseTx(tx *sql.Tx, tournamentID int64) (*Tournament, error) {
 			t.updated_at
 		FROM tournaments t
 		LEFT JOIN games g ON g.id = t.game_id
-		WHERE t.id = ?
+		WHERE t.id = $1
 	`, tournamentID)
 	var tournament Tournament
 	var entryRecordedAt sql.NullTime
@@ -555,26 +555,26 @@ func updateFinanceTransactionForTournamentTx(
 	result, err := tx.Exec(`
 		UPDATE finance_transactions
 		SET
-			division_id = ?,
-			category = ?,
-			approval_status = ?,
-			transaction_type = ?,
-			reference_type = ?,
-			reference_id = ?,
-			source_type = ?,
-			source_id = ?,
-			finance_account_id = ?,
-			person_name = ?,
-			description = ?,
-			notes = ?,
-			payment_method = ?,
-			amount = ?,
-			recorded_by_user_id = ?,
-			approved_by_user_id = ?,
-			recorded_at = ?,
-			approved_at = ?,
-			updated_at = ?
-		WHERE id = ?
+			division_id = $1,
+			category = $2,
+			approval_status = $3,
+			transaction_type = $4,
+			reference_type = $5,
+			reference_id = $6,
+			source_type = $7,
+			source_id = $8,
+			finance_account_id = $9,
+			person_name = $10,
+			description = $11,
+			notes = $12,
+			payment_method = $13,
+			amount = $14,
+			recorded_by_user_id = $15,
+			approved_by_user_id = $16,
+			recorded_at = $17,
+			approved_at = $18,
+			updated_at = $19
+		WHERE id = $20
 		  AND voided_at IS NULL
 	`,
 		sportsID,
@@ -659,7 +659,9 @@ func (a *App) createTournament(
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
+	tournamentID, err := a.insertAndReturnIDTx(
+		tx,
+		`
 		INSERT INTO tournaments (
 			name,
 			game_id,
@@ -685,10 +687,6 @@ func (a *App) createTournament(
 		now,
 		now,
 	)
-	if err != nil {
-		return 0, err
-	}
-	tournamentID, err := result.LastInsertId()
 	if err != nil {
 		return 0, err
 	}
@@ -720,7 +718,7 @@ func (a *App) createTournament(
 		if err != nil {
 			return 0, err
 		}
-		if _, err := tx.Exec(`
+		if _, err := a.execTxDB(tx, `
 			UPDATE tournaments
 			SET entry_fee_finance_transaction_id = ?, updated_at = ?
 			WHERE id = ?
@@ -855,17 +853,17 @@ func (a *App) updateTournament(
 	_, err = tx.Exec(`
 		UPDATE tournaments
 		SET
-			name = ?,
-			game_id = ?,
-			participant_count = ?,
-			entry_fee = ?,
-			tournament_date = ?,
-			entry_fee_finance_transaction_id = ?,
-			entry_fee_finance_account_id = ?,
-			entry_fee_recorded_at = ?,
-			notes = ?,
-			updated_at = ?
-		WHERE id = ?
+			name = $1,
+			game_id = $2,
+			participant_count = $3,
+			entry_fee = $4,
+			tournament_date = $5,
+			entry_fee_finance_transaction_id = $6,
+			entry_fee_finance_account_id = $7,
+			entry_fee_recorded_at = $8,
+			notes = $9,
+			updated_at = $10
+		WHERE id = $11
 	`,
 		strings.TrimSpace(name),
 		gameID,
@@ -935,7 +933,9 @@ func (a *App) createTournamentSponsorship(
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
+	sponsorshipID, err := a.insertAndReturnIDTx(
+		tx,
+		`
 		INSERT INTO tournament_sponsorships (
 			tournament_id,
 			sponsor_name,
@@ -957,10 +957,6 @@ func (a *App) createTournamentSponsorship(
 		now,
 		now,
 	)
-	if err != nil {
-		return err
-	}
-	sponsorshipID, err := result.LastInsertId()
 	if err != nil {
 		return err
 	}
@@ -991,7 +987,7 @@ func (a *App) createTournamentSponsorship(
 		return err
 	}
 
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		UPDATE tournament_sponsorships
 		SET finance_transaction_id = ?, updated_at = ?
 		WHERE id = ?
@@ -1052,7 +1048,9 @@ func (a *App) createTournamentOfficialPayment(
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
+	paymentID, err := a.insertAndReturnIDTx(
+		tx,
+		`
 		INSERT INTO tournament_official_payments (
 			tournament_id,
 			person_name,
@@ -1076,10 +1074,6 @@ func (a *App) createTournamentOfficialPayment(
 		now,
 		now,
 	)
-	if err != nil {
-		return err
-	}
-	paymentID, err := result.LastInsertId()
 	if err != nil {
 		return err
 	}
@@ -1110,7 +1104,7 @@ func (a *App) createTournamentOfficialPayment(
 		return err
 	}
 
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		UPDATE tournament_official_payments
 		SET finance_transaction_id = ?, updated_at = ?
 		WHERE id = ?
@@ -1172,7 +1166,9 @@ func (a *App) createTournamentExpense(
 	}
 
 	now := time.Now().UTC()
-	result, err := tx.Exec(`
+	expenseID, err := a.insertAndReturnIDTx(
+		tx,
+		`
 		INSERT INTO tournament_expenses (
 			tournament_id,
 			expense_type,
@@ -1196,10 +1192,6 @@ func (a *App) createTournamentExpense(
 		now,
 		now,
 	)
-	if err != nil {
-		return err
-	}
-	expenseID, err := result.LastInsertId()
 	if err != nil {
 		return err
 	}
@@ -1230,7 +1222,7 @@ func (a *App) createTournamentExpense(
 		return err
 	}
 
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		UPDATE tournament_expenses
 		SET finance_transaction_id = ?, updated_at = ?
 		WHERE id = ?

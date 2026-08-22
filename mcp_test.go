@@ -46,7 +46,7 @@ func newConcurrentMCPTestApp(t *testing.T) *App {
 	if err := runMigrations(db); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
-	if err := seedFinanceCategories(db); err != nil {
+	if err := seedFinanceCategories(db, databaseDriverSQLite); err != nil {
 		t.Fatalf("seed finance categories: %v", err)
 	}
 	seedBookingEngine(t, db)

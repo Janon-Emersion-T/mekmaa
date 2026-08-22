@@ -239,7 +239,7 @@ func (a *App) createPayrollRun(
 		return runID, err
 	}
 
-	result, err := a.execDB(
+	payrollRunID, err := a.insertAndReturnID(
 		`
 		INSERT INTO payroll_runs (
 			period_start,
@@ -264,7 +264,7 @@ func (a *App) createPayrollRun(
 		return 0, err
 	}
 
-	return result.LastInsertId()
+	return payrollRunID, nil
 }
 
 func (a *App) listPayrollRuns() ([]PayrollRun, error) {
