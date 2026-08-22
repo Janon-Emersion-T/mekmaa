@@ -265,7 +265,7 @@ func migrateDivisions(db *sql.DB) error {
 
 func divisionIDByCode(db *sql.DB, code string) (int64, error) {
 	var divisionID int64
-	if err := db.QueryRow(`SELECT id FROM divisions WHERE UPPER(code) = UPPER(?)`, strings.TrimSpace(code)).Scan(&divisionID); err != nil {
+	if err := db.QueryRow(`SELECT id FROM divisions WHERE UPPER(code) = UPPER($1)`, strings.TrimSpace(code)).Scan(&divisionID); err != nil {
 		return 0, err
 	}
 	return divisionID, nil
