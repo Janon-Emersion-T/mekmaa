@@ -66,7 +66,10 @@
   </div>
 
   {{if eq .ScheduleMode "new"}}
-  <div id="schedule-form" class="overflow-hidden rounded-[2rem] border border-aqua/35 bg-white/95 shadow-[0_20px_60px_rgba(11,18,21,0.1)]">
+  <div id="schedule-form" class="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+    <a href="{{scopedURL (printf "/admin/bookings?date=%s" .CalendarDate) .SelectedDivision .SelectedDivisionScope}}" class="absolute inset-0 bg-obsidian/55 backdrop-blur-sm" aria-label="Close create schedule"></a>
+    <div class="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-[1.5rem] border border-white/80 bg-white shadow-[0_30px_100px_rgba(11,18,21,0.32)] sm:rounded-[2rem]">
+      <div class="min-h-0 flex-1 overflow-y-auto">
     <div class="flex items-center justify-between bg-mint/60 px-5 py-4 sm:px-6">
       <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-800/55">New calendar entry</p><h2 class="mt-1 text-xl font-semibold text-obsidian">Reserve inventory</h2></div>
       <a href="{{scopedURL (printf "/admin/bookings?date=%s" .CalendarDate) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a>
@@ -113,6 +116,8 @@
       <label class="md:col-span-2 xl:col-span-3"><span class="mb-1.5 block text-xs font-semibold text-slate/55">Operations note <span class="font-normal text-slate/35">(optional)</span></span><textarea name="notes" rows="3" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{if .DraftSchedule}}{{.DraftSchedule.Notes}}{{end}}</textarea></label>
       <div class="md:col-span-2 xl:col-span-3 flex justify-end"><button class="h-12 rounded-2xl bg-obsidian px-6 text-sm font-bold text-cloud transition hover:bg-slate">Create schedule</button></div>
     </form>
+      </div>
+    </div>
   </div>
   {{end}}
 
@@ -120,7 +125,10 @@
   {{$financial := bookingFinancialForSchedule .BookingFinancials .SelectedSchedule.ID}}
   {{$payments := bookingPaymentsForSchedule .BookingPaymentCollections .SelectedSchedule.ID}}
   {{$referral := bookingReferralFor .BookingReferrals .SelectedSchedule.ID}}
-  <div id="schedule-view" class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/95 shadow-sm">
+  <div id="schedule-view" class="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+    <a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="absolute inset-0 bg-obsidian/55 backdrop-blur-sm" aria-label="Close booking details"></a>
+    <div class="relative flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[1.5rem] border border-white/80 bg-white shadow-[0_30px_100px_rgba(11,18,21,0.32)] sm:rounded-[2rem]">
+      <div class="min-h-0 flex-1 overflow-y-auto">
     <div class="flex items-center justify-between border-b border-slate/10 px-5 py-4 sm:px-6">
       <div><p class="font-mono text-xs font-bold text-slate/40">{{if .SelectedSchedule.RequesterName}}{{bookingReference .SelectedSchedule.ID}}{{else}}INTERNAL-{{.SelectedSchedule.ID}}{{end}}</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div>
       <a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-cloud px-3 py-2 text-xs font-bold text-slate">Close</a>
@@ -326,11 +334,16 @@
       <a href="{{scopedURL (printf "/admin/bookings?action=edit&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-edit" class="h-10 rounded-xl border border-slate/10 bg-white px-4 py-2.5 text-xs font-bold text-slate">Edit schedule</a>
       {{if ne .SelectedSchedule.EntryType "booking"}}<form action="/admin/bookings/delete" method="post" onsubmit="return confirm('Permanently delete this schedule?')"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" /><button class="h-10 rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700">Delete</button></form>{{end}}
     </div>
+      </div>
+    </div>
   </div>
   {{end}}
 
   {{if and (eq .ScheduleMode "edit") .SelectedSchedule}}
-  <div id="schedule-edit" class="overflow-hidden rounded-[2rem] border border-aqua/30 bg-white/95 shadow-sm">
+  <div id="schedule-edit" class="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+    <a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="absolute inset-0 bg-obsidian/55 backdrop-blur-sm" aria-label="Close edit schedule"></a>
+    <div class="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-[1.5rem] border border-white/80 bg-white shadow-[0_30px_100px_rgba(11,18,21,0.32)] sm:rounded-[2rem]">
+      <div class="min-h-0 flex-1 overflow-y-auto">
     <div class="flex items-center justify-between bg-cloud/70 px-5 py-4 sm:px-6"><div><p class="text-xs font-bold uppercase tracking-wider text-slate/40">Edit inventory</p><h2 class="mt-1 text-xl font-semibold">{{.SelectedSchedule.Title}}</h2></div><a href="{{scopedURL (printf "/admin/bookings?date=%s" .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate">Close</a></div>
     <form action="/admin/bookings/update" method="post" class="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3" data-admin-booking-form data-options-url="/admin/bookings/options">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" /><input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" /><input type="hidden" name="id" value="{{.SelectedSchedule.ID}}" /><input type="hidden" name="action" value="edit" />
@@ -372,186 +385,219 @@
       <label class="md:col-span-2 xl:col-span-3"><span class="mb-1.5 block text-xs font-semibold text-slate/55">Notes</span><textarea name="notes" rows="3" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm">{{.SelectedSchedule.Notes}}</textarea></label>
       <div class="md:col-span-2 xl:col-span-3 flex justify-end"><button class="h-12 rounded-2xl bg-obsidian px-6 text-sm font-bold text-cloud">Save changes</button></div>
     </form>
+      </div>
+    </div>
   </div>
   {{end}}
 
-  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
-    <div class="flex flex-col gap-4 border-b border-slate/10 pb-5">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div><p class="text-xs font-bold uppercase tracking-[0.22em] text-slate/40">Hourly timeline</p><h2 class="mt-2 text-2xl font-semibold">{{formatCalendarDate .CalendarDate}}</h2></div>
-        <div class="flex flex-wrap gap-2 text-[0.62rem] font-bold uppercase tracking-wider"><span class="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-800">Confirmed</span><span class="rounded-full bg-amber-100 px-3 py-1.5 text-amber-800">Pending request</span><span class="rounded-full bg-slate/10 px-3 py-1.5 text-slate/60">Training</span><span class="rounded-full bg-rose-100 px-3 py-1.5 text-rose-800">Closures</span><span class="rounded-full bg-red-100 px-3 py-1.5 text-red-800">Unpaid</span></div>
-      </div>
-      <div class="flex flex-wrap gap-2" data-calendar-filters>
-        <button type="button" data-filter="all" class="rounded-full bg-obsidian px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-cloud">All</button>
-        <button type="button" data-filter="confirmed" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Confirmed bookings</button>
-        <button type="button" data-filter="cancelled" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Cancelled</button>
-        <button type="button" data-filter="completed" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Completed</button>
-        <button type="button" data-filter="no_show" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">No-show</button>
-        <button type="button" data-filter="pending" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Pending requests</button>
-        <button type="button" data-filter="training" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Internal training</button>
-        <button type="button" data-filter="closures" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Closures</button>
-        <button type="button" data-filter="unpaid" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Unpaid bookings</button>
+  <div class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.22em] text-slate/40">Daily schedule</p>
+          <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{formatCalendarDate .CalendarDate}}</h2>
+          <p class="mt-1 text-sm text-slate/55">Bookings, customer requests, training blocks, closures, capacity and revenue in one operational table.</p>
+        </div>
+        <div class="flex flex-wrap gap-2" data-calendar-filters>
+          <button type="button" data-filter="all" class="rounded-full bg-obsidian px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-cloud">All</button>
+          <button type="button" data-filter="confirmed" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Confirmed</button>
+          <button type="button" data-filter="cancelled" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Cancelled</button>
+          <button type="button" data-filter="completed" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Completed</button>
+          <button type="button" data-filter="no_show" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">No-show</button>
+          <button type="button" data-filter="pending" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Pending</button>
+          <button type="button" data-filter="training" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Training</button>
+          <button type="button" data-filter="closures" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Closures</button>
+          <button type="button" data-filter="unpaid" class="rounded-full border border-slate/10 bg-white px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider text-slate">Unpaid</button>
+        </div>
       </div>
     </div>
 
-    <div class="mt-5 grid gap-3">
-      {{range .AdminCalendarHours}}
-      <article class="rounded-[1.5rem] border p-4 shadow-sm {{.StateClasses}}" data-hour-row>
-        <div class="flex flex-col gap-4 border-b border-slate/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
-          <div class="flex flex-col gap-3">
-            <div class="flex flex-wrap items-center gap-3">
-              <p class="text-xl font-semibold text-obsidian">{{.Hour}}</p>
-              <span class="rounded-full bg-white/80 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate">{{.StateLabel}}</span>
-              {{if .ConfirmedCount}}<span class="rounded-full bg-emerald-100 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800">{{.ConfirmedCount}} confirmed</span>{{end}}
-              {{if .PendingCount}}<span class="rounded-full bg-amber-100 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-amber-800">{{.PendingCount}} pending</span>{{end}}
-              {{if .TrainingCount}}<span class="rounded-full bg-slate-200 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-slate-700">{{.TrainingCount}} training</span>{{end}}
-              {{if .UnpaidCount}}<span class="rounded-full bg-red-100 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-red-700">{{.UnpaidCount}} unpaid</span>{{end}}
-            </div>
-            <div class="grid gap-2 text-sm text-slate/70 sm:grid-cols-2 xl:grid-cols-4">
-              <p><span class="font-semibold text-obsidian">Remaining:</span> {{.RemainingSummary}}</p>
-              <p><span class="font-semibold text-obsidian">Closures:</span> {{len .Closures}}</p>
-              <p><span class="font-semibold text-obsidian">Quoted value:</span> {{money .ExpectedRevenue}}</p>
-              <p><span class="font-semibold text-obsidian">Collected:</span> {{money .CollectedRevenue}}</p>
-            </div>
-            {{if .BlockedReason}}<p class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{{.BlockedReason}}</p>{{end}}
-          </div>
-          <div class="flex flex-wrap gap-2 lg:max-w-sm lg:justify-end">
-            {{if .CanAddDirect}}<a href="{{.AddDirectURL}}" class="inline-flex h-10 items-center rounded-xl bg-obsidian px-4 text-xs font-bold uppercase tracking-wider text-cloud">Add booking</a>{{else}}<span class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white/70 px-4 text-xs font-bold uppercase tracking-wider text-slate/45">No booking slot</span>{{end}}
-            {{if .CanAddTraining}}<a href="{{.AddTrainingURL}}" class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold uppercase tracking-wider text-slate">Add training</a>{{else}}<span class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white/70 px-4 text-xs font-bold uppercase tracking-wider text-slate/45">No training slot</span>{{end}}
-            <a href="{{.ManageClosuresURL}}" class="inline-flex h-10 items-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-bold uppercase tracking-wider text-slate">Manage closures</a>
-          </div>
-        </div>
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[1180px] text-left text-sm">
+        <thead>
+          <tr class="border-b border-slate/10 bg-cloud/55">
+            <th class="px-5 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45 sm:px-6">Time</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Entry</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Type / status</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Customer / details</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Financial</th>
+            <th class="px-4 py-3.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/45">Availability</th>
+            <th class="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-[0.12em] text-slate/45 sm:px-6">Actions</th>
+          </tr>
+        </thead>
 
-        <div class="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]">
-          <div class="grid gap-3">
-            {{range .Closures}}
-            <div class="rounded-[1.2rem] border border-rose-200 bg-rose-50 p-4" data-hour-item data-item-kind="closures" data-item-unpaid="false">
-              <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <p class="text-sm font-semibold text-obsidian">{{.Title}}</p>
-                    <span class="rounded-full bg-rose-100 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-rose-800">Closure</span>
-                  </div>
-                  <p class="mt-1 text-xs text-slate/65">{{formatClockTime .StartHour}} to {{formatClockTime .EndHour}} · {{if .Activity}}{{gameNameFor $.Games .Activity}}{{else}}Whole court{{end}}</p>
-                  {{if .Reason}}<p class="mt-2 text-xs leading-5 text-slate/70">{{.Reason}}</p>{{end}}
-                </div>
-                <a href="/admin/courts" class="rounded-lg bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Open courts</a>
+        {{range .AdminCalendarHours}}
+        {{$hour := .}}
+        <tbody data-hour-row class="border-b border-slate/10">
+          <tr class="bg-cloud/35">
+            <td class="px-5 py-3 sm:px-6">
+              <div class="flex items-center gap-2">
+                <span class="text-base font-semibold text-obsidian">{{.Hour}}</span>
+                <span class="rounded-full bg-white px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-slate">{{.StateLabel}}</span>
               </div>
-            </div>
-            {{end}}
-
-            {{range .Confirmed}}
-            <div class="rounded-[1.2rem] border border-emerald-200 bg-white p-4" data-hour-item data-item-kind="confirmed" data-item-status="{{.Status}}" data-item-unpaid="{{if .IsUnpaid}}true{{else}}false{{end}}">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div class="min-w-0">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate/45">{{.Reference}}</p>
-                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-emerald-800">{{.Status}}</span>
-                    {{if .ReferralCode}}<span class="rounded-full bg-aqua/20 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-obsidian">Referral {{.ReferralCode}}</span>{{end}}
-                  </div>
-                  <p class="mt-2 text-base font-semibold text-obsidian">{{.Title}}</p>
-                  <p class="mt-1 text-sm text-slate/70">{{.Summary}} · Confirmed booking{{if .RequesterName}} · {{.RequesterName}}{{end}}{{if .RequesterPhone}} · {{.RequesterPhone}}{{end}}</p>
-                  <div class="mt-3 flex flex-wrap gap-2 text-[0.68rem] font-semibold">
-                    <span class="rounded-full bg-cloud px-2.5 py-1 text-slate">Quoted {{.PriceLabel}}</span>
-                    <span class="rounded-full bg-white px-2.5 py-1 {{.PaymentTone}}">{{.PaymentLabel}}</span>
-                    {{if .ReviewNote}}<span class="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800">Review note</span>{{end}}
-                  </div>
-                  {{if .ReviewNote}}<p class="mt-2 text-xs leading-5 text-slate/65">{{.ReviewNote}}</p>{{end}}
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
-                  <a href="{{.EditURL}}" class="rounded-lg bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Edit</a>
-                </div>
+            </td>
+            <td colspan="3" class="px-4 py-3">
+              <div class="flex flex-wrap gap-2 text-[0.62rem] font-bold uppercase tracking-wider">
+                {{if .ConfirmedCount}}<span class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800">{{.ConfirmedCount}} confirmed</span>{{end}}
+                {{if .PendingCount}}<span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{{.PendingCount}} pending</span>{{end}}
+                {{if .TrainingCount}}<span class="rounded-full bg-slate-200 px-2.5 py-1 text-slate-700">{{.TrainingCount}} training</span>{{end}}
+                {{if .UnpaidCount}}<span class="rounded-full bg-red-100 px-2.5 py-1 text-red-700">{{.UnpaidCount}} unpaid</span>{{end}}
+                {{if .BlockedReason}}<span class="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800">Restricted</span>{{end}}
               </div>
-            </div>
-            {{end}}
-
-            {{range .Pending}}
-            <div class="rounded-[1.2rem] border border-amber-200 bg-white p-4" data-hour-item data-item-kind="pending" data-item-unpaid="{{if .IsUnpaid}}true{{else}}false{{end}}">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div class="min-w-0">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate/45">{{.Reference}}</p>
-                    <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-amber-800">Pending request</span>
+            </td>
+            <td class="px-4 py-3">
+              <p class="text-xs text-slate/55">Quoted <span class="font-semibold text-obsidian">{{money .ExpectedRevenue}}</span></p>
+              <p class="mt-1 text-xs text-slate/55">Collected <span class="font-semibold text-emerald-800">{{money .CollectedRevenue}}</span></p>
+            </td>
+            <td class="px-4 py-3">
+              <p class="text-xs font-medium text-slate/70">{{.RemainingSummary}}</p>
+              {{if .AvailableOptions}}
+              <details class="mt-1">
+                <summary class="cursor-pointer text-[0.68rem] font-semibold text-slate/50 hover:text-obsidian">View valid options</summary>
+                <div class="mt-2 grid gap-1.5">
+                  {{range .AvailableOptions}}
+                  <div class="rounded-lg border border-slate/10 bg-white px-2.5 py-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-xs font-semibold text-obsidian">{{.Label}}</span>
+                      <span class="text-xs font-semibold text-emerald-700">{{.PriceLabel}}</span>
+                    </div>
+                    {{if .RemainingCapacityLabel}}<p class="mt-1 text-[0.65rem] text-slate/50">{{.RemainingCapacityLabel}}</p>{{end}}
                   </div>
-                  <p class="mt-2 text-base font-semibold text-obsidian">{{.Title}}</p>
-                  <p class="mt-1 text-sm text-slate/70">{{.Summary}} · Customer request{{if .RequesterName}} · {{.RequesterName}}{{end}}{{if .RequesterPhone}} · {{.RequesterPhone}}{{end}}</p>
-                  <div class="mt-3 flex flex-wrap gap-2 text-[0.68rem] font-semibold">
-                    <span class="rounded-full bg-cloud px-2.5 py-1 text-slate">Quoted {{.PriceLabel}}</span>
-                    <span class="rounded-full bg-amber-50 px-2.5 py-1 {{.PaymentTone}}">{{.PaymentLabel}}</span>
-                    {{if .ReviewNote}}<span class="rounded-full bg-sky-50 px-2.5 py-1 text-sky-800">Reschedule history</span>{{end}}
-                  </div>
-                  {{if .ReviewNote}}<p class="mt-2 text-xs leading-5 text-slate/65">{{.ReviewNote}}</p>{{end}}
+                  {{end}}
                 </div>
-                <div class="flex flex-wrap gap-2">
-                  {{if .RequestURL}}<a href="{{.RequestURL}}" class="rounded-lg bg-amber px-3 py-2 text-[0.65rem] font-bold text-obsidian">Open request</a>{{end}}
-                  <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
-                </div>
-              </div>
-            </div>
-            {{end}}
-
-            {{range .Training}}
-            <div class="rounded-[1.2rem] border border-slate/15 bg-white p-4" data-hour-item data-item-kind="training" data-item-unpaid="false">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div class="min-w-0">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate/45">{{.Reference}}</p>
-                    <span class="rounded-full bg-slate-200 px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-wider text-slate-700">Internal training</span>
-                  </div>
-                  <p class="mt-2 text-base font-semibold text-obsidian">{{.Title}}</p>
-                  <p class="mt-1 text-sm text-slate/70">{{.Summary}} · Internal calendar block</p>
-                  <div class="mt-3 flex flex-wrap gap-2 text-[0.68rem] font-semibold">
-                    <span class="rounded-full bg-cloud px-2.5 py-1 text-slate">{{.PriceLabel}}</span>
-                    <span class="rounded-full bg-white px-2.5 py-1 {{.PaymentTone}}">{{.PaymentLabel}}</span>
-                  </div>
-                  {{if .ReviewNote}}<p class="mt-2 text-xs leading-5 text-slate/65">{{.ReviewNote}}</p>{{end}}
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
-                  <a href="{{.EditURL}}" class="rounded-lg bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Edit</a>
-                </div>
-              </div>
-            </div>
-            {{end}}
-
-            {{if and (eq (len .Closures) 0) (eq (len .Confirmed) 0) (eq (len .Pending) 0) (eq (len .Training) 0)}}
-            <div class="rounded-[1.2rem] border border-dashed border-slate/15 bg-white/70 p-4 text-sm text-slate/55" data-hour-empty>
-              No operational entries are recorded for this hour yet.
-            </div>
-            {{end}}
-          </div>
-
-          <aside class="rounded-[1.3rem] border border-white/80 bg-white/80 p-4">
-            <p class="text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate/40">Remaining valid options</p>
-            {{if .AvailableOptions}}
-            <div class="mt-3 grid gap-2">
-              {{range .AvailableOptions}}
-              <div class="rounded-2xl border border-slate/10 bg-cloud/45 p-3">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
-                    <p class="mt-1 text-[0.68rem] font-bold uppercase tracking-wider text-slate/45">{{.AvailabilityState}}</p>
-                  </div>
-                  <span class="text-sm font-bold text-emerald-700">{{.PriceLabel}}</span>
-                </div>
-                {{if .RemainingCapacityLabel}}<p class="mt-2 text-xs leading-5 text-slate/60">{{.RemainingCapacityLabel}}</p>{{end}}
-              </div>
+              </details>
               {{end}}
-            </div>
-            {{else}}
-            <p class="mt-3 text-sm leading-6 text-slate/60">{{if .BlockedReason}}{{.BlockedReason}}{{else}}No valid direct-booking options remain for this hour.{{end}}</p>
-            {{end}}
-          </aside>
-        </div>
-      </article>
-      {{end}}
+            </td>
+            <td class="px-5 py-3 sm:px-6">
+              <div class="flex flex-wrap justify-end gap-1.5">
+                {{if .CanAddDirect}}<a href="{{.AddDirectURL}}" class="rounded-lg bg-obsidian px-2.5 py-2 text-[0.65rem] font-bold text-cloud">Add booking</a>{{end}}
+                {{if .CanAddTraining}}<a href="{{.AddTrainingURL}}" class="rounded-lg border border-slate/10 bg-white px-2.5 py-2 text-[0.65rem] font-bold text-slate">Add training</a>{{end}}
+                <a href="{{.ManageClosuresURL}}" class="rounded-lg border border-slate/10 bg-white px-2.5 py-2 text-[0.65rem] font-bold text-slate">Closures</a>
+              </div>
+            </td>
+          </tr>
+
+          {{range .Closures}}
+          <tr class="bg-rose-50/45 transition hover:bg-rose-50" data-hour-item data-item-kind="closures" data-item-unpaid="false">
+            <td class="px-5 py-4 align-top sm:px-6">
+              <span class="font-semibold text-obsidian">{{formatClockTime .StartHour}}</span>
+              <span class="block text-xs text-slate/45">to {{formatClockTime .EndHour}}</span>
+            </td>
+            <td class="px-4 py-4 align-top">
+              <p class="font-semibold text-obsidian">{{.Title}}</p>
+              {{if .Reason}}<p class="mt-1 max-w-sm text-xs leading-5 text-slate/55">{{.Reason}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top"><span class="rounded-full bg-rose-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-rose-800">Closure</span></td>
+            <td class="px-4 py-4 align-top text-xs text-slate/60">{{if .Activity}}{{gameNameFor $.Games .Activity}}{{else}}Whole court{{end}}</td>
+            <td class="px-4 py-4 align-top text-xs text-slate/45">—</td>
+            <td class="px-4 py-4 align-top text-xs text-slate/55">Inventory blocked</td>
+            <td class="px-5 py-4 text-right align-top sm:px-6"><a href="/admin/courts" class="rounded-lg border border-slate/10 bg-white px-3 py-2 text-[0.65rem] font-bold text-slate">Open courts</a></td>
+          </tr>
+          {{end}}
+
+          {{range .Confirmed}}
+          <tr class="bg-white transition hover:bg-cloud/35" data-hour-item data-item-kind="confirmed" data-item-status="{{.Status}}" data-item-unpaid="{{if .IsUnpaid}}true{{else}}false{{end}}">
+            <td class="px-5 py-4 align-top sm:px-6"><span class="font-semibold text-obsidian">{{$hour.Hour}}</span></td>
+            <td class="px-4 py-4 align-top">
+              <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/40">{{.Reference}}</p>
+              <p class="mt-1 font-semibold text-obsidian">{{.Title}}</p>
+              {{if .ReviewNote}}<p class="mt-1 max-w-sm text-xs leading-5 text-slate/55">{{.ReviewNote}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top">
+              <div class="flex flex-wrap gap-1.5">
+                <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800">{{.Status}}</span>
+                {{if .ReferralCode}}<span class="rounded-full bg-aqua/20 px-2.5 py-1 text-[0.62rem] font-bold text-obsidian">Referral {{.ReferralCode}}</span>{{end}}
+              </div>
+            </td>
+            <td class="px-4 py-4 align-top">
+              <p class="text-xs font-medium text-slate/70">{{.Summary}}</p>
+              {{if .RequesterName}}<p class="mt-1 text-xs text-slate/55">{{.RequesterName}}{{if .RequesterPhone}} · {{.RequesterPhone}}{{end}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top">
+              <p class="text-xs text-slate/55">Quoted <span class="font-semibold text-obsidian">{{.PriceLabel}}</span></p>
+              <span class="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[0.62rem] font-semibold {{.PaymentTone}}">{{.PaymentLabel}}</span>
+            </td>
+            <td class="px-4 py-4 align-top text-xs text-slate/55">{{$hour.RemainingSummary}}</td>
+            <td class="px-5 py-4 align-top sm:px-6">
+              <div class="flex justify-end gap-2">
+                <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
+                <a href="{{.EditURL}}" class="rounded-lg border border-slate/10 bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Edit</a>
+              </div>
+            </td>
+          </tr>
+          {{end}}
+
+          {{range .Pending}}
+          <tr class="bg-amber-50/25 transition hover:bg-amber-50/45" data-hour-item data-item-kind="pending" data-item-unpaid="{{if .IsUnpaid}}true{{else}}false{{end}}">
+            <td class="px-5 py-4 align-top sm:px-6"><span class="font-semibold text-obsidian">{{$hour.Hour}}</span></td>
+            <td class="px-4 py-4 align-top">
+              <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/40">{{.Reference}}</p>
+              <p class="mt-1 font-semibold text-obsidian">{{.Title}}</p>
+              {{if .ReviewNote}}<p class="mt-1 max-w-sm text-xs leading-5 text-slate/55">{{.ReviewNote}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top"><span class="rounded-full bg-amber-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-amber-800">Pending request</span></td>
+            <td class="px-4 py-4 align-top">
+              <p class="text-xs font-medium text-slate/70">{{.Summary}}</p>
+              {{if .RequesterName}}<p class="mt-1 text-xs text-slate/55">{{.RequesterName}}{{if .RequesterPhone}} · {{.RequesterPhone}}{{end}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top">
+              <p class="text-xs text-slate/55">Quoted <span class="font-semibold text-obsidian">{{.PriceLabel}}</span></p>
+              <span class="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[0.62rem] font-semibold {{.PaymentTone}}">{{.PaymentLabel}}</span>
+            </td>
+            <td class="px-4 py-4 align-top text-xs text-slate/55">{{$hour.RemainingSummary}}</td>
+            <td class="px-5 py-4 align-top sm:px-6">
+              <div class="flex justify-end gap-2">
+                {{if .RequestURL}}<a href="{{.RequestURL}}" class="rounded-lg bg-amber px-3 py-2 text-[0.65rem] font-bold text-obsidian">Open request</a>{{end}}
+                <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
+              </div>
+            </td>
+          </tr>
+          {{end}}
+
+          {{range .Training}}
+          <tr class="bg-slate/5 transition hover:bg-cloud/45" data-hour-item data-item-kind="training" data-item-unpaid="false">
+            <td class="px-5 py-4 align-top sm:px-6"><span class="font-semibold text-obsidian">{{$hour.Hour}}</span></td>
+            <td class="px-4 py-4 align-top">
+              <p class="font-mono text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/40">{{.Reference}}</p>
+              <p class="mt-1 font-semibold text-obsidian">{{.Title}}</p>
+              {{if .ReviewNote}}<p class="mt-1 max-w-sm text-xs leading-5 text-slate/55">{{.ReviewNote}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 align-top"><span class="rounded-full bg-slate-200 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider text-slate-700">Internal training</span></td>
+            <td class="px-4 py-4 align-top text-xs text-slate/60">{{.Summary}}</td>
+            <td class="px-4 py-4 align-top">
+              <span class="text-xs font-semibold text-slate/55">{{.PriceLabel}}</span>
+              <span class="mt-1 block text-[0.62rem] {{.PaymentTone}}">{{.PaymentLabel}}</span>
+            </td>
+            <td class="px-4 py-4 align-top text-xs text-slate/55">{{$hour.RemainingSummary}}</td>
+            <td class="px-5 py-4 align-top sm:px-6">
+              <div class="flex justify-end gap-2">
+                <a href="{{.ViewURL}}" class="rounded-lg bg-cloud px-3 py-2 text-[0.65rem] font-bold text-slate">View</a>
+                <a href="{{.EditURL}}" class="rounded-lg border border-slate/10 bg-white px-3 py-2 text-[0.65rem] font-bold text-slate shadow-sm">Edit</a>
+              </div>
+            </td>
+          </tr>
+          {{end}}
+
+          {{if and (eq (len .Closures) 0) (eq (len .Confirmed) 0) (eq (len .Pending) 0) (eq (len .Training) 0)}}
+          <tr class="bg-white" data-hour-empty>
+            <td class="px-5 py-4 sm:px-6"><span class="font-semibold text-obsidian">{{.Hour}}</span></td>
+            <td colspan="4" class="px-4 py-4 text-sm text-slate/50">No operational entries are recorded for this hour yet.</td>
+            <td class="px-4 py-4 text-xs text-slate/55">{{.RemainingSummary}}</td>
+            <td class="px-5 py-4 sm:px-6"></td>
+          </tr>
+          {{end}}
+        </tbody>
+        {{end}}
+      </table>
     </div>
   </div>
 </section>
 
 <script>
   (() => {
+    {{if or (eq .ScheduleMode "new") (eq .ScheduleMode "view") (eq .ScheduleMode "edit")}}
+    document.body.classList.add("overflow-hidden");
+    {{end}}
     const escapeHTML = (value) =>
       String(value).replace(/[&<>\"']/g, (char) => ({
         "&": "&amp;",
