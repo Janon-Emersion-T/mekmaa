@@ -8698,6 +8698,53 @@ func TestFindAttendanceStudentByStudentIDRejectsUnknownStudent(
 	}
 }
 
+func TestPublicStudentLookupSupportsSlashStudentID(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	now := time.Now().UTC()
+	if _, err := app.db.Exec(`
+		INSERT INTO admissions (
+			student_id,
+			full_name,
+			admission_date,
+			date_of_birth,
+			gender,
+			practice_type,
+			address,
+			passport_number,
+			school,
+			guardian_name,
+			guardian_relationship,
+			guardian_contact_number,
+			guardian_alternative_contact_number,
+			medical_information,
+			photo_path,
+			qr_code_path,
+			qr_code_value,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "MEK/2026/0001", "Portal Student", "2026-07-01", "2014-01-02", "male", "group_practice", "Jaffna", "N/A", "Central College", "Parent", "Mother", "0771234567", "", "", "", "", "MEK/2026/0001", now, now); err != nil {
+		t.Fatalf("insert admission: %v", err)
+	}
+
+	admission, err := app.findAdmissionByPublicLookup("MEK/2026/0001")
+	if err != nil {
+		t.Fatalf("find admission by public lookup: %v", err)
+	}
+	if admission == nil || admission.FullName != "Portal Student" {
+		t.Fatalf("unexpected admission lookup result: %#v", admission)
+	}
+
+	enrollments, err := app.listStudentEnrollmentsByAdmissionID(admission.ID)
+	if err != nil {
+		t.Fatalf("list student enrollments by admission id: %v", err)
+	}
+	if len(enrollments) != 0 {
+		t.Fatalf("expected no enrollments, got %#v", enrollments)
+	}
+}
+
 func TestBookingPaymentCollectibleStatusNoShow(t *testing.T) {
 	if bookingPaymentCollectibleStatus(bookingStatusNoShow) {
 		t.Fatal("no-show booking must not remain collectible in receivables")

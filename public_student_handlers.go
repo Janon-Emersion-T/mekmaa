@@ -71,17 +71,12 @@ func (a *App) listStudentEnrollmentsByAdmissionID(admissionID int64) ([]StudentE
 			se.payment_collected_at,
 			COALESCE(se.admission_payment_amount, 0),
 			COALESCE(se.finance_transaction_id, 0),
-			COALESCE(se.payment_void_reason, ''),
-			COALESCE(se.payment_voided_by_user_id, 0),
-			COALESCE(vu.name, ''),
-			se.payment_voided_at,
 			COALESCE(se.active, 1),
 			se.created_at,
 			se.updated_at
 		FROM student_enrollments se
 		JOIN training_programs tp ON tp.id = se.training_program_id
 		LEFT JOIN divisions d ON d.id = tp.division_id
-		LEFT JOIN users vu ON vu.id = se.payment_voided_by_user_id
 		WHERE se.admission_id = ?
 		ORDER BY COALESCE(se.active, 1) DESC, tp.sort_order ASC, tp.name ASC, se.id ASC
 	`, admissionID)
@@ -99,7 +94,6 @@ func (a *App) listStudentEnrollmentsByAdmissionID(admissionID int64) ([]StudentE
 		var paymentCollected int
 		var active int
 		var paidAt sql.NullTime
-		var voidedAt sql.NullTime
 		if err := rows.Scan(
 			&enrollment.ID,
 			&enrollment.AdmissionID,
@@ -116,10 +110,6 @@ func (a *App) listStudentEnrollmentsByAdmissionID(admissionID int64) ([]StudentE
 			&paidAt,
 			&enrollment.AdmissionPaymentAmount,
 			&enrollment.FinanceTransactionID,
-			&enrollment.PaymentVoidReason,
-			&enrollment.PaymentVoidedByUserID,
-			&enrollment.PaymentVoidedByUserName,
-			&voidedAt,
 			&active,
 			&enrollment.CreatedAt,
 			&enrollment.UpdatedAt,
@@ -133,9 +123,6 @@ func (a *App) listStudentEnrollmentsByAdmissionID(admissionID int64) ([]StudentE
 		enrollment.Active = active == 1
 		if paidAt.Valid {
 			enrollment.AdmissionPaymentPaidAt = paidAt.Time
-		}
-		if voidedAt.Valid {
-			enrollment.PaymentVoidedAt = voidedAt.Time
 		}
 		enrollments = append(enrollments, enrollment)
 	}
