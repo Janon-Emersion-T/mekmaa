@@ -2,7 +2,7 @@
 
 {{define "content"}}
 <section class="py-2 sm:py-4 lg:py-8">
-  <div class="grid gap-4 lg:grid-cols-[1.3fr_0.7fr] lg:gap-6">
+  <div class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_22rem] xl:gap-6">
     <div class="space-y-6">
       {{if .SetupWarnings}}
       <div class="rounded-[1.5rem] border border-amber-200 bg-amber-50/90 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
@@ -22,164 +22,260 @@
         </div>
       </div>
       {{end}}
+
       <div class="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/90 shadow-float sm:rounded-[2rem]">
-        <div class="bg-gradient-to-br from-obsidian via-slate to-obsidian px-5 py-6 text-cloud sm:px-8 sm:py-10">
-          <p class="text-sm font-semibold uppercase tracking-[0.35em] text-aqua/80">{{workspaceName .User .SelectedDivision .SelectedDivisionScope}}</p>
-          <div class="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h1 class="max-w-2xl text-3xl font-semibold leading-tight sm:text-4xl lg:text-5xl">Welcome back, {{.User.Name}}</h1>
-              <p class="mt-3 max-w-2xl text-sm leading-7 text-cloud/72 sm:text-base sm:leading-8">{{workspaceSummary .User .SelectedDivision .SelectedDivisionScope}}</p>
+        <div class="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(136,255,236,0.25),_transparent_28%),linear-gradient(135deg,_#10171f_0%,_#1c2933_48%,_#0d1318_100%)] px-5 py-6 text-cloud sm:px-8 sm:py-9">
+          <div class="absolute -right-16 -top-12 h-40 w-40 rounded-full bg-aqua/10 blur-2xl"></div>
+          <div class="absolute bottom-0 right-0 h-24 w-32 bg-[linear-gradient(135deg,transparent,rgba(255,255,255,0.08))]"></div>
+          <div class="relative">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div class="max-w-3xl">
+                <p class="text-sm font-semibold uppercase tracking-[0.35em] text-aqua/80">{{workspaceName .User .SelectedDivision .SelectedDivisionScope}}</p>
+                <h1 class="mt-4 text-3xl font-semibold leading-tight sm:text-4xl lg:text-5xl">Operations Command Center</h1>
+                <p class="mt-4 text-sm leading-7 text-cloud/72 sm:text-base sm:leading-8">{{workspaceSummary .User .SelectedDivision .SelectedDivisionScope}}</p>
+              </div>
+              <div class="rounded-[1.75rem] border border-white/12 bg-white/8 px-4 py-4 backdrop-blur sm:px-5">
+                <p class="text-[0.62rem] font-bold uppercase tracking-[0.25em] text-aqua/75">Signed in as</p>
+                <p class="mt-2 text-base font-semibold text-cloud sm:text-lg">{{.User.Name}}</p>
+                <p class="mt-1 break-all text-xs text-cloud/60">{{.User.Email}}</p>
+              </div>
             </div>
-            <div class="rounded-3xl border border-white/12 bg-white/8 px-4 py-4 text-sm sm:px-5">
-              <p class="uppercase tracking-[0.25em] text-aqua/75">Current workspace</p>
-              <p class="mt-2 text-base font-semibold text-cloud sm:text-lg">{{workspaceName .User .SelectedDivision .SelectedDivisionScope}}</p>
-              <p class="mt-1 break-all text-xs text-cloud/60">{{.User.Email}}</p>
+
+            <div class="mt-6 flex flex-wrap gap-2">
+              {{if hasPermission .User "booking_requests.view"}}
+              <a href="{{scopedURL "/admin/booking-requests" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center rounded-2xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Booking request inbox</a>
+              {{end}}
+              {{if hasPermission .User "space_bookings.view"}}
+              <a href="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/14">Booking calendar</a>
+              {{end}}
+              {{if hasPermission .User "finance.view"}}
+              <a href="/admin/finance/receivables" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/14">Receivables desk</a>
+              <a href="/admin/finance/specified-ledgers" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/14">Specified ledgers</a>
+              {{end}}
+              {{if hasPermission .User "admissions.view"}}
+              <a href="{{scopedURL "/admin/students" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/14">Students</a>
+              {{end}}
+              <a href="/mystudent" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/14">Public student lookup</a>
             </div>
           </div>
         </div>
 
-        <div class="grid gap-3 px-5 py-5 sm:grid-cols-3 sm:gap-5 sm:px-8 sm:py-8">
+        <div class="grid gap-3 px-5 py-5 sm:grid-cols-2 xl:grid-cols-4 sm:gap-5 sm:px-8 sm:py-8">
           {{range .Stats}}
-          <div class="rounded-3xl border border-slate/8 bg-cloud p-4 sm:p-5">
-            <p class="text-xl font-semibold sm:text-2xl">{{.Value}}</p>
-            <p class="mt-2 text-sm text-slate/72">{{.Label}}</p>
+          <div class="rounded-[1.6rem] border border-slate/8 bg-cloud p-4 transition hover:border-aqua/35 hover:bg-white sm:p-5">
+            <p class="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/45">Live metric</p>
+            <p class="mt-3 text-2xl font-semibold sm:text-3xl">{{.Value}}</p>
+            <p class="mt-2 text-sm leading-6 text-slate/72">{{.Label}}</p>
           </div>
           {{end}}
         </div>
       </div>
 
-      <div class="grid gap-4 xl:grid-cols-[0.95fr_1.05fr] xl:gap-6">
-        {{if .BookingAttentionStats}}
-        <div class="rounded-[1.5rem] border border-amber-200 bg-white/90 p-5 shadow-sm sm:rounded-[2rem] sm:p-8 xl:col-span-2">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p class="text-sm font-semibold uppercase tracking-[0.3em] text-amber-700/70">Booking attention</p>
-              <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Requests that need action</h2>
-              <p class="mt-3 text-sm leading-7 text-slate/72">Pending, held, and reschedule-pending customer bookings are surfaced here starting 120 minutes before play time.</p>
-            </div>
-            <a href="{{scopedURL "/admin/booking-requests" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Open request inbox</a>
+      {{if .BookingAttentionStats}}
+      <div class="rounded-[1.5rem] border border-amber-200 bg-white/90 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-[0.3em] text-amber-700/70">Booking attention</p>
+            <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Requests and live slots that need action</h2>
+            <p class="mt-3 text-sm leading-7 text-slate/72">This queue highlights pending, held, and reschedule-sensitive customer bookings so staff can move quickly.</p>
           </div>
+          <a href="{{scopedURL "/admin/booking-requests" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Open request inbox</a>
+        </div>
 
-          <div class="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {{range .BookingAttentionStats}}
-            <div class="rounded-3xl border border-slate/8 bg-cloud p-4 sm:p-5">
-              <p class="text-xl font-semibold sm:text-2xl">{{.Value}}</p>
-              <p class="mt-2 text-sm text-slate/72">{{.Label}}</p>
-            </div>
-            {{end}}
+        <div class="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {{range .BookingAttentionStats}}
+          <div class="rounded-[1.45rem] border border-slate/8 bg-cloud p-4 sm:p-5">
+            <p class="text-xl font-semibold sm:text-2xl">{{.Value}}</p>
+            <p class="mt-2 text-sm text-slate/72">{{.Label}}</p>
           </div>
+          {{end}}
+        </div>
 
-          <div class="mt-6 grid gap-3">
-            {{range .BookingReminders}}
-            <a href="{{scopedURL "/admin/booking-requests" $.SelectedDivision $.SelectedDivisionScope}}" class="rounded-[1.3rem] border px-4 py-4 transition hover:border-obsidian {{.UrgencyTone}}">
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="rounded-full bg-white/75 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider">{{.UrgencyLabel}}</span>
-                    <span class="rounded-full bg-white/75 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider">{{.Schedule.Status}}</span>
-                  </div>
-                  <p class="mt-3 text-sm font-semibold text-obsidian">{{bookingReference .Schedule.ID}} · {{.Schedule.RequesterName}}</p>
-                  <p class="mt-1 text-sm text-slate/75">{{bookingProductLabel .Schedule.Activity .Schedule.Quantity}} · {{formatCalendarDate .Schedule.SlotDate}} at {{.Schedule.SlotHour}}</p>
+        <div class="mt-6 grid gap-3">
+          {{range .BookingReminders}}
+          <a href="{{scopedURL "/admin/booking-requests" $.SelectedDivision $.SelectedDivisionScope}}" class="rounded-[1.3rem] border px-4 py-4 transition hover:border-obsidian {{.UrgencyTone}}">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="rounded-full bg-white/75 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider">{{.UrgencyLabel}}</span>
+                  <span class="rounded-full bg-white/75 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wider">{{.Schedule.Status}}</span>
                 </div>
-                <div class="text-left sm:text-right">
-                  <p class="text-sm font-bold">{{.RemainingLabel}}</p>
-                  <p class="mt-1 text-xs text-slate/60">{{if .IsOverdue}}Requested time has passed without a final decision.{{else}}Staff review window is active.{{end}}</p>
-                </div>
+                <p class="mt-3 text-sm font-semibold text-obsidian">{{bookingReference .Schedule.ID}} · {{.Schedule.RequesterName}}</p>
+                <p class="mt-1 text-sm text-slate/75">{{bookingProductLabel .Schedule.Activity .Schedule.Quantity}} · {{formatCalendarDate .Schedule.SlotDate}} at {{.Schedule.SlotHour}}</p>
               </div>
-            </a>
-            {{else}}
-            <div class="rounded-3xl border border-slate/8 bg-cloud p-4 sm:p-5 text-sm text-slate/65">No booking reminders are active right now.</div>
-            {{end}}
-          </div>
+              <div class="text-left sm:text-right">
+                <p class="text-sm font-bold">{{.RemainingLabel}}</p>
+                <p class="mt-1 text-xs text-slate/60">{{if .IsOverdue}}Requested time passed without a final decision.{{else}}The review window is currently active.{{end}}</p>
+              </div>
+            </div>
+          </a>
+          {{else}}
+          <div class="rounded-[1.45rem] border border-slate/8 bg-cloud p-4 sm:p-5 text-sm text-slate/65">No booking reminders are active right now.</div>
+          {{end}}
         </div>
-        {{end}}
-        <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Access profile</p>
-          <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Current permissions</h2>
-          <p class="mt-3 text-sm leading-7 text-slate/72">Access is scoped to the current workspace and enforced on every protected route.</p>
+      </div>
+      {{end}}
 
-          <div class="mt-6 flex flex-wrap gap-2 sm:gap-3">
-            {{range .User.Roles}}
-            <span class="rounded-full border border-aqua/30 bg-aqua/10 px-3 py-2 text-sm font-medium text-slate sm:px-4">{{.}}</span>
-            {{end}}
+      <div class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3 xl:gap-6">
+        <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">People & programmes</p>
+              <h2 class="mt-3 text-2xl font-semibold">Student desk</h2>
+            </div>
+            <span class="rounded-full bg-mint/45 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.18em] text-obsidian">Core</span>
           </div>
-
-          <div class="mt-6 rounded-3xl border border-slate/8 bg-cloud p-4 sm:mt-8 sm:p-5">
-            <p class="text-sm uppercase tracking-[0.25em] text-slate/55">Account note</p>
-          <p class="mt-3 text-sm leading-7 text-slate/74">Verification is complete, sessions are stored server-side, and division boundaries remain active across student, finance, and booking workflows.</p>
-          </div>
-        </div>
-
-        <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Quick actions</p>
-          <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Where to go next</h2>
-          <div class="mt-6 grid gap-4">
-            <a href="/" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Public home</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Review the public-facing landing page and overall product framing.</p>
-            </a>
-            {{if hasPermission .User "editor.access"}}
-            <a href="/editor" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Editor workspace</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Open the protected editor surface available to editor and admin roles.</p>
-            </a>
-            {{end}}
-            {{if hasPermission .User "users.view"}}
-            <a href="{{scopedURL "/admin/users" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">User Manager</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Open the account management section to review users, verification state, and role assignments.</p>
-            </a>
-            {{end}}
-            {{if hasPermission .User "roles.view"}}
-            <a href="{{scopedURL "/admin/roles" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Role Manager</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Jump directly to role definitions, assignment rules, and elevated access controls.</p>
-            </a>
-            {{end}}
+          <div class="mt-5 grid gap-3">
             {{if hasPermission .User "admissions.view"}}
-            <a href="{{scopedURL "/admin/students" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Students</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Open shared student identities, profile details, and workspace enrollment context.</p>
+            <a href="{{scopedURL "/admin/students" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Students</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Profiles, IDs, parent contacts, admissions, and status review.</p>
             </a>
-            <a href="{{scopedURL "/admin/enrollments" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Enrollments</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Assign programmes and manage workspace enrollment fees.</p>
+            <a href="{{scopedURL "/admin/enrollments" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Enrollments</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Programme assignment, fee exceptions, and admission collection.</p>
+            </a>
+            <a href="{{scopedURL "/admin/student-leaves" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Student leaves</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Approve leave periods and protect monthly fee logic.</p>
+            </a>
+            {{end}}
+            {{if hasPermission .User "training_programs.view"}}
+            <a href="{{scopedURL "/admin/training-programs" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Courses</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Admission fees, monthly fees, and active programme setup.</p>
             </a>
             {{end}}
             {{if hasPermission .User "student_groups.view"}}
-            <a href="{{scopedURL (workspaceGroupPath .User .SelectedDivision .SelectedDivisionScope) .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">{{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Organize students into active {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}} for teaching, coaching, and attendance.</p>
+            <a href="{{scopedURL (workspaceGroupPath .User .SelectedDivision .SelectedDivisionScope) .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">{{workspaceGroupLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Organize active learning groups for daily operations.</p>
             </a>
             {{end}}
-            {{if hasPermission .User "attendance.view"}}
-            <a href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Attendance</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Record daily attendance for students by {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.</p>
-            </a>
-            {{end}}
+          </div>
+        </div>
+
+        <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Operations</p>
+              <h2 class="mt-3 text-2xl font-semibold">Bookings and sports</h2>
+            </div>
+            <span class="rounded-full bg-aqua/20 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.18em] text-obsidian">Action</span>
+          </div>
+          <div class="mt-5 grid gap-3">
             {{if hasPermission .User "space_bookings.view"}}
-            <a href="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Booking Calendar</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Manage sports court bookings, training blocks, and day schedules.</p>
+            <a href="{{scopedURL "/admin/bookings" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Booking calendar</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Create schedules, review collections, and manage live court usage.</p>
             </a>
-            {{end}}
-            {{if hasPermission .User "pricing.view"}}
-            <a href="{{scopedURL "/admin/pricing" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Pricing</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Manage weekday, weekend, peak, and off-peak booking rates.</p>
+            <a href="/admin/one-to-one-bookings" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">1-to-1 bookings</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Session packages, coach assignment, export, and booking management.</p>
             </a>
-            {{end}}
-            {{if hasPermission .User "finance.view"}}
-            <a href="{{scopedURL "/admin/finance/ledger" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Finance</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Review workspace income, expenses, receipts, and receivables.</p>
+            <a href="/admin/one-to-one" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">1-to-1 offerings</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Session counts, pricing, and offering availability setup.</p>
             </a>
             {{end}}
             {{if hasPermission .User "booking_requests.view"}}
-            <a href="{{scopedURL "/admin/booking-requests" .SelectedDivision .SelectedDivisionScope}}" class="rounded-3xl border border-slate/8 bg-cloud px-4 py-4 transition hover:border-aqua/40 hover:bg-white sm:px-5 sm:py-5">
-              <p class="text-lg font-semibold">Booking Requests</p>
-              <p class="mt-2 text-sm leading-7 text-slate/72">Review customer booking requests and confirm or reject them.</p>
+            <a href="{{scopedURL "/admin/booking-requests" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Booking requests</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Confirm, hold, reject, or reschedule customer requests quickly.</p>
+            </a>
+            {{end}}
+            {{if hasPermission .User "tournaments.view"}}
+            <a href="/admin/tournaments" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Tournaments</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Entry fee income, sponsors, officials, and tournament expenses.</p>
+            </a>
+            {{end}}
+            {{if hasPermission .User "mcp.view"}}
+            <a href="/admin/mcp" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Monthly Court Plans</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Plan customers, session rules, confirmations, and plan lifecycle.</p>
+            </a>
+            {{end}}
+          </div>
+        </div>
+
+        <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Money desk</p>
+              <h2 class="mt-3 text-2xl font-semibold">Finance and collections</h2>
+            </div>
+            <span class="rounded-full bg-amber-100 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.18em] text-amber-900">Cashflow</span>
+          </div>
+          <div class="mt-5 grid gap-3">
+            {{if hasPermission .User "finance.view"}}
+            <a href="/admin/finance/ledger" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">General ledger</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Post manual entries, review history, and export finance activity.</p>
+            </a>
+            <a href="/admin/finance/specified-ledgers" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Specified ledgers</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Cash in hand, bank balance, available funds, and account-level drilldowns.</p>
+            </a>
+            <a href="/admin/finance/receivables" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Booking receivables</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Outstanding booking balances and follow-up payment work.</p>
+            </a>
+            <a href="{{scopedURL "/admin/student-payments" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Student payments</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Monthly fee collections, backdated entries, and receipt review.</p>
+            </a>
+            <a href="/admin/one-to-one-receivables" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">1-to-1 receivables</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Session-package balances and direct collection actions.</p>
+            </a>
+            {{if hasPermission .User "mcp_receivables.view"}}
+            <a href="/admin/mcp-receivables" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">MCP receivables</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Outstanding Monthly Court Plan balances and collection entry.</p>
+            </a>
+            {{end}}
+            {{end}}
+          </div>
+        </div>
+
+        <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-7 lg:col-span-2 2xl:col-span-1">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Administration</p>
+              <h2 class="mt-3 text-2xl font-semibold">Control room</h2>
+            </div>
+            <span class="rounded-full bg-slate/10 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.18em] text-slate">System</span>
+          </div>
+          <div class="mt-5 grid gap-3">
+            {{if hasPermission .User "users.view"}}
+            <a href="/admin/users" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Users</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Search, edit, activate, and manage large user lists more quickly.</p>
+            </a>
+            {{end}}
+            {{if hasPermission .User "roles.view"}}
+            <a href="/admin/roles" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Roles</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Control CRUD permissions across every major workflow.</p>
+            </a>
+            {{end}}
+            {{if hasPermission .User "users.update"}}
+            <a href="/admin/sms-gateway" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">SMS gateway</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Review credits, alerts, and outbound SMS behavior.</p>
+            </a>
+            {{end}}
+            {{if hasPermission .User "coaches.view"}}
+            <a href="{{scopedURL "/admin/staff" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">{{workspaceStaffLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Directory, staff attendance, coaching structure, and access-linked operations.</p>
+            </a>
+            {{end}}
+            {{if hasPermission .User "payroll.view"}}
+            <a href="/admin/payroll" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+              <p class="text-base font-semibold">Payroll</p>
+              <p class="mt-1 text-sm leading-6 text-slate/70">Salary profiles, payroll runs, approvals, and payment state.</p>
             </a>
             {{end}}
           </div>
@@ -189,35 +285,69 @@
 
     <div class="space-y-4 lg:space-y-6">
       <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Security</p>
-        <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Session status</h2>
-        <div class="mt-6 space-y-4">
-          <div class="rounded-3xl bg-cloud p-4 sm:p-5">
-            <p class="text-sm uppercase tracking-[0.25em] text-slate/55">Email verification</p>
-            <p class="mt-2 text-xl font-semibold text-emerald-700">Verified</p>
-          </div>
-          <div class="rounded-3xl bg-cloud p-4 sm:p-5">
-            <p class="text-sm uppercase tracking-[0.25em] text-slate/55">Session model</p>
-            <p class="mt-2 text-base leading-7 text-slate/74">Server-side session token with secure cookie storage and CSRF protection on state-changing requests.</p>
-          </div>
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Today’s focus</p>
+        <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Fast launch panel</h2>
+        <div class="mt-6 grid gap-3">
+          {{if hasPermission .User "booking_requests.view"}}
+          <a href="{{scopedURL "/admin/booking-requests" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-4 transition hover:bg-white">
+            <p class="text-sm font-bold uppercase tracking-[0.16em] text-amber-900">Inbox</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">Process booking requests</p>
+          </a>
+          {{end}}
+          {{if hasPermission .User "finance.view"}}
+          <a href="/admin/finance/specified-ledgers" class="rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-4 transition hover:bg-white">
+            <p class="text-sm font-bold uppercase tracking-[0.16em] text-emerald-900">Cash view</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">Check cash, bank, and available funds</p>
+          </a>
+          {{end}}
+          {{if hasPermission .User "attendance.view"}}
+          <a href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}" class="rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-4 transition hover:bg-white">
+            <p class="text-sm font-bold uppercase tracking-[0.16em] text-sky-900">Daily work</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">Record attendance</p>
+          </a>
+          {{end}}
+          <a href="/mystudent" class="rounded-[1.2rem] border border-slate/10 bg-cloud/45 px-4 py-4 transition hover:border-aqua/40 hover:bg-white">
+            <p class="text-sm font-bold uppercase tracking-[0.16em] text-slate/55">Public tool</p>
+            <p class="mt-2 text-base font-semibold text-obsidian">Student self-check portal</p>
+          </a>
         </div>
       </div>
 
       <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Identity</p>
-        <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Account snapshot</h2>
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Access profile</p>
+        <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Current roles</h2>
+        <p class="mt-3 text-sm leading-7 text-slate/72">Every shortcut on this page respects the active workspace scope and your current permission set.</p>
+        <div class="mt-6 flex flex-wrap gap-2 sm:gap-3">
+          {{range .User.Roles}}
+          <span class="rounded-full border border-aqua/30 bg-aqua/10 px-3 py-2 text-sm font-medium text-slate sm:px-4">{{.}}</span>
+          {{end}}
+        </div>
+        <div class="mt-6 rounded-[1.35rem] border border-slate/8 bg-cloud p-4 sm:p-5">
+          <p class="text-[0.62rem] font-bold uppercase tracking-[0.2em] text-slate/45">Workspace</p>
+          <p class="mt-2 text-lg font-semibold text-obsidian">{{workspaceName .User .SelectedDivision .SelectedDivisionScope}}</p>
+          <p class="mt-2 text-sm leading-6 text-slate/70">{{workspaceSummary .User .SelectedDivision .SelectedDivisionScope}}</p>
+        </div>
+      </div>
+
+      <div class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate/60">Identity & security</p>
+        <h2 class="mt-3 text-2xl font-semibold sm:text-3xl">Session snapshot</h2>
         <dl class="mt-6 space-y-4">
-          <div class="rounded-3xl bg-cloud px-4 py-4 sm:px-5">
+          <div class="rounded-[1.25rem] bg-cloud px-4 py-4 sm:px-5">
             <dt class="text-sm uppercase tracking-[0.25em] text-slate/55">Display name</dt>
             <dd class="mt-2 text-lg font-semibold">{{.User.Name}}</dd>
           </div>
-          <div class="rounded-3xl bg-cloud px-4 py-4 sm:px-5">
+          <div class="rounded-[1.25rem] bg-cloud px-4 py-4 sm:px-5">
             <dt class="text-sm uppercase tracking-[0.25em] text-slate/55">Email</dt>
             <dd class="mt-2 break-all text-lg font-semibold">{{.User.Email}}</dd>
           </div>
-          <div class="rounded-3xl bg-cloud px-4 py-4 sm:px-5">
-            <dt class="text-sm uppercase tracking-[0.25em] text-slate/55">Roles</dt>
-            <dd class="mt-2 text-lg font-semibold">{{range $index, $role := .User.Roles}}{{if $index}}, {{end}}{{$role}}{{end}}</dd>
+          <div class="rounded-[1.25rem] bg-cloud px-4 py-4 sm:px-5">
+            <dt class="text-sm uppercase tracking-[0.25em] text-slate/55">Verification</dt>
+            <dd class="mt-2 text-lg font-semibold text-emerald-700">Verified</dd>
+          </div>
+          <div class="rounded-[1.25rem] bg-cloud px-4 py-4 sm:px-5">
+            <dt class="text-sm uppercase tracking-[0.25em] text-slate/55">Session model</dt>
+            <dd class="mt-2 text-sm leading-7 text-slate/74">Server-side sessions, secure cookies, CSRF protection, and division-scoped access checks across protected routes.</dd>
           </div>
         </dl>
       </div>

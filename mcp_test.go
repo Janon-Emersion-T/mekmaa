@@ -558,4 +558,28 @@ func TestMCPCustomerOwnershipAndFinanceIntegration(t *testing.T) {
 			t.Fatal("expected overpayment to be rejected")
 		}
 	})
+
+	t.Run("MCP payment collection stores the requested collection date", func(t *testing.T) {
+		collectedAt := time.Date(2026, time.August, 22, 14, 10, 0, 0, time.Local).UTC()
+		transactionID, err := app.collectMCPPaymentAt(planBID, "cash", 2500, "Backdated MCP payment", collectedAt, 0)
+		if err != nil {
+			t.Fatalf("collect MCP payment at date: %v", err)
+		}
+
+		var paymentCollectedAt time.Time
+		if err := app.db.QueryRow(`SELECT collected_at FROM mcp_payment_collections WHERE finance_transaction_id = ?`, transactionID).Scan(&paymentCollectedAt); err != nil {
+			t.Fatalf("load MCP payment collection date: %v", err)
+		}
+		if paymentCollectedAt.In(time.Local).Format("2006-01-02") != "2026-08-22" {
+			t.Fatalf("MCP collected_at = %s, want 2026-08-22", paymentCollectedAt.In(time.Local).Format("2006-01-02"))
+		}
+
+		transaction, err := app.findFinanceTransactionByID(transactionID)
+		if err != nil {
+			t.Fatalf("load MCP finance transaction: %v", err)
+		}
+		if transaction.RecordedAt.In(time.Local).Format("2006-01-02") != "2026-08-22" {
+			t.Fatalf("MCP recorded_at = %s, want 2026-08-22", transaction.RecordedAt.In(time.Local).Format("2006-01-02"))
+		}
+	})
 }

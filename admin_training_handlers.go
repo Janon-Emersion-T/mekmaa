@@ -260,7 +260,7 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
-	case "new", "view", "edit", "student":
+	case "new", "view", "edit":
 		data.EnrollmentMode = mode
 	}
 	if data.EnrollmentMode == "view" || data.EnrollmentMode == "edit" {
@@ -406,8 +406,18 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	collectPayment := r.FormValue("payment_collected") == "true" && !enrollment.FreeAdmission
 	paymentMethod := normalizePaymentMethod(r.FormValue("payment_method"))
+	collectedAt, collectedAtErr := parseFinanceRecordedAtDate(
+		r.FormValue("payment_collected_at"),
+		time.Now(),
+		"Payment collection date",
+	)
 	if collectPayment && !validPaymentMethod(paymentMethod) {
 		a.setFlash(w, "Select a valid payment method.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	if collectPayment && collectedAtErr != nil {
+		a.setFlash(w, collectedAtErr.Error())
 		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
@@ -415,7 +425,7 @@ func (a *App) createEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
 	}
-	_, financeTransactionID, err := a.createStudentEnrollmentWithOptionalPayment(enrollment, collectPayment, paymentMethod, recordedByUserID)
+	_, financeTransactionID, err := a.createStudentEnrollmentWithOptionalPaymentAt(enrollment, collectPayment, paymentMethod, collectedAt, recordedByUserID)
 	if err != nil {
 		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
 			a.setFlash(w, err.Error())
@@ -486,8 +496,18 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 		recordedByUserID = currentUser.ID
 	}
 	paymentMethod := normalizePaymentMethod(r.FormValue("payment_method"))
+	collectedAt, collectedAtErr := parseFinanceRecordedAtDate(
+		r.FormValue("payment_collected_at"),
+		time.Now(),
+		"Payment collection date",
+	)
 	if !validPaymentMethod(paymentMethod) {
 		a.setFlash(w, "Select a valid payment method.")
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+	if collectedAtErr != nil {
+		a.setFlash(w, collectedAtErr.Error())
 		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
@@ -497,7 +517,7 @@ func (a *App) collectEnrollmentAdmissionPaymentHandler(w http.ResponseWriter, r 
 		return
 	}
 	defer tx.Rollback()
-	transactionID, err := a.collectEnrollmentAdmissionPaymentTx(tx, *enrollment, paymentMethod, recordedByUserID)
+	transactionID, err := a.collectEnrollmentAdmissionPaymentAtTx(tx, *enrollment, paymentMethod, collectedAt, recordedByUserID)
 	if err != nil {
 		if errors.Is(err, ErrAdmissionFeeNotConfigured) {
 			a.setFlash(w, err.Error())
@@ -553,7 +573,7 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	target := "/admin/enrollments?admission_id=" + strconv.FormatInt(existing.AdmissionID, 10)
 	if !existing.Active {
 		a.setFlash(w, "Archived enrollments cannot be edited.")
-		http.Redirect(w, r, target+"&action=student", http.StatusSeeOther)
+		http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 		return
 	}
 
@@ -728,7 +748,7 @@ func (a *App) deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	if archived {
 		a.setFlash(w, "Enrollment archived because finance history exists.")
-		http.Redirect(w, r, target+"&action=student", http.StatusSeeOther)
+		http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, "Enrollment deleted.")

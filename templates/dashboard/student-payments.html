@@ -175,6 +175,7 @@
                 <option value="bank_transfer">Bank transfer</option>
                 <option value="qr_pay">QR pay</option>
               </select>
+              <input name="payment_collected_at" type="date" min="{{historicalStartDate}}" max="{{todayDate}}" value="{{todayDate}}" class="h-11 min-w-0 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
               <input name="amount" type="number" min="0.01" step="0.01" value="{{printf "%.2f" .OutstandingAmount}}" class="h-11 min-w-0 flex-1 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
               <button type="submit" {{if not $.PaymentCollectionOpen}}disabled{{end}} {{if not $.PaymentCollectionOpen}}title="{{$.PaymentCollectionNotice}}"{{end}} class="h-11 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate disabled:cursor-not-allowed disabled:opacity-35">Collect more</button>
             </form>
@@ -204,6 +205,7 @@
                 <option value="bank_transfer">Bank transfer</option>
                 <option value="qr_pay">QR pay</option>
               </select>
+              <input name="payment_collected_at" type="date" min="{{historicalStartDate}}" max="{{todayDate}}" value="{{todayDate}}" class="h-11 min-w-0 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
               <input name="amount" type="number" min="0.01" step="0.01" value="{{printf "%.2f" .MonthlyFee}}" class="h-11 min-w-0 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
               <button type="submit" {{if or (eq .MonthlyFee 0.0) (not $.PaymentCollectionOpen)}}disabled{{end}} {{if eq .MonthlyFee 0.0}}title="Configure this monthly fee in Training Manager first"{{else if not $.PaymentCollectionOpen}}title="{{$.PaymentCollectionNotice}}"{{end}} class="h-11 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate disabled:cursor-not-allowed disabled:opacity-35">Collect payment</button>
             </form>

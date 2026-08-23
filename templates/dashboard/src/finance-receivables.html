@@ -69,6 +69,9 @@
                   <option value="qr_pay">QR pay</option>
                 </select>
               </label>
+              <label class="text-xs font-medium text-slate/60">Payment collection date
+                <input type="date" name="payment_collected_at" min="{{historicalStartDate}}" max="{{todayDate}}" value="{{todayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+              </label>
               <label class="text-xs font-medium text-slate/60">Amount
                 <input name="amount" type="number" min="0.01" step="0.01" value="{{printf "%.2f" .OutstandingAmount}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
               </label>

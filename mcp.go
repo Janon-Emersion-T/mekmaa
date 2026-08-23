@@ -1049,6 +1049,10 @@ func (a *App) confirmMCPMonthlyPlan(planID int64, confirmedByUserID int64) error
 }
 
 func (a *App) collectMCPPayment(planID int64, paymentMethod string, amount float64, paymentNote string, recordedByUserID int64) (int64, error) {
+	return a.collectMCPPaymentAt(planID, paymentMethod, amount, paymentNote, time.Now().UTC(), recordedByUserID)
+}
+
+func (a *App) collectMCPPaymentAt(planID int64, paymentMethod string, amount float64, paymentNote string, collectedAt time.Time, recordedByUserID int64) (int64, error) {
 	paymentMethod = normalizePaymentMethod(paymentMethod)
 	if !validPaymentMethod(paymentMethod) {
 		return 0, errors.New("MCP payment method is invalid")
@@ -1080,8 +1084,9 @@ func (a *App) collectMCPPayment(planID int64, paymentMethod string, amount float
 	if err != nil {
 		return 0, err
 	}
+	collectedAt = collectedAt.UTC()
 	now := time.Now().UTC()
-	receiptNumber, err := a.nextReceiptNumberTx(tx, "mcp_payment", now)
+	receiptNumber, err := a.nextReceiptNumberTx(tx, "mcp_payment", collectedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -1099,7 +1104,7 @@ func (a *App) collectMCPPayment(planID int64, paymentMethod string, amount float
 		PaymentMethod:    paymentMethod,
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
-		RecordedAt:       now,
+		RecordedAt:       collectedAt,
 	})
 	if err != nil {
 		return 0, err
@@ -1108,7 +1113,7 @@ func (a *App) collectMCPPayment(planID int64, paymentMethod string, amount float
 		INSERT INTO mcp_payment_collections (
 			plan_id, finance_transaction_id, amount, payment_method, payment_note, collected_by_user_id, collected_at, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, planID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), nullIfZero(recordedByUserID), now, now); err != nil {
+	`, planID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), nullIfZero(recordedByUserID), collectedAt, now); err != nil {
 		return 0, err
 	}
 	totalCollected := normalizeMoney(plan.TotalCollected + amount)
@@ -1407,7 +1412,16 @@ func (a *App) adminMCPReceivablesHandler(w http.ResponseWriter, r *http.Request)
 		}
 		planID, _ := strconv.ParseInt(strings.TrimSpace(r.FormValue("plan_id")), 10, 64)
 		amount, _ := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
-		if _, err := a.collectMCPPayment(planID, r.FormValue("payment_method"), amount, r.FormValue("payment_note"), user.ID); err != nil {
+		collectedAt, collectedAtErr := parseFinanceRecordedAtDate(
+			r.FormValue("payment_collected_at"),
+			time.Now(),
+			"Payment collection date",
+		)
+		if collectedAtErr != nil {
+			http.Error(w, collectedAtErr.Error(), http.StatusBadRequest)
+			return
+		}
+		if _, err := a.collectMCPPaymentAt(planID, r.FormValue("payment_method"), amount, r.FormValue("payment_note"), collectedAt, user.ID); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

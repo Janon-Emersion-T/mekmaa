@@ -2791,6 +2791,158 @@ func TestStudentMonthlyPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestParseFinanceRecordedAtDateRejectsFutureDate(t *testing.T) {
+	now := time.Date(2026, time.August, 23, 10, 30, 0, 0, time.Local)
+	_, err := parseFinanceRecordedAtDate("2026-08-24", now, "Payment collection date")
+	if err == nil || !strings.Contains(err.Error(), "cannot be in the future") {
+		t.Fatalf("parseFinanceRecordedAtDate future date error = %v", err)
+	}
+}
+
+func TestCollectBookingPaymentAtUsesRequestedCollectionDate(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 3, "18:00")
+	collectedAt := time.Date(2026, time.August, 20, 9, 45, 0, 0, time.Local).UTC()
+
+	transactionID, err := app.collectBookingPaymentAt(scheduleID, "cash", 2500, "", collectedAt, 0, false)
+	if err != nil {
+		t.Fatalf("collect booking payment at date: %v", err)
+	}
+
+	var paymentCollectedAt time.Time
+	if err := app.db.QueryRow(`SELECT collected_at FROM booking_payment_collections WHERE finance_transaction_id = ?`, transactionID).Scan(&paymentCollectedAt); err != nil {
+		t.Fatalf("load booking payment collection date: %v", err)
+	}
+	if paymentCollectedAt.In(time.Local).Format("2006-01-02") != "2026-08-20" {
+		t.Fatalf("booking collected_at = %s, want 2026-08-20", paymentCollectedAt.In(time.Local).Format("2006-01-02"))
+	}
+
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("load booking finance transaction: %v", err)
+	}
+	if transaction.RecordedAt.In(time.Local).Format("2006-01-02") != "2026-08-20" {
+		t.Fatalf("booking recorded_at = %s, want 2026-08-20", transaction.RecordedAt.In(time.Local).Format("2006-01-02"))
+	}
+}
+
+func TestCreateStudentEnrollmentWithOptionalPaymentAtUsesRequestedCollectionDate(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Dated Enrollment Program",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     2500,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-ENR-DATE-001",
+		FullName:              "Enrollment Date Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2012-02-10",
+		Gender:                "female",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000000",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+
+	collectedAt := time.Date(2026, time.August, 18, 11, 15, 0, 0, time.Local).UTC()
+	enrollmentID, transactionID, err := app.createStudentEnrollmentWithOptionalPaymentAt(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-08-01",
+	}, true, "cash", collectedAt, 0)
+	if err != nil {
+		t.Fatalf("create enrollment with payment date: %v", err)
+	}
+
+	enrollment, err := app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		t.Fatalf("reload enrollment: %v", err)
+	}
+	if enrollment.AdmissionPaymentPaidAt.In(time.Local).Format("2006-01-02") != "2026-08-18" {
+		t.Fatalf("enrollment payment_collected_at = %s, want 2026-08-18", enrollment.AdmissionPaymentPaidAt.In(time.Local).Format("2006-01-02"))
+	}
+
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("load enrollment finance transaction: %v", err)
+	}
+	if transaction.RecordedAt.In(time.Local).Format("2006-01-02") != "2026-08-18" {
+		t.Fatalf("enrollment recorded_at = %s, want 2026-08-18", transaction.RecordedAt.In(time.Local).Format("2006-01-02"))
+	}
+}
+
+func TestCollectStudentMonthlyPaymentAmountAtUsesRequestedCollectionDate(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Dated Monthly Program",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     3200,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-MONTH-DATE-001",
+		FullName:              "Monthly Date Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000001",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-07-15",
+	}, false, "cash", 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	monthDate, _ := parsePaymentMonth("2026-08")
+	collectedAt := time.Date(2026, time.August, 21, 16, 5, 0, 0, time.Local).UTC()
+	transactionID, err := app.collectStudentMonthlyPaymentAmountAt(admissionID, "2026-08", monthDate, "cash", 3200, collectedAt, 0)
+	if err != nil {
+		t.Fatalf("collect student monthly payment at date: %v", err)
+	}
+
+	var paymentCollectedAt time.Time
+	if err := app.db.QueryRow(`SELECT collected_at FROM student_monthly_payments WHERE finance_transaction_id = ?`, transactionID).Scan(&paymentCollectedAt); err != nil {
+		t.Fatalf("load student monthly payment date: %v", err)
+	}
+	if paymentCollectedAt.In(time.Local).Format("2006-01-02") != "2026-08-21" {
+		t.Fatalf("student monthly collected_at = %s, want 2026-08-21", paymentCollectedAt.In(time.Local).Format("2006-01-02"))
+	}
+
+	transaction, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("load student monthly finance transaction: %v", err)
+	}
+	if transaction.RecordedAt.In(time.Local).Format("2006-01-02") != "2026-08-21" {
+		t.Fatalf("student monthly recorded_at = %s, want 2026-08-21", transaction.RecordedAt.In(time.Local).Format("2006-01-02"))
+	}
+}
+
 func TestCashAndBankExpensesAffectCorrectAccounts(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 2000, time.Now(), 0); err != nil {
@@ -7391,6 +7543,112 @@ func TestRunMigrationsHandlesLegacyAdmissionsWithoutQRCodeColumns(t *testing.T) 
 	}
 	if !exists {
 		t.Fatal("expected student_enrollments.discounted_monthly_fee to exist after migration")
+	}
+}
+
+func TestEnrollmentManagementEditTemplateUsesStoredEnrollmentDate(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	html := renderTemplateToString(t, templates, "enrollment-management", TemplateData{
+		CSRFToken:           "test-token",
+		TodayDate:           "2026-08-23",
+		HistoricalStartDate: companyHistoricalEntryStartDate,
+		SelectedAdmission: &Admission{
+			ID:                    15,
+			FullName:              "Template Student",
+			StudentID:             "MEK/2026/0015",
+			AdmissionDate:         "2026-08-01",
+			GuardianName:          "Guardian",
+			GuardianContactNumber: "0770000000",
+		},
+		SelectedEnrollment: &StudentEnrollment{
+			ID:                  22,
+			AdmissionID:         15,
+			TrainingProgramID:   7,
+			TrainingProgramName: "Badminton",
+			EnrollmentDate:      "2026-08-05",
+			Active:              true,
+		},
+		TrainingPrograms: []TrainingProgram{
+			{ID: 7, Name: "Badminton", AdmissionFee: 1500, MonthlyFee: 2500},
+		},
+		EnrollmentMode: "edit",
+	})
+
+	if !strings.Contains(html, `name="enrollment_date"`) || !strings.Contains(html, `value="2026-08-05"`) {
+		t.Fatalf("expected edit template to preserve enrollment date, html=%s", html)
+	}
+}
+
+func TestDeleteEnrollmentHandlerRedirectsArchivedRecordToView(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Archive Trigger Program",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     2500,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-ARCHIVE-001",
+		FullName:              "Archive Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000200",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPaymentAt(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-08-01",
+	}, true, "cash", time.Date(2026, time.August, 20, 10, 0, 0, 0, time.Local).UTC(), 0)
+	if err != nil {
+		t.Fatalf("create paid enrollment: %v", err)
+	}
+	enrollment, err := app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		t.Fatalf("reload enrollment: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":    {"token"},
+		"enrollment_id": {strconv.FormatInt(enrollmentID, 10)},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/enrollments/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          104,
+		Name:        "Enrollment Admin",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"students.manage"},
+		DivisionIDs: []int64{enrollment.DivisionID},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.deleteEnrollmentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("delete enrollment status = %d, want %d body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
+	}
+	want := "/admin/enrollments?admission_id=" + strconv.FormatInt(admissionID, 10) + "&action=view&id=" + strconv.FormatInt(enrollmentID, 10)
+	if got := rec.Header().Get("Location"); got != want {
+		t.Fatalf("delete enrollment redirect = %q, want %q", got, want)
 	}
 }
 

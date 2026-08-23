@@ -1379,6 +1379,38 @@ func validateFinanceRecordedAt(recordedAt time.Time, label string) error {
 	return nil
 }
 
+func parseFinanceRecordedAtDate(raw string, now time.Time, label string) (time.Time, error) {
+	now = now.In(time.Local)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		recordedAt := now.UTC()
+		if err := validateFinanceRecordedAt(recordedAt, label); err != nil {
+			return time.Time{}, err
+		}
+		return recordedAt, nil
+	}
+
+	parsedDate, err := time.ParseInLocation("2006-01-02", raw, time.Local)
+	if err != nil {
+		return time.Time{}, errors.New("valid " + strings.ToLower(label) + " is required")
+	}
+
+	recordedAt := time.Date(
+		parsedDate.Year(),
+		parsedDate.Month(),
+		parsedDate.Day(),
+		now.Hour(),
+		now.Minute(),
+		now.Second(),
+		0,
+		time.Local,
+	)
+	if err := validateFinanceRecordedAt(recordedAt, label); err != nil {
+		return time.Time{}, err
+	}
+	return recordedAt.UTC(), nil
+}
+
 func syncFinanceAccountOpeningBalanceMetadataTx(tx *sql.Tx, accountID int64) error {
 	var openingBalance float64
 	if err := tx.QueryRow(`

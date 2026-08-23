@@ -404,6 +404,10 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 }
 
 func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, paymentMethod string, recordedByUserID int64) (int64, error) {
+	return a.collectAdmissionPaymentAtTx(tx, admission, paymentMethod, time.Now().UTC(), recordedByUserID)
+}
+
+func (a *App) collectAdmissionPaymentAtTx(tx *sql.Tx, admission Admission, paymentMethod string, recordedAt time.Time, recordedByUserID int64) (int64, error) {
 	admissionFee, _, err := trainingProgramFeesForAdmissionTx(
 		tx,
 		admission,
@@ -417,8 +421,9 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, payment
 		return 0, ErrAdmissionFeeNotConfigured
 	}
 
+	recordedAt = recordedAt.UTC()
 	now := time.Now().UTC()
-	receiptNumber := fmt.Sprintf("ADM-%s-%06d", now.Format("20060102150405"), admission.ID)
+	receiptNumber := fmt.Sprintf("ADM-%s-%06d", recordedAt.Format("20060102150405"), admission.ID)
 	paymentMethod = normalizePaymentMethod(paymentMethod)
 	if !validPaymentMethod(paymentMethod) {
 		return 0, errors.New("invalid payment method")
@@ -452,7 +457,7 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, payment
 		PaymentMethod:    paymentMethod,
 		Amount:           admissionFee,
 		RecordedByUserID: recordedByUserID,
-		RecordedAt:       now,
+		RecordedAt:       recordedAt,
 	})
 	if err != nil {
 		return 0, err
@@ -467,7 +472,7 @@ func (a *App) collectAdmissionPaymentTx(tx *sql.Tx, admission Admission, payment
 		    updated_at = ?
 		WHERE id = ?
 	`,
-		now,
+		recordedAt,
 		admissionFee,
 		transactionID,
 		now,
@@ -799,10 +804,14 @@ func admissionPricingByPracticeTypeTx(
 }
 
 func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, recordedByUserID int64) (int64, error) {
-	return a.collectStudentMonthlyPaymentAmount(enrollmentID, paymentMonth, monthDate, paymentMethod, 0, recordedByUserID)
+	return a.collectStudentMonthlyPaymentAmountAt(enrollmentID, paymentMonth, monthDate, paymentMethod, 0, time.Now().UTC(), recordedByUserID)
 }
 
 func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, amount float64, recordedByUserID int64) (int64, error) {
+	return a.collectStudentMonthlyPaymentAmountAt(enrollmentID, paymentMonth, monthDate, paymentMethod, amount, time.Now().UTC(), recordedByUserID)
+}
+
+func (a *App) collectStudentMonthlyPaymentAmountAt(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, amount float64, collectedAt time.Time, recordedByUserID int64) (int64, error) {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -911,6 +920,7 @@ func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMont
 	if amount > outstanding+0.004 {
 		return 0, errors.New("payment amount exceeds the outstanding balance")
 	}
+	collectedAt = collectedAt.UTC()
 	now := time.Now().UTC()
 	divisionID := int64(0)
 	if enrollment != nil {
@@ -936,7 +946,7 @@ func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMont
 		referenceID = enrollment.ID
 		description = fmt.Sprintf("%s monthly payment for %s - %s", paymentMonthLabel(paymentMonth), admission.FullName, enrollment.TrainingProgramName)
 	}
-	receiptNumber := fmt.Sprintf("STU-%s-%06d-%s", strings.ReplaceAll(paymentMonth, "-", ""), referenceID, now.Format("150405"))
+	receiptNumber := fmt.Sprintf("STU-%s-%06d-%s", strings.ReplaceAll(paymentMonth, "-", ""), referenceID, collectedAt.Format("150405"))
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		DivisionID:       divisionID,
 		ReceiptNumber:    receiptNumber,
@@ -951,7 +961,7 @@ func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMont
 		PaymentMethod:    paymentMethod,
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
-		RecordedAt:       now,
+		RecordedAt:       collectedAt,
 	})
 	if err != nil {
 		return 0, err
@@ -967,7 +977,7 @@ func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMont
 			return enrollment.ID
 		}
 		return 0
-	}()), paymentMonth, amount, paymentMethod, transactionID, recordedByUserID, now, now)
+	}()), paymentMonth, amount, paymentMethod, transactionID, recordedByUserID, collectedAt, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return 0, ErrStudentPaymentAlreadyCollected

@@ -246,6 +246,9 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"todayDate": func() string {
 			return time.Now().Format("2006-01-02")
 		},
+		"historicalStartDate": func() string {
+			return companyHistoricalEntryStartDate
+		},
 		"formatCalendarDate":          formatCalendarDate,
 		"formatClockTime":             formatClockTime,
 		"paymentMethodLabel":          paymentMethodLabel,

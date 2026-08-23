@@ -72,7 +72,7 @@
             </div>
           </div>
           <div class="flex flex-wrap gap-2">
-            <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d&action=student#student-enrollment-view" .SelectedAdmission.ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Open enrollment view</a>
+            <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d#student-enrollment-view" .SelectedAdmission.ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Open enrollment view</a>
             <a href="{{scopedURL (printf "/admin/student-leaves?admission_id=%d" .SelectedAdmission.ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800 transition hover:bg-sky-50">Manage leave</a>
           </div>
         </div>
@@ -142,7 +142,7 @@
             <input
               type="date"
               name="enrollment_date"
-              value="{{.TodayDate}}"
+              value="{{.SelectedEnrollment.EnrollmentDate}}"
               min="{{.HistoricalStartDate}}"
               max="{{.TodayDate}}"
               required
@@ -322,6 +322,10 @@
               <option value="qr_pay">QR pay</option>
             </select>
           </label>
+          <label class="block">
+            <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Payment collection date</span>
+            <input type="date" name="payment_collected_at" min="{{historicalStartDate}}" max="{{todayDate}}" value="{{todayDate}}" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua" />
+          </label>
           <button type="submit" class="inline-flex h-12 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Create enrollment</button>
         </form>
       </section>
@@ -389,6 +393,7 @@
                     <option value="bank_transfer">Bank transfer</option>
                     <option value="qr_pay">QR pay</option>
                   </select>
+                  <input type="date" name="payment_collected_at" min="{{historicalStartDate}}" max="{{todayDate}}" value="{{todayDate}}" class="h-11 rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua" />
                   <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Collect admission fee</button>
                 </form>
                 {{end}}

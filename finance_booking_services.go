@@ -4266,6 +4266,10 @@ func syncAdmissionTrainingProgramsTx(
 }
 
 func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrollment, collectPayment bool, paymentMethod string, recordedByUserID int64) (int64, int64, error) {
+	return a.createStudentEnrollmentWithOptionalPaymentAt(enrollment, collectPayment, paymentMethod, time.Now().UTC(), recordedByUserID)
+}
+
+func (a *App) createStudentEnrollmentWithOptionalPaymentAt(enrollment StudentEnrollment, collectPayment bool, paymentMethod string, collectedAt time.Time, recordedByUserID int64) (int64, int64, error) {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -4354,7 +4358,7 @@ func (a *App) createStudentEnrollmentWithOptionalPayment(enrollment StudentEnrol
 
 	var financeTransactionID int64
 	if collectPayment && !enrollment.FreeAdmission {
-		financeTransactionID, err = a.collectEnrollmentAdmissionPaymentTx(tx, enrollment, paymentMethod, recordedByUserID)
+		financeTransactionID, err = a.collectEnrollmentAdmissionPaymentAtTx(tx, enrollment, paymentMethod, collectedAt, recordedByUserID)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -4554,6 +4558,16 @@ func (a *App) collectEnrollmentAdmissionPaymentTx(
 	paymentMethod string,
 	recordedByUserID int64,
 ) (int64, error) {
+	return a.collectEnrollmentAdmissionPaymentAtTx(tx, enrollment, paymentMethod, time.Now().UTC(), recordedByUserID)
+}
+
+func (a *App) collectEnrollmentAdmissionPaymentAtTx(
+	tx *sql.Tx,
+	enrollment StudentEnrollment,
+	paymentMethod string,
+	recordedAt time.Time,
+	recordedByUserID int64,
+) (int64, error) {
 	var studentName string
 
 	if err := a.queryRowTxDB(
@@ -4589,11 +4603,12 @@ func (a *App) collectEnrollmentAdmissionPaymentTx(
 		return 0, ErrAdmissionFeeNotConfigured
 	}
 
+	recordedAt = recordedAt.UTC()
 	now := time.Now().UTC()
 
 	receiptNumber := fmt.Sprintf(
 		"ENR-%s-%06d",
-		now.Format("20060102150405"),
+		recordedAt.Format("20060102150405"),
 		enrollment.ID,
 	)
 
@@ -4648,7 +4663,7 @@ func (a *App) collectEnrollmentAdmissionPaymentTx(
 			PaymentMethod:    paymentMethod,
 			Amount:           admissionFee,
 			RecordedByUserID: recordedByUserID,
-			RecordedAt:       now,
+			RecordedAt:       recordedAt,
 		},
 	)
 	if err != nil {
@@ -4667,7 +4682,7 @@ func (a *App) collectEnrollmentAdmissionPaymentTx(
 			updated_at = ?
 		WHERE id = ?
 		`,
-		now,
+		recordedAt,
 		admissionFee,
 		transactionID,
 		now,
@@ -4683,6 +4698,16 @@ func (a *App) createAdmissionWithOptionalPayment(
 	admission Admission,
 	collectPayment bool,
 	paymentMethod string,
+	recordedByUserID int64,
+) (int64, int64, error) {
+	return a.createAdmissionWithOptionalPaymentAt(admission, collectPayment, paymentMethod, time.Now().UTC(), recordedByUserID)
+}
+
+func (a *App) createAdmissionWithOptionalPaymentAt(
+	admission Admission,
+	collectPayment bool,
+	paymentMethod string,
+	collectedAt time.Time,
 	recordedByUserID int64,
 ) (int64, int64, error) {
 	tx, err := a.db.Begin()
@@ -4774,10 +4799,11 @@ func (a *App) createAdmissionWithOptionalPayment(
 	var financeTransactionID int64
 
 	if collectPayment && !admission.FreeAdmission {
-		financeTransactionID, err = a.collectAdmissionPaymentTx(
+		financeTransactionID, err = a.collectAdmissionPaymentAtTx(
 			tx,
 			admission,
 			paymentMethod,
+			collectedAt,
 			recordedByUserID,
 		)
 		if err != nil {
@@ -5490,6 +5516,10 @@ func nullableExistingUserIDTx(tx *sql.Tx, userID int64) any {
 }
 
 func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amount float64, paymentNote string, recordedByUserID int64, allowOverpayment bool) (int64, error) {
+	return a.collectBookingPaymentAt(scheduleID, paymentMethod, amount, paymentNote, time.Now().UTC(), recordedByUserID, allowOverpayment)
+}
+
+func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, amount float64, paymentNote string, collectedAt time.Time, recordedByUserID int64, allowOverpayment bool) (int64, error) {
 	paymentMethod = normalizePaymentMethod(paymentMethod)
 	if !validPaymentMethod(paymentMethod) {
 		return 0, errors.New("booking payment method is invalid")
@@ -5552,9 +5582,10 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 	if personName == "" {
 		personName = "Booking customer"
 	}
+	collectedAt = collectedAt.UTC()
 	now := time.Now().UTC()
 	recordedByRef := nullableExistingUserIDTx(tx, recordedByUserID)
-	receiptNumber, err := a.nextReceiptNumberTx(tx, "booking_payment", now)
+	receiptNumber, err := a.nextReceiptNumberTx(tx, "booking_payment", collectedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -5584,7 +5615,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 		PaymentMethod:    paymentMethod,
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
-		RecordedAt:       now,
+		RecordedAt:       collectedAt,
 	})
 	if err != nil {
 		return 0, err
@@ -5600,7 +5631,7 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 			collected_at,
 			created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`), scheduleID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), recordedByRef, now, now); err != nil {
+	`), scheduleID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), recordedByRef, collectedAt, now); err != nil {
 		return 0, err
 	}
 	if _, err := tx.Exec(a.dbQuery(`

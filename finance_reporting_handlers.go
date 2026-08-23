@@ -723,9 +723,18 @@ func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Reques
 	amount, amountErr := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
 	paymentNote := strings.TrimSpace(r.FormValue("payment_note"))
+	collectedAt, collectedAtErr := parseFinanceRecordedAtDate(
+		r.FormValue("payment_collected_at"),
+		time.Now(),
+		"Payment collection date",
+	)
 	allowOverpayment := r.FormValue("allow_overpayment") == "1" || r.FormValue("allow_overpayment") == "on"
 	returnTo := strings.TrimSpace(r.FormValue("return_to"))
-	if err != nil || amountErr != nil || scheduleID <= 0 || !validPaymentMethod(paymentMethod) {
+	if err != nil || amountErr != nil || collectedAtErr != nil || scheduleID <= 0 || !validPaymentMethod(paymentMethod) {
+		if collectedAtErr != nil {
+			http.Error(w, collectedAtErr.Error(), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "select a valid booking payment method", http.StatusBadRequest)
 		return
 	}
@@ -737,7 +746,7 @@ func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if currentUser != nil {
 		recordedBy = currentUser.ID
 	}
-	transactionID, err := a.collectBookingPayment(scheduleID, paymentMethod, amount, paymentNote, recordedBy, allowOverpayment)
+	transactionID, err := a.collectBookingPaymentAt(scheduleID, paymentMethod, amount, paymentNote, collectedAt, recordedBy, allowOverpayment)
 	if err != nil {
 		if errors.Is(err, ErrBookingPaymentNeedsOverpayApproval) {
 			a.setFlash(w, "Booking payment exceeds the current balance. Tick the overpayment confirmation box to continue.")

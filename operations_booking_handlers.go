@@ -5321,8 +5321,18 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
 	amount, amountErr := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
+	collectedAt, collectedAtErr := parseFinanceRecordedAtDate(
+		r.FormValue("payment_collected_at"),
+		time.Now(),
+		"Payment collection date",
+	)
 	if amountErr != nil {
 		a.setFlash(w, "Enter a valid payment amount.")
+		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
+		return
+	}
+	if collectedAtErr != nil {
+		a.setFlash(w, collectedAtErr.Error())
 		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
@@ -5351,7 +5361,7 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
 	}
-	transactionID, err := a.collectStudentMonthlyPaymentAmount(enrollmentID, paymentMonth, monthDate, paymentMethod, amount, recordedByUserID)
+	transactionID, err := a.collectStudentMonthlyPaymentAmountAt(enrollmentID, paymentMonth, monthDate, paymentMethod, amount, collectedAt, recordedByUserID)
 	if err != nil {
 		if errors.Is(err, ErrStudentPaymentAlreadyCollected) {
 			a.setFlash(w, "That enrollment payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")
