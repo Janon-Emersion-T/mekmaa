@@ -2792,8 +2792,8 @@ func TestStudentMonthlyPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 }
 
 func TestParseFinanceRecordedAtDateRejectsFutureDate(t *testing.T) {
-	now := time.Date(2026, time.August, 23, 10, 30, 0, 0, time.Local)
-	_, err := parseFinanceRecordedAtDate("2026-08-24", now, "Payment collection date")
+	now := time.Date(2026, time.August, 24, 10, 30, 0, 0, time.Local)
+	_, err := parseFinanceRecordedAtDate("2026-08-25", now, "Payment collection date")
 	if err == nil || !strings.Contains(err.Error(), "cannot be in the future") {
 		t.Fatalf("parseFinanceRecordedAtDate future date error = %v", err)
 	}
