@@ -224,6 +224,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"pricingForSchedule":                        pricingForSchedule,
 		"pricingTierLabel":                          pricingTierLabel,
 		"financeAccountTypeLabel":                   financeAccountTypeLabel,
+		"financeAccountDisplayName":                 financeAccountDisplayName,
 		"financeTransactionTypeLabel":               financeTransactionTypeLabel,
 		"financeTransactionStatusLabel":             financeTransactionStatusLabel,
 		"financeDirectionForTransaction":            financeDirectionForTransaction,

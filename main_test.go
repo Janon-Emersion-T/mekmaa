@@ -7459,6 +7459,94 @@ func TestUpdateEnrollmentHandlerRejectsCrossDivisionMove(t *testing.T) {
 	}
 }
 
+func TestUpdateEnrollmentHandlerUpdatesDiscountedMonthlyFee(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     sportsID,
+		Name:           "Edit Target Program",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     3000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-EDIT-001",
+		FullName:              "Edit Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2014-01-01",
+		Gender:                "female",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian Edit",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771110020",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:          admissionID,
+		TrainingProgramID:    programID,
+		EnrollmentDate:       "2026-08-01",
+		DiscountedMonthlyFee: 0,
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":             {"token"},
+		"enrollment_id":          {strconv.FormatInt(enrollmentID, 10)},
+		"training_program_id":    {strconv.FormatInt(programID, 10)},
+		"enrollment_date":        {"2026-08-05"},
+		"free_admission":         {"false"},
+		"discounted_monthly_fee": {"2250"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/enrollments/update", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:            105,
+		Name:          "Enrollment Editor",
+		Roles:         []string{"admin"},
+		Permissions:   []string{"students.manage"},
+		DivisionIDs:   []int64{sportsID},
+		DivisionCodes: []string{divisionCodeSports},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.updateEnrollmentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("update enrollment status = %d, want %d body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
+	}
+	want := "/admin/enrollments?admission_id=" + strconv.FormatInt(admissionID, 10) + "&action=view&id=" + strconv.FormatInt(enrollmentID, 10)
+	if got := rec.Header().Get("Location"); got != want {
+		t.Fatalf("update enrollment redirect = %q, want %q", got, want)
+	}
+
+	updated, err := app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		t.Fatalf("reload enrollment: %v", err)
+	}
+	if updated.EnrollmentDate != "2026-08-05" {
+		t.Fatalf("enrollment date = %q, want %q", updated.EnrollmentDate, "2026-08-05")
+	}
+	if updated.DiscountedMonthlyFee != 2250 {
+		t.Fatalf("discounted monthly fee = %.2f, want 2250.00", updated.DiscountedMonthlyFee)
+	}
+}
+
 func TestRunMigrationsHandlesLegacyAdmissionsWithoutQRCodeColumns(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+strings.ReplaceAll(fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), "/", "-")+"?mode=memory&cache=shared")
 	if err != nil {
@@ -7580,6 +7668,88 @@ func TestEnrollmentManagementEditTemplateUsesStoredEnrollmentDate(t *testing.T) 
 
 	if !strings.Contains(html, `name="enrollment_date"`) || !strings.Contains(html, `value="2026-08-05"`) {
 		t.Fatalf("expected edit template to preserve enrollment date, html=%s", html)
+	}
+}
+
+func TestFinanceAccountsTemplateShowsDivisionInAccountLabel(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	html := renderTemplateToString(t, templates, "finance-management", TemplateData{
+		Title:       "Finance",
+		CurrentPath: "/admin/finance/accounts",
+		FinancePage: "accounts",
+		User: &User{
+			Name:        "Finance Admin",
+			Roles:       []string{"superadmin"},
+			Permissions: []string{"finance_accounts.view"},
+		},
+		FinanceAccounts: []FinanceAccount{
+			{
+				ID:             4,
+				Name:           "Cash in Hand",
+				DivisionName:   "Indoor Sports",
+				AccountType:    financeAccountTypeCash,
+				AccountCode:    "SPORTS-CASH",
+				CurrentBalance: 12500,
+				OpeningBalance: 1000,
+				IsActive:       true,
+				IsSystem:       true,
+			},
+		},
+	})
+
+	if !strings.Contains(html, "Cash in Hand · Indoor Sports") {
+		t.Fatalf("expected finance account label with division, html=%s", html)
+	}
+}
+
+func TestFinanceLedgerTemplateShowsDivisionInAccountLabel(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	html := renderTemplateToString(t, templates, "finance-management", TemplateData{
+		Title:       "Finance",
+		CurrentPath: "/admin/finance/ledger",
+		FinancePage: "ledger",
+		User: &User{
+			Name:        "Finance Admin",
+			Roles:       []string{"superadmin"},
+			Permissions: []string{"finance.view"},
+		},
+		FinanceFilter: FinanceFilter{
+			From:       "2026-08-01",
+			To:         "2026-08-24",
+			DetailMode: "summary",
+			Page:       1,
+			Limit:      50,
+		},
+		FinanceTransactionsTotal: 1,
+		FinanceTransactions: []FinanceTransaction{
+			{
+				ID:                 12,
+				ReceiptNumber:      "RCT-00012",
+				DivisionName:       "Chess Academy",
+				FinanceAccountName: "Main Bank",
+				FinanceAccountCode: "CHESS-BANK",
+				FinanceAccountType: financeAccountTypeBank,
+				SourceType:         "manual",
+				Category:           "banking",
+				PaymentMethod:      "bank_transfer",
+				Description:        "Ledger test entry",
+				MoneyIn:            4500,
+				RecordedAt:         time.Date(2026, time.August, 24, 9, 0, 0, 0, time.Local),
+				ApprovalStatus:     financeApprovalApproved,
+			},
+		},
+	})
+
+	if !strings.Contains(html, "Main Bank · Chess Academy") {
+		t.Fatalf("expected ledger account label with division, html=%s", html)
 	}
 }
 

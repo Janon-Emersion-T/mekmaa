@@ -147,6 +147,18 @@ func financeAccountTypeLabel(value string) string {
 	}
 }
 
+func financeAccountDisplayName(name, divisionName string) string {
+	name = strings.TrimSpace(name)
+	divisionName = strings.TrimSpace(divisionName)
+	if name == "" {
+		return divisionName
+	}
+	if divisionName == "" {
+		return name
+	}
+	return name + " · " + divisionName
+}
+
 func financeTransactionTypeLabel(value string) string {
 	switch value {
 	case financeTxnTypeIncome:

@@ -18,7 +18,7 @@
       </div>
 	      <label class="text-xs font-medium text-slate/60">Account
 	        <select name="account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-	          {{range .FinanceAccounts}}<option value="{{.ID}}">{{.Name}} · {{financeAccountTypeLabel .AccountType}}</option>{{end}}
+	          {{range .FinanceAccounts}}<option value="{{.ID}}">{{financeAccountDisplayName .Name .DivisionName}} · {{financeAccountTypeLabel .AccountType}}</option>{{end}}
 	        </select>
 	      </label>
 	      <label class="text-xs font-medium text-slate/60">Division
@@ -115,7 +115,7 @@
     <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <article class="rounded-[1.25rem] border border-sky-200/70 bg-sky-50/80 p-4 shadow-sm">
         <p class="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-sky-700/70">Selected account</p>
-        <p class="mt-2 text-lg font-semibold text-sky-950">{{.SelectedFinanceAccount.Name}}</p>
+        <p class="mt-2 text-lg font-semibold text-sky-950">{{financeAccountDisplayName .SelectedFinanceAccount.Name .SelectedFinanceAccount.DivisionName}}</p>
         <p class="mt-1 text-xs text-sky-800/65">{{financeAccountTypeLabel .SelectedFinanceAccount.AccountType}}</p>
       </article>
       <article class="rounded-[1.25rem] border border-white/80 bg-white/85 p-4 shadow-sm">
