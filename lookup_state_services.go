@@ -626,9 +626,10 @@ func populateAdmissionTrainingProgramsTx(
 
 func findStudentEnrollmentByIDTx(
 	tx *sql.Tx,
+	driver DatabaseDriver,
 	enrollmentID int64,
 ) (*StudentEnrollment, error) {
-	row := tx.QueryRow(`
+	row := tx.QueryRow(rebindDatabaseQuery(driver, `
 		SELECT
 			se.id,
 			se.admission_id,
@@ -674,7 +675,7 @@ func findStudentEnrollmentByIDTx(
 		LEFT JOIN divisions d
 			ON d.id = tp.division_id
 		WHERE se.id = ?
-	`, enrollmentID)
+	`), enrollmentID)
 
 	var enrollment StudentEnrollment
 	var freeAdmission int
@@ -734,18 +735,18 @@ func findStudentEnrollmentByIDTx(
 	return &enrollment, nil
 }
 
-func findFirstEnrollmentByAdmissionIDTx(tx *sql.Tx, admissionID int64) (*StudentEnrollment, error) {
+func findFirstEnrollmentByAdmissionIDTx(tx *sql.Tx, driver DatabaseDriver, admissionID int64) (*StudentEnrollment, error) {
 	var enrollmentID int64
-	if err := tx.QueryRow(`
+	if err := tx.QueryRow(rebindDatabaseQuery(driver, `
 		SELECT id
 		FROM student_enrollments
 		WHERE admission_id = ?
 		ORDER BY id
 		LIMIT 1
-	`, admissionID).Scan(&enrollmentID); err != nil {
+	`), admissionID).Scan(&enrollmentID); err != nil {
 		return nil, err
 	}
-	return findStudentEnrollmentByIDTx(tx, enrollmentID)
+	return findStudentEnrollmentByIDTx(tx, driver, enrollmentID)
 }
 
 func effectiveAdmissionFee(admission Admission, admissionFee float64) float64 {
@@ -818,12 +819,12 @@ func (a *App) collectStudentMonthlyPaymentAmountAt(enrollmentID int64, paymentMo
 	}
 	defer tx.Rollback()
 
-	enrollment, err := findStudentEnrollmentByIDTx(tx, enrollmentID)
+	enrollment, err := findStudentEnrollmentByIDTx(tx, a.runtimeConfig.DBDriver, enrollmentID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		enrollment, err = findFirstEnrollmentByAdmissionIDTx(tx, enrollmentID)
+		enrollment, err = findFirstEnrollmentByAdmissionIDTx(tx, a.runtimeConfig.DBDriver, enrollmentID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return 0, err
 		}

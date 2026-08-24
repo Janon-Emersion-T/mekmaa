@@ -1998,7 +1998,7 @@ func syncLegacyAdmissionPaymentVoidStateTx(tx *sql.Tx, admissionID int64, financ
 	return err
 }
 
-func resolveEnrollmentAdmissionPaymentByAdmissionTx(tx *sql.Tx, admissionID int64) (*StudentEnrollment, error) {
+func resolveEnrollmentAdmissionPaymentByAdmissionTx(tx *sql.Tx, driver DatabaseDriver, admissionID int64) (*StudentEnrollment, error) {
 	var legacyFinanceTransactionID int64
 	if err := tx.QueryRow(`
 		SELECT COALESCE(finance_transaction_id, 0)
@@ -2020,7 +2020,7 @@ func resolveEnrollmentAdmissionPaymentByAdmissionTx(tx *sql.Tx, admissionID int6
 			LIMIT 1
 		`, admissionID, legacyFinanceTransactionID).Scan(&enrollmentID)
 		if err == nil {
-			return findStudentEnrollmentByIDTx(tx, enrollmentID)
+			return findStudentEnrollmentByIDTx(tx, driver, enrollmentID)
 		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
@@ -2061,7 +2061,7 @@ func resolveEnrollmentAdmissionPaymentByAdmissionTx(tx *sql.Tx, admissionID int6
 	if matchCount > 1 {
 		return nil, errors.New("multiple enrollment registration payments are linked to this student; void from the enrollment workflow")
 	}
-	return findStudentEnrollmentByIDTx(tx, matchedEnrollmentID)
+	return findStudentEnrollmentByIDTx(tx, driver, matchedEnrollmentID)
 }
 
 func voidStudentEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment *StudentEnrollment, reason string, voidedByUserID int64) error {
@@ -2117,7 +2117,7 @@ func (a *App) voidEnrollmentAdmissionPayment(enrollmentID int64, reason string, 
 	}
 	defer tx.Rollback()
 
-	enrollment, err := findStudentEnrollmentByIDTx(tx, enrollmentID)
+	enrollment, err := findStudentEnrollmentByIDTx(tx, a.runtimeConfig.DBDriver, enrollmentID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("enrollment payment was not found")
@@ -2141,7 +2141,7 @@ func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUse
 	}
 	defer tx.Rollback()
 
-	enrollment, err := resolveEnrollmentAdmissionPaymentByAdmissionTx(tx, admissionID)
+	enrollment, err := resolveEnrollmentAdmissionPaymentByAdmissionTx(tx, a.runtimeConfig.DBDriver, admissionID)
 	if err == nil {
 		if err := voidStudentEnrollmentAdmissionPaymentTx(tx, enrollment, reason, voidedByUserID); err != nil {
 			return err

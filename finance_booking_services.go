@@ -579,7 +579,7 @@ func (a *App) createStudentEnrollmentLeave(enrollmentID int64, startDate string,
 	}
 	defer tx.Rollback()
 
-	enrollment, err := findStudentEnrollmentByIDTx(tx, enrollmentID)
+	enrollment, err := findStudentEnrollmentByIDTx(tx, a.runtimeConfig.DBDriver, enrollmentID)
 	if err != nil {
 		return err
 	}
@@ -4377,7 +4377,7 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 	}
 	defer tx.Rollback()
 
-	existing, err := findStudentEnrollmentByIDTx(tx, enrollment.ID)
+	existing, err := findStudentEnrollmentByIDTx(tx, a.runtimeConfig.DBDriver, enrollment.ID)
 	if err != nil {
 		return err
 	}
@@ -4484,7 +4484,7 @@ func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
 	}
 	defer tx.Rollback()
 
-	enrollment, err := findStudentEnrollmentByIDTx(tx, enrollmentID)
+	enrollment, err := findStudentEnrollmentByIDTx(tx, a.runtimeConfig.DBDriver, enrollmentID)
 	if err != nil {
 		return false, err
 	}
