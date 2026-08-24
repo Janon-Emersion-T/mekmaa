@@ -4456,20 +4456,28 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 		); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`
+		if _, err := a.execTxDB(
+			tx,
+			`
 			INSERT INTO admission_training_programs (
 				admission_id,
 				training_program_id,
 				created_at
 			)
-			SELECT $1, $2, $3
+			SELECT ?, ?, ?
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM admission_training_programs
-				WHERE admission_id = $4
-				  AND training_program_id = $5
+				WHERE admission_id = ?
+				  AND training_program_id = ?
 			)
-		`, existing.AdmissionID, enrollment.TrainingProgramID, time.Now().UTC(), existing.AdmissionID, enrollment.TrainingProgramID); err != nil {
+			`,
+			existing.AdmissionID,
+			enrollment.TrainingProgramID,
+			time.Now().UTC(),
+			existing.AdmissionID,
+			enrollment.TrainingProgramID,
+		); err != nil {
 			return err
 		}
 	}

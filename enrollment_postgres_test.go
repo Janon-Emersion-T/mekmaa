@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,6 +90,18 @@ func runEnrollmentUpdatePostgresWorkflow() error {
 	if err != nil {
 		return fmt.Errorf("create training programme: %w", err)
 	}
+	secondProgramID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     sportsDivisionID,
+		Name:           "Postgres Enrollment Edit 2",
+		Activity:       "badminton",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     3200,
+		Active:         true,
+	})
+	if err != nil {
+		return fmt.Errorf("create second training programme: %w", err)
+	}
 
 	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
 		StudentID:             "STD-PG-EDIT-001",
@@ -136,6 +153,45 @@ func runEnrollmentUpdatePostgresWorkflow() error {
 	}
 	if updated.UpdatedAt.Before(time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)) {
 		return fmt.Errorf("updated_at was not refreshed: %s", updated.UpdatedAt)
+	}
+
+	form := url.Values{
+		"csrf_token":             {"token"},
+		"enrollment_id":          {fmt.Sprintf("%d", enrollmentID)},
+		"training_program_id":    {fmt.Sprintf("%d", secondProgramID)},
+		"enrollment_date":        {"2026-08-06"},
+		"free_admission":         {"false"},
+		"discounted_monthly_fee": {"2100"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/enrollments/update", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:            501,
+		Name:          "Postgres Enrollment Editor",
+		Roles:         []string{"admin"},
+		Permissions:   []string{"students.manage"},
+		DivisionIDs:   []int64{sportsDivisionID},
+		DivisionCodes: []string{divisionCodeSports},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.updateEnrollmentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		return fmt.Errorf("handler update status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	updated, err = app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		return fmt.Errorf("reload enrollment after handler update: %w", err)
+	}
+	if updated.TrainingProgramID != secondProgramID {
+		return fmt.Errorf("training program id = %d, want %d", updated.TrainingProgramID, secondProgramID)
+	}
+	if updated.EnrollmentDate != "2026-08-06" {
+		return fmt.Errorf("handler enrollment date = %q, want 2026-08-06", updated.EnrollmentDate)
 	}
 
 	return nil
