@@ -525,25 +525,79 @@
 	          </select>
 	        </div>
 	
+          {{if eq $program.DivisionCode "SPORTS"}}
 	        <div class="space-y-2">
 	          <label
 	            for="edit-activity"
-            class="block text-sm font-semibold text-obsidian"
-          >
-            Activity or sport
-          </label>
+              class="block text-sm font-semibold text-obsidian"
+            >
+              Game / sport
+            </label>
 
-          <select
-            id="edit-activity"
-            name="game_id"
-            required
-            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-          >
-            {{range $.Games}}
-            <option value="{{.ID}}" {{if eq $program.GameID .ID}}selected{{end}}>{{.Name}}</option>
-            {{end}}
-          </select>
-        </div>
+            <select
+              id="edit-activity"
+              name="game_id"
+              required
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            >
+              {{range $.Games}}
+              <option value="{{.ID}}" {{if eq $program.GameID .ID}}selected{{end}}>{{.Name}}</option>
+              {{end}}
+            </select>
+
+            <p class="text-xs leading-5 text-slate/50">
+              Select the Indoor Sports game this programme belongs to.
+            </p>
+          </div>
+          {{else if eq $program.DivisionCode "KEC"}}
+          <div class="space-y-2">
+            <label
+              for="edit-activity"
+              class="block text-sm font-semibold text-obsidian"
+            >
+              Subject
+            </label>
+
+            <input
+              id="edit-activity"
+              type="text"
+              name="activity"
+              maxlength="60"
+              required
+              value="{{$program.Activity}}"
+              placeholder="Example: Mathematics"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+
+            <p class="text-xs leading-5 text-slate/50">
+              Enter the subject taught through this programme.
+            </p>
+          </div>
+          {{else if eq $program.DivisionCode "CHESS"}}
+          <div class="space-y-2">
+            <label
+              for="edit-activity"
+              class="block text-sm font-semibold text-obsidian"
+            >
+              Programme focus
+            </label>
+
+            <input
+              id="edit-activity"
+              type="text"
+              name="activity"
+              maxlength="60"
+              required
+              value="{{$program.Activity}}"
+              placeholder="Example: Beginner Chess"
+              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+            />
+
+            <p class="text-xs leading-5 text-slate/50">
+              Enter the level or focus of this chess programme.
+            </p>
+          </div>
+          {{end}}
 
         <div class="space-y-2">
           <label
