@@ -193,9 +193,6 @@
     <a
       href="#"
       id="receipt-whatsapp-share"
-      data-receipt-number="{{.SelectedFinance.ReceiptNumber}}"
-      data-receipt-category="{{if and .SelectedFinance (eq .SelectedFinance.Category "booking_payment")}}Booking receipt{{else if and .SelectedFinance (lt .SelectedFinance.Amount 0.0)}}Expense voucher{{else}}Payment receipt{{end}}"
-      data-receipt-amount="{{if and .SelectedFinance (lt .SelectedFinance.Amount 0.0)}}{{money (negate .SelectedFinance.Amount)}}{{else if .SelectedFinance}}{{money .SelectedFinance.Amount}}{{end}}"
       class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-5 text-center text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50"
       target="_blank"
       rel="noopener noreferrer"
@@ -210,22 +207,110 @@
     <a href="/admin/finance" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud">Open finance</a>
   </div>
 
+  <script type="text/plain" id="receipt-whatsapp-text">{{if and (eq .SelectedFinance.Category "booking_payment") .ReceiptBookingPayment .ReceiptBookingSchedule .ReceiptBookingFinancial}}# Booking Cash Receipt
+
+No. 64, Temple Road
+Jaffna 40000, Sri Lanka
+
+Receipt No.
+{{.SelectedFinance.ReceiptNumber}}
+
+Printed
+{{formatDateTime .SelectedFinance.RecordedAt}}
+
+Payment method
+Cash
+
+Booking reference
+{{bookingReference .ReceiptBookingSchedule.ID}}
+
+Received from
+{{.ReceiptBookingSchedule.RequesterName}}
+
+Booking
+{{bookingProductLabel .ReceiptBookingSchedule.Activity .ReceiptBookingSchedule.Quantity}}
+
+Schedule
+{{formatCalendarDate .ReceiptBookingSchedule.SlotDate}} · {{formatClockTime .ReceiptBookingSchedule.SlotHour}} · {{.ReceiptBookingSchedule.Status}}
+
+Collected by
+{{if .ReceiptBookingPayment.CollectedByUserName}}{{.ReceiptBookingPayment.CollectedByUserName}}{{else}}Mekmaa staff{{end}}
+
+Collected at
+{{formatDateTime .ReceiptBookingPayment.CollectedAt}}
+{{if .ReceiptBookingPayment.PaymentNote}}
+
+Payment note
+{{.ReceiptBookingPayment.PaymentNote}}
+{{end}}
+
+Quoted booking amount
+{{money .ReceiptBookingFinancial.QuotedAmount}}
+
+Received in this receipt
+{{money .ReceiptBookingPayment.Amount}}
+
+Total received after receipt
+{{money .ReceiptBookingFinancial.TotalCollected}}
+
+Outstanding balance
+{{money .ReceiptBookingFinancial.OutstandingAmount}}
+
+Payment status
+{{bookingPaymentStatusBadge .ReceiptBookingFinancial.PaymentStatus}}
+{{if .ReceiptBookingPayment.Voided}}
+
+Void information
+This payment collection was voided on {{formatDateTime .ReceiptBookingPayment.VoidedAt}}{{if .ReceiptBookingPayment.VoidedByUserName}} by {{.ReceiptBookingPayment.VoidedByUserName}}{{end}}.
+{{if .ReceiptBookingPayment.VoidReason}}{{.ReceiptBookingPayment.VoidReason}}{{end}}
+{{end}}
+
+Thank you
+Computer-generated cash receipt
+Mekmaa{{else}}# {{if lt .SelectedFinance.Amount 0.0}}Expense Voucher{{else}}Payment Receipt{{end}}
+
+No. 64, Temple Road
+Jaffna 40000, Sri Lanka
+
+Receipt No.
+{{.SelectedFinance.ReceiptNumber}}
+
+Date
+{{formatDateTime .SelectedFinance.RecordedAt}}
+
+Category
+{{financeCategoryLabel .SelectedFinance.Category}}
+
+Payment method
+{{.SelectedFinance.PaymentMethod}}
+
+{{if lt .SelectedFinance.Amount 0.0}}Paid to{{else}}Received from{{end}}
+{{.SelectedFinance.PersonName}}
+{{if .ReceiptAdmission}}
+
+Student ID
+{{.ReceiptAdmission.StudentID}}
+
+Training programme
+{{if .ReceiptEnrollment}}{{.ReceiptEnrollment.TrainingProgramName}}{{else if .ReceiptAdmission.TrainingProgramNames}}{{.ReceiptAdmission.TrainingProgramNames}}{{else}}Legacy programme{{end}}{{end}}
+
+Description
+{{.SelectedFinance.Description}}
+
+{{if lt .SelectedFinance.Amount 0.0}}Total paid{{else}}Total received{{end}}
+{{if lt .SelectedFinance.Amount 0.0}}{{money (negate .SelectedFinance.Amount)}}{{else}}{{money .SelectedFinance.Amount}}{{end}}
+
+Thank you
+Learn · Play · Achieve
+Mekmaa{{end}}</script>
+
   <script>
     window.addEventListener("load", () => {
       const whatsappShareLink = document.getElementById("receipt-whatsapp-share");
+      const whatsappShareText = document.getElementById("receipt-whatsapp-text");
       if (whatsappShareLink) {
-        const receiptNumber = whatsappShareLink.getAttribute("data-receipt-number") || "";
-        const receiptCategory = whatsappShareLink.getAttribute("data-receipt-category") || "Receipt";
-        const receiptAmount = whatsappShareLink.getAttribute("data-receipt-amount") || "";
-        const messageParts = [receiptCategory];
-        if (receiptNumber !== "") {
-          messageParts.push("No: " + receiptNumber);
-        }
-        if (receiptAmount !== "") {
-          messageParts.push("Amount: " + receiptAmount);
-        }
-        messageParts.push("View: " + window.location.href);
-        whatsappShareLink.href = "https://wa.me/?text=" + encodeURIComponent(messageParts.join("\n"));
+        const message = whatsappShareText ? whatsappShareText.textContent.trim() : "";
+        whatsappShareLink.href = "https://wa.me/?text=" + encodeURIComponent(message);
       }
 
       window.print();
