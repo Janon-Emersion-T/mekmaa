@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"html/template"
@@ -1918,7 +1919,7 @@ func TestBookingFinanceReceiptTemplateRendersBookingPaymentDetails(t *testing.T)
 		},
 		BookingStatusView: &BookingStatusView{ContactPhone: "+94772207297", ContactEmail: "bookings@mekmaa.example"},
 	})
-	for _, marker := range []string{"MKM-BKG-2026-000701", "Booking Cash Receipt", bookingReference(300), "LKR 3500.00", "LKR 1500.00", "Voided receipt"} {
+	for _, marker := range []string{"MKM-BKG-2026-000701", "Booking Cash Receipt", bookingReference(300), "LKR 3500.00", "LKR 1500.00", "Voided receipt", "Share on WhatsApp", `id="receipt-whatsapp-share"`} {
 		if !strings.Contains(html, marker) {
 			t.Fatalf("booking receipt is missing %q", marker)
 		}
@@ -7753,7 +7754,7 @@ func TestFinanceLedgerTemplateShowsDivisionInAccountLabel(t *testing.T) {
 	}
 }
 
-func TestDeleteEnrollmentHandlerRedirectsArchivedRecordToView(t *testing.T) {
+func TestDeleteEnrollmentHandlerRedirectsBlockedRecordToView(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	programID, err := app.createTrainingProgram(TrainingProgram{
 		Name:           "Archive Trigger Program",
@@ -7819,6 +7820,101 @@ func TestDeleteEnrollmentHandlerRedirectsArchivedRecordToView(t *testing.T) {
 	want := "/admin/enrollments?admission_id=" + strconv.FormatInt(admissionID, 10) + "&action=view&id=" + strconv.FormatInt(enrollmentID, 10)
 	if got := rec.Header().Get("Location"); got != want {
 		t.Fatalf("delete enrollment redirect = %q, want %q", got, want)
+	}
+
+	foundFlash := false
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name != flashCookieName || cookie.Value == "" {
+			continue
+		}
+
+		raw, err := base64.RawURLEncoding.DecodeString(cookie.Value)
+		if err != nil {
+			t.Fatalf("decode flash cookie: %v", err)
+		}
+		flash := string(raw)
+		if !strings.HasPrefix(flash, enrollmentDeleteBlockFlashPrefix) {
+			t.Fatalf("expected blocked-delete flash payload, got %q", flash)
+		}
+		if !strings.Contains(flash, "Admission fee transaction") {
+			t.Fatalf("expected finance dependency details in flash, got %q", flash)
+		}
+		foundFlash = true
+	}
+	if !foundFlash {
+		t.Fatal("expected flash cookie for blocked enrollment delete")
+	}
+}
+
+func TestDeleteEnrollmentHandlerDeletesUnlinkedEnrollment(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Delete Me Program",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     2500,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-DELETE-001",
+		FullName:              "Delete Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000201",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-08-01",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+	enrollment, err := app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		t.Fatalf("reload enrollment: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":    {"token"},
+		"enrollment_id": {strconv.FormatInt(enrollmentID, 10)},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/enrollments/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          105,
+		Name:        "Enrollment Admin",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"students.manage"},
+		DivisionIDs: []int64{enrollment.DivisionID},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.deleteEnrollmentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("delete enrollment status = %d, want %d body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
+	}
+	want := "/admin/enrollments?admission_id=" + strconv.FormatInt(admissionID, 10)
+	if got := rec.Header().Get("Location"); got != want {
+		t.Fatalf("delete enrollment redirect = %q, want %q", got, want)
+	}
+	if _, err := app.findStudentEnrollmentByID(enrollmentID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected enrollment to be deleted, got err=%v", err)
 	}
 }
 

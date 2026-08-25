@@ -1047,6 +1047,18 @@ type StudentMonthlyPayment struct {
 	CreatedAt            time.Time
 }
 
+type EnrollmentDeleteBlocker struct {
+	Kind   string
+	Label  string
+	Detail string
+}
+
+type EnrollmentDeleteBlock struct {
+	Title    string
+	Message  string
+	Blockers []EnrollmentDeleteBlocker
+}
+
 type StudentEnrollmentLeave struct {
 	ID           int64
 	EnrollmentID int64
@@ -1851,6 +1863,7 @@ type TemplateData struct {
 	Enrollments                      []StudentEnrollment
 	SelectedEnrollment               *StudentEnrollment
 	EnrollmentMode                   string
+	EnrollmentDeleteBlock            *EnrollmentDeleteBlock
 	PricingSettings                  *PricingSettings
 	OneToOneOfferings                []OneToOneOffering
 	SelectedOneToOneOffering         *OneToOneOffering

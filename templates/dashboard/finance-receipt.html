@@ -187,8 +187,21 @@
   </div>
   </div>
 
-  <div class="receipt-actions no-print mx-auto mt-5 flex max-w-md flex-col gap-3 sm:flex-row">
+  <div class="receipt-actions no-print mx-auto mt-5 flex max-w-3xl flex-col gap-3 sm:flex-row">
     <button type="button" onclick="window.print()" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Print receipt</button>
+
+    <a
+      href="#"
+      id="receipt-whatsapp-share"
+      data-receipt-number="{{.SelectedFinance.ReceiptNumber}}"
+      data-receipt-category="{{if and .SelectedFinance (eq .SelectedFinance.Category "booking_payment")}}Booking receipt{{else if and .SelectedFinance (lt .SelectedFinance.Amount 0.0)}}Expense voucher{{else}}Payment receipt{{end}}"
+      data-receipt-amount="{{if and .SelectedFinance (lt .SelectedFinance.Amount 0.0)}}{{money (negate .SelectedFinance.Amount)}}{{else if .SelectedFinance}}{{money .SelectedFinance.Amount}}{{end}}"
+      class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-5 text-center text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Share on WhatsApp
+    </a>
 
     <a href="{{if eq .SelectedFinance.Category "student_monthly_payment"}}/admin/student-payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}/admin/referrals{{else if eq .SelectedFinance.Category "admission_payment"}}/admin/admissions{{else if and .ReceiptBookingSchedule (ne .ReceiptBookingSchedule.SlotDate "")}}/admin/bookings?action=view&id={{.ReceiptBookingSchedule.ID}}&date={{.ReceiptBookingSchedule.SlotDate}}#schedule-view{{else}}/admin/finance{{end}}" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud">
       {{if eq .SelectedFinance.Category "student_monthly_payment"}}Back to payments{{else if eq .SelectedFinance.Category "referral_commission_payment"}}Back to referrals{{else if eq .SelectedFinance.Category "admission_payment"}}Back to admissions{{else if eq .SelectedFinance.Category "booking_payment"}}Back to booking{{else}}Back to finance{{end}}
@@ -199,6 +212,22 @@
 
   <script>
     window.addEventListener("load", () => {
+      const whatsappShareLink = document.getElementById("receipt-whatsapp-share");
+      if (whatsappShareLink) {
+        const receiptNumber = whatsappShareLink.getAttribute("data-receipt-number") || "";
+        const receiptCategory = whatsappShareLink.getAttribute("data-receipt-category") || "Receipt";
+        const receiptAmount = whatsappShareLink.getAttribute("data-receipt-amount") || "";
+        const messageParts = [receiptCategory];
+        if (receiptNumber !== "") {
+          messageParts.push("No: " + receiptNumber);
+        }
+        if (receiptAmount !== "") {
+          messageParts.push("Amount: " + receiptAmount);
+        }
+        messageParts.push("View: " + window.location.href);
+        whatsappShareLink.href = "https://wa.me/?text=" + encodeURIComponent(messageParts.join("\n"));
+      }
+
       window.print();
     });
   </script>

@@ -7,9 +7,28 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
+
+type enrollmentDeleteBlockedError struct {
+	block EnrollmentDeleteBlock
+}
+
+func (e *enrollmentDeleteBlockedError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.block.Message
+}
+
+func (e *enrollmentDeleteBlockedError) DeleteBlock() EnrollmentDeleteBlock {
+	if e == nil {
+		return EnrollmentDeleteBlock{}
+	}
+	return e.block
+}
 
 func (a *App) listFinanceTransactions() ([]FinanceTransaction, error) {
 	return a.listFinanceTransactionsWithOptions(context.Background(), FinanceFilter{}, false, false)
@@ -4485,79 +4504,172 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 	return tx.Commit()
 }
 
-func (a *App) deleteStudentEnrollment(enrollmentID int64) (bool, error) {
+func (a *App) deleteStudentEnrollment(enrollmentID int64) error {
 	tx, err := a.db.Begin()
 	if err != nil {
-		return false, err
+		return err
 	}
 	defer tx.Rollback()
 
 	enrollment, err := findStudentEnrollmentByIDTx(tx, a.runtimeConfig.DBDriver, enrollmentID)
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	var admissionPaymentCount int
-	if err := tx.QueryRow(`
-		SELECT COUNT(*)
+	rows, err := a.queryTxDB(
+		tx,
+		`
+		SELECT id, receipt_number, amount, recorded_at
 		FROM finance_transactions
-		WHERE reference_type = 'student_enrollment'
-		  AND reference_id = $1
-	`, enrollmentID).Scan(&admissionPaymentCount); err != nil {
-		return false, err
-	}
-
-	var monthlyPaymentCount int
-	if err := tx.QueryRow(`
-		SELECT COUNT(*)
-		FROM student_monthly_payments
-		WHERE enrollment_id = $1
-		  AND COALESCE(voided, 0) = 0
-	`, enrollmentID).Scan(&monthlyPaymentCount); err != nil {
-		return false, err
-	}
-
-	if admissionPaymentCount > 0 || monthlyPaymentCount > 0 {
-		result, err := tx.Exec(`
-			UPDATE student_enrollments
-			SET active = 0,
-			    updated_at = $1
-			WHERE id = $2
-		`, time.Now().UTC(), enrollmentID)
-		if err != nil {
-			return false, err
-		}
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			return false, err
-		}
-		if rowsAffected == 0 {
-			return false, sql.ErrNoRows
-		}
-		return true, tx.Commit()
-	}
-
-	result, err := tx.Exec(`DELETE FROM student_enrollments WHERE id = $1`, enrollmentID)
+		WHERE id = ?
+		   OR (
+			reference_type = 'student_enrollment'
+			AND reference_id = ?
+		)
+		ORDER BY recorded_at DESC, id DESC
+		`,
+		enrollment.FinanceTransactionID,
+		enrollmentID,
+	)
 	if err != nil {
-		return false, err
+		return err
+	}
+
+	blockers := make([]EnrollmentDeleteBlocker, 0)
+	for rows.Next() {
+		var (
+			id            int64
+			receiptNumber string
+			amount        float64
+			recordedAt    time.Time
+		)
+		if err := rows.Scan(&id, &receiptNumber, &amount, &recordedAt); err != nil {
+			return err
+		}
+
+		detail := "Transaction #" + strconv.FormatInt(id, 10)
+		if strings.TrimSpace(receiptNumber) != "" {
+			detail = "Receipt " + receiptNumber
+		}
+		detail += " • " + money(amount) + " • " + recordedAt.In(time.Local).Format("2006-01-02")
+		blockers = append(blockers, EnrollmentDeleteBlocker{
+			Kind:   "finance_transaction",
+			Label:  "Admission fee transaction",
+			Detail: detail,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if len(blockers) == 0 && (enrollment.AdmissionPaymentPaid || enrollment.FinanceTransactionID > 0) {
+		detail := "Admission payment history exists"
+		if enrollment.FinanceTransactionID > 0 {
+			detail += " • Transaction #" + strconv.FormatInt(enrollment.FinanceTransactionID, 10)
+		}
+		blockers = append(blockers, EnrollmentDeleteBlocker{
+			Kind:   "finance_transaction",
+			Label:  "Admission fee transaction",
+			Detail: detail,
+		})
+	}
+
+	rows, err = a.queryTxDB(
+		tx,
+		`
+		SELECT id, payment_month, amount, collected_at
+		FROM student_monthly_payments
+		WHERE enrollment_id = ?
+		ORDER BY payment_month DESC, id DESC
+		`,
+		enrollmentID,
+	)
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var (
+			id           int64
+			paymentMonth string
+			amount       float64
+			collectedAt  time.Time
+		)
+		if err := rows.Scan(&id, &paymentMonth, &amount, &collectedAt); err != nil {
+			return err
+		}
+
+		detail := paymentMonthLabel(paymentMonth) + " • " + money(amount)
+		if !collectedAt.IsZero() {
+			detail += " • collected " + collectedAt.In(time.Local).Format("2006-01-02")
+		}
+		blockers = append(blockers, EnrollmentDeleteBlocker{
+			Kind:   "monthly_payment",
+			Label:  "Monthly payment history",
+			Detail: detail + " • Payment #" + strconv.FormatInt(id, 10),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	if len(blockers) > 0 {
+		return &enrollmentDeleteBlockedError{
+			block: EnrollmentDeleteBlock{
+				Title:    "Enrollment cannot be deleted",
+				Message:  "This enrollment has linked finance history. Remove or void the linked records first.",
+				Blockers: blockers,
+			},
+		}
+	}
+
+	result, err := a.execTxDB(tx, `DELETE FROM student_enrollments WHERE id = ?`, enrollmentID)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "foreign key") ||
+			strings.Contains(strings.ToLower(err.Error()), "violates foreign key") {
+			return &enrollmentDeleteBlockedError{
+				block: EnrollmentDeleteBlock{
+					Title:   "Enrollment cannot be deleted",
+					Message: "This enrollment is still linked to other records.",
+					Blockers: []EnrollmentDeleteBlocker{
+						{
+							Kind:   "foreign_key",
+							Label:  "Linked record",
+							Detail: err.Error(),
+						},
+					},
+				},
+			}
+		}
+		return err
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return false, err
+		return err
 	}
 	if rowsAffected == 0 {
-		return false, sql.ErrNoRows
+		return sql.ErrNoRows
 	}
 
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(
+		tx,
+		`
 		DELETE FROM admission_training_programs
 		WHERE admission_id = ?
 		  AND training_program_id = ?
-	`, enrollment.AdmissionID, enrollment.TrainingProgramID); err != nil {
-		return false, err
+	`,
+		enrollment.AdmissionID,
+		enrollment.TrainingProgramID,
+	); err != nil {
+		return err
 	}
 
-	return false, tx.Commit()
+	return tx.Commit()
 }
 
 func (a *App) collectEnrollmentAdmissionPaymentTx(

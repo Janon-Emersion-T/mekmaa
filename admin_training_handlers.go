@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log"
 	"math"
@@ -10,6 +11,35 @@ import (
 	"strings"
 	"time"
 )
+
+const enrollmentDeleteBlockFlashPrefix = "enrollment_delete_block:"
+
+func encodeEnrollmentDeleteBlockFlash(
+	block EnrollmentDeleteBlock,
+) string {
+	payload, err := json.Marshal(block)
+	if err != nil {
+		return block.Message
+	}
+	return enrollmentDeleteBlockFlashPrefix + string(payload)
+}
+
+func parseEnrollmentDeleteBlockFlash(
+	value string,
+) (*EnrollmentDeleteBlock, bool) {
+	if !strings.HasPrefix(value, enrollmentDeleteBlockFlashPrefix) {
+		return nil, false
+	}
+
+	var block EnrollmentDeleteBlock
+	if err := json.Unmarshal(
+		[]byte(strings.TrimPrefix(value, enrollmentDeleteBlockFlashPrefix)),
+		&block,
+	); err != nil {
+		return nil, false
+	}
+	return &block, true
+}
 
 func (a *App) coachManagementHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
@@ -246,6 +276,10 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Enrollment Manager"
 	data.Description = "Assign students to programmes and collect programme-level fees."
+	if block, ok := parseEnrollmentDeleteBlockFlash(data.Flash); ok {
+		data.EnrollmentDeleteBlock = block
+		data.Flash = block.Message
+	}
 	data.Enrollments = enrollments
 	data.Admissions = admissions
 	data.TrainingPrograms = trainingPrograms
@@ -734,21 +768,21 @@ func (a *App) deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 		target = "/admin/enrollments?admission_id=" + strconv.FormatInt(enrollment.AdmissionID, 10)
 	}
 
-	archived, err := a.deleteStudentEnrollment(enrollmentID)
+	err = a.deleteStudentEnrollment(enrollmentID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			a.setFlash(w, "Enrollment not found.")
 			http.Redirect(w, r, target, http.StatusSeeOther)
 			return
 		}
+		var blockedErr *enrollmentDeleteBlockedError
+		if errors.As(err, &blockedErr) {
+			a.setFlash(w, encodeEnrollmentDeleteBlockFlash(blockedErr.DeleteBlock()))
+			http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+			return
+		}
 		a.setFlash(w, err.Error())
 		http.Redirect(w, r, target, http.StatusSeeOther)
-		return
-	}
-
-	if archived {
-		a.setFlash(w, "Enrollment archived because finance history exists.")
-		http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, "Enrollment deleted.")
