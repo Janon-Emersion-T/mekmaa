@@ -1372,20 +1372,28 @@ func financeAccountBalanceAsOfTx(tx *sql.Tx, accountID int64, cutoff time.Time) 
 }
 
 func financeDateNotInFuture(date time.Time) bool {
+	return financeDateNotInFutureAt(date, time.Now())
+}
+
+func financeDateNotInFutureAt(date time.Time, now time.Time) bool {
 	localDate := time.Date(date.In(time.Local).Year(), date.In(time.Local).Month(), date.In(time.Local).Day(), 0, 0, 0, 0, time.Local)
-	today := time.Now().In(time.Local)
+	today := now.In(time.Local)
 	todayDate := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.Local)
 	return !localDate.After(todayDate)
 }
 
 func validateFinanceRecordedAt(recordedAt time.Time, label string) error {
+	return validateFinanceRecordedAtAt(recordedAt, time.Now(), label)
+}
+
+func validateFinanceRecordedAtAt(recordedAt time.Time, now time.Time, label string) error {
 	if recordedAt.IsZero() {
 		return errors.New(label + " is required")
 	}
 	if err := validateHistoricalEntryTime(recordedAt, label); err != nil {
 		return err
 	}
-	if !financeDateNotInFuture(recordedAt) {
+	if !financeDateNotInFutureAt(recordedAt, now) {
 		return errors.New(label + " cannot be in the future")
 	}
 	return nil
@@ -1396,7 +1404,7 @@ func parseFinanceRecordedAtDate(raw string, now time.Time, label string) (time.T
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		recordedAt := now.UTC()
-		if err := validateFinanceRecordedAt(recordedAt, label); err != nil {
+		if err := validateFinanceRecordedAtAt(recordedAt, now, label); err != nil {
 			return time.Time{}, err
 		}
 		return recordedAt, nil
@@ -1417,7 +1425,7 @@ func parseFinanceRecordedAtDate(raw string, now time.Time, label string) (time.T
 		0,
 		time.Local,
 	)
-	if err := validateFinanceRecordedAt(recordedAt, label); err != nil {
+	if err := validateFinanceRecordedAtAt(recordedAt, now, label); err != nil {
 		return time.Time{}, err
 	}
 	return recordedAt.UTC(), nil
