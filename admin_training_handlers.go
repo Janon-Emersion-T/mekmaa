@@ -931,17 +931,10 @@ func (a *App) createTrainingProgramHandler(
 		return
 	}
 
-	target := "/admin/training-programs?action=new"
-
-	if division := strings.TrimSpace(
-		r.FormValue("division"),
-	); division != "" {
-		target = withQueryValue(
-			target,
-			"division",
-			division,
-		)
-	}
+	target := trainingProgramReturnTarget(
+		r,
+		"/admin/training-programs?action=new",
+	)
 
 	program, err := a.trainingProgramFromRequest(r)
 	if err != nil {
@@ -989,15 +982,10 @@ func (a *App) createTrainingProgramHandler(
 	successTarget := "/admin/training-programs?action=view&id=" +
 		strconv.FormatInt(programID, 10)
 
-	if program.DivisionName != "" {
-		if division, err := a.findDivisionByID(program.DivisionID); err == nil {
-			successTarget = withQueryValue(
-				successTarget,
-				"division",
-				division.Slug,
-			)
-		}
-	}
+	successTarget = trainingProgramReturnTarget(
+		r,
+		successTarget,
+	)
 
 	http.Redirect(
 		w,
@@ -1039,8 +1027,11 @@ func (a *App) updateTrainingProgramHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/training-programs?action=edit&id="+
-				strconv.FormatInt(programID, 10),
+			trainingProgramReturnTarget(
+				r,
+				"/admin/training-programs?action=edit&id="+
+					strconv.FormatInt(programID, 10),
+			),
 			http.StatusSeeOther,
 		)
 		return
@@ -1061,7 +1052,7 @@ func (a *App) updateTrainingProgramHandler(
 	}
 	if program.DivisionCode == divisionCodeCorporate {
 		a.setFlash(w, "Corporate/shared cannot be used for student programmes.")
-		http.Redirect(w, r, "/admin/training-programs?action=edit&id="+strconv.FormatInt(programID, 10), http.StatusSeeOther)
+		http.Redirect(w, r, trainingProgramReturnTarget(r, "/admin/training-programs?action=edit&id="+strconv.FormatInt(programID, 10)), http.StatusSeeOther)
 		return
 	}
 
@@ -1079,8 +1070,11 @@ func (a *App) updateTrainingProgramHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/training-programs?action=edit&id="+
-				strconv.FormatInt(programID, 10),
+			trainingProgramReturnTarget(
+				r,
+				"/admin/training-programs?action=edit&id="+
+					strconv.FormatInt(programID, 10),
+			),
 			http.StatusSeeOther,
 		)
 		return
@@ -1091,8 +1085,11 @@ func (a *App) updateTrainingProgramHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/training-programs?action=view&id="+
-			strconv.FormatInt(programID, 10),
+		trainingProgramReturnTarget(
+			r,
+			"/admin/training-programs?action=view&id="+
+				strconv.FormatInt(programID, 10),
+		),
 		http.StatusSeeOther,
 	)
 }
@@ -1159,7 +1156,10 @@ func (a *App) toggleTrainingProgramHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/training-programs",
+		trainingProgramReturnTarget(
+			r,
+			"/admin/training-programs",
+		),
 		http.StatusSeeOther,
 	)
 }
@@ -1209,7 +1209,10 @@ func (a *App) deleteTrainingProgramHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/training-programs",
+			trainingProgramReturnTarget(
+				r,
+				"/admin/training-programs",
+			),
 			http.StatusSeeOther,
 		)
 		return
@@ -1220,7 +1223,10 @@ func (a *App) deleteTrainingProgramHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/training-programs",
+		trainingProgramReturnTarget(
+			r,
+			"/admin/training-programs",
+		),
 		http.StatusSeeOther,
 	)
 }
@@ -1253,9 +1259,7 @@ func (a *App) trainingProgramFromRequest(
 		)
 	}
 
-	trainingFormat := strings.ToLower(
-		strings.TrimSpace(r.FormValue("training_format")),
-	)
+	trainingFormat := "group"
 
 	admissionFee, err := parseNonNegativeFloat(
 		r.FormValue("admission_fee"),
@@ -1379,10 +1383,10 @@ func validateTrainingProgram(program TrainingProgram) error {
 	}
 
 	switch program.TrainingFormat {
-	case "one_to_one", "group":
+	case "group":
 	default:
 		return errors.New(
-			"training format must be one-to-one or group",
+			"training format must be group",
 		)
 	}
 
@@ -1482,4 +1486,62 @@ func isUniqueConstraintError(err error) bool {
 	return strings.Contains(message, "unique constraint") ||
 		strings.Contains(message, "constraint failed") ||
 		strings.Contains(message, "is not unique")
+}
+
+func trainingProgramReturnTarget(
+	r *http.Request,
+	base string,
+) string {
+	division := strings.TrimSpace(r.FormValue("division"))
+	if division == "" {
+		division = strings.TrimSpace(r.URL.Query().Get("division"))
+	}
+	if division == "" {
+		return base
+	}
+
+	return withQueryValue(base, "division", division)
+}
+
+func trainingProgramActivityLabel(
+	divisionCode string,
+) string {
+	switch strings.ToUpper(strings.TrimSpace(divisionCode)) {
+	case divisionCodeSports:
+		return "Game / sport"
+	case divisionCodeKEC:
+		return "Subject"
+	case divisionCodeChess:
+		return "Programme focus"
+	default:
+		return "Activity"
+	}
+}
+
+func trainingProgramActivityPlaceholder(
+	divisionCode string,
+) string {
+	switch strings.ToUpper(strings.TrimSpace(divisionCode)) {
+	case divisionCodeKEC:
+		return "Example: Mathematics"
+	case divisionCodeChess:
+		return "Example: Beginner Chess"
+	default:
+		return ""
+	}
+}
+
+func trainingProgramActivityHelp(
+	divisionCode string,
+) string {
+	switch strings.ToUpper(strings.TrimSpace(divisionCode)) {
+	case divisionCodeSports:
+		return "Select the Indoor Sports game this programme belongs to."
+	case divisionCodeKEC:
+		return "Enter the subject taught through this programme."
+	case divisionCodeChess:
+		return "Enter the level or focus of this chess programme."
+	default:
+		return ""
+	}
 }

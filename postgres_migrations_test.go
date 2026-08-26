@@ -155,6 +155,37 @@ func TestPostgresMigrationDiscoveryIncludesEnrollmentEditCompat(t *testing.T) {
 	}
 }
 
+func TestPostgresMigrationDiscoveryIncludesTrainingProgramGroupDelivery(t *testing.T) {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		t.Fatalf("load PostgreSQL migrations: %v", err)
+	}
+
+	var found *postgresMigration
+	for i := range migrations {
+		if migrations[i].Version == 12 {
+			found = &migrations[i]
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("expected PostgreSQL migration 000012_training_program_group_delivery.sql")
+	}
+
+	if found.Filename != "000012_training_program_group_delivery.sql" {
+		t.Fatalf("migration 12 filename = %q, want %q", found.Filename, "000012_training_program_group_delivery.sql")
+	}
+
+	if found.Name != "training_program_group_delivery" {
+		t.Fatalf("migration 12 name = %q, want %q", found.Name, "training_program_group_delivery")
+	}
+
+	if found.Checksum == "" {
+		t.Fatal("migration 12 checksum must not be empty")
+	}
+}
+
 func TestPostgresMCPMigrationAppliesCleanly(t *testing.T) {
 	runPostgresMigrationHelper(t, "apply_all")
 }

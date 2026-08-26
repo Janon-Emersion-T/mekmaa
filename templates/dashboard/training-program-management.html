@@ -154,7 +154,6 @@
 	            id="new-division"
 	            name="division_id"
 	            required
-	            onchange="const option=this.options[this.selectedIndex]; const division=option.dataset.divisionSlug; if (division) { window.location.href='/admin/training-programs?action=new&division='+encodeURIComponent(division)+'#training-program-form'; }"
 	            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
 	          >
 	            <option value="">Select division</option>
@@ -163,6 +162,7 @@
 	            <option
 	              value="{{.ID}}"
 	              data-division-slug="{{.Slug}}"
+	              data-division-code="{{.Code}}"
 	              {{if and $.SelectedDivision (eq $.SelectedDivision.ID .ID)}}selected{{end}}
 	            >{{.Name}}</option>
 	            {{end}}
@@ -212,9 +212,7 @@
           />
         </div>
 
-	        {{if .SelectedDivision}}
-          {{if eq .SelectedDivision.Code "SPORTS"}}
-          <div class="space-y-2">
+          <div id="training-program-game-field-new" class="space-y-2 {{if not (and .SelectedDivision (eq .SelectedDivision.Code "SPORTS"))}}hidden{{end}}">
             <label
               for="new-game"
               class="block text-sm font-semibold text-obsidian"
@@ -238,13 +236,13 @@
               Select the Indoor Sports game this programme belongs to.
             </p>
           </div>
-          {{else if eq .SelectedDivision.Code "KEC"}}
-          <div class="space-y-2">
+          <div id="training-program-activity-field-new" class="space-y-2 {{if and .SelectedDivision (eq .SelectedDivision.Code "SPORTS")}}hidden{{end}}">
             <label
               for="new-activity"
+              id="training-program-activity-label-new"
               class="block text-sm font-semibold text-obsidian"
             >
-              Subject
+              {{if .SelectedDivision}}{{trainingProgramActivityLabel .SelectedDivision.Code}}{{else}}Activity{{end}}
             </label>
 
             <input
@@ -252,40 +250,15 @@
               type="text"
               name="activity"
               maxlength="60"
-              required
-              placeholder="Example: Mathematics"
+              {{if not (and .SelectedDivision (eq .SelectedDivision.Code "SPORTS"))}}required{{end}}
+              placeholder="{{if .SelectedDivision}}{{trainingProgramActivityPlaceholder .SelectedDivision.Code}}{{end}}"
               class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
             />
 
-            <p class="text-xs leading-5 text-slate/50">
-              Enter the subject taught through this programme.
+            <p id="training-program-activity-help-new" class="text-xs leading-5 text-slate/50">
+              {{if .SelectedDivision}}{{trainingProgramActivityHelp .SelectedDivision.Code}}{{end}}
             </p>
           </div>
-          {{else if eq .SelectedDivision.Code "CHESS"}}
-          <div class="space-y-2">
-            <label
-              for="new-activity"
-              class="block text-sm font-semibold text-obsidian"
-            >
-              Programme focus
-            </label>
-
-            <input
-              id="new-activity"
-              type="text"
-              name="activity"
-              maxlength="60"
-              required
-              placeholder="Example: Beginner Chess"
-              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-            />
-
-            <p class="text-xs leading-5 text-slate/50">
-              Enter the level or focus of this chess programme.
-            </p>
-          </div>
-          {{end}}
-        {{end}}
 
         <div class="space-y-2">
           <label
@@ -295,16 +268,14 @@
             Delivery format
           </label>
 
-          <select
+          <input
             id="new-training-format"
-            name="training_format"
-            required
-            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-          >
-            <option value="">Select delivery format</option>
-            <option value="one_to_one">One-to-one</option>
-            <option value="group">Group</option>
-          </select>
+            type="text"
+            value="Group"
+            readonly
+            class="h-12 w-full rounded-2xl border border-slate/15 bg-cloud/60 px-4 text-sm font-medium text-obsidian shadow-sm outline-none"
+          />
+          <input type="hidden" name="training_format" value="group" />
         </div>
 
         <div class="space-y-2">
@@ -387,7 +358,7 @@
 
       <div class="mt-8 flex flex-col-reverse gap-3 border-t border-slate/10 pt-6 sm:flex-row sm:justify-end">
         <a
-          href="/admin/training-programs"
+          href="{{scopedURL "/admin/training-programs" .SelectedDivision .SelectedDivisionScope}}"
           class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/15 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud"
         >
           Cancel
@@ -402,6 +373,72 @@
       </div>
     </form>
   </section>
+  <script>
+    (() => {
+      const fieldConfig = {
+        SPORTS: {
+          label: "Game / sport",
+          placeholder: "",
+          help: "Select the Indoor Sports game this programme belongs to.",
+          usesGame: true,
+        },
+        KEC: {
+          label: "Subject",
+          placeholder: "Example: Mathematics",
+          help: "Enter the subject taught through this programme.",
+          usesGame: false,
+        },
+        CHESS: {
+          label: "Programme focus",
+          placeholder: "Example: Beginner Chess",
+          help: "Enter the level or focus of this chess programme.",
+          usesGame: false,
+        },
+      };
+
+      const bindDivisionFields = (prefix) => {
+        const division = document.getElementById(prefix + "-division");
+        const gameField = document.getElementById("training-program-game-field-" + prefix);
+        const activityField = document.getElementById("training-program-activity-field-" + prefix);
+        const activityLabel = document.getElementById("training-program-activity-label-" + prefix);
+        const activityHelp = document.getElementById("training-program-activity-help-" + prefix);
+        const activityInput = document.getElementById(prefix + "-activity");
+        const gameInput = document.getElementById(prefix + "-game");
+
+        if (!division || !gameField || !activityField || !activityInput || !gameInput) {
+          return;
+        }
+
+        const update = () => {
+          const option = division.options[division.selectedIndex];
+          const code = option ? option.dataset.divisionCode : "";
+          const config = fieldConfig[code] || null;
+          const useGame = !!(config && config.usesGame);
+
+          gameField.classList.toggle("hidden", !useGame);
+          activityField.classList.toggle("hidden", useGame);
+          gameInput.disabled = !useGame;
+          gameInput.required = useGame;
+          activityInput.disabled = useGame;
+          activityInput.required = !useGame;
+
+          if (config && activityLabel) {
+            activityLabel.textContent = config.label;
+          }
+          if (config && activityHelp) {
+            activityHelp.textContent = config.help;
+          }
+          activityInput.placeholder = config ? config.placeholder : "";
+        };
+
+        division.addEventListener("change", update);
+        update();
+      };
+
+      bindDivisionFields("new");
+      bindDivisionFields("edit");
+    })();
+  </script>
   {{end}}
 
   <!-- Edit or view programme -->
@@ -428,20 +465,20 @@
       </div>
 
       <div class="flex flex-wrap gap-2">
-        {{if eq $.TrainingProgramMode "view"}}
-        <a
-          href="/admin/training-programs?action=edit&id={{$program.ID}}#selected-training-program"
-          class="inline-flex h-10 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"
-        >
-          Edit programme
-        </a>
-        {{end}}
+	        {{if eq $.TrainingProgramMode "view"}}
+	        <a
+	          href="{{scopedURL (printf "/admin/training-programs?action=edit&id=%d#selected-training-program" $program.ID) $.SelectedDivision $.SelectedDivisionScope}}"
+	          class="inline-flex h-10 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate"
+	        >
+	          Edit programme
+	        </a>
+	        {{end}}
 
-        <a
-          href="/admin/training-programs"
-          class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
-        >
-          Close
+	        <a
+	          href="{{scopedURL "/admin/training-programs" $.SelectedDivision $.SelectedDivisionScope}}"
+	          class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+	        >
+	          Close
         </a>
       </div>
     </div>
@@ -463,6 +500,11 @@
         name="id"
         value="{{$program.ID}}"
       />
+      {{if $.SelectedDivision}}
+      <input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}" />
+      {{else if eq $.SelectedDivisionScope "all"}}
+      <input type="hidden" name="division" value="all" />
+      {{end}}
 
       <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         <div class="space-y-2 md:col-span-2">
@@ -519,25 +561,24 @@
 	          >
 	            {{range $.ActiveDivisions}}
 	            {{if ne .Code "CORPORATE"}}
-	            <option value="{{.ID}}" {{if eq $program.DivisionID .ID}}selected{{end}}>{{.Name}}</option>
+	            <option value="{{.ID}}" data-division-code="{{.Code}}" {{if eq $program.DivisionID .ID}}selected{{end}}>{{.Name}}</option>
 	            {{end}}
 	            {{end}}
 	          </select>
 	        </div>
 	
-          {{if eq $program.DivisionCode "SPORTS"}}
-	        <div class="space-y-2">
+	        <div id="training-program-game-field-edit" class="space-y-2 {{if ne $program.DivisionCode "SPORTS"}}hidden{{end}}">
 	          <label
-	            for="edit-activity"
+	            for="edit-game"
               class="block text-sm font-semibold text-obsidian"
             >
               Game / sport
             </label>
 
-            <select
-              id="edit-activity"
-              name="game_id"
-              required
+	            <select
+	              id="edit-game"
+	              name="game_id"
+	              required
               class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
             >
               {{range $.Games}}
@@ -549,13 +590,13 @@
               Select the Indoor Sports game this programme belongs to.
             </p>
           </div>
-          {{else if eq $program.DivisionCode "KEC"}}
-          <div class="space-y-2">
+          <div id="training-program-activity-field-edit" class="space-y-2 {{if eq $program.DivisionCode "SPORTS"}}hidden{{end}}">
             <label
               for="edit-activity"
+              id="training-program-activity-label-edit"
               class="block text-sm font-semibold text-obsidian"
             >
-              Subject
+              {{trainingProgramActivityLabel $program.DivisionCode}}
             </label>
 
             <input
@@ -563,41 +604,16 @@
               type="text"
               name="activity"
               maxlength="60"
-              required
+              {{if ne $program.DivisionCode "SPORTS"}}required{{end}}
               value="{{$program.Activity}}"
-              placeholder="Example: Mathematics"
+              placeholder="{{trainingProgramActivityPlaceholder $program.DivisionCode}}"
               class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
             />
 
-            <p class="text-xs leading-5 text-slate/50">
-              Enter the subject taught through this programme.
+            <p id="training-program-activity-help-edit" class="text-xs leading-5 text-slate/50">
+              {{trainingProgramActivityHelp $program.DivisionCode}}
             </p>
           </div>
-          {{else if eq $program.DivisionCode "CHESS"}}
-          <div class="space-y-2">
-            <label
-              for="edit-activity"
-              class="block text-sm font-semibold text-obsidian"
-            >
-              Programme focus
-            </label>
-
-            <input
-              id="edit-activity"
-              type="text"
-              name="activity"
-              maxlength="60"
-              required
-              value="{{$program.Activity}}"
-              placeholder="Example: Beginner Chess"
-              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-            />
-
-            <p class="text-xs leading-5 text-slate/50">
-              Enter the level or focus of this chess programme.
-            </p>
-          </div>
-          {{end}}
 
         <div class="space-y-2">
           <label
@@ -607,26 +623,14 @@
             Delivery format
           </label>
 
-          <select
+          <input
             id="edit-training-format"
-            name="training_format"
-            required
-            class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-          >
-            <option
-              value="one_to_one"
-              {{if eq $program.TrainingFormat "one_to_one"}}selected{{end}}
-            >
-              One-to-one
-            </option>
-
-            <option
-              value="group"
-              {{if eq $program.TrainingFormat "group"}}selected{{end}}
-            >
-              Group
-            </option>
-          </select>
+            type="text"
+            value="Group"
+            readonly
+            class="h-12 w-full rounded-2xl border border-slate/15 bg-cloud/60 px-4 text-sm font-medium text-obsidian shadow-sm outline-none"
+          />
+          <input type="hidden" name="training_format" value="group" />
         </div>
 
         <div class="space-y-2">
@@ -709,7 +713,7 @@
 
       <div class="mt-8 flex flex-col-reverse gap-3 border-t border-slate/10 pt-6 sm:flex-row sm:justify-end">
         <a
-          href="/admin/training-programs?action=view&id={{$program.ID}}"
+          href="{{scopedURL (printf "/admin/training-programs?action=view&id=%d" $program.ID) $.SelectedDivision $.SelectedDivisionScope}}"
           class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/15 bg-white px-5 text-sm font-semibold text-slate transition hover:bg-cloud"
         >
           Cancel
@@ -737,28 +741,24 @@
 	        </p>
 	      </div>
 	      <div class="rounded-2xl border border-slate/10 bg-cloud/70 p-4">
-        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">
-          Activity
-        </p>
-
-        <p class="mt-2 font-semibold capitalize text-obsidian">
-          {{gameNameFor $.Games $program.Activity}}
-        </p>
-      </div>
+	        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">
+	          {{trainingProgramActivityLabel $program.DivisionCode}}
+	        </p>
+	
+	        <p class="mt-2 font-semibold capitalize text-obsidian">
+	          {{if eq $program.DivisionCode "SPORTS"}}{{gameNameFor $.Games $program.Activity}}{{else}}{{activityLabel $program.Activity}}{{end}}
+	        </p>
+	      </div>
 
       <div class="rounded-2xl border border-slate/10 bg-cloud/70 p-4">
-        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">
-          Format
-        </p>
-
-        <p class="mt-2 font-semibold text-obsidian">
-          {{if eq $program.TrainingFormat "one_to_one"}}
-          One-to-one
-          {{else}}
-          Group
-          {{end}}
-        </p>
-      </div>
+	        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">
+	          Delivery format
+	        </p>
+	
+	        <p class="mt-2 font-semibold text-obsidian">
+	          Group
+	        </p>
+	      </div>
 
       <div class="rounded-2xl border border-slate/10 bg-cloud/70 p-4">
         <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">
@@ -804,7 +804,7 @@
 	          <tr class="text-left text-xs font-bold uppercase tracking-[0.14em] text-slate/45">
 	            <th class="px-5 py-4 sm:px-8">Programme</th>
 	            <th class="px-5 py-4">Division</th>
-	            <th class="px-5 py-4">Format</th>
+		            <th class="px-5 py-4">Delivery format</th>
             <th class="px-5 py-4">Admission fee</th>
             <th class="px-5 py-4">Monthly fee</th>
             <th class="px-5 py-4">Status</th>
@@ -820,9 +820,9 @@
                 {{.Name}}
               </p>
 
-              <p class="mt-1 text-xs capitalize text-slate/50">
-                {{gameNameFor $.Games .Activity}} · Order {{.SortOrder}}
-              </p>
+	              <p class="mt-1 text-xs capitalize text-slate/50">
+	                {{trainingProgramActivityLabel .DivisionCode}}: {{if eq .DivisionCode "SPORTS"}}{{gameNameFor $.Games .Activity}}{{else}}{{activityLabel .Activity}}{{end}} · Order {{.SortOrder}}
+	              </p>
 	            </td>
 	
 	            <td class="whitespace-nowrap px-5 py-5 text-sm text-slate">
@@ -830,12 +830,8 @@
 	            </td>
 
 	            <td class="whitespace-nowrap px-5 py-5 text-sm text-slate">
-              {{if eq .TrainingFormat "one_to_one"}}
-              One-to-one
-              {{else}}
-              Group
-              {{end}}
-            </td>
+	              Group
+	            </td>
 
             <td class="whitespace-nowrap px-5 py-5 text-sm font-semibold text-obsidian">
               LKR {{printf "%.2f" .AdmissionFee}}
@@ -860,14 +856,14 @@
             <td class="px-5 py-5 sm:pr-8">
               <div class="flex flex-wrap justify-end gap-2">
                 <a
-                  href="/admin/training-programs?action=view&id={{.ID}}#selected-training-program"
+	                  href="{{scopedURL (printf "/admin/training-programs?action=view&id=%d#selected-training-program" .ID) $.SelectedDivision $.SelectedDivisionScope}}"
                   class="inline-flex h-9 items-center justify-center rounded-xl border border-slate/15 bg-white px-3 text-xs font-semibold text-slate transition hover:bg-cloud"
                 >
                   View
                 </a>
 
                 <a
-                  href="/admin/training-programs?action=edit&id={{.ID}}#selected-training-program"
+	                  href="{{scopedURL (printf "/admin/training-programs?action=edit&id=%d#selected-training-program" .ID) $.SelectedDivision $.SelectedDivisionScope}}"
                   class="inline-flex h-9 items-center justify-center rounded-xl bg-obsidian px-3 text-xs font-semibold text-cloud transition hover:bg-slate"
                 >
                   Edit
@@ -883,11 +879,16 @@
                     value="{{$.CSRFToken}}"
                   />
 
-                  <input
-                    type="hidden"
-                    name="id"
-                    value="{{.ID}}"
-                  />
+	                  <input
+	                    type="hidden"
+	                    name="id"
+	                    value="{{.ID}}"
+	                  />
+	                  {{if $.SelectedDivision}}
+	                  <input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}" />
+	                  {{else if eq $.SelectedDivisionScope "all"}}
+	                  <input type="hidden" name="division" value="all" />
+	                  {{end}}
 
                   {{if .Active}}
                   <input
@@ -929,11 +930,16 @@
                     value="{{$.CSRFToken}}"
                   />
 
-                  <input
-                    type="hidden"
-                    name="id"
-                    value="{{.ID}}"
-                  />
+	                  <input
+	                    type="hidden"
+	                    name="id"
+	                    value="{{.ID}}"
+	                  />
+	                  {{if $.SelectedDivision}}
+	                  <input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}" />
+	                  {{else if eq $.SelectedDivisionScope "all"}}
+	                  <input type="hidden" name="division" value="all" />
+	                  {{end}}
 
                   <button
                     type="submit"

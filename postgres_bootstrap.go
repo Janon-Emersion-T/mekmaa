@@ -530,21 +530,9 @@ func seedPostgresTrainingPrograms(db *sql.DB) error {
 
 	programs := []TrainingProgram{
 		{
-			Name:           "1 to 1 Cricket Practice",
-			Activity:       "cricket",
-			TrainingFormat: "one_to_one",
-			SortOrder:      10,
-		},
-		{
 			Name:           "Group Practice - Cricket",
 			Activity:       "cricket",
 			TrainingFormat: "group",
-			SortOrder:      20,
-		},
-		{
-			Name:           "1 to 1 Zumba Practice",
-			Activity:       "zumba",
-			TrainingFormat: "one_to_one",
 			SortOrder:      30,
 		},
 		{
@@ -552,12 +540,6 @@ func seedPostgresTrainingPrograms(db *sql.DB) error {
 			Activity:       "zumba",
 			TrainingFormat: "group",
 			SortOrder:      40,
-		},
-		{
-			Name:           "1 to 1 Badminton Practice",
-			Activity:       "badminton",
-			TrainingFormat: "one_to_one",
-			SortOrder:      50,
 		},
 		{
 			Name:           "Group Practice - Badminton",

@@ -1602,6 +1602,9 @@ ON court_closures(activity, active, closure_date)`,
 	if err := seedPricingSettings(db); err != nil {
 		return err
 	}
+	if err := backfillTrainingProgramDeliveryFormats(db); err != nil {
+		return err
+	}
 	if err := backfillBookingFinancials(db); err != nil {
 		return err
 	}
@@ -1624,21 +1627,9 @@ func seedTrainingPrograms(db *sql.DB) error {
 
 	programs := []TrainingProgram{
 		{
-			Name:           "1 to 1 Cricket Practice",
-			Activity:       "cricket",
-			TrainingFormat: "one_to_one",
-			SortOrder:      10,
-		},
-		{
 			Name:           "Group Practice - Cricket",
 			Activity:       "cricket",
 			TrainingFormat: "group",
-			SortOrder:      20,
-		},
-		{
-			Name:           "1 to 1 Zumba Practice",
-			Activity:       "zumba",
-			TrainingFormat: "one_to_one",
 			SortOrder:      30,
 		},
 		{
@@ -1646,12 +1637,6 @@ func seedTrainingPrograms(db *sql.DB) error {
 			Activity:       "zumba",
 			TrainingFormat: "group",
 			SortOrder:      40,
-		},
-		{
-			Name:           "1 to 1 Badminton Practice",
-			Activity:       "badminton",
-			TrainingFormat: "one_to_one",
-			SortOrder:      50,
 		},
 		{
 			Name:           "Group Practice - Badminton",
@@ -1694,6 +1679,172 @@ func seedTrainingPrograms(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func backfillTrainingProgramDeliveryFormats(db *sql.DB) error {
+	var salaryProfileTableCount int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM sqlite_master
+		WHERE type = 'table'
+		  AND name = 'staff_salary_profiles'
+	`).Scan(&salaryProfileTableCount); err != nil {
+		return fmt.Errorf("check staff_salary_profiles table: %w", err)
+	}
+	hasSalaryProfiles := salaryProfileTableCount > 0
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`
+		SELECT id, activity
+		FROM training_programs
+		WHERE training_format = 'one_to_one'
+		ORDER BY id ASC
+	`)
+	if err != nil {
+		return fmt.Errorf("load legacy one-to-one training programmes: %w", err)
+	}
+	defer rows.Close()
+
+	type legacyProgram struct {
+		ID       int64
+		Activity string
+	}
+
+	legacyPrograms := make([]legacyProgram, 0)
+	for rows.Next() {
+		var program legacyProgram
+		if err := rows.Scan(&program.ID, &program.Activity); err != nil {
+			return fmt.Errorf("scan legacy one-to-one training programme: %w", err)
+		}
+		legacyPrograms = append(legacyPrograms, program)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate legacy one-to-one training programmes: %w", err)
+	}
+
+	now := time.Now().UTC()
+
+	for _, legacy := range legacyPrograms {
+		var keeperID int64
+		err := tx.QueryRow(`
+			SELECT id
+			FROM training_programs
+			WHERE activity = ?
+			  AND training_format = 'group'
+			  AND id <> ?
+			ORDER BY id ASC
+			LIMIT 1
+		`, legacy.Activity, legacy.ID).Scan(&keeperID)
+
+		switch {
+		case err == sql.ErrNoRows:
+			if _, err := tx.Exec(`
+				UPDATE training_programs
+				SET training_format = 'group',
+				    updated_at = ?
+				WHERE id = ?
+			`, now, legacy.ID); err != nil {
+				return fmt.Errorf("convert legacy training programme %d to group: %w", legacy.ID, err)
+			}
+
+		case err != nil:
+			return fmt.Errorf("find group keeper for training programme %d: %w", legacy.ID, err)
+
+		default:
+			if _, err := tx.Exec(`
+				UPDATE admissions
+				SET training_program_id = ?
+				WHERE training_program_id = ?
+			`, keeperID, legacy.ID); err != nil {
+				return fmt.Errorf("repoint admissions from training programme %d: %w", legacy.ID, err)
+			}
+
+			if _, err := tx.Exec(`
+				UPDATE student_groups
+				SET training_program_id = ?
+				WHERE training_program_id = ?
+			`, keeperID, legacy.ID); err != nil {
+				return fmt.Errorf("repoint student groups from training programme %d: %w", legacy.ID, err)
+			}
+
+			if hasSalaryProfiles {
+				if _, err := tx.Exec(`
+					UPDATE staff_salary_profiles
+					SET training_program_id = ?
+					WHERE training_program_id = ?
+				`, keeperID, legacy.ID); err != nil {
+					return fmt.Errorf("repoint staff salary profiles from training programme %d: %w", legacy.ID, err)
+				}
+			}
+
+			if _, err := tx.Exec(`
+				UPDATE admission_training_programs
+				SET training_program_id = ?
+				WHERE training_program_id = ?
+				  AND NOT EXISTS (
+					SELECT 1
+					FROM admission_training_programs existing
+					WHERE existing.admission_id = admission_training_programs.admission_id
+					  AND existing.training_program_id = ?
+				  )
+			`, keeperID, legacy.ID, keeperID); err != nil {
+				return fmt.Errorf("repoint admission training programmes from training programme %d: %w", legacy.ID, err)
+			}
+
+			if _, err := tx.Exec(`
+				DELETE FROM admission_training_programs
+				WHERE training_program_id = ?
+			`, legacy.ID); err != nil {
+				return fmt.Errorf("delete duplicate admission training programmes for %d: %w", legacy.ID, err)
+			}
+
+			if _, err := tx.Exec(`
+				UPDATE student_enrollments
+				SET training_program_id = ?
+				WHERE training_program_id = ?
+				  AND NOT EXISTS (
+					SELECT 1
+					FROM student_enrollments existing
+					WHERE existing.admission_id = student_enrollments.admission_id
+					  AND existing.training_program_id = ?
+				  )
+			`, keeperID, legacy.ID, keeperID); err != nil {
+				return fmt.Errorf("repoint student enrollments from training programme %d: %w", legacy.ID, err)
+			}
+
+			if _, err := tx.Exec(`
+				DELETE FROM student_enrollments
+				WHERE training_program_id = ?
+			`, legacy.ID); err != nil {
+				return fmt.Errorf("delete duplicate student enrollments for %d: %w", legacy.ID, err)
+			}
+
+			if _, err := tx.Exec(`
+				DELETE FROM training_programs
+				WHERE id = ?
+			`, legacy.ID); err != nil {
+				return fmt.Errorf("delete obsolete one-to-one training programme %d: %w", legacy.ID, err)
+			}
+		}
+	}
+
+	if _, err := tx.Exec(`
+		UPDATE training_programs
+		SET training_format = 'group',
+		    updated_at = ?
+		WHERE training_format IS NULL
+		   OR TRIM(training_format) = ''
+		   OR training_format <> 'group'
+	`, now); err != nil {
+		return fmt.Errorf("finalize group-only training programme formats: %w", err)
+	}
+
+	return tx.Commit()
 }
 
 func backfillBookingFinancials(db *sql.DB) error {
