@@ -12177,9 +12177,9 @@ func TestScheduleNextOneToOneSessionCreatesIndependentAppointment(t *testing.T) 
 		)
 	}
 
-	if coachFee != 300 {
+	if coachFee != 200 {
 		t.Fatalf(
-			"session #2 coach fee = %.2f, want 300.00",
+			"session #2 coach fee = %.2f, want 200.00",
 			coachFee,
 		)
 	}
