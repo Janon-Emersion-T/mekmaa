@@ -2000,7 +2000,8 @@ func (a *App) oneToOneBookingExportHandler(w http.ResponseWriter, r *http.Reques
 		{"package", "Cancelled sessions", strconv.Itoa(booking.CancelledSessions)},
 		{"package", "Standard price", fmt.Sprintf("%.2f", booking.Price)},
 		{"package", "Final price", fmt.Sprintf("%.2f", booking.DiscountedPrice)},
-		{"package", "Default coach fee", fmt.Sprintf("%.2f", booking.CoachFee)},
+		{"package", "Coach fee total", fmt.Sprintf("%.2f", booking.CoachFee)},
+		{"package", "Coach fee per session", fmt.Sprintf("%.2f", oneToOnePackageCoachFeePerSession(booking.CoachFee, booking.Sessions))},
 		{"package", "Package note", csvSafeCell(booking.Notes)},
 		{"package", "Created at", formatDateTime(booking.CreatedAt)},
 		{"package", "Updated at", formatDateTime(booking.UpdatedAt)},
@@ -2048,7 +2049,7 @@ func (a *App) oneToOneBookingExportHandler(w http.ResponseWriter, r *http.Reques
 
 	_ = writer.Write([]string{})
 	_ = writer.Write([]string{"Sessions"})
-	_ = writer.Write([]string{"Session #", "Slot date", "Slot time", "Status", "Attendance", "Coach", "Coach fee", "Session note", "Attendance note", "Attendance marked at", "Attendance marked by", "Completed at", "Cancelled at"})
+	_ = writer.Write([]string{"Session #", "Slot date", "Slot time", "Status", "Attendance", "Coach", "Coach fee per session", "Session note", "Attendance note", "Attendance marked at", "Attendance marked by", "Completed at", "Cancelled at"})
 	for _, session := range sessions {
 		_ = writer.Write([]string{
 			strconv.Itoa(session.SessionNumber),
@@ -2290,15 +2291,6 @@ func (a *App) scheduleNextOneToOneSessionHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	coachFee, err := strconv.ParseFloat(
-		strings.TrimSpace(r.FormValue("coach_fee")),
-		64,
-	)
-	if err != nil || coachFee < 0 {
-		http.Error(w, "invalid coach fee", http.StatusBadRequest)
-		return
-	}
-
 	schedule := SpaceSchedule{
 		SlotDate: slotDate,
 		SlotHour: slotHour,
@@ -2319,7 +2311,6 @@ func (a *App) scheduleNextOneToOneSessionHandler(w http.ResponseWriter, r *http.
 		slotDate,
 		slotHour,
 		coachUserID,
-		coachFee,
 		notes,
 	); err != nil {
 		a.setFlash(w, err.Error())

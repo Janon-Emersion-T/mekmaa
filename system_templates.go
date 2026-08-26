@@ -179,6 +179,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"attendanceStatus":                          attendanceStatus,
 		"oneToOneAttendanceStatusLabel":             oneToOneAttendanceStatusLabel,
 		"oneToOneAttendanceCount":                   oneToOneAttendanceCount,
+		"oneToOnePackageCoachFeePerSession":         oneToOnePackageCoachFeePerSession,
 		"tournamentExpenseTypeLabel":                tournamentExpenseTypeLabel,
 		"enrollmentsForAdmission":                   enrollmentsForAdmission,
 		"enrollmentCountForAdmission":               enrollmentCountForAdmission,

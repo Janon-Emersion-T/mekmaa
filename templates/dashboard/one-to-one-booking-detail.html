@@ -21,6 +21,7 @@
       </div>
       <div class="flex flex-wrap gap-2">
         <a href="/admin/one-to-one-bookings" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">All packages</a>
+        <a href="#edit-package" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white/8 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">Edit package</a>
         <a href="/admin/one-to-one-bookings/export?id={{$booking.ID}}" class="inline-flex h-11 items-center rounded-2xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Export CSV</a>
         <a href="/admin/bookings?action=view&id={{$booking.ScheduleID}}&date={{$booking.SlotDate}}#schedule-view" class="inline-flex h-11 items-center rounded-2xl border border-white/15 bg-white px-4 text-sm font-semibold text-obsidian transition hover:bg-cloud">Open original booking</a>
       </div>
@@ -70,8 +71,8 @@
         </div>
         <div class="rounded-2xl bg-cloud/50 p-4">
           <p class="text-xs uppercase tracking-[0.14em] text-slate/45">Coach budget</p>
-          <p class="mt-2 text-sm font-semibold text-obsidian">{{money $booking.CoachFee}} per scheduled session</p>
-          <p class="mt-1 text-sm text-slate/60">Configured limit {{$booking.MaxSessions}} session{{if ne $booking.MaxSessions 1}}s{{end}}</p>
+          <p class="mt-2 text-sm font-semibold text-obsidian">{{money $booking.CoachFee}} for {{$booking.Sessions}} booked session{{if ne $booking.Sessions 1}}s{{end}}</p>
+          <p class="mt-1 text-sm text-slate/60">{{money (oneToOnePackageCoachFeePerSession $booking.CoachFee $booking.Sessions)}} per session · Configured limit {{$booking.MaxSessions}} session{{if ne $booking.MaxSessions 1}}s{{end}}</p>
         </div>
         <div class="rounded-2xl bg-cloud/50 p-4">
           <p class="text-xs uppercase tracking-[0.14em] text-slate/45">Package note</p>
@@ -93,11 +94,11 @@
       {{end}}
     </section>
 
-    <section class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
+    <section id="edit-package" class="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-sm sm:p-6">
       <div>
         <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate/45">Package management</p>
         <h2 class="mt-2 text-2xl font-semibold text-obsidian">Edit package</h2>
-        <p class="mt-2 text-sm text-slate/60">Correct package size, fee structure, customer label, and the default coach without touching session history. Existing completed and active appointments set the minimum safe session count.</p>
+        <p class="mt-2 text-sm text-slate/60">Correct package size, fee structure, customer label, and the default coach. Coach fee here is the total for the full booking, and the system splits it evenly across sessions.</p>
       </div>
 
       <form action="/admin/one-to-one-bookings/update" method="post" class="mt-5 grid gap-3 md:grid-cols-2">
@@ -126,8 +127,9 @@
           </select>
         </label>
         <label>
-          <span class="mb-1 block text-xs font-semibold text-slate/55">Default coach fee</span>
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Coach fee for full package</span>
           <input type="number" name="coach_fee" min="0" step="0.01" value="{{$booking.CoachFee}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+          <span class="mt-1 block text-xs text-slate/45">{{money (oneToOnePackageCoachFeePerSession $booking.CoachFee $booking.Sessions)}} per session with the current package size.</span>
         </label>
         <label class="md:col-span-2">
           <span class="mb-1 block text-xs font-semibold text-slate/55">Internal package note</span>
@@ -168,8 +170,9 @@
           </select>
         </label>
         <label>
-          <span class="mb-1 block text-xs font-semibold text-slate/55">Coach fee</span>
-          <input type="number" name="coach_fee" min="0" step="0.01" value="{{$booking.CoachFee}}" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" />
+          <span class="mb-1 block text-xs font-semibold text-slate/55">Coach fee per session</span>
+          <input type="text" value="{{money (oneToOnePackageCoachFeePerSession $booking.CoachFee $booking.Sessions)}}" readonly class="h-11 w-full rounded-xl border border-slate/10 bg-cloud/60 px-3 text-sm text-slate/70 outline-none" />
+          <span class="mt-1 block text-xs text-slate/45">Derived automatically from the package total and session count.</span>
         </label>
         <label class="md:col-span-2">
           <span class="mb-1 block text-xs font-semibold text-slate/55">Session note</span>
@@ -210,7 +213,7 @@
               <span class="rounded-full px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] {{if eq .AttendanceStatus "present"}}bg-emerald-100 text-emerald-800{{else if eq .AttendanceStatus "late"}}bg-amber-100 text-amber-800{{else if eq .AttendanceStatus "excused"}}bg-sky-100 text-sky-800{{else if eq .AttendanceStatus "absent"}}bg-rose-100 text-rose-700{{else}}bg-slate-100 text-slate-600{{end}}">Attendance · {{oneToOneAttendanceStatusLabel .AttendanceStatus}}</span>
             </div>
             <p class="mt-2 text-sm font-semibold text-slate">{{formatCalendarDate .SlotDate}} · {{.SlotHour}}</p>
-            <p class="mt-1 text-sm text-slate/60">Coach {{if .CoachName}}{{.CoachName}}{{else}}Not assigned{{end}} · Fee {{money .CoachFee}}</p>
+            <p class="mt-1 text-sm text-slate/60">Coach {{if .CoachName}}{{.CoachName}}{{else}}Not assigned{{end}} · Fee {{money .CoachFee}} per session</p>
             {{if .Notes}}<p class="mt-2 text-sm text-slate/60">{{.Notes}}</p>{{end}}
             {{if .AttendanceNote}}<p class="mt-2 text-sm text-slate/55">Attendance note: {{.AttendanceNote}}</p>{{end}}
             {{if .AttendanceMarkedAt.IsZero}}

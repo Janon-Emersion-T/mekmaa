@@ -12093,7 +12093,6 @@ func TestScheduleNextOneToOneSessionCreatesIndependentAppointment(t *testing.T) 
 		secondDate,
 		"19:00",
 		0,
-		900,
 		"Session two notes",
 	)
 	if err != nil {
@@ -12178,9 +12177,9 @@ func TestScheduleNextOneToOneSessionCreatesIndependentAppointment(t *testing.T) 
 		)
 	}
 
-	if coachFee != 900 {
+	if coachFee != 300 {
 		t.Fatalf(
-			"session #2 coach fee = %.2f, want 900.00",
+			"session #2 coach fee = %.2f, want 300.00",
 			coachFee,
 		)
 	}
@@ -12511,7 +12510,6 @@ func TestOneToOneSessionLifecycleCancellationReplacementAndCompletion(t *testing
 		date2,
 		"19:00",
 		0,
-		900,
 		"Replacement session",
 	)
 	if err != nil {
@@ -12633,7 +12631,6 @@ func TestOneToOneSessionLifecycleCancellationReplacementAndCompletion(t *testing
 		date3,
 		"18:30",
 		0,
-		700,
 		"Third appointment",
 	)
 	if err != nil {
@@ -12651,7 +12648,6 @@ func TestOneToOneSessionLifecycleCancellationReplacementAndCompletion(t *testing
 		date4,
 		"19:30",
 		0,
-		700,
 		"Fourth appointment",
 	)
 	if err != nil {
@@ -12719,7 +12715,6 @@ func TestOneToOneSessionLifecycleCancellationReplacementAndCompletion(t *testing
 		bookingID,
 		time.Now().AddDate(0, 0, 12).Format("2006-01-02"),
 		"18:00",
-		0,
 		0,
 		"Should not be created",
 	)
@@ -13013,6 +13008,20 @@ func TestUpdateOneToOneBookingPackageUpdatesCommercialAndSummaryFields(t *testin
 		t.Fatalf("coach fee = %.2f, want 1100.00", coachFee)
 	}
 
+	var sessionCoachFee float64
+	if err := app.db.QueryRow(`
+		SELECT coach_fee
+		FROM one_to_one_booking_sessions
+		WHERE booking_id = ?
+		  AND session_number = 1
+	`, bookingID).Scan(&sessionCoachFee); err != nil {
+		t.Fatalf("reload updated session coach fee: %v", err)
+	}
+
+	if sessionCoachFee != 110 {
+		t.Fatalf("session coach fee = %.2f, want 110.00", sessionCoachFee)
+	}
+
 	var (
 		title         string
 		requesterName string
@@ -13094,7 +13103,6 @@ func TestUpdateOneToOneBookingPackageRejectsReducingBelowExistingAppointments(t 
 		time.Now().AddDate(0, 0, 6).Format("2006-01-02"),
 		"19:00",
 		0,
-		900,
 		"",
 	); err != nil {
 		t.Fatalf("schedule second appointment: %v", err)

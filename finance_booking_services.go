@@ -1656,6 +1656,11 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 		return 0, 0, err
 	}
 
+	sessionCoachFee := oneToOnePackageCoachFeePerSession(
+		coachFee,
+		sessions,
+	)
+
 	schedule := SpaceSchedule{
 		SlotDate:      slotDate,
 		SlotHour:      slotHour,
@@ -1805,7 +1810,7 @@ func (a *App) createOneToOneBooking(offering OneToOneOffering, customerName, slo
 		scheduleID,
 		1,
 		coachUserID,
-		coachFee,
+		sessionCoachFee,
 		"scheduled",
 		now,
 		now,
@@ -1828,7 +1833,11 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 			ots.session_number,
 			COALESCE(ots.coach_user_id, 0),
 			COALESCE(u.name, ''),
-			COALESCE(ots.coach_fee, 0),
+			CASE
+				WHEN COALESCE(ob.sessions, 0) > 0
+					THEN COALESCE(ob.coach_fee, 0) / ob.sessions
+				ELSE COALESCE(ob.coach_fee, 0)
+			END,
 			ss.slot_date,
 			ss.slot_hour,
 			ots.status,
@@ -1844,6 +1853,8 @@ func (a *App) listOneToOneBookingSessions(bookingID int64) ([]OneToOneBookingSes
 			ots.created_at,
 			ots.updated_at
 		FROM one_to_one_booking_sessions ots
+		JOIN one_to_one_bookings ob
+			ON ob.id = ots.booking_id
 		JOIN space_schedules ss
 			ON ss.id = ots.schedule_id
 		LEFT JOIN users u
@@ -1947,7 +1958,11 @@ func (a *App) listOneToOneBookingSessionsLegacy(
 			ots.session_number,
 			COALESCE(ots.coach_user_id, 0),
 			COALESCE(u.name, ''),
-			COALESCE(ots.coach_fee, 0),
+			CASE
+				WHEN COALESCE(ob.sessions, 0) > 0
+					THEN COALESCE(ob.coach_fee, 0) / ob.sessions
+				ELSE COALESCE(ob.coach_fee, 0)
+			END,
 			ss.slot_date,
 			ss.slot_hour,
 			ots.status,
@@ -1958,6 +1973,8 @@ func (a *App) listOneToOneBookingSessionsLegacy(
 			ots.created_at,
 			ots.updated_at
 		FROM one_to_one_booking_sessions ots
+		JOIN one_to_one_bookings ob
+			ON ob.id = ots.booking_id
 		JOIN space_schedules ss
 			ON ss.id = ots.schedule_id
 		LEFT JOIN users u
@@ -2028,7 +2045,11 @@ func (a *App) listOneToOneBookingSessionsDerived(
 			1,
 			0,
 			'',
-			COALESCE(ob.coach_fee, 0),
+			CASE
+				WHEN COALESCE(ob.sessions, 0) > 0
+					THEN COALESCE(ob.coach_fee, 0) / ob.sessions
+				ELSE COALESCE(ob.coach_fee, 0)
+			END,
 			ss.slot_date,
 			ss.slot_hour,
 			ss.status,
@@ -2178,15 +2199,10 @@ func (a *App) scheduleNextOneToOneSession(
 	slotDate string,
 	slotHour string,
 	coachUserID int64,
-	coachFee float64,
 	notes string,
 ) (int64, int64, error) {
 	if bookingID <= 0 {
 		return 0, 0, errors.New("invalid 1 to 1 booking")
-	}
-
-	if coachFee < 0 {
-		return 0, 0, errors.New("coach fee must be zero or greater")
 	}
 
 	var booking OneToOneBooking
@@ -2355,6 +2371,10 @@ func (a *App) scheduleNextOneToOneSession(
 	}
 
 	now := time.Now().UTC()
+	sessionCoachFee := oneToOnePackageCoachFeePerSession(
+		booking.CoachFee,
+		booking.Sessions,
+	)
 
 	scheduleID, err := a.insertAndReturnIDTx(tx, `
 		INSERT INTO space_schedules (
@@ -2421,7 +2441,7 @@ func (a *App) scheduleNextOneToOneSession(
 		scheduleID,
 		nextSessionNumber,
 		sessionCoachUserID,
-		coachFee,
+		sessionCoachFee,
 		"scheduled",
 		strings.TrimSpace(notes),
 		now,
@@ -2640,6 +2660,27 @@ func (a *App) updateOneToOneBookingPackage(
 		discountedPrice,
 		now,
 		booking.ScheduleID,
+	); err != nil {
+		return err
+	}
+
+	sessionCoachFee := oneToOnePackageCoachFeePerSession(
+		coachFee,
+		sessions,
+	)
+
+	if _, err := a.execTxDB(tx, `
+		UPDATE one_to_one_booking_sessions
+		SET
+			coach_user_id = ?,
+			coach_fee = ?,
+			updated_at = ?
+		WHERE booking_id = ?
+	`,
+		coachUserID,
+		sessionCoachFee,
+		now,
+		bookingID,
 	); err != nil {
 		return err
 	}
@@ -2902,12 +2943,36 @@ func (a *App) cancelOneToOneSession(
 }
 
 func buildOneToOneBookingNotes(offering OneToOneOffering, sessions int, discountedPrice float64, coachFee float64, notes string) string {
-	base := fmt.Sprintf("1 to 1 booking\nProgramme: %s\nGame: %s\nWho: %s\nOccurrence: %s\nAllowed sessions: %d\nBooked sessions: %d\nStandard price: %.2f\nDiscounted price: %.2f\nCoach fee: %.2f", offering.Name, offering.Game, offering.Audience, offering.Occurrence, offering.SessionCount, sessions, normalizeMoney(offering.Price), normalizeMoney(discountedPrice), normalizeMoney(coachFee))
+	base := fmt.Sprintf(
+		"1 to 1 booking\nProgramme: %s\nGame: %s\nWho: %s\nOccurrence: %s\nAllowed sessions: %d\nBooked sessions: %d\nStandard price: %.2f\nDiscounted price: %.2f\nCoach fee total: %.2f\nCoach fee per session: %.2f",
+		offering.Name,
+		offering.Game,
+		offering.Audience,
+		offering.Occurrence,
+		offering.SessionCount,
+		sessions,
+		normalizeMoney(offering.Price),
+		normalizeMoney(discountedPrice),
+		normalizeMoney(coachFee),
+		oneToOnePackageCoachFeePerSession(coachFee, sessions),
+	)
 	notes = strings.TrimSpace(notes)
 	if notes == "" {
 		return base
 	}
 	return base + "\nNotes: " + notes
+}
+
+func oneToOnePackageCoachFeePerSession(
+	coachFee float64,
+	sessions int,
+) float64 {
+	coachFee = normalizeMoney(coachFee)
+	if sessions <= 0 {
+		return coachFee
+	}
+
+	return normalizeMoney(coachFee / float64(sessions))
 }
 
 func extractOneToOneBookingNote(notes string) string {
