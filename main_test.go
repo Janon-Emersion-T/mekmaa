@@ -711,7 +711,7 @@ func TestAdmissionManagementTemplateRenders(t *testing.T) {
 	html := renderTemplateToString(t, templates, "admission-management", TemplateData{
 		Title:                     "Admissions Management",
 		Description:               "Manage admissions.",
-		CurrentPath:               "/admin/admissions",
+		CurrentPath:               "/admin/students",
 		User:                      &User{Name: "Admin", Email: "admin@example.com", Roles: []string{"admin"}, Permissions: allPermissions},
 		CSRFToken:                 "test-token",
 		Admissions:                []Admission{{ID: 1, StudentID: "STU-0001", FullName: "Test Student", AdmissionDate: "2026-08-01", DateOfBirth: "2012-01-15", Gender: "male", TrainingProgramName: "Cricket", School: "Test School", GuardianName: "Test Guardian", GuardianRelationship: "father", GuardianContactNumber: "0771234567", GuardianAlternativePhone: "0777654321"}},
@@ -720,9 +720,9 @@ func TestAdmissionManagementTemplateRenders(t *testing.T) {
 		AdmissionsEnd:             1,
 		AdmissionsTotalPages:      1,
 		AdmissionsPageNumbers:     []int{1},
-		AdmissionsPageBaseURL:     "/admin/admissions?limit=25&direction=asc",
-		AdmissionsPreviousPageURL: "/admin/admissions?page=1&limit=25&direction=asc#admissions-directory",
-		AdmissionsNextPageURL:     "/admin/admissions?page=1&limit=25&direction=asc#admissions-directory",
+		AdmissionsPageBaseURL:     "/admin/students?limit=25&direction=asc",
+		AdmissionsPreviousPageURL: "/admin/students?page=1&limit=25&direction=asc#admissions-directory",
+		AdmissionsNextPageURL:     "/admin/students?page=1&limit=25&direction=asc#admissions-directory",
 		AdmissionsFilter:          AdmissionsFilter{Direction: "asc", Page: 1, Limit: 25},
 		TrainingPrograms:          []TrainingProgram{{ID: 1, Name: "Cricket", Active: true, AdmissionFee: 2500}},
 	})
@@ -4218,7 +4218,7 @@ func TestDeleteAdmissionHandlerRedirectsInsteadOfReturningInternalServerError(t 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected redirect instead of internal server error, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if location := rec.Header().Get("Location"); location != "/admin/admissions" {
+	if location := rec.Header().Get("Location"); location != "/admin/students" {
 		t.Fatalf("expected redirect to admissions page, got %q", location)
 	}
 	flashCookie := rec.Result().Cookies()

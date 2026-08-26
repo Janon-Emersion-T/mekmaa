@@ -5183,7 +5183,7 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(
 		w,
 		r,
-		"/admin/admissions",
+		"/admin/students",
 		http.StatusSeeOther,
 	)
 }
@@ -5275,7 +5275,7 @@ func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = financeTransactionID
 	a.setFlash(w, "Admission updated.")
-	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/students", http.StatusSeeOther)
 }
 
 func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Request) {
@@ -5598,11 +5598,11 @@ func (a *App) voidAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request
 	}
 	if err := a.voidAdmissionPayment(admissionID, reason, currentUser.ID); err != nil {
 		a.setFlash(w, "Admission payment could not be voided: "+err.Error())
-		http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/students", http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, "Admission payment was voided.")
-	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/students", http.StatusSeeOther)
 }
 
 func (a *App) voidStudentPaymentHandler(w http.ResponseWriter, r *http.Request) {
@@ -5716,12 +5716,12 @@ func (a *App) deleteAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 			message = "Student could not be deleted: student was not found."
 		}
 		a.setFlash(w, message)
-		http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/students", http.StatusSeeOther)
 		return
 	}
 
 	a.setFlash(w, "Student deleted.")
-	http.Redirect(w, r, "/admin/admissions", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/students", http.StatusSeeOther)
 }
 
 func groupStaffAssignmentsFromRequest(r *http.Request) []GroupStaffAssignmentInput {
