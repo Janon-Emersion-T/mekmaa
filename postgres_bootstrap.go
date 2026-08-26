@@ -567,7 +567,7 @@ func seedPostgresTrainingPrograms(db *sql.DB) error {
 				0, 0, 1,
 				$4, $5, $5
 			)
-			ON CONFLICT (activity, training_format)
+			ON CONFLICT
 			DO NOTHING
 		`,
 			program.Name,

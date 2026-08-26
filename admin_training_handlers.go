@@ -964,7 +964,7 @@ func (a *App) createTrainingProgramHandler(
 		message := "Training programme could not be created."
 
 		if isUniqueConstraintError(err) {
-			message = "A programme already exists for this activity and training format."
+			message = "A programme with this name already exists in the selected division."
 		}
 
 		a.setFlash(w, message)
@@ -1062,7 +1062,7 @@ func (a *App) updateTrainingProgramHandler(
 		message := "Training programme could not be updated."
 
 		if isUniqueConstraintError(err) {
-			message = "A programme already exists for this activity and training format."
+			message = "A programme with this name already exists in the selected division."
 		}
 
 		a.setFlash(w, message)

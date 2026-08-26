@@ -13743,3 +13743,88 @@ func TestTournamentLineItemsRollUpIntoTotalsAndFinance(t *testing.T) {
 		t.Fatalf("active tournament finance transactions = %d, want 4", transactionCount)
 	}
 }
+
+func TestCreateTrainingProgramAllowsDuplicateActivityWithinDivisionWhenNameDiffers(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf("seed divisions: %v", err)
+	}
+
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+
+	if _, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     kecID,
+		DivisionCode:   divisionCodeKEC,
+		Name:           "GR-01 2026",
+		Activity:       "full_subjects",
+		TrainingFormat: "group",
+		Active:         true,
+	}); err != nil {
+		t.Fatalf("create first programme: %v", err)
+	}
+
+	if _, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     kecID,
+		DivisionCode:   divisionCodeKEC,
+		Name:           "GR-03 2026",
+		Activity:       "full_subjects",
+		TrainingFormat: "group",
+		Active:         true,
+	}); err != nil {
+		t.Fatalf("create second programme with same subject: %v", err)
+	}
+}
+
+func TestCreateTrainingProgramRejectsDuplicateNameWithinDivision(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf("seed divisions: %v", err)
+	}
+
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+	chessID, err := divisionIDByCode(app.db, divisionCodeChess)
+	if err != nil {
+		t.Fatalf("find Chess division: %v", err)
+	}
+
+	if _, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     kecID,
+		DivisionCode:   divisionCodeKEC,
+		Name:           "GR-03 2026",
+		Activity:       "full_subjects",
+		TrainingFormat: "group",
+		Active:         true,
+	}); err != nil {
+		t.Fatalf("create baseline programme: %v", err)
+	}
+
+	if _, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     kecID,
+		DivisionCode:   divisionCodeKEC,
+		Name:           "gr-03 2026",
+		Activity:       "language",
+		TrainingFormat: "group",
+		Active:         true,
+	}); err == nil {
+		t.Fatal("expected duplicate programme name in same division to fail")
+	}
+
+	if _, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     chessID,
+		DivisionCode:   divisionCodeChess,
+		Name:           "GR-03 2026",
+		Activity:       "beginners",
+		TrainingFormat: "group",
+		Active:         true,
+	}); err != nil {
+		t.Fatalf("create same programme name in different division: %v", err)
+	}
+}

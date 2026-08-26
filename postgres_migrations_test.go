@@ -186,6 +186,37 @@ func TestPostgresMigrationDiscoveryIncludesTrainingProgramGroupDelivery(t *testi
 	}
 }
 
+func TestPostgresMigrationDiscoveryIncludesTrainingProgramDivisionNameUniqueness(t *testing.T) {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		t.Fatalf("load PostgreSQL migrations: %v", err)
+	}
+
+	var found *postgresMigration
+	for i := range migrations {
+		if migrations[i].Version == 13 {
+			found = &migrations[i]
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("expected PostgreSQL migration 000013_training_program_division_name_uniqueness.sql")
+	}
+
+	if found.Filename != "000013_training_program_division_name_uniqueness.sql" {
+		t.Fatalf("migration 13 filename = %q, want %q", found.Filename, "000013_training_program_division_name_uniqueness.sql")
+	}
+
+	if found.Name != "training_program_division_name_uniqueness" {
+		t.Fatalf("migration 13 name = %q, want %q", found.Name, "training_program_division_name_uniqueness")
+	}
+
+	if found.Checksum == "" {
+		t.Fatal("migration 13 checksum must not be empty")
+	}
+}
+
 func TestPostgresMCPMigrationAppliesCleanly(t *testing.T) {
 	runPostgresMigrationHelper(t, "apply_all")
 }

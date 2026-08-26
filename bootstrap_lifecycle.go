@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 )
 
@@ -333,8 +334,7 @@ func runMigrations(db *sql.DB) error {
 			active INTEGER NOT NULL DEFAULT 1,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL,
-			UNIQUE(activity, training_format)
+			updated_at DATETIME NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS finance_transactions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1441,6 +1441,9 @@ ON court_closures(activity, active, closure_date)`,
 	`); err != nil {
 		return fmt.Errorf("backfill training program games: %w", err)
 	}
+	if err := migrateTrainingProgramUniqueness(db); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`
 		UPDATE events
 		SET game_id = COALESCE((
@@ -1660,7 +1663,7 @@ func seedTrainingPrograms(db *sql.DB) error {
 				updated_at
 			)
 			VALUES (?, ?, ?, 0, 0, 1, ?, ?, ?)
-			ON CONFLICT(activity, training_format) DO NOTHING
+			ON CONFLICT DO NOTHING
 		`,
 			program.Name,
 			program.Activity,
@@ -1676,6 +1679,101 @@ func seedTrainingPrograms(db *sql.DB) error {
 				err,
 			)
 		}
+	}
+
+	return nil
+}
+
+func migrateTrainingProgramUniqueness(db *sql.DB) error {
+	var tableSQL string
+	if err := db.QueryRow(`
+		SELECT COALESCE(sql, '')
+		FROM sqlite_master
+		WHERE type = 'table' AND name = 'training_programs'
+	`).Scan(&tableSQL); err != nil {
+		return fmt.Errorf("load training_programs schema: %w", err)
+	}
+
+	needsRebuild := strings.Contains(strings.ToUpper(tableSQL), "UNIQUE(ACTIVITY, TRAINING_FORMAT)")
+	if !needsRebuild {
+		if _, err := db.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_training_programs_division_name_ci
+			ON training_programs(COALESCE(division_id, 0), LOWER(TRIM(name)))
+		`); err != nil {
+			return fmt.Errorf("create training programme division/name index: %w", err)
+		}
+		return nil
+	}
+
+	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		return fmt.Errorf("disable foreign keys for training programme rebuild: %w", err)
+	}
+	defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin training programme rebuild: %w", err)
+	}
+	defer tx.Rollback()
+
+	statements := []string{
+		`DROP TABLE IF EXISTS training_programs_rebuilt`,
+		`CREATE TABLE training_programs_rebuilt (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			activity TEXT NOT NULL,
+			training_format TEXT NOT NULL,
+			admission_fee REAL NOT NULL DEFAULT 0,
+			monthly_fee REAL NOT NULL DEFAULT 0,
+			active INTEGER NOT NULL DEFAULT 1,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			division_id INTEGER,
+			game_id INTEGER NOT NULL DEFAULT 0
+		)`,
+		`INSERT INTO training_programs_rebuilt (
+			id,
+			name,
+			activity,
+			training_format,
+			admission_fee,
+			monthly_fee,
+			active,
+			sort_order,
+			created_at,
+			updated_at,
+			division_id,
+			game_id
+		)
+		SELECT
+			id,
+			name,
+			activity,
+			training_format,
+			admission_fee,
+			monthly_fee,
+			active,
+			sort_order,
+			created_at,
+			updated_at,
+			division_id,
+			game_id
+		FROM training_programs`,
+		`DROP TABLE training_programs`,
+		`ALTER TABLE training_programs_rebuilt RENAME TO training_programs`,
+		`CREATE UNIQUE INDEX idx_training_programs_division_name_ci
+			ON training_programs(COALESCE(division_id, 0), LOWER(TRIM(name)))`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("rebuild training_programmes uniqueness: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit training programme uniqueness rebuild: %w", err)
 	}
 
 	return nil
