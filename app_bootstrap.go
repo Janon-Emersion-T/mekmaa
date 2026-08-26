@@ -1830,6 +1830,7 @@ type TemplateData struct {
 	StudentAttendanceReportQuery     string
 	AttendanceSheets                 []AttendanceSheetSummary
 	AttendanceSearchStudentID        string
+	AttendanceSearchMatches          []Admission
 	AttendanceSearchNotFound         bool
 	PublicStudentSearchStudentID     string
 	PublicStudentSearchNotFound      bool

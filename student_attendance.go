@@ -316,6 +316,53 @@ func findAttendanceStudentByStudentID(
 	return nil
 }
 
+func findAttendanceStudentsByQuery(
+	groups []StudentGroup,
+	query string,
+) []Admission {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil
+	}
+
+	if student := findAttendanceStudentByStudentID(groups, query); student != nil {
+		return []Admission{*student}
+	}
+
+	queryFolded := strings.ToLower(query)
+	seen := make(map[int64]struct{})
+	matches := make([]Admission, 0)
+
+	for _, group := range groups {
+		for i := range group.Students {
+			student := group.Students[i]
+
+			if student.ID <= 0 {
+				continue
+			}
+
+			if _, exists := seen[student.ID]; exists {
+				continue
+			}
+			seen[student.ID] = struct{}{}
+
+			fullName := strings.TrimSpace(student.FullName)
+			if fullName == "" {
+				continue
+			}
+
+			if strings.Contains(
+				strings.ToLower(fullName),
+				queryFolded,
+			) {
+				matches = append(matches, student)
+			}
+		}
+	}
+
+	return matches
+}
+
 func (a *App) listAttendanceSheets(
 	groupIDs []int64,
 	limit int,
@@ -445,23 +492,24 @@ func (a *App) attendanceSearchHandler(
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Search Attendance"
-	data.Description = "Search student attendance by Student ID."
+	data.Description = "Search student attendance by Student ID or name."
 	data.StudentGroups = groups
 
-	studentID := strings.TrimSpace(
+	query := strings.TrimSpace(
 		r.URL.Query().Get("student_id"),
 	)
-	data.AttendanceSearchStudentID = studentID
+	data.AttendanceSearchStudentID = query
 
-	if studentID != "" {
-		student := findAttendanceStudentByStudentID(
+	if query != "" {
+		matches := findAttendanceStudentsByQuery(
 			groups,
-			studentID,
+			query,
 		)
 
-		if student == nil {
+		if len(matches) == 0 {
 			data.AttendanceSearchNotFound = true
-		} else {
+		} else if len(matches) == 1 {
+			student := matches[0]
 			selectedStudent,
 				history,
 				summary,
@@ -493,6 +541,8 @@ func (a *App) attendanceSearchHandler(
 				data.StudentAttendanceSummary =
 					summary
 			}
+		} else {
+			data.AttendanceSearchMatches = matches
 		}
 	}
 

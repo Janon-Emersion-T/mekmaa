@@ -9287,6 +9287,107 @@ func TestFindAttendanceStudentByStudentIDRejectsUnknownStudent(
 	}
 }
 
+func TestFindAttendanceStudentsByQueryMatchesStudentID(
+	t *testing.T,
+) {
+	groups := []StudentGroup{
+		{
+			ID: 1,
+			Students: []Admission{
+				{
+					ID:        10,
+					StudentID: "MKM-0010",
+					FullName:  "Test Student",
+				},
+			},
+		},
+	}
+
+	students := findAttendanceStudentsByQuery(
+		groups,
+		"mkm-0010",
+	)
+
+	if len(students) != 1 {
+		t.Fatalf("students = %d, want 1", len(students))
+	}
+
+	if students[0].ID != 10 {
+		t.Fatalf("student ID = %d, want 10", students[0].ID)
+	}
+}
+
+func TestFindAttendanceStudentsByQueryMatchesName(
+	t *testing.T,
+) {
+	groups := []StudentGroup{
+		{
+			ID: 1,
+			Students: []Admission{
+				{
+					ID:        10,
+					StudentID: "MKM-0010",
+					FullName:  "Anita Perera",
+				},
+				{
+					ID:        20,
+					StudentID: "MKM-0020",
+					FullName:  "David Silva",
+				},
+			},
+		},
+	}
+
+	students := findAttendanceStudentsByQuery(
+		groups,
+		"anita",
+	)
+
+	if len(students) != 1 {
+		t.Fatalf("students = %d, want 1", len(students))
+	}
+
+	if students[0].ID != 10 {
+		t.Fatalf("student ID = %d, want 10", students[0].ID)
+	}
+}
+
+func TestFindAttendanceStudentsByQueryDeduplicatesMatches(
+	t *testing.T,
+) {
+	groups := []StudentGroup{
+		{
+			ID: 1,
+			Students: []Admission{
+				{
+					ID:        10,
+					StudentID: "MKM-0010",
+					FullName:  "Anita Perera",
+				},
+			},
+		},
+		{
+			ID: 2,
+			Students: []Admission{
+				{
+					ID:        10,
+					StudentID: "MKM-0010",
+					FullName:  "Anita Perera",
+				},
+			},
+		},
+	}
+
+	students := findAttendanceStudentsByQuery(
+		groups,
+		"anita",
+	)
+
+	if len(students) != 1 {
+		t.Fatalf("students = %d, want 1", len(students))
+	}
+}
+
 func TestPublicStudentLookupSupportsSlashStudentID(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 

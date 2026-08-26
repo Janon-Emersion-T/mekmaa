@@ -11,11 +11,11 @@
           </p>
 
           <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            Search attendance by Student ID.
+            Search attendance by Student ID or name.
           </h1>
 
           <p class="mt-3 max-w-xl text-sm leading-7 text-cloud/75 sm:text-base">
-            Enter the student's Mekmaa Student ID to review their complete saved attendance history across the {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in this workspace.
+            Enter the student's Mekmaa Student ID or name to review their complete saved attendance history across the {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in this workspace.
           </p>
         </div>
 
@@ -31,7 +31,7 @@
           {{end}}
 
           <label class="text-xs font-semibold uppercase tracking-[0.18em] text-cloud/60">
-            Student ID
+            Student ID or name
           </label>
 
           <div class="mt-3 flex flex-col gap-3 sm:flex-row">
@@ -39,7 +39,7 @@
               type="text"
               name="student_id"
               value="{{.AttendanceSearchStudentID}}"
-              placeholder="Example: MKM-0001"
+              placeholder="Example: MKM-0001 or Ayesha Perera"
               autocomplete="off"
               required
               class="h-12 min-w-0 flex-1 rounded-2xl border border-white/12 bg-white/95 px-4 text-sm font-medium text-obsidian outline-none placeholder:text-slate/35 focus:border-aqua"
@@ -64,12 +64,57 @@
         </p>
 
         <h2 class="mt-3 text-xl font-semibold text-amber-950">
-          Student ID “{{.AttendanceSearchStudentID}}” was not found.
+          No student matched “{{.AttendanceSearchStudentID}}”.
         </h2>
 
         <p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-amber-900/70">
-          Check the Student ID and confirm that the student belongs to a {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in your current workspace.
+          Check the Student ID or name and confirm that the student belongs to a {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in your current workspace.
         </p>
+      </div>
+    </div>
+    {{end}}
+
+    {{if .AttendanceSearchMatches}}
+    <div class="p-5 sm:p-8">
+      <div class="overflow-hidden rounded-[1.75rem] border border-slate/10 bg-cloud/70 shadow-sm">
+        <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">
+            Matching students
+          </p>
+
+          <h2 class="mt-2 text-xl font-semibold text-obsidian">
+            Select a student
+          </h2>
+
+          <p class="mt-2 text-sm text-slate/60">
+            Found {{len .AttendanceSearchMatches}} students matching “{{.AttendanceSearchStudentID}}”.
+          </p>
+        </div>
+
+        <div class="divide-y divide-slate/10">
+          {{range .AttendanceSearchMatches}}
+          <a
+            href="{{scopedURL (printf "/admin/attendance/search?student_id=%s" .StudentID) $.SelectedDivision $.SelectedDivisionScope}}"
+            class="flex flex-col gap-2 px-5 py-4 transition hover:bg-white/70 sm:px-6"
+          >
+            <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h3 class="text-base font-semibold text-obsidian">
+                {{.FullName}}
+              </h3>
+
+              <span class="text-sm font-semibold text-slate/60">
+                {{.StudentID}}
+              </span>
+            </div>
+
+            {{if .School}}
+            <p class="text-sm text-slate/55">
+              {{.School}}
+            </p>
+            {{end}}
+          </a>
+          {{end}}
+        </div>
       </div>
     </div>
     {{end}}
