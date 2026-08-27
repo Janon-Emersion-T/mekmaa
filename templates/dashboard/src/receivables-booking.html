@@ -56,7 +56,7 @@
               <p class="mt-1 text-sm font-semibold text-obsidian">{{.VoidedPaymentCount}}</p>
             </div>
           </div>
-          <form action="/admin/bookings/payments/collect" method="post" class="rounded-[1.25rem] border border-amber-200/70 bg-amber-50/60 p-4">
+          <form action="/admin/bookings/payments/collect" method="post" class="rounded-[1.25rem] border border-amber-200/70 bg-amber-50/60 p-4" data-payment-adjustment-form>
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <input type="hidden" name="schedule_id" value="{{.ScheduleID}}">
             <input type="hidden" name="return_to" value="/admin/finance/receivables">
@@ -75,16 +75,31 @@
               <label class="text-xs font-medium text-slate/60">Amount
                 <input name="amount" type="number" min="0.01" step="0.01" value="{{printf "%.2f" .OutstandingAmount}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
               </label>
-              <label class="text-xs font-medium text-slate/60">Note
-                <input name="payment_note" maxlength="250" placeholder="Optional collection note" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-              </label>
               <label class="flex items-start gap-3 rounded-xl border border-slate/10 bg-white px-3 py-3 text-xs text-slate/60">
                 <input type="checkbox" name="allow_overpayment" value="1" class="mt-0.5 h-4 w-4 rounded border-slate/20 text-aqua focus:ring-aqua">
-                <span>Overpayment (Gift)</span>
+                <span>Overpayment</span>
               </label>
+              <div class="hidden" data-overpayment-fields>
+                <label class="text-xs font-medium text-slate/60">Overpayment amount
+                  <input name="overpayment_amount" type="number" min="0.01" step="0.01" placeholder="0.00" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+                </label>
+              </div>
               <label class="flex items-start gap-3 rounded-xl border border-slate/10 bg-white px-3 py-3 text-xs text-slate/60">
                 <input type="checkbox" name="settle_as_discounted" value="1" class="mt-0.5 h-4 w-4 rounded border-slate/20 text-aqua focus:ring-aqua">
-                <span>Discounted. Total amount is: {{money .OutstandingAmount}}</span>
+                <span>Discount</span>
+              </label>
+              <div class="hidden" data-discount-fields>
+                <label class="text-xs font-medium text-slate/60">Discount amount
+                  <input name="discount_amount" type="number" min="0.01" step="0.01" placeholder="0.00" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+                </label>
+              </div>
+              <div class="hidden" data-adjustment-reason>
+                <label class="text-xs font-medium text-slate/60">Reason
+                  <input name="adjustment_reason" maxlength="250" placeholder="Reason for overpayment or discount" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
+                </label>
+              </div>
+              <label class="text-xs font-medium text-slate/60">Note
+                <input name="payment_note" maxlength="250" placeholder="Optional collection note" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
               </label>
               <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Collect now</button>
             </div>
@@ -163,4 +178,38 @@
     </section>
   </aside>
 </div>
+<script>
+  document.querySelectorAll("[data-payment-adjustment-form]").forEach((form) => {
+    const overpaymentToggle = form.querySelector('input[name="allow_overpayment"]');
+    const discountToggle = form.querySelector('input[name="settle_as_discounted"]');
+    const overpaymentFields = form.querySelector("[data-overpayment-fields]");
+    const discountFields = form.querySelector("[data-discount-fields]");
+    const reasonFields = form.querySelector("[data-adjustment-reason]");
+    if (!overpaymentToggle || !discountToggle || !overpaymentFields || !discountFields || !reasonFields) return;
+
+    const overpaymentInput = overpaymentFields.querySelector('input[name="overpayment_amount"]');
+    const discountInput = discountFields.querySelector('input[name="discount_amount"]');
+    const reasonInput = reasonFields.querySelector('input[name="adjustment_reason"]');
+
+    const sync = (changed) => {
+      if (changed === overpaymentToggle && overpaymentToggle.checked) {
+        discountToggle.checked = false;
+      }
+      if (changed === discountToggle && discountToggle.checked) {
+        overpaymentToggle.checked = false;
+      }
+      overpaymentFields.classList.toggle("hidden", !overpaymentToggle.checked);
+      discountFields.classList.toggle("hidden", !discountToggle.checked);
+      const showReason = overpaymentToggle.checked || discountToggle.checked;
+      reasonFields.classList.toggle("hidden", !showReason);
+      if (overpaymentInput) overpaymentInput.required = overpaymentToggle.checked;
+      if (discountInput) discountInput.required = discountToggle.checked;
+      if (reasonInput) reasonInput.required = showReason;
+    };
+
+    overpaymentToggle.addEventListener("change", () => sync(overpaymentToggle));
+    discountToggle.addEventListener("change", () => sync(discountToggle));
+    sync();
+  });
+</script>
 {{end}}

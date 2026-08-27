@@ -3932,6 +3932,10 @@ func (a *App) createSpaceSchedules(
 		if candidates[i].EntryType != "booking" {
 			continue
 		}
+		if candidates[i].QuotedPrice > 0 {
+			candidates[i].QuotedPrice = normalizeMoney(candidates[i].QuotedPrice)
+			continue
+		}
 		quotedPrice, err := a.bookingQuote(candidates[i])
 		if err != nil {
 			return err
@@ -4072,6 +4076,24 @@ func (a *App) createSpaceSchedules(
 	}
 
 	return tx.Commit()
+}
+
+type bookingPaymentAdjustment struct {
+	OverpaymentAmount float64
+	DiscountAmount    float64
+	AdjustmentReason  string
+}
+
+func joinPaymentNotes(parts ...string) string {
+	lines := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		lines = append(lines, part)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (a *App) createBookingReferralTx(tx *sql.Tx, scheduleID int64, referralCode string, createdAt time.Time) error {
@@ -5825,6 +5847,14 @@ func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amou
 }
 
 func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, amount float64, paymentNote string, collectedAt time.Time, recordedByUserID int64, allowOverpayment bool, discountedSettlement ...bool) (int64, error) {
+	var adjustment bookingPaymentAdjustment
+	if len(discountedSettlement) > 0 && discountedSettlement[0] {
+		adjustment.DiscountAmount = -1
+	}
+	return a.collectBookingPaymentAtWithAdjustment(scheduleID, paymentMethod, amount, paymentNote, collectedAt, recordedByUserID, allowOverpayment, adjustment)
+}
+
+func (a *App) collectBookingPaymentAtWithAdjustment(scheduleID int64, paymentMethod string, amount float64, paymentNote string, collectedAt time.Time, recordedByUserID int64, allowOverpayment bool, adjustment bookingPaymentAdjustment) (int64, error) {
 	paymentMethod = normalizePaymentMethod(paymentMethod)
 	if !validPaymentMethod(paymentMethod) {
 		return 0, errors.New("booking payment method is invalid")
@@ -5838,6 +5868,22 @@ func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, am
 	}
 	if amount > maxBookingCashCollection {
 		return 0, errors.New("booking payment amount exceeds the allowed limit")
+	}
+	if math.IsNaN(adjustment.OverpaymentAmount) || math.IsInf(adjustment.OverpaymentAmount, 0) {
+		return 0, errors.New("booking overpayment amount is invalid")
+	}
+	if math.IsNaN(adjustment.DiscountAmount) || math.IsInf(adjustment.DiscountAmount, 0) {
+		return 0, errors.New("booking discount amount is invalid")
+	}
+	adjustment.OverpaymentAmount = normalizeMoney(adjustment.OverpaymentAmount)
+	adjustment.DiscountAmount = normalizeMoney(adjustment.DiscountAmount)
+	adjustment.AdjustmentReason = strings.TrimSpace(adjustment.AdjustmentReason)
+	if adjustment.OverpaymentAmount > 0 && adjustment.DiscountAmount > 0 {
+		return 0, errors.New("overpayment and discount cannot be applied together")
+	}
+	legacyDiscountSettlement := adjustment.DiscountAmount < 0
+	if legacyDiscountSettlement {
+		adjustment.DiscountAmount = 0
 	}
 	tx, err := a.db.Begin()
 	if err != nil {
@@ -5879,10 +5925,32 @@ func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, am
 			return 0, ErrBookingPaymentAlreadyCollected
 		}
 	}
-	if amount > outstanding+0.005 && !allowOverpayment {
+	if amount > outstanding+0.005 && adjustment.OverpaymentAmount <= 0 && !allowOverpayment {
 		return 0, ErrBookingPaymentNeedsOverpayApproval
 	}
-	applyDiscountedSettlement := len(discountedSettlement) > 0 && discountedSettlement[0] && amount < outstanding-0.005
+	if legacyDiscountSettlement && amount >= outstanding-0.005 {
+		legacyDiscountSettlement = false
+	}
+	if adjustment.OverpaymentAmount > 0 {
+		if adjustment.AdjustmentReason == "" {
+			return 0, errors.New("overpayment reason is required")
+		}
+		if amount < outstanding-0.005 || amount > outstanding+0.005 {
+			return 0, errors.New("payment amount must match the outstanding balance before adding overpayment")
+		}
+		if !allowOverpayment {
+			return 0, ErrBookingPaymentNeedsOverpayApproval
+		}
+	}
+	if adjustment.DiscountAmount > 0 {
+		if adjustment.AdjustmentReason == "" {
+			return 0, errors.New("discount reason is required")
+		}
+		if amount+adjustment.DiscountAmount > outstanding+0.005 || amount+adjustment.DiscountAmount < outstanding-0.005 {
+			return 0, errors.New("payment amount plus discount must match the outstanding balance")
+		}
+	}
+	applyDiscountedSettlement := legacyDiscountSettlement || adjustment.DiscountAmount > 0
 	_ = paid
 	personName := financial.RequesterName
 	if personName == "" {
@@ -5907,6 +5975,17 @@ func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, am
 		return 0, err
 	}
 	description := fmt.Sprintf("%s payment for %s", bookingProductLabel(financial.Activity, financial.Quantity), bookingReference(scheduleID))
+	transactionAmount := amount + adjustment.OverpaymentAmount
+	if transactionAmount > maxBookingCashCollection {
+		return 0, errors.New("booking payment amount exceeds the allowed limit")
+	}
+	transactionNotes := strings.TrimSpace(paymentNote)
+	if adjustment.OverpaymentAmount > 0 {
+		transactionNotes = joinPaymentNotes(transactionNotes, fmt.Sprintf("Overpayment: %.2f", adjustment.OverpaymentAmount), "Reason: "+adjustment.AdjustmentReason)
+	}
+	if adjustment.DiscountAmount > 0 {
+		transactionNotes = joinPaymentNotes(transactionNotes, fmt.Sprintf("Discount: %.2f", adjustment.DiscountAmount), "Reason: "+adjustment.AdjustmentReason)
+	}
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    receiptNumber,
 		ReferenceNumber:  receiptNumber,
@@ -5917,9 +5996,9 @@ func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, am
 		FinanceAccountID: account.ID,
 		PersonName:       personName,
 		Description:      description,
-		Notes:            strings.TrimSpace(paymentNote),
+		Notes:            transactionNotes,
 		PaymentMethod:    paymentMethod,
-		Amount:           amount,
+		Amount:           transactionAmount,
 		RecordedByUserID: recordedByUserID,
 		RecordedAt:       collectedAt,
 	})
@@ -5937,7 +6016,7 @@ func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, am
 			collected_at,
 			created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`), scheduleID, transactionID, amount, paymentMethod, strings.TrimSpace(paymentNote), recordedByRef, collectedAt, now); err != nil {
+	`), scheduleID, transactionID, transactionAmount, paymentMethod, transactionNotes, recordedByRef, collectedAt, now); err != nil {
 		return 0, err
 	}
 	if _, err := tx.Exec(a.dbQuery(`
@@ -5957,6 +6036,9 @@ func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, am
 		discountedQuotedAmount := amount
 		if current != nil {
 			discountedQuotedAmount = normalizeMoney(current.TotalCollected + amount)
+		}
+		if adjustment.DiscountAmount > 0 {
+			discountedQuotedAmount = normalizeMoney(discountedQuotedAmount)
 		}
 		if _, err := tx.Exec(a.dbQuery(`
 			UPDATE booking_financials

@@ -166,7 +166,7 @@
             {{end}}
           </div>
           {{if bookingCanCollectPayment .User .SelectedSchedule}}
-          <form method="post" action="/admin/bookings/payments/collect" class="w-full max-w-md rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
+          <form method="post" action="/admin/bookings/payments/collect" class="w-full max-w-md rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4" data-payment-adjustment-form>
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
             <input type="hidden" name="schedule_id" value="{{.SelectedSchedule.ID}}" />
             <input type="hidden" name="return_to" value="{{scopedURL (printf "/admin/bookings?action=view&id=%d&date=%s" .SelectedSchedule.ID .SelectedSchedule.SlotDate) .SelectedDivision .SelectedDivisionScope}}#schedule-view" />
@@ -176,8 +176,12 @@
               <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Payment method</span><select name="payment_method" class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua"><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="qr_pay">QR pay</option></select></label>
               <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Payment collection date</span><input type="date" name="payment_collected_at" min="{{historicalStartDate}}" max="{{todayDate}}" value="{{todayDate}}" class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
               <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Amount received</span><input name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label>
+              <label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-950"><input type="checkbox" name="allow_overpayment" value="1" class="mt-0.5 h-4 w-4 rounded border-amber-300 text-obsidian focus:ring-amber-300" /><span>Overpayment</span></label>
+              <div class="hidden" data-overpayment-fields><label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Overpayment amount</span><input name="overpayment_amount" type="number" min="0.01" step="0.01" inputmode="decimal" class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label></div>
+              <label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-950"><input type="checkbox" name="settle_as_discounted" value="1" class="mt-0.5 h-4 w-4 rounded border-amber-300 text-obsidian focus:ring-amber-300" /><span>Discount</span></label>
+              <div class="hidden" data-discount-fields><label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Discount amount</span><input name="discount_amount" type="number" min="0.01" step="0.01" inputmode="decimal" class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" /></label></div>
+              <div class="hidden" data-adjustment-reason><label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Reason</span><input name="adjustment_reason" maxlength="250" class="h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua" placeholder="Reason for overpayment or discount" /></label></div>
               <label><span class="mb-1.5 block text-xs font-semibold text-slate/55">Payment note</span><textarea name="payment_note" rows="2" class="w-full rounded-xl border border-slate/10 bg-white px-3 py-2 text-sm outline-none focus:border-aqua" placeholder="Optional note shown on the receipt"></textarea></label>
-              <label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-950"><input type="checkbox" name="allow_overpayment" value="1" class="mt-0.5 h-4 w-4 rounded border-amber-300 text-obsidian focus:ring-amber-300" /><span>Confirm intentional overpayment if the received amount exceeds {{money $financial.OutstandingAmount}}.</span></label>
             </div>
             <button class="mt-3 h-11 w-full rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Record payment</button>
           </form>
@@ -712,6 +716,35 @@
         optionsRoot.dataset.selectedActivity = activity || "";
         optionsRoot.dataset.selectedQuantity = quantity || "1";
       });
+    });
+
+    document.querySelectorAll("[data-payment-adjustment-form]").forEach((form) => {
+      const overpaymentToggle = form.querySelector('input[name="allow_overpayment"]');
+      const discountToggle = form.querySelector('input[name="settle_as_discounted"]');
+      const overpaymentFields = form.querySelector("[data-overpayment-fields]");
+      const discountFields = form.querySelector("[data-discount-fields]");
+      const reasonFields = form.querySelector("[data-adjustment-reason]");
+      if (!overpaymentToggle || !discountToggle || !overpaymentFields || !discountFields || !reasonFields) return;
+
+      const overpaymentInput = overpaymentFields.querySelector('input[name="overpayment_amount"]');
+      const discountInput = discountFields.querySelector('input[name="discount_amount"]');
+      const reasonInput = reasonFields.querySelector('input[name="adjustment_reason"]');
+
+      const syncPaymentAdjustments = (changed) => {
+        if (changed === overpaymentToggle && overpaymentToggle.checked) discountToggle.checked = false;
+        if (changed === discountToggle && discountToggle.checked) overpaymentToggle.checked = false;
+        overpaymentFields.classList.toggle("hidden", !overpaymentToggle.checked);
+        discountFields.classList.toggle("hidden", !discountToggle.checked);
+        const showReason = overpaymentToggle.checked || discountToggle.checked;
+        reasonFields.classList.toggle("hidden", !showReason);
+        if (overpaymentInput) overpaymentInput.required = overpaymentToggle.checked;
+        if (discountInput) discountInput.required = discountToggle.checked;
+        if (reasonInput) reasonInput.required = showReason;
+      };
+
+      overpaymentToggle.addEventListener("change", () => syncPaymentAdjustments(overpaymentToggle));
+      discountToggle.addEventListener("change", () => syncPaymentAdjustments(discountToggle));
+      syncPaymentAdjustments();
     });
 
     const filterRoot = document.querySelector("[data-calendar-filters]");

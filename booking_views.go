@@ -734,6 +734,9 @@ func enrichBookingFinancials(financials []BookingFinancial, collections []Bookin
 		}
 		financials[i].TotalCollected = totalCollected
 		financials[i].OutstandingAmount = normalizeMoney(financials[i].QuotedAmount - totalCollected)
+		if financials[i].OutstandingAmount < 0 {
+			financials[i].OutstandingAmount = 0
+		}
 		financials[i].ActivePaymentCount = activeCount
 		financials[i].VoidedPaymentCount = voidedCount
 		financials[i].PaymentStatus = bookingPaymentStatusValue(financials[i], scheduleCollections)

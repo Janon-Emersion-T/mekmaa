@@ -725,19 +725,34 @@ func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 	scheduleID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("schedule_id")), 10, 64)
 	amount, amountErr := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
+	rawOverpaymentAmount := strings.TrimSpace(r.FormValue("overpayment_amount"))
+	if rawOverpaymentAmount == "" {
+		rawOverpaymentAmount = "0"
+	}
+	overpaymentAmount, overpaymentErr := strconv.ParseFloat(rawOverpaymentAmount, 64)
+	rawDiscountAmount := strings.TrimSpace(r.FormValue("discount_amount"))
+	if rawDiscountAmount == "" {
+		rawDiscountAmount = "0"
+	}
+	discountAmount, discountErr := strconv.ParseFloat(rawDiscountAmount, 64)
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
 	paymentNote := strings.TrimSpace(r.FormValue("payment_note"))
+	adjustmentReason := strings.TrimSpace(r.FormValue("adjustment_reason"))
 	collectedAt, collectedAtErr := parseFinanceRecordedAtDate(
 		r.FormValue("payment_collected_at"),
 		time.Now(),
 		"Payment collection date",
 	)
 	allowOverpayment := r.FormValue("allow_overpayment") == "1" || r.FormValue("allow_overpayment") == "on"
-	settleAsDiscounted := r.FormValue("settle_as_discounted") == "1" || r.FormValue("settle_as_discounted") == "on"
+	applyDiscount := r.FormValue("settle_as_discounted") == "1" || r.FormValue("settle_as_discounted") == "on"
 	returnTo := strings.TrimSpace(r.FormValue("return_to"))
-	if err != nil || amountErr != nil || collectedAtErr != nil || scheduleID <= 0 || !validPaymentMethod(paymentMethod) {
+	if err != nil || amountErr != nil || overpaymentErr != nil || discountErr != nil || collectedAtErr != nil || scheduleID <= 0 || !validPaymentMethod(paymentMethod) {
 		if collectedAtErr != nil {
 			http.Error(w, collectedAtErr.Error(), http.StatusBadRequest)
+			return
+		}
+		if overpaymentErr != nil || discountErr != nil {
+			http.Error(w, "enter valid payment adjustment amounts", http.StatusBadRequest)
 			return
 		}
 		http.Error(w, "select a valid booking payment method", http.StatusBadRequest)
@@ -746,12 +761,42 @@ func (a *App) collectBookingPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if returnTo == "" {
 		returnTo = "/admin/finance/receivables"
 	}
+	if allowOverpayment && applyDiscount {
+		a.setFlash(w, "Choose either overpayment or discount for the booking payment.")
+		http.Redirect(w, r, returnTo, http.StatusSeeOther)
+		return
+	}
+	if !allowOverpayment {
+		overpaymentAmount = 0
+	}
+	if !applyDiscount {
+		discountAmount = 0
+	}
+	if allowOverpayment && overpaymentAmount <= 0 {
+		a.setFlash(w, "Enter the overpayment amount.")
+		http.Redirect(w, r, returnTo, http.StatusSeeOther)
+		return
+	}
+	if applyDiscount && discountAmount <= 0 {
+		a.setFlash(w, "Enter the discount amount.")
+		http.Redirect(w, r, returnTo, http.StatusSeeOther)
+		return
+	}
+	if (allowOverpayment || applyDiscount) && adjustmentReason == "" {
+		a.setFlash(w, "Enter the reason for the overpayment or discount.")
+		http.Redirect(w, r, returnTo, http.StatusSeeOther)
+		return
+	}
 	currentUser, _ := a.currentUser(r.Context())
 	recordedBy := int64(0)
 	if currentUser != nil {
 		recordedBy = currentUser.ID
 	}
-	transactionID, err := a.collectBookingPaymentAt(scheduleID, paymentMethod, amount, paymentNote, collectedAt, recordedBy, allowOverpayment, settleAsDiscounted)
+	transactionID, err := a.collectBookingPaymentAtWithAdjustment(scheduleID, paymentMethod, amount, paymentNote, collectedAt, recordedBy, allowOverpayment, bookingPaymentAdjustment{
+		OverpaymentAmount: overpaymentAmount,
+		DiscountAmount:    discountAmount,
+		AdjustmentReason:  adjustmentReason,
+	})
 	if err != nil {
 		if errors.Is(err, ErrBookingPaymentNeedsOverpayApproval) {
 			a.setFlash(w, "Booking payment exceeds the current balance. Tick the overpayment confirmation box to continue.")

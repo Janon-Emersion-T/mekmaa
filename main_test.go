@@ -2093,6 +2093,8 @@ func TestCollectBookingPaymentHandlerDiscountedSettlementClearsOutstanding(t *te
 		"amount":               {"3200"},
 		"payment_note":         {"discounted settlement"},
 		"settle_as_discounted": {"1"},
+		"discount_amount":      {"1800"},
+		"adjustment_reason":    {"approved discount"},
 		"return_to":            {"/admin/finance/receivables"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/admin/bookings/payments/collect", strings.NewReader(form.Encode()))
@@ -2123,6 +2125,62 @@ func TestCollectBookingPaymentHandlerDiscountedSettlementClearsOutstanding(t *te
 	}
 	if financial.QuotedAmount != 3200 {
 		t.Fatalf("quoted amount = %.2f, want 3200.00", financial.QuotedAmount)
+	}
+}
+
+func TestCollectBookingPaymentHandlerOverpaymentAdjustmentAddsExtraCash(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 4, "20:00")
+
+	form := url.Values{
+		"csrf_token":         {"test-csrf"},
+		"schedule_id":        {fmt.Sprint(scheduleID)},
+		"payment_method":     {"cash"},
+		"amount":             {"5000"},
+		"allow_overpayment":  {"1"},
+		"overpayment_amount": {"5000"},
+		"adjustment_reason":  {"customer asked to keep the change"},
+		"payment_note":       {"gift overpayment"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/bookings/payments/collect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{ID: 1, Name: "Booking Staff", Permissions: []string{"space_bookings.manage"}}))
+	rec := httptest.NewRecorder()
+
+	app.collectBookingPaymentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect, got %d", rec.Code)
+	}
+
+	location := rec.Header().Get("Location")
+	if !strings.HasPrefix(location, "/admin/bookings/payments/receipt?id=") {
+		t.Fatalf("unexpected receipt redirect: %s", location)
+	}
+	transactionID, err := strconv.ParseInt(strings.TrimPrefix(location, "/admin/bookings/payments/receipt?id="), 10, 64)
+	if err != nil {
+		t.Fatalf("parse receipt id: %v", err)
+	}
+
+	var transactionAmount float64
+	if err := app.db.QueryRow(`SELECT amount FROM finance_transactions WHERE id = ?`, transactionID).Scan(&transactionAmount); err != nil {
+		t.Fatalf("find overpayment transaction: %v", err)
+	}
+	if transactionAmount != 10000 {
+		t.Fatalf("transaction amount = %.2f, want 10000.00", transactionAmount)
+	}
+
+	financials, err := app.listBookingFinancials()
+	if err != nil {
+		t.Fatalf("list booking financials: %v", err)
+	}
+	financial := bookingFinancialForSchedule(financials, scheduleID)
+	if financial == nil {
+		t.Fatal("overpayment booking financial not found")
+	}
+	if financial.OutstandingAmount != 0 {
+		t.Fatalf("outstanding amount = %.2f, want 0", financial.OutstandingAmount)
 	}
 }
 
