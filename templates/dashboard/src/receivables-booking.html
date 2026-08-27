@@ -1,184 +1,556 @@
 {{define "receivables-booking-section"}}
+<!-- Summary -->
 <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-  <article class="rounded-[1.5rem] border border-amber-100 bg-amber-50 p-5 shadow-sm">
-    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Booking receivables</p>
-    <p class="mt-3 text-2xl font-semibold text-amber-950">{{money .FinanceSummary.OutstandingBooking}}</p>
-    <p class="mt-2 text-xs text-amber-800/65">Outstanding public booking collections</p>
-  </article>
-
-  <article class="rounded-[1.5rem] border border-violet-100 bg-violet-50 p-5 shadow-sm">
-    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-violet-700">Referral payables</p>
-    <p class="mt-3 text-2xl font-semibold text-violet-950">{{money .FinanceSummary.PayableReferrals}}</p>
-    <p class="mt-2 text-xs text-violet-800/65">Managed from Referral Programme</p>
-  </article>
-</div>
-
-<div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-  <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+  <article class="rounded-2xl border border-amber-100 bg-amber-50/80 p-4 shadow-sm">
+    <div class="flex items-start justify-between gap-4">
       <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Receivables</p>
-        <h2 class="mt-2 text-xl font-semibold text-obsidian">Outstanding booking collections</h2>
+        <p class="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-amber-700">Booking receivables</p>
+        <p class="mt-2 text-2xl font-semibold tracking-tight text-amber-950">{{money .FinanceSummary.OutstandingBooking}}</p>
       </div>
-      <div class="text-xs text-slate/50">{{len .BookingFinancials}} booking rows</div>
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-amber-700 shadow-sm" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-5 w-5" stroke-width="1.8">
+          <path d="M4 7.5h16M6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11A2.5 2.5 0 0 1 6.5 4Z"/>
+          <path d="M8 14h4"/>
+        </svg>
+      </div>
     </div>
-    <div class="mt-5 grid gap-4">
-      {{range .BookingFinancials}}
-      <article class="rounded-[1.4rem] border border-slate/10 bg-cloud/45 p-4">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-mono text-xs font-semibold text-slate/55">{{bookingReference .ScheduleID}}</span>
-              <span class="rounded-full bg-white px-2.5 py-1 text-xs text-slate/65">{{bookingProductLabel .Activity .Quantity}}</span>
-              <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{bookingPaymentStatusTone .PaymentStatus}}">{{bookingPaymentStatusBadge .PaymentStatus}}</span>
-            </div>
-            <p class="mt-2 text-base font-semibold text-obsidian">{{if .RequesterName}}{{.RequesterName}}{{else}}Booking customer{{end}}</p>
-            <p class="mt-1 text-sm text-slate/60">{{formatCalendarDate .SlotDate}} at {{formatClockTime .SlotHour}} · {{.Status}}</p>
-          </div>
-          <div class="grid gap-2 sm:grid-cols-3">
-            <div class="rounded-xl bg-white p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Quoted</p><p class="mt-1 text-sm font-semibold text-obsidian">{{money .QuotedAmount}}</p></div>
-            <div class="rounded-xl bg-white p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Collected</p><p class="mt-1 text-sm font-semibold text-emerald-800">{{money .TotalCollected}}</p></div>
-            <div class="rounded-xl bg-white p-3"><p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Outstanding</p><p class="mt-1 text-sm font-semibold text-amber-900">{{money .OutstandingAmount}}</p></div>
-          </div>
-        </div>
-        <div class="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_18rem]">
-          <div class="grid gap-2 sm:grid-cols-3">
-            <div class="rounded-xl bg-white p-3">
-              <p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Last payment</p>
-              <p class="mt-1 text-sm font-semibold text-obsidian">{{if .LastPaymentDate.IsZero}}None yet{{else}}{{formatDateTime .LastPaymentDate}}{{end}}</p>
-            </div>
-            <div class="rounded-xl bg-white p-3">
-              <p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Active collections</p>
-              <p class="mt-1 text-sm font-semibold text-obsidian">{{.ActivePaymentCount}}</p>
-            </div>
-            <div class="rounded-xl bg-white p-3">
-              <p class="text-[0.58rem] font-bold uppercase tracking-wider text-slate/40">Voided collections</p>
-              <p class="mt-1 text-sm font-semibold text-obsidian">{{.VoidedPaymentCount}}</p>
-            </div>
-          </div>
-          <form action="/admin/bookings/payments/collect" method="post" class="rounded-[1.25rem] border border-amber-200/70 bg-amber-50/60 p-4" data-payment-adjustment-form>
-            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-            <input type="hidden" name="schedule_id" value="{{.ScheduleID}}">
-            <input type="hidden" name="return_to" value="/admin/finance/receivables">
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Collect booking balance</p>
-            <div class="mt-3 grid gap-3">
-              <label class="text-xs font-medium text-slate/60">Payment method
-                <select name="payment_method" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-                  <option value="cash">Cash</option>
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="qr_pay">QR pay</option>
-                </select>
-              </label>
-              <label class="text-xs font-medium text-slate/60">Payment collection date
-                <input type="date" name="payment_collected_at" min="{{historicalStartDate}}" max="{{todayDate}}" value="{{todayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-              </label>
-              <label class="text-xs font-medium text-slate/60">Amount
-                <input name="amount" type="number" min="0.01" step="0.01" value="{{printf "%.2f" .OutstandingAmount}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-              </label>
-              <label class="flex items-start gap-3 rounded-xl border border-slate/10 bg-white px-3 py-3 text-xs text-slate/60">
-                <input type="checkbox" name="allow_overpayment" value="1" class="mt-0.5 h-4 w-4 rounded border-slate/20 text-aqua focus:ring-aqua">
-                <span>Overpayment</span>
-              </label>
-              <div class="hidden" data-overpayment-fields>
-                <label class="text-xs font-medium text-slate/60">Overpayment amount
-                  <input name="overpayment_amount" type="number" min="0.01" step="0.01" placeholder="0.00" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-                </label>
-              </div>
-              <label class="flex items-start gap-3 rounded-xl border border-slate/10 bg-white px-3 py-3 text-xs text-slate/60">
-                <input type="checkbox" name="settle_as_discounted" value="1" class="mt-0.5 h-4 w-4 rounded border-slate/20 text-aqua focus:ring-aqua">
-                <span>Discount</span>
-              </label>
-              <div class="hidden" data-discount-fields>
-                <label class="text-xs font-medium text-slate/60">Discount amount
-                  <input name="discount_amount" type="number" min="0.01" step="0.01" placeholder="0.00" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-                </label>
-              </div>
-              <div class="hidden" data-adjustment-reason>
-                <label class="text-xs font-medium text-slate/60">Reason
-                  <input name="adjustment_reason" maxlength="250" placeholder="Reason for overpayment or discount" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-                </label>
-              </div>
-              <label class="text-xs font-medium text-slate/60">Note
-                <input name="payment_note" maxlength="250" placeholder="Optional collection note" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none focus:border-aqua">
-              </label>
-              <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Collect now</button>
-            </div>
-          </form>
-        </div>
+    <p class="mt-2 text-xs text-amber-800/60">Outstanding public booking collections</p>
+  </article>
 
-        {{if eq .Status "confirmed"}}
-        <div class="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate/10 pt-4">
-          <a
-            href="/admin/bookings?action=view&id={{.ScheduleID}}&date={{.SlotDate}}#schedule-view"
-            class="inline-flex h-9 items-center rounded-xl border border-slate/10 bg-white px-3 text-xs font-semibold text-slate transition hover:bg-cloud"
-          >
-            View booking
-          </a>
-
-          <form
-            action="/admin/bookings/no-show"
-            method="post"
-            onsubmit="return confirm('Mark this booking as a no-show? The outstanding receivable will be removed while the booking remains in history.');"
-          >
-            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-            <input type="hidden" name="schedule_id" value="{{.ScheduleID}}">
-            <input type="hidden" name="return_to" value="/admin/finance/receivables">
-            <input type="hidden" name="customer_message" value="">
-
-            <button
-              class="inline-flex h-9 items-center rounded-xl border border-orange-200 bg-white px-3 text-xs font-semibold text-orange-700 transition hover:bg-orange-50"
-            >
-              Mark no-show
-            </button>
-          </form>
-        </div>
-        {{end}}
-      </article>
-      {{else}}
-      <div class="rounded-[1.4rem] border border-dashed border-emerald-200 bg-emerald-50 px-5 py-10 text-center">
-        <p class="font-semibold text-emerald-900">No booking receivables are outstanding.</p>
-        <p class="mt-1 text-sm text-emerald-800/65">Current collections are up to date.</p>
+  <article class="rounded-2xl border border-violet-100 bg-violet-50/80 p-4 shadow-sm">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-violet-700">Referral payables</p>
+        <p class="mt-2 text-2xl font-semibold tracking-tight text-violet-950">{{money .FinanceSummary.PayableReferrals}}</p>
       </div>
-      {{end}}
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-violet-700 shadow-sm" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-5 w-5" stroke-width="1.8">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/>
+          <path d="M19 8v6M22 11h-6"/>
+        </svg>
+      </div>
     </div>
-  </section>
-
-  <aside class="space-y-6">
-    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Payment history</p>
-      <h2 class="mt-2 text-xl font-semibold text-obsidian">Latest received booking receivables</h2>
-      <div class="mt-5 grid gap-3">
-        {{range .BookingPaymentCollections}}
-        <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="text-sm font-semibold text-obsidian">{{if .PersonName}}{{.PersonName}}{{else}}Booking customer{{end}}</p>
-              <p class="mt-1 font-mono text-[0.68rem] text-slate/50">{{bookingReference .ScheduleID}} · {{.ReceiptNumber}}</p>
-            </div>
-            <p class="text-sm font-semibold text-emerald-800">{{money .Amount}}</p>
-          </div>
-          <p class="mt-2 text-xs text-slate/60">{{formatDateTime .CollectedAt}} · {{paymentMethodLabel .PaymentMethod}}</p>
-          {{if .PaymentNote}}<p class="mt-2 text-xs text-slate/55">{{.PaymentNote}}</p>{{end}}
-          <div class="mt-3 flex flex-wrap gap-2">
-            <a href="/admin/bookings/payments/receipt?id={{.FinanceTransactionID}}" class="inline-flex h-8 items-center rounded-lg border border-slate/10 bg-white px-3 text-[0.68rem] font-semibold text-slate transition hover:bg-cloud">
-              View receipt
-            </a>
-            <a href="/admin/bookings?action=view&id={{.ScheduleID}}#schedule-view" class="inline-flex h-8 items-center rounded-lg border border-slate/10 bg-white px-3 text-[0.68rem] font-semibold text-slate transition hover:bg-cloud">
-              View booking
-            </a>
-          </div>
-        </article>
-        {{else}}
-        <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/25 px-4 py-8 text-center">
-          <p class="font-semibold text-obsidian">No booking payments received yet.</p>
-          <p class="mt-1 text-sm text-slate/55">New receivable collections will appear here.</p>
-        </div>
-        {{end}}
-      </div>
-    </section>
-  </aside>
+    <p class="mt-2 text-xs text-violet-800/60">Managed from Referral Programme</p>
+  </article>
 </div>
+
+<!-- Receivables table -->
+<section class="overflow-hidden rounded-[1.6rem] border border-white/80 bg-white/95 shadow-sm">
+  <div class="border-b border-slate/10 px-4 py-4 sm:px-5">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <div class="flex flex-wrap items-center gap-2">
+          <p class="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-amber-700">Receivables</p>
+          <span class="rounded-full bg-cloud px-2.5 py-1 text-[0.68rem] font-semibold text-slate/55">{{len .BookingFinancials}} rows</span>
+        </div>
+        <h2 class="mt-1 text-xl font-semibold tracking-tight text-obsidian">Outstanding booking collections</h2>
+      </div>
+
+      <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+        <label class="relative min-w-0 flex-1 lg:w-72">
+          <span class="sr-only">Search receivables</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate/40" stroke-width="2">
+            <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+          </svg>
+          <input
+            type="search"
+            placeholder="Search booking or customer..."
+            class="h-10 w-full rounded-xl border border-slate/10 bg-cloud/45 pl-9 pr-3 text-sm text-obsidian outline-none transition placeholder:text-slate/35 focus:border-aqua focus:bg-white focus:ring-2 focus:ring-aqua/10"
+            data-receivables-search
+          >
+        </label>
+        <select
+          class="h-10 rounded-xl border border-slate/10 bg-white px-3 text-sm text-slate outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/10"
+          data-receivables-filter
+          aria-label="Filter by payment status"
+        >
+          <option value="all">All statuses</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="partial">Partial</option>
+          <option value="paid">Paid</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  {{if .BookingFinancials}}
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[1040px] border-collapse text-left">
+      <thead>
+        <tr class="border-b border-slate/10 bg-cloud/35 text-[0.64rem] font-bold uppercase tracking-[0.12em] text-slate/45">
+          <th class="px-4 py-3 sm:px-5">Booking</th>
+          <th class="px-3 py-3">Customer</th>
+          <th class="px-3 py-3">Slot</th>
+          <th class="px-3 py-3 text-right">Quoted</th>
+          <th class="px-3 py-3 text-right">Collected</th>
+          <th class="px-3 py-3 text-right">Outstanding</th>
+          <th class="px-3 py-3">Status</th>
+          <th class="px-4 py-3 text-right sm:px-5">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate/10" data-receivables-body>
+        {{range .BookingFinancials}}
+        <tr
+          class="group bg-white transition hover:bg-cloud/30"
+          data-receivable-row
+          data-search="{{bookingReference .ScheduleID}} {{if .RequesterName}}{{.RequesterName}}{{else}}Booking customer{{end}} {{bookingProductLabel .Activity .Quantity}} {{.Status}} {{bookingPaymentStatusBadge .PaymentStatus}}"
+          data-payment-status="{{.PaymentStatus}}"
+        >
+          <td class="px-4 py-3.5 align-middle sm:px-5">
+            <div class="flex min-w-[150px] flex-col gap-1">
+              <span class="font-mono text-xs font-bold text-obsidian">{{bookingReference .ScheduleID}}</span>
+              <span class="max-w-[190px] truncate text-xs text-slate/55">{{bookingProductLabel .Activity .Quantity}}</span>
+            </div>
+          </td>
+          <td class="px-3 py-3.5 align-middle">
+            <p class="max-w-[180px] truncate text-sm font-semibold text-obsidian">{{if .RequesterName}}{{.RequesterName}}{{else}}Booking customer{{end}}</p>
+            <p class="mt-0.5 text-[0.68rem] capitalize text-slate/45">{{.Status}}</p>
+          </td>
+          <td class="px-3 py-3.5 align-middle">
+            <p class="whitespace-nowrap text-sm font-medium text-obsidian">{{formatCalendarDate .SlotDate}}</p>
+            <p class="mt-0.5 text-xs text-slate/50">{{formatClockTime .SlotHour}}</p>
+          </td>
+          <td class="px-3 py-3.5 text-right align-middle text-sm font-medium tabular-nums text-slate">{{money .QuotedAmount}}</td>
+          <td class="px-3 py-3.5 text-right align-middle text-sm font-semibold tabular-nums text-emerald-700">{{money .TotalCollected}}</td>
+          <td class="px-3 py-3.5 text-right align-middle">
+            <span class="whitespace-nowrap text-sm font-bold tabular-nums text-amber-800">{{money .OutstandingAmount}}</span>
+          </td>
+          <td class="px-3 py-3.5 align-middle">
+            <span class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[0.68rem] font-bold {{bookingPaymentStatusTone .PaymentStatus}}">{{bookingPaymentStatusBadge .PaymentStatus}}</span>
+          </td>
+          <td class="px-4 py-3.5 text-right align-middle sm:px-5">
+            <div class="flex items-center justify-end gap-1.5">
+              <button
+                type="button"
+                class="inline-flex h-9 items-center gap-1.5 rounded-xl bg-obsidian px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-slate focus:outline-none focus:ring-2 focus:ring-obsidian/20"
+                data-open-payment-modal
+                data-schedule-id="{{.ScheduleID}}"
+                data-booking-ref="{{bookingReference .ScheduleID}}"
+                data-customer="{{if .RequesterName}}{{.RequesterName}}{{else}}Booking customer{{end}}"
+                data-product="{{bookingProductLabel .Activity .Quantity}}"
+                data-slot="{{formatCalendarDate .SlotDate}} at {{formatClockTime .SlotHour}}"
+                data-outstanding="{{printf "%.2f" .OutstandingAmount}}"
+                data-outstanding-label="{{money .OutstandingAmount}}"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-3.5 w-3.5" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                Collect
+              </button>
+
+              <button
+                type="button"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate/10 bg-white text-slate/55 transition hover:border-slate/20 hover:bg-cloud hover:text-obsidian focus:outline-none focus:ring-2 focus:ring-aqua/15"
+                title="Booking details"
+                aria-label="Booking details"
+                data-open-details-modal
+                data-booking-ref="{{bookingReference .ScheduleID}}"
+                data-customer="{{if .RequesterName}}{{.RequesterName}}{{else}}Booking customer{{end}}"
+                data-product="{{bookingProductLabel .Activity .Quantity}}"
+                data-slot="{{formatCalendarDate .SlotDate}} at {{formatClockTime .SlotHour}}"
+                data-booking-status="{{.Status}}"
+                data-payment-status-label="{{bookingPaymentStatusBadge .PaymentStatus}}"
+                data-quoted="{{money .QuotedAmount}}"
+                data-collected="{{money .TotalCollected}}"
+                data-outstanding-label="{{money .OutstandingAmount}}"
+                data-last-payment="{{if .LastPaymentDate.IsZero}}None yet{{else}}{{formatDateTime .LastPaymentDate}}{{end}}"
+                data-active-count="{{.ActivePaymentCount}}"
+                data-voided-count="{{.VoidedPaymentCount}}"
+                data-booking-url="/admin/bookings?action=view&id={{.ScheduleID}}&date={{.SlotDate}}#schedule-view"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-4 w-4" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+              </button>
+
+              {{if eq .Status "confirmed"}}
+              <form
+                action="/admin/bookings/no-show"
+                method="post"
+                onsubmit="return confirm('Mark this booking as a no-show? The outstanding receivable will be removed while the booking remains in history.');"
+                class="inline-flex"
+              >
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="schedule_id" value="{{.ScheduleID}}">
+                <input type="hidden" name="return_to" value="/admin/finance/receivables">
+                <input type="hidden" name="customer_message" value="">
+                <button
+                  type="submit"
+                  class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-orange-200 bg-white text-orange-600 transition hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-200"
+                  title="Mark no-show"
+                  aria-label="Mark no-show"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-4 w-4" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>
+                </button>
+              </form>
+              {{end}}
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="hidden px-5 py-10 text-center" data-receivables-empty-filter>
+    <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-cloud text-slate/40">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-5 w-5" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    </div>
+    <p class="mt-3 text-sm font-semibold text-obsidian">No matching receivables</p>
+    <p class="mt-1 text-xs text-slate/50">Try another search term or payment status.</p>
+  </div>
+  {{else}}
+  <div class="px-5 py-12 text-center">
+    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-5 w-5" stroke-width="2"><path d="m5 12 4 4L19 6"/></svg>
+    </div>
+    <p class="mt-3 font-semibold text-emerald-900">No booking receivables are outstanding.</p>
+    <p class="mt-1 text-sm text-emerald-800/60">Current collections are up to date.</p>
+  </div>
+  {{end}}
+</section>
+
+<!-- Payment history -->
+<section class="overflow-hidden rounded-[1.6rem] border border-white/80 bg-white/95 shadow-sm">
+  <div class="flex flex-col gap-2 border-b border-slate/10 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
+    <div>
+      <p class="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate/45">Payment history</p>
+      <h2 class="mt-1 text-lg font-semibold tracking-tight text-obsidian">Latest received booking receivables</h2>
+    </div>
+    <p class="text-xs text-slate/45">Recent collections</p>
+  </div>
+
+  {{if .BookingPaymentCollections}}
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[820px] border-collapse text-left">
+      <thead>
+        <tr class="border-b border-slate/10 bg-cloud/35 text-[0.64rem] font-bold uppercase tracking-[0.12em] text-slate/45">
+          <th class="px-4 py-3 sm:px-5">Receipt</th>
+          <th class="px-3 py-3">Customer</th>
+          <th class="px-3 py-3">Collected</th>
+          <th class="px-3 py-3">Method</th>
+          <th class="px-3 py-3 text-right">Amount</th>
+          <th class="px-4 py-3 text-right sm:px-5">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate/10">
+        {{range .BookingPaymentCollections}}
+        <tr class="bg-white transition hover:bg-cloud/30">
+          <td class="px-4 py-3 sm:px-5">
+            <p class="font-mono text-xs font-bold text-obsidian">{{.ReceiptNumber}}</p>
+            <p class="mt-0.5 font-mono text-[0.66rem] text-slate/45">{{bookingReference .ScheduleID}}</p>
+          </td>
+          <td class="px-3 py-3">
+            <p class="max-w-[200px] truncate text-sm font-semibold text-obsidian">{{if .PersonName}}{{.PersonName}}{{else}}Booking customer{{end}}</p>
+            {{if .PaymentNote}}<p class="mt-0.5 max-w-[220px] truncate text-[0.68rem] text-slate/45" title="{{.PaymentNote}}">{{.PaymentNote}}</p>{{end}}
+          </td>
+          <td class="whitespace-nowrap px-3 py-3 text-xs text-slate/60">{{formatDateTime .CollectedAt}}</td>
+          <td class="px-3 py-3"><span class="inline-flex rounded-full bg-cloud px-2.5 py-1 text-[0.68rem] font-semibold text-slate/65">{{paymentMethodLabel .PaymentMethod}}</span></td>
+          <td class="whitespace-nowrap px-3 py-3 text-right text-sm font-bold tabular-nums text-emerald-700">{{money .Amount}}</td>
+          <td class="px-4 py-3 text-right sm:px-5">
+            <div class="flex items-center justify-end gap-1.5">
+              <a href="/admin/bookings/payments/receipt?id={{.FinanceTransactionID}}" class="inline-flex h-8 items-center rounded-lg border border-slate/10 bg-white px-2.5 text-[0.68rem] font-semibold text-slate transition hover:bg-cloud">Receipt</a>
+              <a href="/admin/bookings?action=view&id={{.ScheduleID}}#schedule-view" class="inline-flex h-8 items-center rounded-lg border border-slate/10 bg-white px-2.5 text-[0.68rem] font-semibold text-slate transition hover:bg-cloud">Booking</a>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="px-5 py-10 text-center">
+    <p class="font-semibold text-obsidian">No booking payments received yet.</p>
+    <p class="mt-1 text-sm text-slate/50">New receivable collections will appear here.</p>
+  </div>
+  {{end}}
+</section>
+
+<!-- Collect payment modal -->
+<div class="fixed inset-0 z-[100] hidden items-center justify-center p-3 sm:p-6" data-payment-modal aria-hidden="true">
+  <div class="absolute inset-0 bg-obsidian/55 backdrop-blur-[2px]" data-close-payment-modal></div>
+
+  <section class="relative z-10 flex max-h-[calc(100vh-1.5rem)] w-full max-w-xl flex-col overflow-hidden rounded-[1.5rem] bg-white shadow-2xl sm:max-h-[calc(100vh-3rem)]" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
+    <header class="flex items-start justify-between gap-4 border-b border-slate/10 px-5 py-4">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="rounded-full bg-amber-50 px-2.5 py-1 text-[0.66rem] font-bold uppercase tracking-wider text-amber-700">Receive payment</span>
+          <span class="font-mono text-xs font-semibold text-slate/45" data-payment-modal-ref></span>
+        </div>
+        <h3 id="payment-modal-title" class="mt-2 truncate text-xl font-semibold tracking-tight text-obsidian" data-payment-modal-customer>Booking customer</h3>
+        <p class="mt-1 truncate text-xs text-slate/50"><span data-payment-modal-product></span> · <span data-payment-modal-slot></span></p>
+      </div>
+      <button type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate/10 bg-white text-slate/50 transition hover:bg-cloud hover:text-obsidian" data-close-payment-modal aria-label="Close payment modal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-4 w-4" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+
+    <form action="/admin/bookings/payments/collect" method="post" class="min-h-0 overflow-y-auto" data-payment-adjustment-form data-modal-payment-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="schedule_id" value="" data-payment-schedule-id>
+      <input type="hidden" name="return_to" value="/admin/finance/receivables">
+
+      <div class="space-y-5 p-5">
+        <div class="flex items-center justify-between rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3">
+          <div>
+            <p class="text-[0.66rem] font-bold uppercase tracking-wider text-amber-700">Outstanding balance</p>
+            <p class="mt-1 text-xs text-amber-800/55">Current receivable amount</p>
+          </div>
+          <p class="text-xl font-bold tracking-tight text-amber-950" data-payment-modal-outstanding-label></p>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="text-xs font-semibold text-slate/60">Payment method
+            <select name="payment_method" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm font-medium text-obsidian outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/10">
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank transfer</option>
+              <option value="qr_pay">QR pay</option>
+            </select>
+          </label>
+
+          <label class="text-xs font-semibold text-slate/60">Collection date
+            <input type="date" name="payment_collected_at" min="{{historicalStartDate}}" max="{{todayDate}}" value="{{todayDate}}" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm font-medium text-obsidian outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/10">
+          </label>
+        </div>
+
+        <label class="block text-xs font-semibold text-slate/60">Amount received
+          <div class="relative mt-1.5">
+            <input name="amount" type="number" min="0.01" step="0.01" value="" class="h-12 w-full rounded-xl border border-slate/10 bg-white px-3 pr-20 text-base font-semibold tabular-nums text-obsidian outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/10" data-payment-amount>
+            <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-cloud px-2.5 py-1.5 text-[0.68rem] font-bold text-slate/60 transition hover:bg-slate/10" data-use-full-balance>Full</button>
+          </div>
+        </label>
+
+        <div class="rounded-2xl border border-slate/10 bg-cloud/30 p-3">
+          <p class="px-1 text-[0.66rem] font-bold uppercase tracking-wider text-slate/45">Adjustments</p>
+          <div class="mt-2 grid gap-2 sm:grid-cols-2">
+            <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-slate/10 bg-white px-3 py-3 text-xs font-semibold text-slate/65 transition hover:border-slate/20">
+              <input type="checkbox" name="allow_overpayment" value="1" class="h-4 w-4 rounded border-slate/20 text-aqua focus:ring-aqua">
+              <span>Allow overpayment</span>
+            </label>
+            <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-slate/10 bg-white px-3 py-3 text-xs font-semibold text-slate/65 transition hover:border-slate/20">
+              <input type="checkbox" name="settle_as_discounted" value="1" class="h-4 w-4 rounded border-slate/20 text-aqua focus:ring-aqua">
+              <span>Settle with discount</span>
+            </label>
+          </div>
+
+          <div class="mt-3 hidden" data-overpayment-fields>
+            <label class="text-xs font-semibold text-slate/60">Overpayment amount
+              <input name="overpayment_amount" type="number" min="0.01" step="0.01" placeholder="0.00" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/10">
+            </label>
+          </div>
+
+          <div class="mt-3 hidden" data-discount-fields>
+            <label class="text-xs font-semibold text-slate/60">Discount amount
+              <input name="discount_amount" type="number" min="0.01" step="0.01" placeholder="0.00" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/10">
+            </label>
+          </div>
+
+          <div class="mt-3 hidden" data-adjustment-reason>
+            <label class="text-xs font-semibold text-slate/60">Adjustment reason
+              <input name="adjustment_reason" maxlength="250" placeholder="Reason for overpayment or discount" class="mt-1.5 h-11 w-full rounded-xl border border-slate/10 bg-white px-3 text-sm outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/10">
+            </label>
+          </div>
+        </div>
+
+        <label class="block text-xs font-semibold text-slate/60">Payment note <span class="font-normal text-slate/35">(optional)</span>
+          <textarea name="payment_note" maxlength="250" rows="3" placeholder="Add a short collection note..." class="mt-1.5 w-full resize-none rounded-xl border border-slate/10 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/10"></textarea>
+        </label>
+      </div>
+
+      <footer class="sticky bottom-0 flex items-center justify-end gap-2 border-t border-slate/10 bg-white/95 px-5 py-4 backdrop-blur">
+        <button type="button" class="h-10 rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud" data-close-payment-modal>Cancel</button>
+        <button type="submit" class="inline-flex h-10 items-center gap-2 rounded-xl bg-obsidian px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate focus:outline-none focus:ring-2 focus:ring-obsidian/20">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-4 w-4" stroke-width="2"><path d="m5 12 4 4L19 6"/></svg>
+          Confirm payment
+        </button>
+      </footer>
+    </form>
+  </section>
+</div>
+
+<!-- Booking details modal -->
+<div class="fixed inset-0 z-[100] hidden items-center justify-center p-3 sm:p-6" data-details-modal aria-hidden="true">
+  <div class="absolute inset-0 bg-obsidian/55 backdrop-blur-[2px]" data-close-details-modal></div>
+  <section class="relative z-10 w-full max-w-lg overflow-hidden rounded-[1.5rem] bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="details-modal-title">
+    <header class="flex items-start justify-between gap-4 border-b border-slate/10 px-5 py-4">
+      <div>
+        <p class="font-mono text-xs font-bold text-slate/45" data-details-ref></p>
+        <h3 id="details-modal-title" class="mt-1 text-xl font-semibold tracking-tight text-obsidian" data-details-customer>Booking details</h3>
+        <p class="mt-1 text-xs text-slate/50"><span data-details-product></span> · <span data-details-slot></span></p>
+      </div>
+      <button type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate/10 bg-white text-slate/50 transition hover:bg-cloud hover:text-obsidian" data-close-details-modal aria-label="Close booking details">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="h-4 w-4" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+
+    <div class="p-5">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div class="rounded-xl bg-cloud/45 p-3">
+          <p class="text-[0.62rem] font-bold uppercase tracking-wider text-slate/40">Quoted</p>
+          <p class="mt-1 text-sm font-bold text-obsidian" data-details-quoted></p>
+        </div>
+        <div class="rounded-xl bg-emerald-50 p-3">
+          <p class="text-[0.62rem] font-bold uppercase tracking-wider text-emerald-700/55">Collected</p>
+          <p class="mt-1 text-sm font-bold text-emerald-800" data-details-collected></p>
+        </div>
+        <div class="col-span-2 rounded-xl bg-amber-50 p-3 sm:col-span-1">
+          <p class="text-[0.62rem] font-bold uppercase tracking-wider text-amber-700/55">Outstanding</p>
+          <p class="mt-1 text-sm font-bold text-amber-900" data-details-outstanding></p>
+        </div>
+      </div>
+
+      <dl class="mt-4 divide-y divide-slate/10 rounded-xl border border-slate/10">
+        <div class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"><dt class="text-slate/50">Booking status</dt><dd class="font-semibold capitalize text-obsidian" data-details-booking-status></dd></div>
+        <div class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"><dt class="text-slate/50">Payment status</dt><dd class="font-semibold text-obsidian" data-details-payment-status></dd></div>
+        <div class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"><dt class="text-slate/50">Last payment</dt><dd class="text-right font-semibold text-obsidian" data-details-last-payment></dd></div>
+        <div class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"><dt class="text-slate/50">Active collections</dt><dd class="font-semibold text-obsidian" data-details-active-count></dd></div>
+        <div class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"><dt class="text-slate/50">Voided collections</dt><dd class="font-semibold text-obsidian" data-details-voided-count></dd></div>
+      </dl>
+    </div>
+
+    <footer class="flex items-center justify-end gap-2 border-t border-slate/10 px-5 py-4">
+      <button type="button" class="h-10 rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud" data-close-details-modal>Close</button>
+      <a href="#" class="inline-flex h-10 items-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-white transition hover:bg-slate" data-details-booking-link>View full booking</a>
+    </footer>
+  </section>
+</div>
+
 <script>
+(() => {
+  const body = document.body;
+
+  // Search + status filter.
+  const searchInput = document.querySelector("[data-receivables-search]");
+  const statusFilter = document.querySelector("[data-receivables-filter]");
+  const rows = Array.from(document.querySelectorAll("[data-receivable-row]"));
+  const emptyFilter = document.querySelector("[data-receivables-empty-filter]");
+
+  const applyFilters = () => {
+    if (!rows.length) return;
+    const query = (searchInput?.value || "").trim().toLowerCase();
+    const status = (statusFilter?.value || "all").toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const haystack = (row.dataset.search || "").toLowerCase();
+      const paymentStatus = (row.dataset.paymentStatus || "").toLowerCase();
+      const matchesQuery = !query || haystack.includes(query);
+      const matchesStatus = status === "all" || paymentStatus === status;
+      const show = matchesQuery && matchesStatus;
+      row.classList.toggle("hidden", !show);
+      if (show) visible++;
+    });
+
+    emptyFilter?.classList.toggle("hidden", visible !== 0);
+  };
+
+  searchInput?.addEventListener("input", applyFilters);
+  statusFilter?.addEventListener("change", applyFilters);
+
+  // Generic modal helpers.
+  const openModal = (modal) => {
+    if (!modal) return;
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+    modal.setAttribute("aria-hidden", "false");
+    body.classList.add("overflow-hidden");
+    requestAnimationFrame(() => modal.querySelector("button, input, select, textarea, a")?.focus());
+  };
+
+  const closeModal = (modal) => {
+    if (!modal) return;
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+    modal.setAttribute("aria-hidden", "true");
+    if (!document.querySelector('[data-payment-modal][aria-hidden="false"], [data-details-modal][aria-hidden="false"]')) {
+      body.classList.remove("overflow-hidden");
+    }
+  };
+
+  // Payment modal.
+  const paymentModal = document.querySelector("[data-payment-modal]");
+  const paymentForm = paymentModal?.querySelector("[data-modal-payment-form]");
+  const scheduleInput = paymentForm?.querySelector("[data-payment-schedule-id]");
+  const amountInput = paymentForm?.querySelector("[data-payment-amount]");
+  const fullBalanceButton = paymentForm?.querySelector("[data-use-full-balance]");
+  let currentOutstanding = "";
+
+  document.querySelectorAll("[data-open-payment-modal]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!paymentModal || !paymentForm) return;
+
+      paymentForm.reset();
+      currentOutstanding = button.dataset.outstanding || "";
+      if (scheduleInput) scheduleInput.value = button.dataset.scheduleId || "";
+      if (amountInput) amountInput.value = currentOutstanding;
+
+      const setText = (selector, value) => {
+        const el = paymentModal.querySelector(selector);
+        if (el) el.textContent = value || "";
+      };
+
+      setText("[data-payment-modal-ref]", button.dataset.bookingRef);
+      setText("[data-payment-modal-customer]", button.dataset.customer);
+      setText("[data-payment-modal-product]", button.dataset.product);
+      setText("[data-payment-modal-slot]", button.dataset.slot);
+      setText("[data-payment-modal-outstanding-label]", button.dataset.outstandingLabel);
+
+      paymentForm.dispatchEvent(new CustomEvent("payment-form-reset"));
+      openModal(paymentModal);
+    });
+  });
+
+  fullBalanceButton?.addEventListener("click", () => {
+    if (amountInput) {
+      amountInput.value = currentOutstanding;
+      amountInput.focus();
+    }
+  });
+
+  document.querySelectorAll("[data-close-payment-modal]").forEach((button) => {
+    button.addEventListener("click", () => closeModal(paymentModal));
+  });
+
+  // Details modal.
+  const detailsModal = document.querySelector("[data-details-modal]");
+  document.querySelectorAll("[data-open-details-modal]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!detailsModal) return;
+
+      const mapping = {
+        "[data-details-ref]": button.dataset.bookingRef,
+        "[data-details-customer]": button.dataset.customer,
+        "[data-details-product]": button.dataset.product,
+        "[data-details-slot]": button.dataset.slot,
+        "[data-details-booking-status]": button.dataset.bookingStatus,
+        "[data-details-payment-status]": button.dataset.paymentStatusLabel,
+        "[data-details-quoted]": button.dataset.quoted,
+        "[data-details-collected]": button.dataset.collected,
+        "[data-details-outstanding]": button.dataset.outstandingLabel,
+        "[data-details-last-payment]": button.dataset.lastPayment,
+        "[data-details-active-count]": button.dataset.activeCount,
+        "[data-details-voided-count]": button.dataset.voidedCount,
+      };
+
+      Object.entries(mapping).forEach(([selector, value]) => {
+        const el = detailsModal.querySelector(selector);
+        if (el) el.textContent = value || "";
+      });
+
+      const bookingLink = detailsModal.querySelector("[data-details-booking-link]");
+      if (bookingLink) bookingLink.href = button.dataset.bookingUrl || "#";
+      openModal(detailsModal);
+    });
+  });
+
+  document.querySelectorAll("[data-close-details-modal]").forEach((button) => {
+    button.addEventListener("click", () => closeModal(detailsModal));
+  });
+
+  // Escape closes whichever modal is open.
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (paymentModal?.getAttribute("aria-hidden") === "false") closeModal(paymentModal);
+    if (detailsModal?.getAttribute("aria-hidden") === "false") closeModal(detailsModal);
+  });
+
+  // Existing adjustment business rules, now scoped to the modal form.
   document.querySelectorAll("[data-payment-adjustment-form]").forEach((form) => {
     const overpaymentToggle = form.querySelector('input[name="allow_overpayment"]');
     const discountToggle = form.querySelector('input[name="settle_as_discounted"]');
@@ -192,24 +564,28 @@
     const reasonInput = reasonFields.querySelector('input[name="adjustment_reason"]');
 
     const sync = (changed) => {
-      if (changed === overpaymentToggle && overpaymentToggle.checked) {
-        discountToggle.checked = false;
-      }
-      if (changed === discountToggle && discountToggle.checked) {
-        overpaymentToggle.checked = false;
-      }
+      if (changed === overpaymentToggle && overpaymentToggle.checked) discountToggle.checked = false;
+      if (changed === discountToggle && discountToggle.checked) overpaymentToggle.checked = false;
+
       overpaymentFields.classList.toggle("hidden", !overpaymentToggle.checked);
       discountFields.classList.toggle("hidden", !discountToggle.checked);
+
       const showReason = overpaymentToggle.checked || discountToggle.checked;
       reasonFields.classList.toggle("hidden", !showReason);
       if (overpaymentInput) overpaymentInput.required = overpaymentToggle.checked;
       if (discountInput) discountInput.required = discountToggle.checked;
       if (reasonInput) reasonInput.required = showReason;
+
+      if (!overpaymentToggle.checked && overpaymentInput) overpaymentInput.value = "";
+      if (!discountToggle.checked && discountInput) discountInput.value = "";
+      if (!showReason && reasonInput) reasonInput.value = "";
     };
 
     overpaymentToggle.addEventListener("change", () => sync(overpaymentToggle));
     discountToggle.addEventListener("change", () => sync(discountToggle));
+    form.addEventListener("payment-form-reset", () => sync());
     sync();
   });
+})();
 </script>
 {{end}}
