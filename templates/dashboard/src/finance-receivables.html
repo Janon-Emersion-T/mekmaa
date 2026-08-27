@@ -82,6 +82,10 @@
                 <input type="checkbox" name="allow_overpayment" value="1" class="mt-0.5 h-4 w-4 rounded border-slate/20 text-aqua focus:ring-aqua">
                 <span>Allow overpayment when the customer intentionally pays more than the current outstanding amount.</span>
               </label>
+              <label class="flex items-start gap-3 rounded-xl border border-slate/10 bg-white px-3 py-3 text-xs text-slate/60">
+                <input type="checkbox" name="settle_as_discounted" value="1" class="mt-0.5 h-4 w-4 rounded border-slate/20 text-aqua focus:ring-aqua">
+                <span>Settle as discounted total when collecting less than {{money .OutstandingAmount}} and clear the remaining balance.</span>
+              </label>
               <button class="h-11 rounded-xl bg-obsidian text-sm font-semibold text-cloud transition hover:bg-slate">Collect now</button>
             </div>
           </form>

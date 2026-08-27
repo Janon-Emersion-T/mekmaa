@@ -5700,11 +5700,11 @@ func nullableExistingUserIDTx(tx *sql.Tx, userID int64) any {
 	return userID
 }
 
-func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amount float64, paymentNote string, recordedByUserID int64, allowOverpayment bool) (int64, error) {
-	return a.collectBookingPaymentAt(scheduleID, paymentMethod, amount, paymentNote, time.Now().UTC(), recordedByUserID, allowOverpayment)
+func (a *App) collectBookingPayment(scheduleID int64, paymentMethod string, amount float64, paymentNote string, recordedByUserID int64, allowOverpayment bool, discountedSettlement ...bool) (int64, error) {
+	return a.collectBookingPaymentAt(scheduleID, paymentMethod, amount, paymentNote, time.Now().UTC(), recordedByUserID, allowOverpayment, discountedSettlement...)
 }
 
-func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, amount float64, paymentNote string, collectedAt time.Time, recordedByUserID int64, allowOverpayment bool) (int64, error) {
+func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, amount float64, paymentNote string, collectedAt time.Time, recordedByUserID int64, allowOverpayment bool, discountedSettlement ...bool) (int64, error) {
 	paymentMethod = normalizePaymentMethod(paymentMethod)
 	if !validPaymentMethod(paymentMethod) {
 		return 0, errors.New("booking payment method is invalid")
@@ -5762,6 +5762,7 @@ func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, am
 	if amount > outstanding+0.005 && !allowOverpayment {
 		return 0, ErrBookingPaymentNeedsOverpayApproval
 	}
+	applyDiscountedSettlement := len(discountedSettlement) > 0 && discountedSettlement[0] && amount < outstanding-0.005
 	_ = paid
 	personName := financial.RequesterName
 	if personName == "" {
@@ -5831,6 +5832,19 @@ func (a *App) collectBookingPaymentAt(scheduleID int64, paymentMethod string, am
 		WHERE id = ?
 	`), transactionID, now, transactionID); err != nil {
 		return 0, err
+	}
+	if applyDiscountedSettlement {
+		discountedQuotedAmount := amount
+		if current != nil {
+			discountedQuotedAmount = normalizeMoney(current.TotalCollected + amount)
+		}
+		if _, err := tx.Exec(a.dbQuery(`
+			UPDATE booking_financials
+			SET quoted_amount = ?, updated_at = ?
+			WHERE schedule_id = ?
+		`), discountedQuotedAmount, now, scheduleID); err != nil {
+			return 0, err
+		}
 	}
 	if err := a.syncBookingFinancialSnapshotTx(tx, scheduleID); err != nil {
 		return 0, err

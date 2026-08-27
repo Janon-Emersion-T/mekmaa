@@ -2041,6 +2041,91 @@ func TestCollectBookingPaymentHandlerOverpaymentFlashAndReturnURL(t *testing.T) 
 	}
 }
 
+func TestCollectBookingPaymentDiscountedSettlementClearsOutstanding(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 4, "20:00")
+
+	transactionID, err := app.collectBookingPayment(scheduleID, "cash", 3200, "discounted settlement", 0, false, true)
+	if err != nil {
+		t.Fatalf("collect discounted booking payment: %v", err)
+	}
+
+	var txnAmount float64
+	if err := app.db.QueryRow(`SELECT amount FROM finance_transactions WHERE id = ?`, transactionID).Scan(&txnAmount); err != nil {
+		t.Fatalf("find booking payment transaction: %v", err)
+	}
+	if txnAmount != 3200 {
+		t.Fatalf("transaction amount = %.2f, want 3200.00", txnAmount)
+	}
+
+	var quotedAmount float64
+	if err := app.db.QueryRow(`SELECT quoted_amount FROM booking_financials WHERE schedule_id = ?`, scheduleID).Scan(&quotedAmount); err != nil {
+		t.Fatalf("find discounted quoted amount: %v", err)
+	}
+	if quotedAmount != 3200 {
+		t.Fatalf("quoted amount = %.2f, want 3200.00", quotedAmount)
+	}
+
+	financials, err := app.listBookingFinancials()
+	if err != nil {
+		t.Fatalf("list booking financials: %v", err)
+	}
+	financial := bookingFinancialForSchedule(financials, scheduleID)
+	if financial == nil {
+		t.Fatal("discounted booking financial not found")
+	}
+	if financial.OutstandingAmount != 0 {
+		t.Fatalf("outstanding amount = %.2f, want 0", financial.OutstandingAmount)
+	}
+	if financial.PaymentStatus != "paid" {
+		t.Fatalf("payment status = %q, want paid", financial.PaymentStatus)
+	}
+}
+
+func TestCollectBookingPaymentHandlerDiscountedSettlementClearsOutstanding(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 4, "20:00")
+
+	form := url.Values{
+		"csrf_token":           {"test-csrf"},
+		"schedule_id":          {fmt.Sprint(scheduleID)},
+		"payment_method":       {"cash"},
+		"amount":               {"3200"},
+		"payment_note":         {"discounted settlement"},
+		"settle_as_discounted": {"1"},
+		"return_to":            {"/admin/finance/receivables"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/bookings/payments/collect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{ID: 1, Name: "Booking Staff", Permissions: []string{"space_bookings.manage"}}))
+	rec := httptest.NewRecorder()
+
+	app.collectBookingPaymentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect, got %d", rec.Code)
+	}
+	if location := rec.Header().Get("Location"); !strings.HasPrefix(location, "/admin/bookings/payments/receipt?id=") {
+		t.Fatalf("unexpected receipt redirect: %s", location)
+	}
+
+	financials, err := app.listBookingFinancials()
+	if err != nil {
+		t.Fatalf("list booking financials: %v", err)
+	}
+	financial := bookingFinancialForSchedule(financials, scheduleID)
+	if financial == nil {
+		t.Fatal("discounted booking financial not found")
+	}
+	if financial.OutstandingAmount != 0 {
+		t.Fatalf("outstanding amount = %.2f, want 0", financial.OutstandingAmount)
+	}
+	if financial.QuotedAmount != 3200 {
+		t.Fatalf("quoted amount = %.2f, want 3200.00", financial.QuotedAmount)
+	}
+}
+
 func TestBookingRequestsPreventPastAndConflictingSlots(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:booking-system-test?mode=memory&cache=shared")
 	if err != nil {
