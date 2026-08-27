@@ -229,6 +229,9 @@
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Receivables</p>
       <div class="space-y-1">
+        <a href="/admin/finance/receivables" class="{{if isCurrentPath .CurrentPath "/admin/finance/receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>All Receivables</span><span class="{{if isCurrentPath .CurrentPath "/admin/finance/receivables"}}bg-aqua text-obsidian{{else}}bg-cloud text-slate/55{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">All</span>
+        </a>
         <a href="{{scopedURL "/admin/student-payments" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Student Payments</span><span class="{{if isCurrentPath .CurrentPath "/admin/student-payments"}}bg-aqua text-obsidian{{else}}bg-amber/15 text-amber-700{{end}} rounded-lg px-2 py-1 text-[0.6rem] font-bold uppercase tracking-wider">Ledger</span>
         </a>

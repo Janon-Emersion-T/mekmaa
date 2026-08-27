@@ -156,6 +156,10 @@ func (a *App) listOutstandingBookingFinancialsByDivisionIDs(divisionIDs []int64)
 	if err != nil {
 		return nil, err
 	}
+	oneToOneScheduleIDs, err := a.oneToOneScheduleIDSet()
+	if err != nil {
+		return nil, err
+	}
 	filtered := make([]BookingFinancial, 0, len(financials))
 	for _, financial := range financials {
 		if financial.QuotedAmount <= 0 {
@@ -167,9 +171,33 @@ func (a *App) listOutstandingBookingFinancialsByDivisionIDs(divisionIDs []int64)
 		if financial.OutstandingAmount <= 0.004 {
 			continue
 		}
+		if _, isOneToOne := oneToOneScheduleIDs[financial.ScheduleID]; isOneToOne {
+			continue
+		}
 		filtered = append(filtered, financial)
 	}
 	return filtered, nil
+}
+
+func (a *App) oneToOneScheduleIDSet() (map[int64]struct{}, error) {
+	rows, err := a.queryDB(`SELECT schedule_id FROM one_to_one_bookings WHERE schedule_id > 0`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make(map[int64]struct{})
+	for rows.Next() {
+		var scheduleID int64
+		if err := rows.Scan(&scheduleID); err != nil {
+			return nil, err
+		}
+		ids[scheduleID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 func overlappingLeaveDaysForMonth(leaves []StudentEnrollmentLeave, monthStart time.Time) (int, error) {
