@@ -429,7 +429,11 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 			return data, err
 		}
 		data.BookingFinancials = bookingFinancials
-		data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
+		if page == "receivables" {
+			data.BookingPaymentCollections, _ = a.listRecentBookingPaymentCollectionsByDivisionIDs(scopeDivisionIDs, 6)
+		} else {
+			data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
+		}
 	}
 
 	if page == "customers" {

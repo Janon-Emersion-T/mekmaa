@@ -2126,6 +2126,49 @@ func TestCollectBookingPaymentHandlerDiscountedSettlementClearsOutstanding(t *te
 	}
 }
 
+func TestListRecentBookingPaymentCollectionsByDivisionIDsReturnsLatestActivePayments(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	firstScheduleID := createConfirmedFutureBooking(t, app, 4, "18:00")
+	secondScheduleID := createConfirmedFutureBooking(t, app, 5, "20:00")
+
+	firstCollectedAt := time.Now().UTC().Add(-2 * time.Hour)
+	secondCollectedAt := time.Now().UTC().Add(-1 * time.Hour)
+
+	firstTransactionID, err := app.collectBookingPaymentAt(firstScheduleID, "cash", 2500, "first payment", firstCollectedAt, 0, false)
+	if err != nil {
+		t.Fatalf("collect first booking payment: %v", err)
+	}
+	secondTransactionID, err := app.collectBookingPaymentAt(secondScheduleID, "bank_transfer", 3000, "second payment", secondCollectedAt, 0, false)
+	if err != nil {
+		t.Fatalf("collect second booking payment: %v", err)
+	}
+
+	var firstCollectionID int64
+	if err := app.db.QueryRow(`SELECT id FROM booking_payment_collections WHERE finance_transaction_id = ?`, firstTransactionID).Scan(&firstCollectionID); err != nil {
+		t.Fatalf("find first booking collection: %v", err)
+	}
+	if err := app.voidBookingPayment(firstCollectionID, "void first", 1); err != nil {
+		t.Fatalf("void first booking payment: %v", err)
+	}
+
+	collections, err := app.listRecentBookingPaymentCollectionsByDivisionIDs(nil, 6)
+	if err != nil {
+		t.Fatalf("list recent booking collections: %v", err)
+	}
+	if len(collections) != 1 {
+		t.Fatalf("recent collections count = %d, want 1", len(collections))
+	}
+	if collections[0].FinanceTransactionID != secondTransactionID {
+		t.Fatalf("latest finance transaction id = %d, want %d", collections[0].FinanceTransactionID, secondTransactionID)
+	}
+	if collections[0].ScheduleID != secondScheduleID {
+		t.Fatalf("latest schedule id = %d, want %d", collections[0].ScheduleID, secondScheduleID)
+	}
+	if collections[0].Voided {
+		t.Fatal("latest collection should not be voided")
+	}
+}
+
 func TestBookingRequestsPreventPastAndConflictingSlots(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:booking-system-test?mode=memory&cache=shared")
 	if err != nil {

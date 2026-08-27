@@ -771,6 +771,95 @@ func (a *App) listBookingPaymentCollectionsForScheduleIDs(scheduleIDs []int64) (
 	)
 }
 
+func (a *App) listRecentBookingPaymentCollectionsByDivisionIDs(divisionIDs []int64, limit int) ([]BookingPaymentCollection, error) {
+	allowed, err := a.scopeIncludesSportsDivision(divisionIDs)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed || limit <= 0 {
+		return nil, nil
+	}
+
+	query := `
+		SELECT
+			bpc.id,
+			bpc.schedule_id,
+			bpc.finance_transaction_id,
+			ft.receipt_number,
+			ft.person_name,
+			ft.description,
+			bpc.amount,
+			bpc.payment_method,
+			COALESCE(bpc.payment_note, ''),
+			COALESCE(bpc.collected_by_user_id, 0),
+			COALESCE(collector.name, ''),
+			bpc.collected_at,
+			bpc.created_at,
+			bpc.voided,
+			COALESCE(bpc.void_reason, ''),
+			COALESCE(bpc.voided_by_user_id, 0),
+			COALESCE(voider.name, ''),
+			bpc.voided_at
+		FROM booking_payment_collections bpc
+		JOIN finance_transactions ft
+			ON ft.id = bpc.finance_transaction_id
+		LEFT JOIN users collector
+			ON collector.id = bpc.collected_by_user_id
+		LEFT JOIN users voider
+			ON voider.id = bpc.voided_by_user_id
+		WHERE COALESCE(bpc.voided, 0) = 0
+		  AND ft.category = 'booking_payment'
+	`
+	args := make([]any, 0, len(divisionIDs)+1)
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND COALESCE(ft.division_id, 0) IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
+	query += ` ORDER BY bpc.collected_at DESC, bpc.id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := a.queryDB(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var collections []BookingPaymentCollection
+	for rows.Next() {
+		var collection BookingPaymentCollection
+		var voided int
+		var voidedAt sql.NullTime
+		if err := rows.Scan(
+			&collection.ID,
+			&collection.ScheduleID,
+			&collection.FinanceTransactionID,
+			&collection.ReceiptNumber,
+			&collection.PersonName,
+			&collection.Description,
+			&collection.Amount,
+			&collection.PaymentMethod,
+			&collection.PaymentNote,
+			&collection.CollectedByUserID,
+			&collection.CollectedByUserName,
+			&collection.CollectedAt,
+			&collection.CreatedAt,
+			&voided,
+			&collection.VoidReason,
+			&collection.VoidedByUserID,
+			&collection.VoidedByUserName,
+			&voidedAt,
+		); err != nil {
+			return nil, err
+		}
+		collection.Voided = voided == 1
+		if voidedAt.Valid {
+			collection.VoidedAt = voidedAt.Time
+		}
+		collections = append(collections, collection)
+	}
+	return collections, rows.Err()
+}
+
 func (a *App) listBookingFinancials() ([]BookingFinancial, error) {
 	rows, err := a.queryDB(`SELECT schedule_id FROM booking_financials ORDER BY schedule_id`)
 	if err != nil {

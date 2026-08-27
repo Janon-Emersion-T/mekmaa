@@ -132,21 +132,35 @@
     
 
     <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Related payment pages</p>
-      <h2 class="mt-2 text-xl font-semibold text-obsidian">Open other collection workflows</h2>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Payment history</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Latest received booking receivables</h2>
       <div class="mt-5 grid gap-3">
-        <a href="/admin/student-payments" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
-          <span>Student monthly payments</span>
-          <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Monthly</span>
-        </a>
-        <a href="/admin/referrals" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
-          <span>Referral programme</span>
-          <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Partners</span>
-        </a>
-        <a href="/admin/bookings" class="inline-flex h-12 items-center justify-between rounded-2xl border border-slate/10 bg-cloud/45 px-4 text-sm font-semibold text-obsidian">
-          <span>Booking calendar</span>
-          <span class="text-xs uppercase tracking-[0.14em] text-slate/50">Slots</span>
-        </a>
+        {{range .BookingPaymentCollections}}
+        <article class="rounded-[1.25rem] border border-slate/10 bg-cloud/35 p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-obsidian">{{if .PersonName}}{{.PersonName}}{{else}}Booking customer{{end}}</p>
+              <p class="mt-1 font-mono text-[0.68rem] text-slate/50">{{bookingReference .ScheduleID}} · {{.ReceiptNumber}}</p>
+            </div>
+            <p class="text-sm font-semibold text-emerald-800">{{money .Amount}}</p>
+          </div>
+          <p class="mt-2 text-xs text-slate/60">{{formatDateTime .CollectedAt}} · {{paymentMethodLabel .PaymentMethod}}</p>
+          {{if .PaymentNote}}<p class="mt-2 text-xs text-slate/55">{{.PaymentNote}}</p>{{end}}
+          <div class="mt-3 flex flex-wrap gap-2">
+            <a href="/admin/bookings/payments/receipt?id={{.FinanceTransactionID}}" class="inline-flex h-8 items-center rounded-lg border border-slate/10 bg-white px-3 text-[0.68rem] font-semibold text-slate transition hover:bg-cloud">
+              View receipt
+            </a>
+            <a href="/admin/bookings?action=view&id={{.ScheduleID}}#schedule-view" class="inline-flex h-8 items-center rounded-lg border border-slate/10 bg-white px-3 text-[0.68rem] font-semibold text-slate transition hover:bg-cloud">
+              View booking
+            </a>
+          </div>
+        </article>
+        {{else}}
+        <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/25 px-4 py-8 text-center">
+          <p class="font-semibold text-obsidian">No booking payments received yet.</p>
+          <p class="mt-1 text-sm text-slate/55">New receivable collections will appear here.</p>
+        </div>
+        {{end}}
       </div>
     </section>
   </aside>
