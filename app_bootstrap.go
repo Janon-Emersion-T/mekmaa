@@ -946,6 +946,7 @@ type BookingFinancial struct {
 	Activity              string
 	Quantity              int
 	Status                string
+	Title                 string
 	RequesterName         string
 	RequesterEmail        string
 	RecordedByUserID      int64
@@ -968,6 +969,29 @@ type BookingCustomerBalance struct {
 	CollectedAmount   float64
 	OutstandingAmount float64
 	Bookings          []BookingFinancial
+}
+
+type FinanceReceivableSummaryCard struct {
+	Key               string
+	Label             string
+	Description       string
+	ActionURL         string
+	ActionLabel       string
+	Count             int
+	OutstandingAmount float64
+}
+
+type FinanceReceivableOverviewRow struct {
+	TypeKey           string
+	TypeLabel         string
+	Reference         string
+	DisplayName       string
+	Context           string
+	StatusLabel       string
+	PaymentLabel      string
+	CollectedAmount   float64
+	OutstandingAmount float64
+	ActionURL         string
 }
 
 type ReportPeriod struct {
@@ -1908,6 +1932,8 @@ type TemplateData struct {
 	FinanceSpecifiedLedgerFrom       string
 	FinanceSpecifiedLedgerTo         string
 	FinanceCustomerSearch            string
+	FinanceReceivableSummaryCards    []FinanceReceivableSummaryCard
+	FinanceReceivableOverviewRows    []FinanceReceivableOverviewRow
 	StatementOpeningBalance          float64
 	StatementClosingBalance          float64
 	StatementMoneyIn                 float64

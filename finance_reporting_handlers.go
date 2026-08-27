@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,10 @@ func (a *App) financeLedgerHandler(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) financeReceivablesHandler(w http.ResponseWriter, r *http.Request) {
 	a.financeSectionHandler(w, r, "receivables")
+}
+
+func (a *App) financeBookingReceivablesHandler(w http.ResponseWriter, r *http.Request) {
+	a.financeSectionHandler(w, r, "receivables-bookings")
 }
 
 func (a *App) financeTransfersHandler(w http.ResponseWriter, r *http.Request) {
@@ -276,8 +281,8 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	needOperationalSummary := page == "ledger" || page == "specified-ledgers" || page == "transfers" || page == "reconciliations" || page == "accounts" || page == "profit-loss" || page == "balance-sheet"
 	needAccounts := needOperationalSummary
 	needAllTransactions := page == "ledger" || page == "specified-ledgers" || page == "accounts" || page == "transfers" || page == "reconciliations" || page == "profit-loss" || page == "balance-sheet"
-	needBookingFinancials := page == "receivables" || page == "customers"
-	needMonthlyRows := false // Student monthly fees are managed exclusively from /admin/student-payments.
+	needBookingFinancials := page == "receivables" || page == "receivables-bookings" || page == "customers"
+	needMonthlyRows := page == "receivables"
 	needTransfers := page == "transfers"
 	needReconciliations := page == "reconciliations"
 	needCategories := page == "ledger" || page == "categories" || page == "profit-loss"
@@ -429,9 +434,9 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 			return data, err
 		}
 		data.BookingFinancials = bookingFinancials
-		if page == "receivables" {
+		if page == "receivables-bookings" {
 			data.BookingPaymentCollections, _ = a.listRecentBookingPaymentCollectionsByDivisionIDs(scopeDivisionIDs, 6)
-		} else {
+		} else if page == "customers" {
 			data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))
 		}
 	}
@@ -496,6 +501,18 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if page == "receivables" {
+		oneToOneReceivables, err := a.financeOneToOneReceivables()
+		if err != nil {
+			log.Printf("finance %s load failed: op=list one-to-one receivables duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.OneToOneReceivables = oneToOneReceivables
+		mcpReceivables, err := a.financeMCPReceivables()
+		if err != nil {
+			log.Printf("finance %s load failed: op=list mcp receivables duration=%s err=%v", page, time.Since(started), err)
+			return data, err
+		}
+		data.MCPReceivables = mcpReceivables
 		referrals, err := a.listBookingReferralsByDivisionIDs(scopeDivisionIDs)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list referral payables duration=%s err=%v", page, time.Since(started), err)
@@ -503,6 +520,8 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		}
 		data.BookingReferrals = referrals
 		data.FinanceSummary = buildFinanceSummary(nil, nil, data.BookingFinancials, allMonthlyRows, referrals, nil)
+		data.FinanceReceivableSummaryCards = buildFinanceReceivableSummaryCards(data)
+		data.FinanceReceivableOverviewRows = buildFinanceReceivableOverviewRows(data)
 	}
 
 	if needTransfers {
@@ -541,6 +560,196 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	return data, nil
+}
+
+func (a *App) financeOneToOneReceivables() ([]OneToOneReceivable, error) {
+	bookings, err := a.listOneToOneBookings()
+	if err != nil {
+		return nil, err
+	}
+	scheduleIDs := make([]int64, 0, len(bookings))
+	for _, booking := range bookings {
+		if booking.ScheduleID > 0 {
+			scheduleIDs = append(scheduleIDs, booking.ScheduleID)
+		}
+	}
+	financials, err := a.listBookingFinancialsForScheduleIDs(scheduleIDs)
+	if err != nil {
+		return nil, err
+	}
+	financialBySchedule := make(map[int64]BookingFinancial, len(financials))
+	for _, financial := range financials {
+		financialBySchedule[financial.ScheduleID] = financial
+	}
+	rows := make([]OneToOneReceivable, 0, len(bookings))
+	for _, booking := range bookings {
+		financial, ok := financialBySchedule[booking.ScheduleID]
+		if !ok || financial.OutstandingAmount <= 0.004 {
+			continue
+		}
+		rows = append(rows, OneToOneReceivable{Booking: booking, Financial: financial})
+	}
+	return rows, nil
+}
+
+func (a *App) financeMCPReceivables() ([]MCPReceivable, error) {
+	plans, err := a.listMCPMonthlyPlans(0)
+	if err != nil {
+		return nil, err
+	}
+	receivables := make([]MCPReceivable, 0, len(plans))
+	for _, plan := range plans {
+		if plan.GrossAmount > 0 && plan.OutstandingAmount > 0.004 && plan.Status != mcpPlanStatusCancelled {
+			receivables = append(receivables, MCPReceivable{Plan: plan})
+		}
+	}
+	return receivables, nil
+}
+
+func buildFinanceReceivableSummaryCards(data TemplateData) []FinanceReceivableSummaryCard {
+	cards := []FinanceReceivableSummaryCard{
+		{
+			Key:               "bookings",
+			Label:             "Bookings",
+			Description:       "Public court bookings and walk-in slot payments.",
+			ActionURL:         "/admin/finance/receivables/bookings",
+			ActionLabel:       "Open bookings",
+			Count:             len(data.BookingFinancials),
+			OutstandingAmount: data.FinanceSummary.OutstandingBooking,
+		},
+		{
+			Key:               "students",
+			Label:             "Students",
+			Description:       "Monthly student fees for the latest collectible month.",
+			ActionURL:         "/admin/student-payments",
+			ActionLabel:       "Open students",
+			Count:             len(data.StudentPaymentRows),
+			OutstandingAmount: financeStudentOutstanding(data.StudentPaymentRows),
+		},
+		{
+			Key:               "one_to_one",
+			Label:             "1 to 1",
+			Description:       "Outstanding one-to-one packages and follow-up collections.",
+			ActionURL:         "/admin/one-to-one-receivables",
+			ActionLabel:       "Open 1 to 1",
+			Count:             len(data.OneToOneReceivables),
+			OutstandingAmount: financeOneToOneOutstanding(data.OneToOneReceivables),
+		},
+		{
+			Key:               "mcp",
+			Label:             "MCP",
+			Description:       "Monthly court plan balances that still need collection.",
+			ActionURL:         "/admin/mcp-receivables",
+			ActionLabel:       "Open MCP",
+			Count:             len(data.MCPReceivables),
+			OutstandingAmount: financeMCPOutstanding(data.MCPReceivables),
+		},
+	}
+	return cards
+}
+
+func buildFinanceReceivableOverviewRows(data TemplateData) []FinanceReceivableOverviewRow {
+	rows := make([]FinanceReceivableOverviewRow, 0, len(data.BookingFinancials)+len(data.StudentPaymentRows)+len(data.OneToOneReceivables)+len(data.MCPReceivables))
+	for _, financial := range data.BookingFinancials {
+		rows = append(rows, FinanceReceivableOverviewRow{
+			TypeKey:           "bookings",
+			TypeLabel:         "Booking",
+			Reference:         bookingReference(financial.ScheduleID),
+			DisplayName:       bookingFinancialDisplayName(financial),
+			Context:           strings.TrimSpace(financial.Title + " · " + formatCalendarDate(financial.SlotDate) + " at " + formatClockTime(financial.SlotHour)),
+			StatusLabel:       financial.Status,
+			PaymentLabel:      bookingPaymentStatusBadge(financial.PaymentStatus),
+			CollectedAmount:   financial.TotalCollected,
+			OutstandingAmount: financial.OutstandingAmount,
+			ActionURL:         "/admin/finance/receivables/bookings",
+		})
+	}
+	for _, row := range data.StudentPaymentRows {
+		rows = append(rows, FinanceReceivableOverviewRow{
+			TypeKey:           "students",
+			TypeLabel:         "Student",
+			Reference:         row.Admission.StudentID,
+			DisplayName:       row.Admission.FullName,
+			Context:           strings.TrimSpace(row.Enrollment.TrainingProgramName + " · " + data.PaymentMonthLabel),
+			StatusLabel:       "active",
+			PaymentLabel:      financeStudentPaymentLabel(row),
+			CollectedAmount:   row.CollectedAmount,
+			OutstandingAmount: row.OutstandingAmount,
+			ActionURL:         "/admin/student-payments?month=" + data.PaymentMonth,
+		})
+	}
+	for _, row := range data.OneToOneReceivables {
+		rows = append(rows, FinanceReceivableOverviewRow{
+			TypeKey:           "one_to_one",
+			TypeLabel:         "1 to 1",
+			Reference:         fmt.Sprintf("Package #%d", row.Booking.ID),
+			DisplayName:       row.Booking.CustomerName,
+			Context:           strings.TrimSpace(row.Booking.OfferingName + " · " + formatCalendarDate(row.Booking.SlotDate) + " at " + formatClockTime(row.Booking.SlotHour)),
+			StatusLabel:       row.Booking.PackageStatus,
+			PaymentLabel:      bookingPaymentStatusBadge(row.Financial.PaymentStatus),
+			CollectedAmount:   row.Financial.TotalCollected,
+			OutstandingAmount: row.Financial.OutstandingAmount,
+			ActionURL:         "/admin/one-to-one-receivables",
+		})
+	}
+	for _, row := range data.MCPReceivables {
+		rows = append(rows, FinanceReceivableOverviewRow{
+			TypeKey:           "mcp",
+			TypeLabel:         "MCP",
+			Reference:         row.Plan.PlanMonth,
+			DisplayName:       row.Plan.CustomerName,
+			Context:           strings.TrimSpace(row.Plan.Title + " · " + strconv.Itoa(row.Plan.TotalSessions) + " sessions"),
+			StatusLabel:       row.Plan.Status,
+			PaymentLabel:      "Outstanding",
+			CollectedAmount:   row.Plan.TotalCollected,
+			OutstandingAmount: row.Plan.OutstandingAmount,
+			ActionURL:         "/admin/mcp-receivables",
+		})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].OutstandingAmount == rows[j].OutstandingAmount {
+			if rows[i].TypeLabel == rows[j].TypeLabel {
+				return rows[i].DisplayName < rows[j].DisplayName
+			}
+			return rows[i].TypeLabel < rows[j].TypeLabel
+		}
+		return rows[i].OutstandingAmount > rows[j].OutstandingAmount
+	})
+	return rows
+}
+
+func financeStudentOutstanding(rows []StudentPaymentRow) float64 {
+	total := 0.0
+	for _, row := range rows {
+		total = normalizeMoney(total + row.OutstandingAmount)
+	}
+	return total
+}
+
+func financeOneToOneOutstanding(rows []OneToOneReceivable) float64 {
+	total := 0.0
+	for _, row := range rows {
+		total = normalizeMoney(total + row.Financial.OutstandingAmount)
+	}
+	return total
+}
+
+func financeMCPOutstanding(rows []MCPReceivable) float64 {
+	total := 0.0
+	for _, row := range rows {
+		total = normalizeMoney(total + row.Plan.OutstandingAmount)
+	}
+	return total
+}
+
+func financeStudentPaymentLabel(row StudentPaymentRow) string {
+	if row.CollectedAmount+0.004 >= row.MonthlyFee {
+		return "Paid"
+	}
+	if row.CollectedAmount > 0.004 {
+		return "Partial"
+	}
+	return "Pending"
 }
 
 func (a *App) createFinanceTransactionHandler(w http.ResponseWriter, r *http.Request) {

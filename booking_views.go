@@ -552,6 +552,7 @@ func listBookingFinancialsForScheduleIDsQuery(queryer sqlQueryer, driver Databas
 			s.activity,
 			s.quantity,
 			s.status,
+			COALESCE(s.title, ''),
 			COALESCE(s.requester_name, ''),
 			COALESCE(s.requester_email, '')
 		FROM booking_financials bf
@@ -584,6 +585,7 @@ func listBookingFinancialsForScheduleIDsQuery(queryer sqlQueryer, driver Databas
 			&financial.Activity,
 			&financial.Quantity,
 			&financial.Status,
+			&financial.Title,
 			&financial.RequesterName,
 			&financial.RequesterEmail,
 		); err != nil {

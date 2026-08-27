@@ -183,14 +183,17 @@ func scheduleFromRequest(r *http.Request) SpaceSchedule {
 		quantity = 1
 	}
 	return SpaceSchedule{
-		SlotDate:     strings.TrimSpace(r.FormValue("slot_date")),
-		SlotHour:     strings.TrimSpace(r.FormValue("slot_hour")),
-		EntryType:    entryType,
-		Activity:     activity,
-		Quantity:     quantity,
-		Title:        strings.TrimSpace(r.FormValue("title")),
-		Notes:        strings.TrimSpace(r.FormValue("notes")),
-		ReferralCode: strings.ToUpper(strings.TrimSpace(r.FormValue("referral_code"))),
+		SlotDate:       strings.TrimSpace(r.FormValue("slot_date")),
+		SlotHour:       strings.TrimSpace(r.FormValue("slot_hour")),
+		EntryType:      entryType,
+		Activity:       activity,
+		Quantity:       quantity,
+		Title:          strings.TrimSpace(r.FormValue("title")),
+		Notes:          strings.TrimSpace(r.FormValue("notes")),
+		RequesterName:  strings.TrimSpace(r.FormValue("requester_name")),
+		RequesterEmail: strings.TrimSpace(r.FormValue("requester_email")),
+		RequesterPhone: strings.TrimSpace(r.FormValue("requester_phone")),
+		ReferralCode:   strings.ToUpper(strings.TrimSpace(r.FormValue("referral_code"))),
 	}
 }
 

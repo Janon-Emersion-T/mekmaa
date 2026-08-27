@@ -964,11 +964,8 @@ func aggregateBookingCustomerBalances(financials []BookingFinancial, search stri
 	}
 	byCustomer := make(map[string]*bucket)
 	for _, financial := range financials {
-		name := strings.TrimSpace(financial.RequesterName)
+		name := bookingFinancialDisplayName(financial)
 		email := strings.TrimSpace(financial.RequesterEmail)
-		if name == "" && email == "" {
-			name = "Booking customer"
-		}
 		haystack := strings.ToLower(strings.TrimSpace(name + " " + email))
 		if search != "" && !strings.Contains(haystack, search) {
 			continue
@@ -1017,6 +1014,21 @@ func aggregateBookingCustomerBalances(financials []BookingFinancial, search stri
 		return balances[i].OutstandingAmount > balances[j].OutstandingAmount
 	})
 	return balances
+}
+
+func bookingFinancialDisplayName(financial BookingFinancial) string {
+	name := strings.TrimSpace(financial.RequesterName)
+	if name != "" {
+		return name
+	}
+	title := strings.TrimSpace(financial.Title)
+	if title != "" {
+		return title
+	}
+	if financial.ScheduleID > 0 {
+		return bookingReference(financial.ScheduleID)
+	}
+	return "Booking"
 }
 
 func (a *App) listBookingRequestChanges() ([]BookingRequestChange, error) {
@@ -5952,10 +5964,7 @@ func (a *App) collectBookingPaymentAtWithAdjustment(scheduleID int64, paymentMet
 	}
 	applyDiscountedSettlement := legacyDiscountSettlement || adjustment.DiscountAmount > 0
 	_ = paid
-	personName := financial.RequesterName
-	if personName == "" {
-		personName = "Booking customer"
-	}
+	personName := bookingFinancialDisplayName(financial)
 	collectedAt = collectedAt.UTC()
 	now := time.Now().UTC()
 	recordedByRef := nullableExistingUserIDTx(tx, recordedByUserID)

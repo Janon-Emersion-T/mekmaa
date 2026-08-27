@@ -62,12 +62,12 @@
                 <p class="font-mono text-[0.72rem] font-bold text-obsidian">{{bookingReference .ScheduleID}}</p>
                 <span class="rounded-full px-2.5 py-1 text-[0.62rem] font-bold {{bookingPaymentStatusTone .PaymentStatus}}">{{bookingPaymentStatusBadge .PaymentStatus}}</span>
               </div>
-              <p class="mt-2 text-sm font-semibold text-obsidian">{{.Activity}} · {{.SlotDate}} · {{.SlotHour}}</p>
+              <p class="mt-2 text-sm font-semibold text-obsidian">{{if .Title}}{{.Title}}{{else}}{{.Activity}}{{end}} · {{.SlotDate}} · {{.SlotHour}}</p>
               <p class="mt-1 text-xs text-slate/55">Quoted {{money .QuotedAmount}} · Collected {{money .TotalCollected}} · Outstanding {{money .OutstandingAmount}}</p>
             </div>
             <div class="flex flex-wrap gap-2">
               <a href="/admin/bookings?action=view&id={{.ScheduleID}}&date={{.SlotDate}}#schedule-view" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Open booking</a>
-              <a href="/admin/finance/receivables" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Open receivables</a>
+              <a href="/admin/finance/receivables/bookings" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Open receivables</a>
             </div>
           </div>
         </div>

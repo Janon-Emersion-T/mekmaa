@@ -93,7 +93,7 @@
         <tr
           class="group bg-white transition hover:bg-cloud/30"
           data-receivable-row
-          data-search="{{bookingReference .ScheduleID}} {{if .RequesterName}}{{.RequesterName}}{{else}}Booking customer{{end}} {{bookingProductLabel .Activity .Quantity}} {{.Status}} {{bookingPaymentStatusBadge .PaymentStatus}}"
+          data-search="{{bookingReference .ScheduleID}} {{if .RequesterName}}{{.RequesterName}}{{else if .Title}}{{.Title}}{{else}}{{bookingReference .ScheduleID}}{{end}} {{.Title}} {{bookingProductLabel .Activity .Quantity}} {{.Status}} {{bookingPaymentStatusBadge .PaymentStatus}}"
           data-payment-status="{{.PaymentStatus}}"
         >
           <td class="px-4 py-3.5 align-middle sm:px-5">
@@ -103,7 +103,7 @@
             </div>
           </td>
           <td class="px-3 py-3.5 align-middle">
-            <p class="max-w-[180px] truncate text-sm font-semibold text-obsidian">{{if .RequesterName}}{{.RequesterName}}{{else}}Booking customer{{end}}</p>
+            <p class="max-w-[180px] truncate text-sm font-semibold text-obsidian">{{if .RequesterName}}{{.RequesterName}}{{else if .Title}}{{.Title}}{{else}}{{bookingReference .ScheduleID}}{{end}}</p>
             <p class="mt-0.5 text-[0.68rem] capitalize text-slate/45">{{.Status}}</p>
           </td>
           <td class="px-3 py-3.5 align-middle">
@@ -126,7 +126,7 @@
                 data-open-payment-modal
                 data-schedule-id="{{.ScheduleID}}"
                 data-booking-ref="{{bookingReference .ScheduleID}}"
-                data-customer="{{if .RequesterName}}{{.RequesterName}}{{else}}Booking customer{{end}}"
+                data-customer="{{if .RequesterName}}{{.RequesterName}}{{else if .Title}}{{.Title}}{{else}}{{bookingReference .ScheduleID}}{{end}}"
                 data-product="{{bookingProductLabel .Activity .Quantity}}"
                 data-slot="{{formatCalendarDate .SlotDate}} at {{formatClockTime .SlotHour}}"
                 data-outstanding="{{printf "%.2f" .OutstandingAmount}}"
@@ -143,7 +143,7 @@
                 aria-label="Booking details"
                 data-open-details-modal
                 data-booking-ref="{{bookingReference .ScheduleID}}"
-                data-customer="{{if .RequesterName}}{{.RequesterName}}{{else}}Booking customer{{end}}"
+                data-customer="{{if .RequesterName}}{{.RequesterName}}{{else if .Title}}{{.Title}}{{else}}{{bookingReference .ScheduleID}}{{end}}"
                 data-product="{{bookingProductLabel .Activity .Quantity}}"
                 data-slot="{{formatCalendarDate .SlotDate}} at {{formatClockTime .SlotHour}}"
                 data-booking-status="{{.Status}}"
@@ -168,7 +168,7 @@
               >
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="schedule_id" value="{{.ScheduleID}}">
-                <input type="hidden" name="return_to" value="/admin/finance/receivables">
+                <input type="hidden" name="return_to" value="/admin/finance/receivables/bookings">
                 <input type="hidden" name="customer_message" value="">
                 <button
                   type="submit"
@@ -284,7 +284,7 @@
     <form action="/admin/bookings/payments/collect" method="post" class="min-h-0 overflow-y-auto" data-payment-adjustment-form data-modal-payment-form>
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <input type="hidden" name="schedule_id" value="" data-payment-schedule-id>
-      <input type="hidden" name="return_to" value="/admin/finance/receivables">
+      <input type="hidden" name="return_to" value="/admin/finance/receivables/bookings">
 
       <div class="space-y-5 p-5">
         <div class="flex items-center justify-between rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3">

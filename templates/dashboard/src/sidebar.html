@@ -235,7 +235,7 @@
         <a href="/admin/one-to-one-receivables" class="{{if isCurrentPath .CurrentPath "/admin/one-to-one-receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>1-to-1 Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
         </a>
-        <a href="/admin/finance/receivables" class="{{if isCurrentPath .CurrentPath "/admin/finance/receivables"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+        <a href="/admin/finance/receivables/bookings" class="{{if or (isCurrentPath .CurrentPath "/admin/finance/receivables") (isCurrentPath .CurrentPath "/admin/finance/receivables/bookings")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Booking Receivables</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Due</span>
         </a>
         {{if hasPermission .User "mcp_receivables.view"}}
