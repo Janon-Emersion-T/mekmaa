@@ -3950,6 +3950,7 @@ func (a *App) buildBookingTemplateData(w http.ResponseWriter, r *http.Request, u
 	data.Games, _ = a.listGames(false)
 	data.Activities = bookingActivities()
 	data.Hours = bookingHours()
+	data.BookingDurationHours = bookingDurationHoursFromRequest(r)
 	data.TodayDate = time.Now().Format("2006-01-02")
 	data.HistoricalStartDate = companyHistoricalEntryStartDate
 	data.CalendarDate = strings.TrimSpace(r.URL.Query().Get("date"))
@@ -6403,6 +6404,11 @@ func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	schedule := scheduleFromRequest(r)
+	durationHours, durationErr := parseBookingDurationHours(r.FormValue("duration_hours"))
+	if durationErr != nil {
+		a.writeBookingError(w, r, "new", &schedule, durationErr.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := validateSpaceScheduleInput(schedule); err != nil {
 		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
 		return
@@ -6411,21 +6417,17 @@ func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if schedule.EntryType == "booking" {
-		quotedPrice, err := a.bookingQuote(schedule)
-		if err != nil {
-			a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
-			return
-		}
-		schedule.QuotedPrice = quotedPrice
-	}
-	if err := a.createSpaceSchedule(schedule); err != nil {
+	if err := a.createSpaceSchedules(schedule, durationHours); err != nil {
 		log.Printf("create booking: %v", err)
 		a.writeBookingError(w, r, "new", &schedule, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	a.setFlash(w, "Schedule created.")
+	if durationHours > 1 {
+		a.setFlash(w, fmt.Sprintf("%d consecutive schedules created.", durationHours))
+	} else {
+		a.setFlash(w, "Schedule created.")
+	}
 	http.Redirect(w, r, "/admin/bookings?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
 }
 

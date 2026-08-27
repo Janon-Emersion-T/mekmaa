@@ -1952,6 +1952,7 @@ type TemplateData struct {
 	BookingOptions                   []BookingOption
 	Activities                       []string
 	Hours                            []string
+	BookingDurationHours             int
 	CalendarDate                     string
 	PreviousDate                     string
 	NextDate                         string

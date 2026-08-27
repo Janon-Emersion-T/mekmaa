@@ -31,6 +31,16 @@ func bookingHours() []string {
 	return hours
 }
 
+func validBookingHour(slotHour string) bool {
+	slotHour = strings.TrimSpace(slotHour)
+	for _, hour := range bookingHours() {
+		if hour == slotHour {
+			return true
+		}
+	}
+	return false
+}
+
 func bookingSlotStartTime(slotDate string, slotHour string) (time.Time, error) {
 	return time.ParseInLocation("2006-01-02 15:04", strings.TrimSpace(slotDate)+" "+strings.TrimSpace(slotHour), time.Local)
 }
@@ -41,6 +51,62 @@ func bookingSlotEndTime(slotDate string, slotHour string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return start.Add(bookingSlotDuration), nil
+}
+
+func parseBookingDurationHours(value string) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 1, nil
+	}
+	hours, err := strconv.Atoi(value)
+	if err != nil || hours <= 0 {
+		return 0, errors.New("booking hours must be at least 1")
+	}
+	if hours > 12 {
+		return 0, errors.New("booking hours cannot exceed 12")
+	}
+	return hours, nil
+}
+
+func bookingDurationHoursFromRequest(r *http.Request) int {
+	if r == nil {
+		return 1
+	}
+	if hours, err := parseBookingDurationHours(r.FormValue("duration_hours")); err == nil {
+		return hours
+	}
+	if hours, err := parseBookingDurationHours(r.URL.Query().Get("duration_hours")); err == nil {
+		return hours
+	}
+	return 1
+}
+
+func consecutiveBookingSchedules(schedule SpaceSchedule, durationHours int) ([]SpaceSchedule, error) {
+	durationHours, err := parseBookingDurationHours(strconv.Itoa(durationHours))
+	if err != nil {
+		return nil, err
+	}
+	start, err := bookingSlotStartTime(schedule.SlotDate, schedule.SlotHour)
+	if err != nil {
+		return nil, errors.New("valid booking date and time are required")
+	}
+	schedules := make([]SpaceSchedule, 0, durationHours)
+	for i := 0; i < durationHours; i++ {
+		slotTime := start.Add(time.Duration(i) * bookingSlotDuration)
+		slotDate := slotTime.Format("2006-01-02")
+		slotHour := slotTime.Format("15:04")
+		if slotDate != schedule.SlotDate {
+			return nil, errors.New("booking hours must stay within the same day")
+		}
+		if !validBookingHour(slotHour) {
+			return nil, errors.New("booking hours extend beyond the last available slot")
+		}
+		candidate := schedule
+		candidate.SlotDate = slotDate
+		candidate.SlotHour = slotHour
+		schedules = append(schedules, candidate)
+	}
+	return schedules, nil
 }
 
 func bookingSlotsOverlap(leftDate, leftHour, rightDate, rightHour string) bool {

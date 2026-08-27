@@ -3901,6 +3901,13 @@ func (a *App) deleteCourtLayout(
 func (a *App) createSpaceSchedule(
 	schedule SpaceSchedule,
 ) error {
+	return a.createSpaceSchedules(schedule, 1)
+}
+
+func (a *App) createSpaceSchedules(
+	schedule SpaceSchedule,
+	durationHours int,
+) error {
 	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
@@ -3916,6 +3923,20 @@ func (a *App) createSpaceSchedule(
 		courtLayouts,
 	); err != nil {
 		return err
+	}
+	candidates, err := consecutiveBookingSchedules(schedule, durationHours)
+	if err != nil {
+		return err
+	}
+	for i := range candidates {
+		if candidates[i].EntryType != "booking" {
+			continue
+		}
+		quotedPrice, err := a.bookingQuote(candidates[i])
+		if err != nil {
+			return err
+		}
+		candidates[i].QuotedPrice = quotedPrice
 	}
 
 	courtClosures, err :=
@@ -3939,105 +3960,115 @@ func (a *App) createSpaceSchedule(
 		return err
 	}
 	defer tx.Rollback()
-
-	existing, err := querySchedulesForSlot(
-		tx,
-		a.runtimeConfig.DBDriver,
-		schedule.SlotDate,
-		schedule.SlotHour,
-		0,
-	)
-	if err != nil {
-		return err
-	}
-
-	if err := validateSpaceScheduleSlotAgainstLayouts(
-		existing,
-		schedule,
-		courtLayouts,
-	); err != nil {
-		return err
-	}
 	now := time.Now().UTC()
-
-	scheduleID, err := a.insertAndReturnIDTx(tx, `
-		INSERT INTO space_schedules (
-			slot_date,
-			slot_hour,
-			entry_type,
-			activity,
-			quantity,
-			title,
-			notes,
-			status,
-			requester_name,
-			requester_email,
-			requester_phone,
-			requested_by_user_id,
-			review_note,
-			customer_message,
-			status_changed_at,
-			status_changed_by_user_id,
-			status_change_source,
-			cancellation_reason,
-			cancellation_finance_note,
-			created_at,
-			updated_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		schedule.SlotDate,
-		schedule.SlotHour,
-		schedule.EntryType,
-		schedule.Activity,
-		schedule.Quantity,
-		schedule.Title,
-		schedule.Notes,
-		bookingStatusConfirmed,
-		schedule.RequesterName,
-		schedule.RequesterEmail,
-		schedule.RequesterPhone,
-		nil,
-		"",
-		"",
-		nil,
-		nil,
-		"",
-		"",
-		"",
-		now,
-		now,
-	)
-	if err != nil {
-		return err
-	}
-
-	if err != nil {
-		return err
-	}
-
-	if schedule.EntryType == "booking" {
-		if _, err := a.execTxDB(tx, `
-			INSERT INTO booking_financials (
-				schedule_id,
-				quoted_amount,
-				paid,
-				payment_method,
-				created_at,
-				updated_at
-			)
-			VALUES (?, ?, 0, '', ?, ?)
-		`,
-			scheduleID,
-			schedule.QuotedPrice,
-			now,
-			now,
+	existingBySlot := make(map[string][]SpaceSchedule, len(candidates))
+	for _, candidate := range candidates {
+		if err := validateScheduleAgainstClosures(
+			candidate,
+			courtClosures,
 		); err != nil {
 			return err
 		}
-		if err := a.createBookingReferralTx(tx, scheduleID, schedule.ReferralCode, now); err != nil {
+		existing, seen := existingBySlot[candidate.SlotDate+" "+candidate.SlotHour]
+		if !seen {
+			existing, err = querySchedulesForSlot(
+				tx,
+				a.runtimeConfig.DBDriver,
+				candidate.SlotDate,
+				candidate.SlotHour,
+				0,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		if err := validateSpaceScheduleSlotAgainstLayouts(
+			existing,
+			candidate,
+			courtLayouts,
+		); err != nil {
 			return err
 		}
+
+		scheduleID, err := a.insertAndReturnIDTx(tx, `
+			INSERT INTO space_schedules (
+				slot_date,
+				slot_hour,
+				entry_type,
+				activity,
+				quantity,
+				title,
+				notes,
+				status,
+				requester_name,
+				requester_email,
+				requester_phone,
+				requested_by_user_id,
+				review_note,
+				customer_message,
+				status_changed_at,
+				status_changed_by_user_id,
+				status_change_source,
+				cancellation_reason,
+				cancellation_finance_note,
+				created_at,
+				updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`,
+			candidate.SlotDate,
+			candidate.SlotHour,
+			candidate.EntryType,
+			candidate.Activity,
+			candidate.Quantity,
+			candidate.Title,
+			candidate.Notes,
+			bookingStatusConfirmed,
+			candidate.RequesterName,
+			candidate.RequesterEmail,
+			candidate.RequesterPhone,
+			nil,
+			"",
+			"",
+			nil,
+			nil,
+			"",
+			"",
+			"",
+			now,
+			now,
+		)
+		if err != nil {
+			return err
+		}
+
+		if candidate.EntryType == "booking" {
+			if _, err := a.execTxDB(tx, `
+				INSERT INTO booking_financials (
+					schedule_id,
+					quoted_amount,
+					paid,
+					payment_method,
+					created_at,
+					updated_at
+				)
+				VALUES (?, ?, 0, '', ?, ?)
+			`,
+				scheduleID,
+				candidate.QuotedPrice,
+				now,
+				now,
+			); err != nil {
+				return err
+			}
+			if err := a.createBookingReferralTx(tx, scheduleID, candidate.ReferralCode, now); err != nil {
+				return err
+			}
+		}
+
+		candidate.ID = scheduleID
+		existingBySlot[candidate.SlotDate+" "+candidate.SlotHour] = append(existing, candidate)
 	}
 
 	return tx.Commit()

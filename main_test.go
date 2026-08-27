@@ -2169,6 +2169,113 @@ func TestListRecentBookingPaymentCollectionsByDivisionIDsReturnsLatestActivePaym
 	}
 }
 
+func TestCreateSpaceSchedulesCreatesConsecutiveHourlyBookings(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	slotDate := time.Now().AddDate(0, 0, 3).Format("2006-01-02")
+	schedule := SpaceSchedule{
+		SlotDate:       slotDate,
+		SlotHour:       "18:00",
+		EntryType:      "booking",
+		Activity:       "full_indoor_cricket",
+		Quantity:       1,
+		Title:          "3 Hour Booking",
+		Notes:          "multi-hour",
+		RequesterName:  "Multi Hour Customer",
+		RequesterEmail: "multi@example.com",
+		RequesterPhone: "0700000000",
+	}
+
+	if err := app.createSpaceSchedules(schedule, 2); err != nil {
+		t.Fatalf("create consecutive schedules: %v", err)
+	}
+
+	rows, err := app.db.Query(`
+		SELECT slot_hour
+		FROM space_schedules
+		WHERE title = ?
+		ORDER BY slot_hour ASC
+	`, schedule.Title)
+	if err != nil {
+		t.Fatalf("query consecutive schedules: %v", err)
+	}
+	defer rows.Close()
+
+	var hours []string
+	for rows.Next() {
+		var slotHour string
+		if err := rows.Scan(&slotHour); err != nil {
+			t.Fatalf("scan slot hour: %v", err)
+		}
+		hours = append(hours, slotHour)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read consecutive schedules: %v", err)
+	}
+	if len(hours) != 2 {
+		t.Fatalf("created schedules = %d, want 2", len(hours))
+	}
+	if hours[0] != "18:00" || hours[1] != "19:00" {
+		t.Fatalf("created hours = %#v, want [18:00 19:00]", hours)
+	}
+
+	var financialCount int
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM booking_financials bf
+		JOIN space_schedules s ON s.id = bf.schedule_id
+		WHERE s.title = ?
+	`, schedule.Title).Scan(&financialCount); err != nil {
+		t.Fatalf("count booking financials: %v", err)
+	}
+	if financialCount != 2 {
+		t.Fatalf("booking financials = %d, want 2", financialCount)
+	}
+}
+
+func TestCreateSpaceSchedulesRollsBackWhenAnyHourConflicts(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	slotDate := time.Now().AddDate(0, 0, 3).Format("2006-01-02")
+
+	conflict := SpaceSchedule{
+		SlotDate:       slotDate,
+		SlotHour:       "19:00",
+		EntryType:      "booking",
+		Activity:       "full_indoor_cricket",
+		Quantity:       1,
+		Title:          "Existing Conflict",
+		RequesterName:  "Existing Customer",
+		RequesterEmail: "existing@example.com",
+		RequesterPhone: "0700000000",
+	}
+	if err := app.createSpaceSchedule(conflict); err != nil {
+		t.Fatalf("create conflicting schedule: %v", err)
+	}
+
+	schedule := SpaceSchedule{
+		SlotDate:       slotDate,
+		SlotHour:       "18:00",
+		EntryType:      "booking",
+		Activity:       "full_indoor_cricket",
+		Quantity:       1,
+		Title:          "Should Roll Back",
+		RequesterName:  "Rollback Customer",
+		RequesterEmail: "rollback@example.com",
+		RequesterPhone: "0700000000",
+	}
+
+	if err := app.createSpaceSchedules(schedule, 2); err == nil {
+		t.Fatal("expected multi-hour conflict to fail")
+	}
+
+	var createdCount int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM space_schedules WHERE title = ?`, schedule.Title).Scan(&createdCount); err != nil {
+		t.Fatalf("count rolled back schedules: %v", err)
+	}
+	if createdCount != 0 {
+		t.Fatalf("created schedules after rollback = %d, want 0", createdCount)
+	}
+}
+
 func TestBookingRequestsPreventPastAndConflictingSlots(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:booking-system-test?mode=memory&cache=shared")
 	if err != nil {
