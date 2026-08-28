@@ -2074,28 +2074,41 @@ func backfillStudentMonthlyPaymentEnrollments(db *sql.DB) error {
 
 func tableHasColumn(db *sql.DB, tableName, columnName string) (bool, error) {
 	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", tableName))
-	if err != nil {
+	if err == nil {
+		defer rows.Close()
+
+		for rows.Next() {
+			var (
+				cid        int
+				name       string
+				columnType string
+				notNull    int
+				defaultVal sql.NullString
+				pk         int
+			)
+			if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &pk); err != nil {
+				return false, err
+			}
+			if name == columnName {
+				return true, nil
+			}
+		}
+		return false, rows.Err()
+	}
+
+	var exists bool
+	if queryErr := db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema = 'public'
+			  AND table_name = $1
+			  AND column_name = $2
+		)
+	`, tableName, columnName).Scan(&exists); queryErr != nil {
 		return false, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			cid        int
-			name       string
-			columnType string
-			notNull    int
-			defaultVal sql.NullString
-			pk         int
-		)
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &pk); err != nil {
-			return false, err
-		}
-		if name == columnName {
-			return true, nil
-		}
-	}
-	return false, rows.Err()
+	return exists, nil
 }
 
 func seedRoles(db *sql.DB) error {
