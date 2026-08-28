@@ -823,6 +823,15 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 	}
 	defer tx.Rollback()
 
+	hasDiscountAmount, err := tableHasColumn(a.db, "student_monthly_payments", "discount_amount")
+	if err != nil {
+		return 0, err
+	}
+	hasAdjustmentReason, err := tableHasColumn(a.db, "student_monthly_payments", "adjustment_reason")
+	if err != nil {
+		return 0, err
+	}
+
 	enrollment, err := findStudentEnrollmentByIDTx(tx, a.runtimeConfig.DBDriver, enrollmentID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
@@ -850,13 +859,23 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 	totalCollected := 0.0
 	if enrollment != nil {
 		err = tx.QueryRow(`
-			SELECT COALESCE(SUM(amount + COALESCE(discount_amount, 0)), 0)
+			SELECT COALESCE(SUM(amount`+func() string {
+			if hasDiscountAmount {
+				return ` + COALESCE(discount_amount, 0)`
+			}
+			return ``
+		}()+`), 0)
 			FROM student_monthly_payments
 			WHERE enrollment_id = ? AND payment_month = ? AND COALESCE(voided, 0) = 0
 		`, enrollment.ID, paymentMonth).Scan(&totalCollected)
 	} else {
 		err = tx.QueryRow(`
-			SELECT COALESCE(SUM(amount + COALESCE(discount_amount, 0)), 0)
+			SELECT COALESCE(SUM(amount`+func() string {
+			if hasDiscountAmount {
+				return ` + COALESCE(discount_amount, 0)`
+			}
+			return ``
+		}()+`), 0)
 			FROM student_monthly_payments
 			WHERE admission_id = ? AND (enrollment_id IS NULL OR enrollment_id = 0) AND payment_month = ? AND COALESCE(voided, 0) = 0
 		`, admission.ID, paymentMonth).Scan(&totalCollected)
@@ -1000,17 +1019,35 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 		return 0, err
 	}
 
-	result, err := tx.Exec(`
+	insertQuery := `
 		INSERT INTO student_monthly_payments (
-			admission_id, enrollment_id, payment_month, amount, discount_amount, adjustment_reason, payment_method, finance_transaction_id,
+			admission_id, enrollment_id, payment_month, amount,`
+	if hasDiscountAmount {
+		insertQuery += ` discount_amount,`
+	}
+	if hasAdjustmentReason {
+		insertQuery += ` adjustment_reason,`
+	}
+	insertQuery += ` payment_method, finance_transaction_id,
 			collected_by_user_id, collected_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, admission.ID, nullIfZero(func() int64 {
+		) VALUES (?, ?, ?, ?,`
+	insertArgs := []any{admission.ID, nullIfZero(func() int64 {
 		if enrollment != nil {
 			return enrollment.ID
 		}
 		return 0
-	}()), paymentMonth, amount, discountAmount, strings.TrimSpace(adjustmentReason), paymentMethod, transactionID, recordedByUserID, collectedAt, now)
+	}()), paymentMonth, amount}
+	if hasDiscountAmount {
+		insertQuery += ` ?,`
+		insertArgs = append(insertArgs, discountAmount)
+	}
+	if hasAdjustmentReason {
+		insertQuery += ` ?,`
+		insertArgs = append(insertArgs, strings.TrimSpace(adjustmentReason))
+	}
+	insertQuery += ` ?, ?, ?, ?, ?)`
+	insertArgs = append(insertArgs, paymentMethod, transactionID, recordedByUserID, collectedAt, now)
+	result, err := tx.Exec(insertQuery, insertArgs...)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return 0, ErrStudentPaymentAlreadyCollected

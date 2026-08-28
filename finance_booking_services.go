@@ -929,6 +929,14 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonth(paymentMonth string) ([]S
 }
 
 func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth string, divisionIDs []int64) ([]StudentMonthlyPayment, error) {
+	hasDiscountAmount, err := tableHasColumn(a.db, "student_monthly_payments", "discount_amount")
+	if err != nil {
+		return nil, err
+	}
+	hasAdjustmentReason, err := tableHasColumn(a.db, "student_monthly_payments", "adjustment_reason")
+	if err != nil {
+		return nil, err
+	}
 	query := `
 		SELECT
 			smp.id,
@@ -938,8 +946,18 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 			COALESCE(d.name, adm_d.name, '') AS division_name,
 			smp.payment_month,
 			smp.amount,
-			COALESCE(smp.discount_amount, 0),
-			COALESCE(smp.adjustment_reason, ''),
+	`
+	if hasDiscountAmount {
+		query += ` COALESCE(smp.discount_amount, 0),`
+	} else {
+		query += ` 0,`
+	}
+	if hasAdjustmentReason {
+		query += ` COALESCE(smp.adjustment_reason, ''),`
+	} else {
+		query += ` '',`
+	}
+	query += `
 			smp.payment_method,
 			smp.finance_transaction_id,
 			COALESCE(smp.collected_by_user_id, 0),
