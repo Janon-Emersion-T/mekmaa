@@ -217,6 +217,37 @@ func TestPostgresMigrationDiscoveryIncludesTrainingProgramDivisionNameUniqueness
 	}
 }
 
+func TestPostgresMigrationDiscoveryIncludesStudentMonthlyPaymentAdjustments(t *testing.T) {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		t.Fatalf("load PostgreSQL migrations: %v", err)
+	}
+
+	var found *postgresMigration
+	for i := range migrations {
+		if migrations[i].Version == 14 {
+			found = &migrations[i]
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("expected PostgreSQL migration 000014_student_monthly_payment_adjustments.sql")
+	}
+
+	if found.Filename != "000014_student_monthly_payment_adjustments.sql" {
+		t.Fatalf("migration 14 filename = %q, want %q", found.Filename, "000014_student_monthly_payment_adjustments.sql")
+	}
+
+	if found.Name != "student_monthly_payment_adjustments" {
+		t.Fatalf("migration 14 name = %q, want %q", found.Name, "student_monthly_payment_adjustments")
+	}
+
+	if found.Checksum == "" {
+		t.Fatal("migration 14 checksum must not be empty")
+	}
+}
+
 func TestPostgresMCPMigrationAppliesCleanly(t *testing.T) {
 	runPostgresMigrationHelper(t, "apply_all")
 }
@@ -345,7 +376,7 @@ func runPostgresMigrationHelperAction(action string) error {
 		}
 	}
 
-	for _, version := range []int{6, 7, 9} {
+	for _, version := range []int{6, 7, 9, 14} {
 		var appliedCount int
 
 		if err := db.QueryRow(`
@@ -366,9 +397,10 @@ func runPostgresMigrationHelperAction(action string) error {
 	}
 
 	expectedNames := map[int]string{
-		6: "mcp",
-		7: "one_to_one_session_attendance",
-		9: "tournaments",
+		6:  "mcp",
+		7:  "one_to_one_session_attendance",
+		9:  "tournaments",
+		14: "student_monthly_payment_adjustments",
 	}
 	for version, wantName := range expectedNames {
 		var migrationName string
@@ -415,6 +447,8 @@ func runPostgresMigrationHelperAction(action string) error {
 		{"tournament_sponsorships", "finance_transaction_id"},
 		{"tournament_official_payments", "finance_transaction_id"},
 		{"tournament_expenses", "expense_type"},
+		{"student_monthly_payments", "discount_amount"},
+		{"student_monthly_payments", "adjustment_reason"},
 	} {
 		if err := postgresColumnMustExist(db, column.table, column.column); err != nil {
 			return err
