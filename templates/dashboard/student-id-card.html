@@ -1,365 +1,602 @@
 {{define "student-id-card"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
+
 <section class="w-full max-w-5xl">
 
 <style>
+  /*
+    Standard CR80 / ATM card
+    Portrait orientation
+    54mm × 85.6mm
+  */
+
   .student-id-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
-    gap: 2rem;
+    gap: 3rem;
     align-items: start;
   }
 
-  .student-id-face {
+  .id-card {
+    --navy: #10246b;
+    --green: #079653;
+    --gold: #d9b13b;
+    --ink: #102044;
+    --muted: #6f7b91;
+
     position: relative;
     width: 54mm;
     height: 85.6mm;
     margin: 0 auto;
     overflow: hidden;
-    border: 0.35mm solid rgba(5, 38, 78, 0.14);
-    border-radius: 3mm;
-    background: #fff;
-    box-shadow: 0 18px 40px rgba(9, 30, 52, 0.18);
-  }
 
-  /* =====================================
-     FRONT
-  ====================================== */
+    border: 0.3mm solid rgba(16, 36, 107, 0.12);
+    border-radius: 3.2mm;
 
-  .student-id-front {
     background: #ffffff;
+
+    box-shadow:
+      0 20px 45px rgba(18, 35, 60, 0.16);
   }
 
-  .front-top {
-    position: relative;
-    height: 25mm;
-    overflow: hidden;
-    background: #0a2c72;
-  }
 
-  .front-top::after {
-    content: "";
+  /* =====================================================
+     GENERIC DECORATION
+  ====================================================== */
+
+  .id-card .corner-green {
     position: absolute;
-    left: -8mm;
+    width: 30mm;
+    height: 10mm;
     right: -8mm;
-    bottom: -7mm;
-    height: 14mm;
-    background: #079653;
-    transform: rotate(-13deg);
-    transform-origin: center;
+    top: -3mm;
+
+    transform: rotate(-18deg);
+
+    background: var(--green);
+
+    border-radius: 99mm;
   }
 
-  .front-logo-wrap {
-    position: relative;
-    z-index: 2;
+  .id-card .corner-navy {
+    position: absolute;
+    width: 26mm;
+    height: 9mm;
+    left: -8mm;
+    bottom: -4mm;
+
+    transform: rotate(14deg);
+
+    background: var(--navy);
+
+    border-radius: 99mm;
+  }
+
+  .id-card .corner-gold {
+    position: absolute;
+    width: 14mm;
+    height: 3.5mm;
+    right: -3mm;
+    bottom: 1mm;
+
+    transform: rotate(-15deg);
+
+    background: var(--gold);
+
+    border-radius: 99mm;
+  }
+
+
+  /* =====================================================
+     FRONT
+  ====================================================== */
+
+  .id-front {
     display: flex;
-    height: 18mm;
+    flex-direction: column;
+  }
+
+
+  /* LOGO AREA */
+
+  .front-brand {
+    position: relative;
+    z-index: 5;
+
+    height: 27mm;
+
+    display: flex;
     align-items: center;
     justify-content: center;
+
     padding-top: 2mm;
   }
 
-  .front-logo {
-    width: 16mm;
-    height: 16mm;
+  .front-logo-panel {
+    width: 28mm;
+    height: 22mm;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #ffffff;
+
+    border-radius: 2.5mm;
+
+    box-shadow:
+      0 2mm 5mm rgba(16, 36, 107, 0.08);
+  }
+
+  .front-main-logo {
+    display: block;
+
+    width: 24mm;
+    height: 19mm;
+
     object-fit: contain;
   }
 
+
+  /* NAME */
+
   .front-name-area {
     position: relative;
-    z-index: 3;
+    z-index: 5;
+
     min-height: 14mm;
-    padding: 2.3mm 4mm 1mm;
-    background: #ffffff;
+
+    padding:
+      1mm
+      4mm
+      1.5mm;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
     text-align: center;
   }
 
-  .front-name {
+  .front-student-name {
     margin: 0;
-    font-size: 3.5mm;
-    line-height: 1.12;
+
+    max-width: 44mm;
+
+    font-size: 3.7mm;
+    line-height: 1.08;
     font-weight: 800;
-    color: #092c67;
+
+    color: var(--navy);
   }
 
-  .front-body {
+
+  /* PHOTO / ID */
+
+  .front-person {
+    position: relative;
+    z-index: 5;
+
+    flex: 1;
+
     display: flex;
-    height: 42mm;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    gap: 2.5mm;
-    padding: 1.5mm 4mm 3mm;
-    background:
-      linear-gradient(
-        135deg,
-        rgba(7, 150, 83, 0.04),
-        rgba(255,255,255,0) 45%
-      );
+
+    gap: 2.6mm;
+
+    padding:
+      2mm
+      4mm
+      4mm;
   }
 
-  .student-photo {
-    width: 30mm;
-    height: 37mm;
+  .front-photo {
+    width: 31mm;
+    height: 38mm;
+
     overflow: hidden;
-    border-radius: 2mm;
-    border: 0.7mm solid #ffffff;
-    background: #edf2f5;
-    box-shadow: 0 3px 8px rgba(4, 32, 67, 0.15);
+
+    border: 0.45mm solid rgba(16, 36, 107, 0.12);
+    border-radius: 2.3mm;
+
+    background: #eef2f5;
+
+    box-shadow:
+      0 1.5mm 4mm rgba(16, 36, 107, 0.12);
   }
 
-  .student-photo img {
+  .front-photo img {
+    display: block;
+
     width: 100%;
     height: 100%;
+
     object-fit: cover;
     object-position: top center;
   }
 
-  .vertical-id {
-    display: flex;
+  .front-id {
     width: 7mm;
-    height: 37mm;
+    height: 38mm;
+
+    display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 1.8mm;
-    background: #092c67;
+
+    border-radius: 2mm;
+
+    background: var(--navy);
   }
 
-  .vertical-id span {
+  .front-id span {
     writing-mode: vertical-rl;
     transform: rotate(180deg);
+
     white-space: nowrap;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 2.25mm;
+
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      monospace;
+
+    font-size: 2.2mm;
     font-weight: 800;
-    letter-spacing: 0.12em;
+
+    letter-spacing: 0.11em;
+
     color: #ffffff;
   }
 
-  .front-bottom {
-    height: 4.6mm;
+
+  /* LEFT DECORATIVE LINE */
+
+  .front-accent {
+    position: absolute;
+    z-index: 1;
+
+    left: 0;
+    top: 26mm;
+
+    width: 1.5mm;
+    height: 46mm;
+
     background:
       linear-gradient(
-        90deg,
-        #092c67 0%,
-        #079653 72%,
-        #d7ad2f 100%
+        180deg,
+        var(--green),
+        var(--navy)
       );
   }
 
-  /* =====================================
+
+  /* =====================================================
      BACK
-  ====================================== */
+  ====================================================== */
 
-  .student-id-back {
+  .id-back {
     display: flex;
     flex-direction: column;
-    background: #ffffff;
   }
 
-  .back-header {
+
+  /* QR */
+
+  .back-qr-section {
     position: relative;
-    height: 12mm;
-    flex: 0 0 12mm;
-    overflow: hidden;
-    background: #092c67;
+    z-index: 5;
+
+    padding-top: 6mm;
+
+    text-align: center;
   }
 
-  .back-header::after {
-    content: "";
-    position: absolute;
-    width: 60mm;
-    height: 8mm;
-    left: -3mm;
-    bottom: -3mm;
-    background: #079653;
-    transform: rotate(-13deg);
-  }
+  .back-qr {
+    width: 23mm;
+    height: 23mm;
 
-  .back-content {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-    padding: 2.5mm 4mm 0;
-  }
-
-  .qr-wrap {
-    width: 22mm;
-    height: 22mm;
     margin: 0 auto;
+
     padding: 1.2mm;
-    border: 0.35mm solid rgba(9, 44, 103, 0.15);
-    border-radius: 2mm;
+
     background: #ffffff;
-    box-shadow: 0 2px 6px rgba(5, 30, 60, 0.1);
+
+    border: 0.35mm solid rgba(16, 36, 107, 0.14);
+    border-radius: 2.2mm;
+
+    box-shadow:
+      0 1.5mm 4mm rgba(16, 36, 107, 0.09);
   }
 
-  .qr-wrap img {
+  .back-qr img {
     width: 100%;
     height: 100%;
+
+    display: block;
+
     object-fit: contain;
   }
 
-  .qr-label {
-    margin-top: 1mm;
-    text-align: center;
+  .back-qr-label {
+    margin-top: 1.5mm;
+
     font-size: 1.65mm;
-    font-weight: 700;
-    letter-spacing: 0.14em;
+    font-weight: 800;
+
     text-transform: uppercase;
-    color: #6a7590;
+    letter-spacing: 0.13em;
+
+    color: var(--navy);
   }
 
-  .detail-box {
-    margin-top: 2.5mm;
+
+  /* DETAILS */
+
+  .back-details {
+    position: relative;
+    z-index: 5;
+
+    margin:
+      3mm
+      4mm
+      0;
+
+    border:
+      0.3mm
+      solid
+      rgba(16, 36, 107, 0.12);
+
+    border-radius: 2mm;
+
     overflow: hidden;
-    border: 0.3mm solid rgba(9, 44, 103, 0.12);
-    border-radius: 1.8mm;
+
     background: #ffffff;
   }
 
-  .detail-row {
-    display: flex;
+  .back-detail-row {
     min-height: 7mm;
+
+    display: flex;
     align-items: center;
     justify-content: space-between;
+
     gap: 2mm;
-    padding: 1.4mm 2.2mm;
+
+    padding:
+      1.3mm
+      2.3mm;
   }
 
-  .detail-row + .detail-row {
-    border-top: 0.25mm solid rgba(9, 44, 103, 0.1);
+  .back-detail-row + .back-detail-row {
+    border-top:
+      0.25mm
+      solid
+      rgba(16, 36, 107, 0.09);
   }
 
-  .detail-label {
-    font-size: 1.7mm;
+  .back-detail-label {
+    font-size: 1.6mm;
     font-weight: 700;
-    letter-spacing: 0.07em;
+
     text-transform: uppercase;
-    color: #7b8495;
+    letter-spacing: 0.06em;
+
+    color: var(--muted);
   }
 
-  .detail-value {
-    font-size: 2.15mm;
+  .back-detail-value {
+    font-size: 2.1mm;
     font-weight: 800;
-    color: #092c67;
+
+    color: var(--navy);
   }
 
-  .signature {
+
+  /* SIGNATURE */
+
+  .back-signature {
+    position: relative;
+    z-index: 5;
+
     margin-top: 2.5mm;
+
     text-align: center;
   }
 
-  .signature-line {
-    width: 24mm;
-    height: 5mm;
-    margin: 0 auto;
-    border-bottom: 0.35mm solid #092c67;
+  .back-signature-line {
+    width: 23mm;
+    height: 4.5mm;
+
+    margin: auto;
+
+    border-bottom:
+      0.3mm
+      solid
+      var(--navy);
   }
 
-  .signature-label {
-    margin-top: 0.8mm;
-    font-size: 1.7mm;
+  .back-signature-text {
+    margin-top: 0.7mm;
+
+    font-size: 1.65mm;
     font-weight: 800;
+
+    text-transform: uppercase;
     letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #092c67;
+
+    color: var(--navy);
   }
 
-  .return-box {
-    margin-top: 2.5mm;
-    padding: 1.8mm 2mm;
-    border-radius: 1.8mm;
-    background: #f2f6f8;
+
+  /* RETURN DETAILS */
+
+  .back-return {
+    position: relative;
+    z-index: 5;
+
+    margin:
+      2.5mm
+      4mm
+      0;
+
+    padding:
+      1.7mm
+      2mm;
+
     text-align: center;
+
+    border-radius: 2mm;
+
+    background: #f3f6f8;
   }
 
-  .return-title {
-    font-size: 1.55mm;
+  .back-return-title {
+    font-size: 1.45mm;
     line-height: 1.25;
+
     font-weight: 800;
-    color: #092c67;
+
+    color: var(--navy);
   }
 
-  .return-contact {
+  .back-return-contact {
     margin-top: 0.6mm;
-    font-size: 1.35mm;
-    line-height: 1.35;
-    color: #687386;
+
+    font-size: 1.25mm;
+    line-height: 1.4;
+
+    color: #758096;
   }
 
-  .division-strip {
-    flex: 0 0 13mm;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    align-items: center;
-    gap: 1.5mm;
+
+  /* =====================================================
+     DIVISION LOGOS
+  ====================================================== */
+
+  .division-logos {
+    position: relative;
+    z-index: 10;
+
+    height: 15mm;
+
     margin-top: auto;
-    padding: 1.5mm 2.5mm;
-    border-top: 0.3mm solid rgba(9, 44, 103, 0.1);
+
+    display: grid;
+    grid-template-columns:
+      repeat(3, 1fr);
+
+    align-items: center;
+
+    gap: 1.2mm;
+
+    padding:
+      1.5mm
+      2mm;
+
+    border-top:
+      0.3mm
+      solid
+      rgba(16, 36, 107, 0.09);
+
     background: #ffffff;
   }
 
-  .division-item {
+  .division-logo {
+    height: 11mm;
+
     display: flex;
-    height: 10mm;
     align-items: center;
     justify-content: center;
+
+    overflow: hidden;
   }
 
-  .division-item img {
-    max-width: 13mm;
-    max-height: 9mm;
+  .division-logo img {
+    display: block;
+
+    max-width: 14mm;
+    max-height: 10mm;
+
+    width: auto;
+    height: auto;
+
     object-fit: contain;
   }
 
-  .back-bottom {
-    flex: 0 0 2.5mm;
-    background:
-      linear-gradient(
-        90deg,
-        #092c67 0%,
-        #079653 72%,
-        #d7ad2f 100%
-      );
-  }
+
+  /* =====================================================
+     PRINT
+  ====================================================== */
 
   @media print {
+
     @page {
       margin: 8mm;
     }
 
     .student-id-grid {
-      grid-template-columns: repeat(2, 54mm);
+      grid-template-columns:
+        repeat(2, 54mm);
+
       justify-content: center;
+
       gap: 8mm;
     }
 
-    .student-id-face {
+    .id-card {
       width: 54mm;
       height: 85.6mm;
+
       margin: 0;
+
       box-shadow: none;
+
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
   }
 </style>
 
-<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
+
+
+<!-- PAGE HEADER -->
+
+<div
+  class="mb-7 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden"
+>
+
   <div>
-    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate/45">Students</p>
-    <h1 class="mt-2 text-2xl font-semibold text-obsidian">Student ID Card</h1>
-    <p class="mt-2 text-sm text-slate/60">
-      Standard portrait PVC student identity card valid across all Mekmaa divisions.
+
+    <p
+      class="text-xs font-semibold uppercase tracking-[0.24em] text-slate/45"
+    >
+      Students
     </p>
+
+    <h1
+      class="mt-2 text-2xl font-semibold text-obsidian"
+    >
+      Student ID Card
+    </h1>
+
+    <p
+      class="mt-2 text-sm text-slate/60"
+    >
+      Mekmaa Student Identity Card
+    </p>
+
   </div>
 
+
   <div class="flex gap-3">
+
     <a
       href="/admin/students?action=view&id={{.SelectedAdmission.ID}}#admission-view"
-      class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/15 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+      class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/15 bg-white px-4 text-sm font-semibold text-slate"
     >
       Back
     </a>
@@ -367,183 +604,281 @@
     <button
       type="button"
       onclick="window.print()"
-      class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate"
+      class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud"
     >
       Print ID
     </button>
+
   </div>
+
 </div>
+
 
 
 <div class="student-id-grid">
 
-  <!-- FRONT -->
 
-  <article class="student-id-face student-id-front">
+  <!-- =====================================================
+       FRONT
+  ====================================================== -->
 
-    <div class="front-top">
-      <div class="front-logo-wrap">
+  <article class="id-card id-front">
+
+    <!-- harmless geometric decoration -->
+
+    <div class="corner-green"></div>
+    <div class="corner-navy"></div>
+    <div class="corner-gold"></div>
+
+    <div class="front-accent"></div>
+
+
+    <!-- MAIN LOGO -->
+
+    <div class="front-brand">
+
+      <div class="front-logo-panel">
+
         <img
-          src="/images/logos/mekmaa.png"
+          src="https://mekmaa.com/images/logos/mekmaa.png"
           alt="Mekmaa Private Limited"
-          class="front-logo"
-        />
+          class="front-main-logo"
+        >
+
       </div>
+
     </div>
+
+
+    <!-- STUDENT NAME -->
 
     <div class="front-name-area">
-      <h2 class="front-name">
+
+      <h2 class="front-student-name">
         {{.SelectedAdmission.FullName}}
       </h2>
+
     </div>
 
-    <div class="front-body">
 
-      <div class="student-photo">
+    <!-- PHOTO + STUDENT ID -->
+
+    <div class="front-person">
+
+
+      <div class="front-photo">
+
         {{if .SelectedAdmission.PhotoPath}}
+
         <img
           src="{{.SelectedAdmission.PhotoPath}}"
           alt="{{.SelectedAdmission.FullName}}"
-        />
+        >
+
         {{else}}
+
         <div
           style="
-            display:flex;
             width:100%;
             height:100%;
+            display:flex;
             align-items:center;
             justify-content:center;
-            text-align:center;
             font-size:2mm;
             font-weight:700;
-            color:#9aa5b1;
+            color:#8a95a5;
           "
         >
-          NO PHOTO
+          No Photo
         </div>
+
         {{end}}
+
       </div>
 
-      <div class="vertical-id">
-        <span>{{.SelectedAdmission.StudentID}}</span>
+
+      <div class="front-id">
+
+        <span>
+          {{.SelectedAdmission.StudentID}}
+        </span>
+
       </div>
+
 
     </div>
 
-    <div class="front-bottom"></div>
 
   </article>
 
 
-  <!-- BACK -->
 
-  <article class="student-id-face student-id-back">
+  <!-- =====================================================
+       BACK
+  ====================================================== -->
 
-    <div class="back-header"></div>
+  <article class="id-card id-back">
 
-    <div class="back-content">
 
-      <div class="qr-wrap">
+    <!-- geometric accents -->
+
+    <div class="corner-green"></div>
+    <div class="corner-navy"></div>
+    <div class="corner-gold"></div>
+
+
+
+    <!-- QR -->
+
+    <div class="back-qr-section">
+
+      <div class="back-qr">
+
         {{if .SelectedAdmission.QRCodePath}}
+
         <img
           src="{{.SelectedAdmission.QRCodePath}}"
           alt="Student QR Code"
-        />
+        >
+
         {{else}}
+
         <div
           style="
-            display:flex;
             width:100%;
             height:100%;
+            display:flex;
             align-items:center;
             justify-content:center;
-            text-align:center;
             font-size:2mm;
             font-weight:700;
-            color:#9aa5b1;
+            color:#8a95a5;
           "
         >
-          NO QR
+          No QR
         </div>
+
         {{end}}
+
       </div>
 
-      <p class="qr-label">
+
+      <div class="back-qr-label">
         Student Attendance ID
-      </p>
+      </div>
+
+    </div>
 
 
-      <div class="detail-box">
 
-        <div class="detail-row">
-          <span class="detail-label">Date of Birth</span>
-          <span class="detail-value">
-            {{formatCalendarDate .SelectedAdmission.DateOfBirth}}
-          </span>
-        </div>
+    <!-- DETAILS -->
 
-        <div class="detail-row">
-          <span class="detail-label">Admission Date</span>
-          <span class="detail-value">
-            {{formatCalendarDate .SelectedAdmission.AdmissionDate}}
-          </span>
-        </div>
+    <div class="back-details">
+
+      <div class="back-detail-row">
+
+        <span class="back-detail-label">
+          Date of Birth
+        </span>
+
+        <span class="back-detail-value">
+          {{formatCalendarDate .SelectedAdmission.DateOfBirth}}
+        </span>
 
       </div>
 
 
-      <div class="signature">
-        <div class="signature-line"></div>
-        <div class="signature-label">Director</div>
-      </div>
+      <div class="back-detail-row">
 
+        <span class="back-detail-label">
+          Admission Date
+        </span>
 
-      <div class="return-box">
-
-        <div class="return-title">
-          If found, please return to Mekmaa Private Limited
-        </div>
-
-        <div class="return-contact">
-          077 220 7297 · www.mekmaa.com<br>
-          mekmaa.jo@gmail.com
-        </div>
+        <span class="back-detail-value">
+          {{formatCalendarDate .SelectedAdmission.AdmissionDate}}
+        </span>
 
       </div>
 
     </div>
 
 
-    <div class="division-strip">
 
-      <div class="division-item">
+    <!-- DIRECTOR -->
+
+    <div class="back-signature">
+
+      <div class="back-signature-line"></div>
+
+      <div class="back-signature-text">
+        Director
+      </div>
+
+    </div>
+
+
+
+    <!-- RETURN DETAILS -->
+
+    <div class="back-return">
+
+      <div class="back-return-title">
+        If found, please return to Mekmaa Private Limited
+      </div>
+
+      <div class="back-return-contact">
+        077 220 7297 · www.mekmaa.com
+        <br>
+        mekmaa.jo@gmail.com
+      </div>
+
+    </div>
+
+
+
+    <!-- DIVISION LOGOS -->
+
+    <div class="division-logos">
+
+
+      <div class="division-logo">
+
         <img
-          src="/images/logos/chess.png"
+          src="https://mekmaa.com/images/logos/chess.png"
           alt="Mekmaa Chess Academy"
-        />
+        >
+
       </div>
 
-      <div class="division-item">
+
+      <div class="division-logo">
+
         <img
-          src="/images/logos/cricket.png"
+          src="https://mekmaa.com/images/logos/cricket.png"
           alt="Mekmaa Cricket Academy"
-        />
+        >
+
       </div>
 
-      <div class="division-item">
+
+      <div class="division-logo">
+
         <img
-          src="/images/logos/kec.png"
+          src="https://mekmaa.com/images/logos/kec.png"
           alt="Mekmaa Kids Education Center"
-        />
+        >
+
       </div>
+
 
     </div>
 
-    <div class="back-bottom"></div>
 
   </article>
+
 
 </div>
 
 </section>
+
 {{end}}
