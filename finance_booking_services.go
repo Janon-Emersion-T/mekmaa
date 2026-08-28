@@ -940,7 +940,7 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 			smp.payment_method,
 			smp.finance_transaction_id,
 			COALESCE(smp.collected_by_user_id, 0),
-			COALESCE(u.display_name, '') AS collected_by_user_name,
+			COALESCE(u.name, '') AS collected_by_user_name,
 			smp.collected_at,
 			smp.created_at
 		FROM student_monthly_payments smp
