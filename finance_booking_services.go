@@ -109,6 +109,7 @@ func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter Fin
 			&transaction.ApprovedAt,
 			&voidedAt,
 			&transaction.VoidedByUserID,
+			&transaction.VoidedByUserName,
 			&transaction.VoidReason,
 		); err != nil {
 			return nil, err
@@ -543,13 +544,21 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 		return nil, err
 	}
 
-	payments, err := a.listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth, divisionIDs)
+	activePayments, err := a.listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth, divisionIDs)
 	if err != nil {
 		return nil, err
 	}
-	paymentMap := make(map[string][]StudentMonthlyPayment)
-	for _, payment := range payments {
-		paymentMap[studentMonthlyPaymentKey(payment.AdmissionID, payment.EnrollmentID)] = append(paymentMap[studentMonthlyPaymentKey(payment.AdmissionID, payment.EnrollmentID)], payment)
+	allPayments, err := a.listStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth, divisionIDs, true)
+	if err != nil {
+		return nil, err
+	}
+	activePaymentMap := make(map[string][]StudentMonthlyPayment)
+	for _, payment := range activePayments {
+		activePaymentMap[studentMonthlyPaymentKey(payment.AdmissionID, payment.EnrollmentID)] = append(activePaymentMap[studentMonthlyPaymentKey(payment.AdmissionID, payment.EnrollmentID)], payment)
+	}
+	paymentHistoryMap := make(map[string][]StudentMonthlyPayment)
+	for _, payment := range allPayments {
+		paymentHistoryMap[studentMonthlyPaymentKey(payment.AdmissionID, payment.EnrollmentID)] = append(paymentHistoryMap[studentMonthlyPaymentKey(payment.AdmissionID, payment.EnrollmentID)], payment)
 	}
 
 	leaveMap, err := a.listStudentEnrollmentLeavesByEnrollmentIDs(enrollmentIDs)
@@ -584,8 +593,9 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 				paymentRows[i].MonthlyFee, paymentRows[i].LeaveAmount = proratedMonthlyFee(paymentRows[i].MonthlyFee, leaveDays, paymentRows[i].MonthDays)
 			}
 		}
-		paymentRows[i].Payments = paymentMap[studentMonthlyPaymentKey(paymentRows[i].Admission.ID, paymentRows[i].Enrollment.ID)]
-		for _, payment := range paymentRows[i].Payments {
+		key := studentMonthlyPaymentKey(paymentRows[i].Admission.ID, paymentRows[i].Enrollment.ID)
+		paymentRows[i].Payments = paymentHistoryMap[key]
+		for _, payment := range activePaymentMap[key] {
 			paymentRows[i].CollectedAmount = normalizeMoney(paymentRows[i].CollectedAmount + payment.Amount)
 			paymentRows[i].DiscountAmount = normalizeMoney(paymentRows[i].DiscountAmount + payment.DiscountAmount)
 			if paymentRows[i].Payment == nil || payment.CollectedAt.After(paymentRows[i].Payment.CollectedAt) || (payment.CollectedAt.Equal(paymentRows[i].Payment.CollectedAt) && payment.ID > paymentRows[i].Payment.ID) {
@@ -929,6 +939,10 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonth(paymentMonth string) ([]S
 }
 
 func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth string, divisionIDs []int64) ([]StudentMonthlyPayment, error) {
+	return a.listStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth, divisionIDs, false)
+}
+
+func (a *App) listStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth string, divisionIDs []int64, includeVoided bool) ([]StudentMonthlyPayment, error) {
 	hasDiscountAmount, err := tableHasColumn(a.db, "student_monthly_payments", "discount_amount")
 	if err != nil {
 		return nil, err
@@ -942,6 +956,7 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 			smp.id,
 			smp.admission_id,
 			COALESCE(smp.enrollment_id, 0),
+			COALESCE(ft.receipt_number, ''),
 			COALESCE(tp.name, adm_tp.name, '') AS training_program_name,
 			COALESCE(d.name, adm_d.name, '') AS division_name,
 			smp.payment_month,
@@ -962,9 +977,15 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 			smp.finance_transaction_id,
 			COALESCE(smp.collected_by_user_id, 0),
 			COALESCE(u.name, '') AS collected_by_user_name,
+			COALESCE(smp.voided, 0),
+			COALESCE(smp.void_reason, ''),
+			COALESCE(smp.voided_by_user_id, 0),
+			COALESCE(vu.name, '') AS voided_by_user_name,
+			smp.voided_at,
 			smp.collected_at,
 			smp.created_at
 		FROM student_monthly_payments smp
+		LEFT JOIN finance_transactions ft ON ft.id = smp.finance_transaction_id
 		LEFT JOIN student_enrollments se ON se.id = smp.enrollment_id
 		LEFT JOIN training_programs se_tp ON se_tp.id = se.training_program_id
 		LEFT JOIN admissions adm ON adm.id = smp.admission_id
@@ -973,10 +994,13 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 		LEFT JOIN divisions d ON d.id = se_tp.division_id
 		LEFT JOIN divisions adm_d ON adm_d.id = adm_tp.division_id
 		LEFT JOIN users u ON u.id = smp.collected_by_user_id
+		LEFT JOIN users vu ON vu.id = smp.voided_by_user_id
 		WHERE smp.payment_month = ?
-		  AND COALESCE(smp.voided, 0) = 0
 	`
 	args := []any{paymentMonth}
+	if !includeVoided {
+		query += ` AND COALESCE(smp.voided, 0) = 0`
+	}
 	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
 		query += ` AND COALESCE(se_tp.division_id, adm_tp.division_id, 0) IN (` + placeholders + `)`
 		args = append(args, scopeArgs...)
@@ -991,10 +1015,13 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 	var payments []StudentMonthlyPayment
 	for rows.Next() {
 		var payment StudentMonthlyPayment
+		var voided int
+		var voidedAt sql.NullTime
 		if err := rows.Scan(
 			&payment.ID,
 			&payment.AdmissionID,
 			&payment.EnrollmentID,
+			&payment.ReceiptNumber,
 			&payment.TrainingProgramName,
 			&payment.DivisionName,
 			&payment.PaymentMonth,
@@ -1005,10 +1032,19 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 			&payment.FinanceTransactionID,
 			&payment.CollectedByUserID,
 			&payment.CollectedByUserName,
+			&voided,
+			&payment.VoidReason,
+			&payment.VoidedByUserID,
+			&payment.VoidedByUserName,
+			&voidedAt,
 			&payment.CollectedAt,
 			&payment.CreatedAt,
 		); err != nil {
 			return nil, err
+		}
+		payment.Voided = voided == 1
+		if voidedAt.Valid {
+			payment.VoidedAt = voidedAt.Time
 		}
 		payments = append(payments, payment)
 	}
@@ -4687,7 +4723,6 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 		SELECT COUNT(*)
 		FROM student_monthly_payments
 		WHERE enrollment_id = ?
-		  AND COALESCE(voided, 0) = 0
 		`,
 		enrollment.ID,
 	).Scan(&monthlyPaymentCount); err != nil {
@@ -6574,7 +6609,6 @@ func (a *App) deleteAdmission(admissionID int64) error {
 		SELECT COUNT(*)
 		FROM student_monthly_payments
 		WHERE admission_id = ?
-		  AND COALESCE(voided, 0) = 0
 	`, admissionID).Scan(&monthlyPaymentCount); err != nil {
 		return err
 	}

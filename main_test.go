@@ -1934,6 +1934,47 @@ func TestBookingFinanceReceiptTemplateRendersBookingPaymentDetails(t *testing.T)
 	}
 }
 
+func TestFinanceReceiptTemplateRendersVoidedStudentMonthlyPaymentDetails(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	now := time.Now()
+	html := renderTemplateToString(t, templates, "finance-receipt", TemplateData{
+		User: &User{Name: "Finance Staff", Permissions: []string{"finance.manage"}},
+		SelectedFinance: &FinanceTransaction{
+			ID:               801,
+			ReceiptNumber:    "MKM-STU-2026-000801",
+			Category:         "student_monthly_payment",
+			Amount:           4200,
+			PaymentMethod:    "cash",
+			RecordedAt:       now,
+			Voided:           true,
+			VoidReason:       "Wrong student selected",
+			VoidedAt:         now.Add(10 * time.Minute),
+			VoidedByUserName: "Finance Lead",
+			Description:      "Student monthly payment for August 2026",
+		},
+		ReceiptAdmission: &Admission{
+			StudentID:            "STD-VOID-RECEIPT-001",
+			TrainingProgramNames: "KEC Reading",
+		},
+		ReceiptEnrollment: &StudentEnrollment{
+			TrainingProgramName: "KEC Reading",
+		},
+	})
+	for _, marker := range []string{
+		"Void",
+		"Wrong student selected",
+		"Finance Lead",
+		"audit history",
+	} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("student monthly receipt is missing %q", marker)
+		}
+	}
+}
+
 func TestCustomerBookingStatusPaymentVisibilityAndTotals(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	templates, err := buildTemplates()
@@ -5660,6 +5701,200 @@ func TestStudentPaymentsHandlerRendersPage(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, "Student payments") || !strings.Contains(body, "Page Student") {
 		t.Fatalf("unexpected student payments page body: %s", body)
+	}
+}
+
+func TestStudentPaymentsHandlerShowsVoidedHistoryAndVoidAction(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Student Void UI Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     3600,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-VOID-UI-001",
+		FullName:              "Void UI Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000013",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-07-15",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	monthDate, _ := parsePaymentMonth("2026-08")
+	transactionID, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-08", monthDate, "cash", 1)
+	if err != nil {
+		t.Fatalf("collect student payment: %v", err)
+	}
+	var paymentID int64
+	if err := app.db.QueryRow(`SELECT id FROM student_monthly_payments WHERE finance_transaction_id = ?`, transactionID).Scan(&paymentID); err != nil {
+		t.Fatalf("lookup payment row: %v", err)
+	}
+	if err := app.voidStudentMonthlyPayment(paymentID, "Duplicate collection", 1); err != nil {
+		t.Fatalf("void student payment: %v", err)
+	}
+	if _, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-08", monthDate, "cash", 1); err != nil {
+		t.Fatalf("collect replacement student payment: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/student-payments?month=2026-08", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          1,
+		Name:        "Finance User",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"finance.view", "student_payments.delete"},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.studentPaymentsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("student payments handler status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, marker := range []string{
+		"Void UI Student",
+		"Payment history",
+		"Duplicate collection",
+		"Void payment",
+	} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("student payments page is missing %q in body=%s", marker, body)
+		}
+	}
+}
+
+func TestStudentMonthlyPaymentVoidRestoresOutstandingAndAllowsReplacement(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Student Void Replace Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     4800,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-VOID-REPLACE-001",
+		FullName:              "Void Replace Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000014",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-07-15",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	monthDate, _ := parsePaymentMonth("2026-08")
+	transactionID, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-08", monthDate, "cash", 1)
+	if err != nil {
+		t.Fatalf("collect student payment: %v", err)
+	}
+	var paymentID int64
+	if err := app.db.QueryRow(`SELECT id FROM student_monthly_payments WHERE finance_transaction_id = ?`, transactionID).Scan(&paymentID); err != nil {
+		t.Fatalf("lookup payment row: %v", err)
+	}
+	if err := app.voidStudentMonthlyPayment(paymentID, "Wrong amount", 1); err != nil {
+		t.Fatalf("void student payment: %v", err)
+	}
+
+	rows, err := app.listStudentPaymentRows("2026-08")
+	if err != nil {
+		t.Fatalf("list student payment rows: %v", err)
+	}
+	var target *StudentPaymentRow
+	for i := range rows {
+		if rows[i].Enrollment.ID == enrollmentID {
+			target = &rows[i]
+			break
+		}
+	}
+	if target == nil {
+		t.Fatal("expected payment row for enrollment")
+	}
+	if target.CollectedAmount != 0 || target.Payment != nil {
+		t.Fatalf("voided month should have no active collected amount: %#v", target)
+	}
+	if len(target.Payments) != 1 || !target.Payments[0].Voided {
+		t.Fatalf("expected voided payment history to be retained: %#v", target.Payments)
+	}
+	if target.OutstandingAmount != target.MonthlyFee {
+		t.Fatalf("voided month should become fully outstanding again: outstanding=%v monthly=%v", target.OutstandingAmount, target.MonthlyFee)
+	}
+
+	replacementTxnID, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-08", monthDate, "cash", 1)
+	if err != nil {
+		t.Fatalf("collect replacement student payment: %v", err)
+	}
+	if replacementTxnID == transactionID {
+		t.Fatal("replacement payment should create a new finance transaction")
+	}
+
+	rows, err = app.listStudentPaymentRows("2026-08")
+	if err != nil {
+		t.Fatalf("list student payment rows after replacement: %v", err)
+	}
+	target = nil
+	for i := range rows {
+		if rows[i].Enrollment.ID == enrollmentID {
+			target = &rows[i]
+			break
+		}
+	}
+	if target == nil {
+		t.Fatal("expected payment row for enrollment after replacement")
+	}
+	if len(target.Payments) != 2 {
+		t.Fatalf("expected both original and replacement payments in history, got %#v", target.Payments)
+	}
+	if target.Payment == nil || target.Payment.Voided {
+		t.Fatalf("expected latest active payment after replacement, got %#v", target.Payment)
+	}
+	if target.OutstandingAmount != 0 {
+		t.Fatalf("replacement payment should clear outstanding amount, got %v", target.OutstandingAmount)
 	}
 }
 

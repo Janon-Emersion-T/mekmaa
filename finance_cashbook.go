@@ -2204,6 +2204,9 @@ func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUse
 
 func (a *App) voidStudentMonthlyPayment(paymentID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
+	if paymentID <= 0 {
+		return errors.New("student payment was not found")
+	}
 	if reason == "" {
 		return errors.New("void reason is required")
 	}
@@ -2228,13 +2231,24 @@ func (a *App) voidStudentMonthlyPayment(paymentID int64, reason string, voidedBy
 	if alreadyVoided == 1 {
 		return errors.New("student payment has already been voided")
 	}
+	if financeTransactionID <= 0 {
+		return errors.New("student payment has no linked finance transaction")
+	}
 	now := time.Now().UTC()
-	if _, err := tx.Exec(`
+	result, err := tx.Exec(`
 		UPDATE student_monthly_payments
 		SET voided = 1, void_reason = $1, voided_by_user_id = $2, voided_at = $3
 		WHERE id = $4 AND voided = 0
-	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, paymentID); err != nil {
+	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, paymentID)
+	if err != nil {
 		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return errors.New("student payment has already been voided")
 	}
 	if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, voidedByUserID); err != nil {
 		return err

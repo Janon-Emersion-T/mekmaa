@@ -687,6 +687,7 @@ type FinanceTransaction struct {
 	ApprovedAt           time.Time
 	VoidedAt             time.Time
 	VoidedByUserID       int64
+	VoidedByUserName     string
 	VoidReason           string
 	RecordedAt           time.Time
 	CreatedAt            time.Time
@@ -1057,6 +1058,7 @@ type StudentMonthlyPayment struct {
 	ID                   int64
 	AdmissionID          int64
 	EnrollmentID         int64
+	ReceiptNumber        string
 	TrainingProgramName  string
 	DivisionName         string
 	PaymentMonth         string
@@ -1069,6 +1071,8 @@ type StudentMonthlyPayment struct {
 	CollectedByUserName  string
 	Voided               bool
 	VoidReason           string
+	VoidedByUserID       int64
+	VoidedByUserName     string
 	VoidedAt             time.Time
 	CollectedAt          time.Time
 	CreatedAt            time.Time

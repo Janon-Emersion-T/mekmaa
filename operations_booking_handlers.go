@@ -5575,7 +5575,7 @@ func (a *App) voidAdmissionPaymentHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "student_payments.delete") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -5640,6 +5640,35 @@ func (a *App) voidStudentPaymentHandler(w http.ResponseWriter, r *http.Request) 
 	paymentID := parseInt64Query(r.FormValue("payment_id"))
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
 	redirectMonth := strings.TrimSpace(r.FormValue("payment_month"))
+	redirectDivision := strings.TrimSpace(r.FormValue("division"))
+	redirectSearch := strings.TrimSpace(r.FormValue("search"))
+	redirectStatus := strings.TrimSpace(r.FormValue("status"))
+	redirectProgram := strings.TrimSpace(r.FormValue("program"))
+	redirectMethod := strings.TrimSpace(r.FormValue("method"))
+	target := withDivisionQuery("/admin/student-payments", redirectDivision)
+	values := url.Values{}
+	if redirectMonth != "" {
+		values.Set("month", redirectMonth)
+	}
+	if redirectSearch != "" {
+		values.Set("search", redirectSearch)
+	}
+	if redirectStatus != "" {
+		values.Set("status", redirectStatus)
+	}
+	if redirectProgram != "" {
+		values.Set("program", redirectProgram)
+	}
+	if redirectMethod != "" {
+		values.Set("method", redirectMethod)
+	}
+	if encoded := values.Encode(); encoded != "" {
+		if strings.Contains(target, "?") {
+			target += "&" + encoded
+		} else {
+			target += "?" + encoded
+		}
+	}
 	var divisionID int64
 	if err := a.queryRowDB(`
 		SELECT COALESCE(tp.division_id, 0)
@@ -5660,18 +5689,10 @@ func (a *App) voidStudentPaymentHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := a.voidStudentMonthlyPayment(paymentID, reason, currentUser.ID); err != nil {
 		a.setFlash(w, "Student payment could not be voided: "+err.Error())
-		target := "/admin/student-payments"
-		if redirectMonth != "" {
-			target += "?month=" + url.QueryEscape(redirectMonth)
-		}
 		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 	a.setFlash(w, "Student payment was voided.")
-	target := "/admin/student-payments"
-	if redirectMonth != "" {
-		target += "?month=" + url.QueryEscape(redirectMonth)
-	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 

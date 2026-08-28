@@ -314,19 +314,21 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 		       COALESCE(u.name, ''),
 		       COALESCE(ft.approved_by_user_id, 0),
 		       COALESCE(au.name, ''),
-		       ft.recorded_at,
-		       ft.created_at,
-		       COALESCE(CAST(ft.updated_at AS TEXT), CAST(ft.created_at AS TEXT), ''),
-		       ft.approved_at,
-		       ft.voided_at,
-		       COALESCE(ft.voided_by_user_id, 0),
-		       COALESCE(ft.void_reason, '')
-		FROM finance_transactions ft
-		LEFT JOIN divisions fd ON fd.id = ft.division_id
-		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
-		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
-		LEFT JOIN users au ON au.id = ft.approved_by_user_id
-		LEFT JOIN student_enrollments se ON ft.reference_type = 'student_enrollment' AND se.id = ft.reference_id
+	       ft.recorded_at,
+	       ft.created_at,
+	       COALESCE(CAST(ft.updated_at AS TEXT), CAST(ft.created_at AS TEXT), ''),
+	       ft.approved_at,
+	       ft.voided_at,
+	       COALESCE(ft.voided_by_user_id, 0),
+	       COALESCE(vu.name, ''),
+	       COALESCE(ft.void_reason, '')
+	FROM finance_transactions ft
+	LEFT JOIN divisions fd ON fd.id = ft.division_id
+	LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
+	LEFT JOIN users u ON u.id = ft.recorded_by_user_id
+	LEFT JOIN users au ON au.id = ft.approved_by_user_id
+	LEFT JOIN users vu ON vu.id = ft.voided_by_user_id
+	LEFT JOIN student_enrollments se ON ft.reference_type = 'student_enrollment' AND se.id = ft.reference_id
 		LEFT JOIN admissions sea ON sea.id = se.admission_id
 		LEFT JOIN training_programs tp ON tp.id = se.training_program_id
 		LEFT JOIN admissions adm ON ft.reference_type = 'admission' AND adm.id = ft.reference_id
@@ -377,6 +379,7 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 		&transaction.ApprovedAt,
 		&voidedAt,
 		&transaction.VoidedByUserID,
+		&transaction.VoidedByUserName,
 		&transaction.VoidReason,
 	); err != nil {
 		return nil, err

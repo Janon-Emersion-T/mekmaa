@@ -213,23 +213,6 @@
               {{if gt .OutstandingAmount 0.0}}<div class="inline-flex h-11 items-center justify-center rounded-2xl border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-900">Due {{money .OutstandingAmount}}</div>{{end}}
             </div>
           </div>
-          <details class="mt-3 rounded-[1.25rem] border border-slate/10 bg-white/75 p-4">
-            <summary class="cursor-pointer text-sm font-semibold text-obsidian">Payment history</summary>
-            <div class="mt-3 grid gap-2">
-              {{range .Payments}}
-              <div class="flex flex-col gap-1 rounded-2xl border border-slate/10 bg-cloud/60 px-4 py-3 text-sm text-slate/70 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p class="font-semibold text-obsidian">{{money .Amount}} · {{paymentMethodLabel .PaymentMethod}}</p>
-                  <p class="text-xs text-slate/55">{{formatDateTime .CollectedAt}}{{if .CollectedByUserName}} · {{.CollectedByUserName}}{{end}}</p>
-                  {{if gt .DiscountAmount 0.0}}
-                  <p class="text-xs text-emerald-700">Discount {{money .DiscountAmount}}{{if .AdjustmentReason}} · {{.AdjustmentReason}}{{end}}</p>
-                  {{end}}
-                </div>
-                <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .FinanceTransactionID) $.SelectedDivision $.SelectedDivisionScope}}" class="text-sm font-semibold text-aqua underline decoration-aqua/60 underline-offset-4">Open receipt</a>
-              </div>
-              {{end}}
-            </div>
-          </details>
           {{if gt .OutstandingAmount 0.0}}
           <div class="mt-3 flex flex-col gap-2">
             <form id="student-payment-form-{{.Enrollment.ID}}" action="/admin/student-payments/collect" method="post" class="flex flex-col gap-2 sm:flex-row" onsubmit="return confirm('Collect payment from {{.Admission.FullName}} for {{.Enrollment.TrainingProgramName}} in {{$.PaymentMonthLabel}}?')">
@@ -314,6 +297,67 @@
           </div>
           {{end}}
         </div>
+        {{if gt (len .Payments) 0}}
+        <details class="mt-4 rounded-[1.25rem] border border-slate/10 bg-white/75 p-4">
+          <summary class="cursor-pointer text-sm font-semibold text-obsidian">Payment history</summary>
+          {{$studentName := .Admission.FullName}}
+          {{$rowDivisionSlug := ""}}
+          {{if $.SelectedDivision}}{{$rowDivisionSlug = $.SelectedDivision.Slug}}{{else if eq $.SelectedDivisionScope "all"}}{{$rowDivisionSlug = "all"}}{{end}}
+          <div class="mt-3 grid gap-2">
+            {{range .Payments}}
+            <div class="rounded-2xl border {{if .Voided}}border-red-200 bg-red-50/70{{else}}border-slate/10 bg-cloud/60{{end}} px-4 py-3 text-sm text-slate/70">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="font-semibold text-obsidian">{{money .Amount}} · {{paymentMethodLabel .PaymentMethod}}</p>
+                    {{if .Voided}}
+                    <span class="rounded-full bg-red-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-red-800">Void</span>
+                    {{end}}
+                  </div>
+                  <p class="text-xs text-slate/55">{{formatDateTime .CollectedAt}}{{if .CollectedByUserName}} · {{.CollectedByUserName}}{{end}}{{if .ReceiptNumber}} · {{.ReceiptNumber}}{{end}}</p>
+                  {{if gt .DiscountAmount 0.0}}
+                  <p class="mt-1 text-xs text-emerald-700">Discount {{money .DiscountAmount}}{{if .AdjustmentReason}} · {{.AdjustmentReason}}{{end}}</p>
+                  {{end}}
+                  {{if .Voided}}
+                  <p class="mt-1 text-xs font-semibold text-red-800">Voided {{formatDateTime .VoidedAt}}{{if .VoidedByUserName}} by {{.VoidedByUserName}}{{end}}</p>
+                  <p class="mt-1 text-xs text-red-800">{{.VoidReason}}</p>
+                  {{end}}
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .FinanceTransactionID) $.SelectedDivision $.SelectedDivisionScope}}" class="text-sm font-semibold text-aqua underline decoration-aqua/60 underline-offset-4">Open receipt</a>
+                  {{if and (not .Voided) (hasRole $.User "superadmin") (hasPermission $.User "student_payments.delete")}}
+                  <details class="group relative">
+                    <summary class="list-none cursor-pointer rounded-2xl border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-50">Void payment</summary>
+                    <form action="/admin/student-payments/void" method="post" class="absolute right-0 z-10 mt-2 w-[min(24rem,calc(100vw-4rem))] rounded-[1.25rem] border border-red-200 bg-white p-4 text-left shadow-[0_20px_60px_rgba(127,29,29,0.18)]">
+                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                      <input type="hidden" name="payment_id" value="{{.ID}}" />
+                      <input type="hidden" name="payment_month" value="{{$.PaymentMonth}}" />
+                      <input type="hidden" name="search" value="{{$.PaymentSearch}}" />
+                      <input type="hidden" name="status" value="{{$.PaymentStatusFilter}}" />
+                      <input type="hidden" name="program" value="{{$.PaymentProgramFilter}}" />
+                      <input type="hidden" name="method" value="{{$.PaymentMethodFilter}}" />
+                      {{if $rowDivisionSlug}}<input type="hidden" name="division" value="{{$rowDivisionSlug}}" />{{end}}
+                      <p class="text-sm font-semibold text-obsidian">Void payment</p>
+                      <p class="mt-2 text-xs text-slate/60">Student: {{$studentName}}</p>
+                      <p class="mt-1 text-xs text-slate/60">Payment month: {{$.PaymentMonthLabel}}</p>
+                      <p class="mt-1 text-xs text-slate/60">Amount: {{money .Amount}}{{if gt .DiscountAmount 0.0}} · Discount {{money .DiscountAmount}}{{end}}</p>
+                      <p class="mt-1 text-xs text-slate/60">Receipt: {{if .ReceiptNumber}}{{.ReceiptNumber}}{{else}}#{{.FinanceTransactionID}}{{end}}</p>
+                      <p class="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-900">This payment will be marked VOID and will no longer count as payment for this month. The original receipt will remain in the audit history.</p>
+                      <label class="mt-3 block text-xs font-semibold uppercase tracking-[0.14em] text-slate/55" for="void-reason-{{.ID}}">Reason for voiding</label>
+                      <textarea id="void-reason-{{.ID}}" name="void_reason" rows="3" required class="mt-2 w-full rounded-2xl border border-slate/10 bg-cloud/55 px-4 py-3 text-sm outline-none focus:border-red-300"></textarea>
+                      <div class="mt-3 flex gap-2">
+                        <button type="submit" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-red-700 px-4 text-sm font-semibold text-white transition hover:bg-red-800">Confirm void</button>
+                      </div>
+                    </form>
+                  </details>
+                  {{end}}
+                </div>
+              </div>
+            </div>
+            {{end}}
+          </div>
+        </details>
+        {{end}}
       </article>
       {{else}}
       <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-14 text-center">

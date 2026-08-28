@@ -55,12 +55,14 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		       ft.approved_at,
 		       ft.voided_at,
 		       COALESCE(ft.voided_by_user_id, 0),
+		       COALESCE(vu.name, ''),
 		       COALESCE(ft.void_reason, '')
 		FROM finance_transactions ft
 		LEFT JOIN divisions fd ON fd.id = ft.division_id
 		LEFT JOIN finance_accounts fa ON fa.id = ft.finance_account_id
 		LEFT JOIN users u ON u.id = ft.recorded_by_user_id
 		LEFT JOIN users au ON au.id = ft.approved_by_user_id
+		LEFT JOIN users vu ON vu.id = ft.voided_by_user_id
 		LEFT JOIN space_schedules ss ON ft.reference_type = 'space_schedule' AND ss.id = ft.reference_id
 		LEFT JOIN one_to_one_bookings o2ob ON o2ob.schedule_id = ss.id
 		LEFT JOIN one_to_one_offerings o2oo ON o2oo.id = o2ob.offering_id

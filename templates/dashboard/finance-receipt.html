@@ -11,6 +11,10 @@
       <div class="h-14 w-px bg-slate/20"></div>
       <img src="/images/mekmaa-cricket-academy.jpeg" alt="Mekmaa Cricket Academy" class="receipt-logo h-[4.375rem] max-w-[46%] rounded-lg object-contain object-center" />
     </div>
+    <div class="flex items-center justify-center gap-3 pb-2">
+      <img src="/images/logos/chess.png" alt="Mekmaa Chess Academy" class="receipt-logo h-10 w-auto object-contain object-center" />
+      <img src="/images/logos/kec.png" alt="Kids Education Center" class="receipt-logo h-10 w-auto object-contain object-center" />
+    </div>
 
     {{if and (eq .SelectedFinance.Category "booking_payment") .ReceiptBookingPayment .ReceiptBookingSchedule .ReceiptBookingFinancial}}
     <div class="text-center">
@@ -114,6 +118,7 @@
     </div>
     {{else}}
     <div class="text-center">
+      {{if and (eq .SelectedFinance.Category "student_monthly_payment") .SelectedFinance.Voided}}<p class="mb-1 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-[0.72rem] font-extrabold uppercase tracking-[0.2em] text-red-700">Void</p>{{end}}
       <h1 class="text-[1.05rem] font-extrabold uppercase tracking-[0.12em] text-obsidian">
         {{if lt .SelectedFinance.Amount 0.0}}Expense Voucher{{else}}Payment Receipt{{end}}
       </h1>
@@ -173,6 +178,17 @@
       <p class="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-slate/55">{{if lt .SelectedFinance.Amount 0.0}}Total paid{{else}}Total received{{end}}</p>
       <p class="mt-2 text-[1.8rem] font-black tracking-tight text-obsidian">{{if lt .SelectedFinance.Amount 0.0}}{{money (negate .SelectedFinance.Amount)}}{{else}}{{money .SelectedFinance.Amount}}{{end}}</p>
     </div>
+
+    {{if and (eq .SelectedFinance.Category "student_monthly_payment") .SelectedFinance.Voided}}
+    <div class="receipt-divider"></div>
+
+    <div class="py-4 text-[0.78rem] leading-5">
+      <p class="text-[0.64rem] font-bold uppercase tracking-[0.14em] text-red-700">Void information</p>
+      <p class="mt-2 font-semibold text-red-900">This student monthly payment was voided on {{formatDateTime .SelectedFinance.VoidedAt}}{{if .SelectedFinance.VoidedByUserName}} by {{.SelectedFinance.VoidedByUserName}}{{end}}.</p>
+      {{if .SelectedFinance.VoidReason}}<p class="mt-2 text-slate/70">{{.SelectedFinance.VoidReason}}</p>{{end}}
+      <p class="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-red-700">This receipt remains in the audit history and is no longer valid as an active monthly payment.</p>
+    </div>
+    {{end}}
 
     <div class="receipt-divider"></div>
 
@@ -299,6 +315,13 @@ Description
 
 {{if lt .SelectedFinance.Amount 0.0}}Total paid{{else}}Total received{{end}}
 {{if lt .SelectedFinance.Amount 0.0}}{{money (negate .SelectedFinance.Amount)}}{{else}}{{money .SelectedFinance.Amount}}{{end}}
+{{if and (eq .SelectedFinance.Category "student_monthly_payment") .SelectedFinance.Voided}}
+
+Void information
+This student monthly payment was voided on {{formatDateTime .SelectedFinance.VoidedAt}}{{if .SelectedFinance.VoidedByUserName}} by {{.SelectedFinance.VoidedByUserName}}{{end}}.
+{{if .SelectedFinance.VoidReason}}{{.SelectedFinance.VoidReason}}{{end}}
+This receipt remains in the audit history and is no longer valid as an active monthly payment.
+{{end}}
 
 Thank you
 Learn · Play · Achieve
