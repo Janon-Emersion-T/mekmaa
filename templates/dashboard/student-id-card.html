@@ -2,11 +2,73 @@
 
 {{define "content"}}
 <section class="w-full max-w-5xl">
+  <style>
+    .student-id-grid {
+      display: grid;
+      gap: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .student-id-face {
+      width: 100%;
+      max-width: 3.45in;
+      min-height: 5.4in;
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid rgba(11, 18, 21, 0.08);
+      border-radius: 2rem;
+      background: #fff;
+      box-shadow: 0 30px 80px rgba(11, 18, 21, 0.16);
+    }
+
+    .student-id-front {
+      position: relative;
+      background:
+        radial-gradient(circle at top right, rgba(98, 242, 193, 0.22), transparent 34%),
+        linear-gradient(180deg, rgba(240, 249, 246, 1) 0%, rgba(255, 255, 255, 1) 45%, rgba(245, 248, 250, 1) 100%);
+    }
+
+    .student-id-front::after {
+      content: "";
+      position: absolute;
+      right: -3.2rem;
+      bottom: -3.2rem;
+      width: 10rem;
+      height: 10rem;
+      border-radius: 999px;
+      background: rgba(11, 18, 21, 0.06);
+    }
+
+    .student-id-vertical {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      letter-spacing: 0.34em;
+    }
+
+    .student-id-back {
+      background:
+        linear-gradient(180deg, rgba(11, 18, 21, 0.98) 0%, rgba(28, 43, 50, 1) 18%, rgba(255, 255, 255, 1) 18.2%, rgba(255, 255, 255, 1) 100%);
+    }
+
+    @media print {
+      .student-id-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.2in;
+      }
+
+      .student-id-face {
+        max-width: 3.35in;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+
   <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
     <div>
       <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate/45">Students</p>
       <h1 class="mt-2 text-2xl font-semibold text-obsidian">Student ID Card</h1>
-      <p class="mt-2 text-sm text-slate/60">Portrait format with student identity, photo, QR, and both Mekmaa logos.</p>
+      <p class="mt-2 text-sm text-slate/60">Two-sided printable ID with a dedicated front design and a verification back.</p>
     </div>
     <div class="flex gap-3">
       <a href="/admin/students?action=view&id={{.SelectedAdmission.ID}}#admission-view" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/15 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">
@@ -18,62 +80,96 @@
     </div>
   </div>
 
-  <div class="mx-auto w-full max-w-[3.65in] rounded-[2rem] border border-obsidian/10 bg-white p-4 shadow-[0_30px_80px_rgba(11,18,21,0.16)] print:max-w-[3.35in] print:rounded-none print:border print:border-slate/20 print:shadow-none" style="min-height:5.45in;">
-    <div class="rounded-[1.5rem] bg-[linear-gradient(180deg,rgba(98,242,193,0.18),rgba(238,247,244,0.96)_24%,rgba(255,255,255,1)_100%)] p-4">
-      <div class="flex items-center justify-between gap-3">
-        <img src="/images/mekmaa-private-limited.jpeg" alt="Mekmaa Private Limited" class="h-11 w-auto rounded-xl object-contain" />
-        <img src="/images/mekmaa-cricket-academy.jpeg" alt="Mekmaa Cricket Academy" class="h-11 w-auto rounded-xl object-contain" />
-      </div>
-
-      <div class="mt-4 rounded-[1.4rem] border border-white/80 bg-white/92 px-3 py-3 text-center shadow-sm">
-        <p class="text-[0.62rem] font-bold uppercase tracking-[0.28em] text-slate/50">Student ID</p>
-        <p class="mt-2 font-mono text-sm font-semibold tracking-[0.16em] text-obsidian">{{.SelectedAdmission.StudentID}}</p>
-      </div>
-
-      <div class="mt-4 grid grid-cols-[1.1fr_.9fr] gap-3">
-        <div class="rounded-[1.4rem] border border-slate/10 bg-cloud/55 p-2">
-          {{if .SelectedAdmission.PhotoPath}}
-          <img src="{{.SelectedAdmission.PhotoPath}}" alt="{{.SelectedAdmission.FullName}}" class="h-[2.25in] w-full rounded-[1rem] object-cover" />
-          {{else}}
-          <div class="flex h-[2.25in] items-center justify-center rounded-[1rem] bg-white text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">
-            No Photo
-          </div>
-          {{end}}
+  <div class="student-id-grid">
+    <article class="student-id-face student-id-front p-4 print:p-3">
+      <div class="relative h-full rounded-[1.6rem] border border-white/80 bg-white/70 p-4 print:rounded-none">
+        <div class="text-center">
+          <img src="/images/mekmaa-private-limited.jpeg" alt="Mekmaa Private Limited" class="mx-auto h-16 w-auto rounded-2xl object-contain" />
+          <p class="mt-3 text-[0.62rem] font-bold uppercase tracking-[0.28em] text-slate/55">Mekmaa Private Limited</p>
         </div>
 
-        <div class="rounded-[1.4rem] border border-slate/10 bg-cloud/55 p-2">
-          {{if .SelectedAdmission.QRCodePath}}
-          <img src="{{.SelectedAdmission.QRCodePath}}" alt="QR code for {{.SelectedAdmission.StudentID}}" class="h-[2.25in] w-full rounded-[1rem] bg-white object-contain p-2" />
-          {{else}}
-          <div class="flex h-[2.25in] items-center justify-center rounded-[1rem] bg-white text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">
-            No QR
-          </div>
-          {{end}}
-        </div>
-      </div>
-
-      <div class="mt-4 rounded-[1.4rem] border border-slate/10 bg-white px-4 py-4 shadow-sm">
-        <div>
-          <p class="text-[0.62rem] font-bold uppercase tracking-[0.2em] text-slate/45">Name</p>
-          <p class="mt-1 text-lg font-semibold leading-tight text-obsidian">{{.SelectedAdmission.FullName}}</p>
+        <div class="mt-5 rounded-[1.5rem] border border-white/90 bg-white/92 px-4 py-4 text-center shadow-sm">
+          <p class="text-[0.6rem] font-bold uppercase tracking-[0.22em] text-slate/45">Student Name</p>
+          <h2 class="mt-2 text-2xl font-semibold leading-tight text-obsidian">{{.SelectedAdmission.FullName}}</h2>
         </div>
 
-        <div class="mt-4 grid grid-cols-2 gap-3">
-          <div>
-            <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">DOB</p>
-            <p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.DateOfBirth}}</p>
+        <div class="mt-5 grid min-h-[3.2in] grid-cols-[3.2rem_1fr] gap-3">
+          <div class="flex items-center justify-center rounded-[1.5rem] bg-obsidian px-2 py-4 text-center text-[0.7rem] font-bold uppercase text-cloud">
+            <span class="student-id-vertical">{{.SelectedAdmission.StudentID}}</span>
           </div>
-          <div>
-            <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">Student Since</p>
-            <p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.AdmissionDate}}</p>
+
+          <div class="rounded-[1.6rem] border border-slate/10 bg-white/92 p-3 shadow-sm">
+            {{if .SelectedAdmission.PhotoPath}}
+            <img src="{{.SelectedAdmission.PhotoPath}}" alt="{{.SelectedAdmission.FullName}}" class="h-full min-h-[3in] w-full rounded-[1.2rem] object-cover object-top" />
+            {{else}}
+            <div class="flex h-full min-h-[3in] items-center justify-center rounded-[1.2rem] bg-cloud text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">
+              No Photo
+            </div>
+            {{end}}
+          </div>
+        </div>
+
+        <div class="mt-4 rounded-[1.4rem] bg-obsidian px-4 py-3 text-center text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-cloud">
+          Official Student Identity Card
+        </div>
+      </div>
+    </article>
+
+    <article class="student-id-face student-id-back p-4 print:p-3">
+      <div class="flex h-full flex-col rounded-[1.6rem] bg-white print:rounded-none">
+        <div class="px-5 pb-5 pt-6 text-cloud">
+          <p class="text-[0.62rem] font-bold uppercase tracking-[0.28em] text-cloud/70">Back Side</p>
+          <h2 class="mt-2 text-xl font-semibold">Student Verification</h2>
+          <p class="mt-1 text-sm text-cloud/78">Carry this card during classes and present it for verification when requested.</p>
+        </div>
+
+        <div class="flex-1 px-4 pb-4">
+          <div class="rounded-[1.5rem] border border-slate/10 bg-cloud/45 p-4">
+            <div class="grid grid-cols-[1fr_1.05in] gap-4">
+              <div class="space-y-4">
+                <div>
+                  <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">Student ID</p>
+                  <p class="mt-1 font-mono text-base font-semibold tracking-[0.14em] text-obsidian">{{.SelectedAdmission.StudentID}}</p>
+                </div>
+                <div>
+                  <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">Date of Birth</p>
+                  <p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.DateOfBirth}}</p>
+                </div>
+                <div>
+                  <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">Student Since</p>
+                  <p class="mt-1 text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.AdmissionDate}}</p>
+                </div>
+                <div>
+                  <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">Programme</p>
+                  <p class="mt-1 text-sm font-semibold text-obsidian">{{if .SelectedAdmission.TrainingProgramName}}{{.SelectedAdmission.TrainingProgramName}}{{else}}Mekmaa Student{{end}}</p>
+                </div>
+              </div>
+
+              <div class="rounded-[1.2rem] border border-slate/10 bg-white p-2">
+                {{if .SelectedAdmission.QRCodePath}}
+                <img src="{{.SelectedAdmission.QRCodePath}}" alt="QR code for {{.SelectedAdmission.StudentID}}" class="h-[1.05in] w-full rounded-[0.9rem] object-contain" />
+                {{else}}
+                <div class="flex h-[1.05in] items-center justify-center rounded-[0.9rem] bg-cloud text-center text-[0.6rem] font-semibold uppercase tracking-[0.14em] text-slate/45">
+                  No QR
+                </div>
+                {{end}}
+                <p class="mt-2 text-center text-[0.56rem] font-bold uppercase tracking-[0.18em] text-slate/45">Scan to verify</p>
+              </div>
+            </div>
+
+            <div class="mt-4 rounded-[1.2rem] border border-slate/10 bg-white px-4 py-3">
+              <p class="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-slate/45">Guardian</p>
+              <p class="mt-1 text-sm font-semibold text-obsidian">{{if .SelectedAdmission.GuardianName}}{{.SelectedAdmission.GuardianName}}{{else}}Not recorded{{end}}</p>
+              <p class="mt-1 text-xs text-slate/60">{{if .SelectedAdmission.GuardianContactNumber}}{{.SelectedAdmission.GuardianContactNumber}}{{else}}No contact number saved{{end}}</p>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-[1.4rem] bg-obsidian px-4 py-3 text-center text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-cloud">
+            Mekmaa Student Identity Card
           </div>
         </div>
       </div>
-
-      <div class="mt-4 rounded-[1.4rem] bg-obsidian px-4 py-3 text-center text-[0.64rem] font-semibold uppercase tracking-[0.24em] text-cloud">
-        Mekmaa Student Identity Card
-      </div>
-    </div>
+    </article>
   </div>
 </section>
 {{end}}

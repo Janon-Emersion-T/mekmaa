@@ -748,12 +748,20 @@ func TestStudentIDCardTemplateRenders(t *testing.T) {
 			FullName:      "Test Student",
 			DateOfBirth:   "2012-01-15",
 			AdmissionDate: "2026-08-01",
+			TrainingProgramName: "Cricket",
+			GuardianName: "Parent Name",
+			GuardianContactNumber: "0771234567",
 			PhotoPath:     "/uploads/students/photos/student-photo-test.jpg",
 			QRCodePath:    "/uploads/students/qr/student-qr-test.png",
 		},
 	})
 
-	if !strings.Contains(html, "Student ID Card") || !strings.Contains(html, "Test Student") || !strings.Contains(html, "STU-0001") {
+	if !strings.Contains(html, "Student ID Card") ||
+		!strings.Contains(html, "Mekmaa Private Limited") ||
+		!strings.Contains(html, "Back Side") ||
+		!strings.Contains(html, "Test Student") ||
+		!strings.Contains(html, "STU-0001") ||
+		!strings.Contains(html, "Student Verification") {
 		t.Fatalf("expected student id card content to render")
 	}
 }
