@@ -858,7 +858,7 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 
 	totalCollected := 0.0
 	if enrollment != nil {
-		err = tx.QueryRow(`
+		err = a.queryRowTxDB(tx, `
 			SELECT COALESCE(SUM(amount`+func() string {
 			if hasDiscountAmount {
 				return ` + COALESCE(discount_amount, 0)`
@@ -869,7 +869,7 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 			WHERE enrollment_id = ? AND payment_month = ? AND COALESCE(voided, 0) = 0
 		`, enrollment.ID, paymentMonth).Scan(&totalCollected)
 	} else {
-		err = tx.QueryRow(`
+		err = a.queryRowTxDB(tx, `
 			SELECT COALESCE(SUM(amount`+func() string {
 			if hasDiscountAmount {
 				return ` + COALESCE(discount_amount, 0)`
@@ -890,7 +890,7 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 
 	var monthlyFee float64
 	if enrollment != nil {
-		err = tx.QueryRow(`SELECT COALESCE(monthly_fee, 0) FROM training_programs WHERE id = ?`, enrollment.TrainingProgramID).Scan(&monthlyFee)
+		err = a.queryRowTxDB(tx, `SELECT COALESCE(monthly_fee, 0) FROM training_programs WHERE id = ?`, enrollment.TrainingProgramID).Scan(&monthlyFee)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return 0, ErrMonthlyFeeNotConfigured
@@ -917,7 +917,7 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 	}
 	monthlyFee, _ = applyFirstMonthEnrollmentDiscount(monthlyFee, billingStart, paymentMonth, monthDate.AddDate(0, 1, -1).Day())
 	if enrollment != nil {
-		leaves, err := listStudentEnrollmentLeavesTx(tx, enrollment.ID)
+		leaves, err := listStudentEnrollmentLeavesTx(tx, a.runtimeConfig.DBDriver, enrollment.ID)
 		if err != nil {
 			return 0, err
 		}
@@ -1047,18 +1047,14 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 	}
 	insertQuery += ` ?, ?, ?, ?, ?)`
 	insertArgs = append(insertArgs, paymentMethod, transactionID, recordedByUserID, collectedAt, now)
-	result, err := tx.Exec(insertQuery, insertArgs...)
+	paymentRowID, err := a.insertAndReturnIDTx(tx, insertQuery, insertArgs...)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return 0, ErrStudentPaymentAlreadyCollected
 		}
 		return 0, err
 	}
-	paymentRowID, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-	if _, err := tx.Exec(`
+	if _, err := a.execTxDB(tx, `
 		UPDATE finance_transactions
 		SET source_type = 'student_monthly_payment',
 		    source_id = ?,
@@ -1074,14 +1070,14 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 	return transactionID, nil
 }
 
-func listStudentEnrollmentLeavesTx(tx *sql.Tx, enrollmentID int64) ([]StudentEnrollmentLeave, error) {
-	rows, err := tx.Query(`
+func listStudentEnrollmentLeavesTx(tx *sql.Tx, driver DatabaseDriver, enrollmentID int64) ([]StudentEnrollmentLeave, error) {
+	rows, err := tx.Query(rebindDatabaseQuery(driver, `
 		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(active, 1), created_at, updated_at
 		FROM student_enrollment_leaves
 		WHERE enrollment_id = ?
 		  AND COALESCE(active, 1) = 1
 		ORDER BY start_date ASC, end_date ASC, id ASC
-	`, enrollmentID)
+	`), enrollmentID)
 	if err != nil {
 		return nil, err
 	}
