@@ -9481,6 +9481,150 @@ func TestBuildFinanceSpecifiedLedgersBankingUsesDebitCreditAssetView(t *testing.
 	}
 }
 
+func TestBuildFinanceSpecifiedLedgersSortsEntriesChronologically(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)
+
+	later := time.Date(2026, time.August, 20, 11, 0, 0, 0, time.Local)
+	earlier := later.Add(-2 * time.Hour)
+
+	if _, err := app.createManualFinanceTransactionForAccountWithApproval(
+		"marketing_expense",
+		"Vendor B",
+		"Later spend",
+		"",
+		cashID,
+		-1800,
+		later,
+		0,
+		financeApprovalApproved,
+	); err != nil {
+		t.Fatalf("create later transaction: %v", err)
+	}
+	if _, err := app.createManualFinanceTransactionForAccountWithApproval(
+		"marketing_expense",
+		"Vendor A",
+		"Earlier spend",
+		"",
+		cashID,
+		-1200,
+		earlier,
+		0,
+		financeApprovalApproved,
+	); err != nil {
+		t.Fatalf("create earlier transaction: %v", err)
+	}
+
+	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers("2026-08-01", "2026-08-31", nil)
+	if err != nil {
+		t.Fatalf("build specified ledgers: %v", err)
+	}
+
+	ledger := findFinanceSpecifiedLedger(ledgers, "marketing_expense")
+	if ledger == nil {
+		t.Fatal("marketing expense ledger not found")
+	}
+	if len(ledger.DebitEntries) != 2 {
+		t.Fatalf("expected 2 debit entries, got %#v", ledger.DebitEntries)
+	}
+	if !ledger.DebitEntries[0].RecordedAt.Equal(earlier) {
+		t.Fatalf("first entry date = %s, want %s", ledger.DebitEntries[0].RecordedAt, earlier)
+	}
+	if !ledger.DebitEntries[1].RecordedAt.Equal(later) {
+		t.Fatalf("second entry date = %s, want %s", ledger.DebitEntries[1].RecordedAt, later)
+	}
+}
+
+func TestFinanceSpecifiedLedgerTemplateRendersScopedDetailLinks(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ledger := FinanceSpecifiedLedger{
+		Key:          "marketing_expense",
+		Title:        "Marketing Expense",
+		Description:  "Specified ledger for marketing.",
+		Nature:       "expense",
+		DebitTotal:   3200,
+		NetBalance:   3200,
+		BalanceLabel: "Debit balance",
+		EntryCount:   1,
+		DebitEntries: []FinanceSpecifiedLedgerEntry{
+			{
+				TransactionID:      42,
+				RecordedAt:         time.Date(2026, time.August, 18, 10, 0, 0, 0, time.Local),
+				ReferenceNumber:    "TXN-42",
+				Counterparty:       "Vendor",
+				Description:        "Campaign spend",
+				DivisionName:       "Kids Education Center",
+				FinanceAccountName: "Cash In Hand",
+				DebitAmount:        3200,
+			},
+		},
+	}
+
+	var rendered bytes.Buffer
+	data := TemplateData{
+		CurrentPath:                    "/admin/finance/specified-ledgers/marketing_expense",
+		User:                           &User{Name: "Admin", Email: "admin@example.com", Roles: []string{"admin"}, Permissions: allPermissions},
+		CSRFToken:                      "test-token",
+		TodayDate:                      "2026-08-28",
+		FinancePage:                    "specified-ledgers",
+		SelectedDivision:               &Division{ID: 2, Code: divisionCodeKEC, Slug: "kec", Name: "Kids Education Center"},
+		SelectedDivisionScope:          "kec",
+		FinanceSpecifiedLedgers:        []FinanceSpecifiedLedger{ledger},
+		SelectedFinanceSpecifiedLedger: &ledger,
+		FinanceSpecifiedLedgerFrom:     "2026-08-01",
+		FinanceSpecifiedLedgerTo:       "2026-08-31",
+	}
+	if err := templates["finance-management"].ExecuteTemplate(&rendered, "base", data); err != nil {
+		t.Fatalf("render finance specified ledger template: %v", err)
+	}
+
+	body := rendered.String()
+	if !strings.Contains(body, "Cash In Hand · Kids Education Center") {
+		t.Fatalf("expected account and division label in body, got %s", body)
+	}
+	if !strings.Contains(body, "/admin/finance/receipt?division=kec&amp;transaction_id=42") {
+		t.Fatalf("expected scoped voucher link in body, got %s", body)
+	}
+	if !strings.Contains(body, "/admin/finance/specified-ledgers?division=kec&amp;from=2026-08-01&amp;to=2026-08-31") {
+		t.Fatalf("expected scoped ledger index link in body, got %s", body)
+	}
+}
+
+func TestExportFinanceSpecifiedLedgerCSVIncludesAuditContext(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	rec := httptest.NewRecorder()
+
+	app.exportFinanceSpecifiedLedgerCSV(rec, FinanceSpecifiedLedger{
+		Key:   "marketing_expense",
+		Title: "Marketing Expense",
+		DebitEntries: []FinanceSpecifiedLedgerEntry{
+			{
+				TransactionID:      42,
+				RecordedAt:         time.Date(2026, time.August, 18, 10, 0, 0, 0, time.Local),
+				ReferenceNumber:    "TXN-42",
+				Counterparty:       "Vendor",
+				Description:        "Campaign spend",
+				DivisionName:       "Kids Education Center",
+				FinanceAccountName: "Cash In Hand",
+				DebitAmount:        3200,
+			},
+		},
+		DebitTotal: 3200,
+	}, "2026-08-01", "2026-08-31")
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Transaction ID,Reference,Counterparty,Description,Division,Account,Debit,Credit") {
+		t.Fatalf("expected csv header to include transaction and division columns, got %s", body)
+	}
+	if !strings.Contains(body, "2026-08-18,42,TXN-42,Vendor,Campaign spend,Kids Education Center,Cash In Hand,3200.00,0.00") {
+		t.Fatalf("expected csv body to include transaction context, got %s", body)
+	}
+}
+
 func TestSummarizeStudentAttendanceHistory(t *testing.T) {
 	history := []StudentAttendanceHistoryRow{
 		{Status: "present"},

@@ -160,6 +160,7 @@ func appendFinanceSpecifiedLedgerEntry(
 		ReferenceNumber:    tx.ReferenceNumber,
 		Counterparty:       financeSpecifiedLedgerCounterparty(tx),
 		Description:        financeSpecifiedLedgerDescription(tx),
+		DivisionName:       tx.DivisionName,
 		FinanceAccountName: tx.FinanceAccountName,
 	}
 
@@ -234,6 +235,19 @@ func appendFinanceSpecifiedLedgerEntry(
 func finalizeFinanceSpecifiedLedger(
 	ledger *FinanceSpecifiedLedger,
 ) {
+	sort.Slice(ledger.DebitEntries, func(i, j int) bool {
+		if ledger.DebitEntries[i].RecordedAt.Equal(ledger.DebitEntries[j].RecordedAt) {
+			return ledger.DebitEntries[i].TransactionID < ledger.DebitEntries[j].TransactionID
+		}
+		return ledger.DebitEntries[i].RecordedAt.Before(ledger.DebitEntries[j].RecordedAt)
+	})
+	sort.Slice(ledger.CreditEntries, func(i, j int) bool {
+		if ledger.CreditEntries[i].RecordedAt.Equal(ledger.CreditEntries[j].RecordedAt) {
+			return ledger.CreditEntries[i].TransactionID < ledger.CreditEntries[j].TransactionID
+		}
+		return ledger.CreditEntries[i].RecordedAt.Before(ledger.CreditEntries[j].RecordedAt)
+	})
+
 	switch ledger.Nature {
 	case "income":
 		ledger.NetBalance = normalizeMoney(

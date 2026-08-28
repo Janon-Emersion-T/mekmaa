@@ -2,6 +2,10 @@
 <section class="space-y-6">
   {{if .SelectedFinanceSpecifiedLedger}}
   {{$ledger := .SelectedFinanceSpecifiedLedger}}
+  {{$detailBase := scopedURL (printf "/admin/finance/specified-ledgers/%s" $ledger.Key) .SelectedDivision .SelectedDivisionScope}}
+  {{$listURL := scopedURL (printf "/admin/finance/specified-ledgers?from=%s&to=%s" (urlquery .FinanceSpecifiedLedgerFrom) (urlquery .FinanceSpecifiedLedgerTo)) .SelectedDivision .SelectedDivisionScope}}
+  {{$csvURL := scopedURL (printf "/admin/finance/specified-ledgers/%s?from=%s&to=%s&format=csv" $ledger.Key (urlquery .FinanceSpecifiedLedgerFrom) (urlquery .FinanceSpecifiedLedgerTo)) .SelectedDivision .SelectedDivisionScope}}
+  {{$pdfURL := scopedURL (printf "/admin/finance/specified-ledgers/%s?from=%s&to=%s&format=pdf" $ledger.Key (urlquery .FinanceSpecifiedLedgerFrom) (urlquery .FinanceSpecifiedLedgerTo)) .SelectedDivision .SelectedDivisionScope}}
   <div class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div>
@@ -10,40 +14,69 @@
         <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{$ledger.Description}}</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <a href="/admin/finance/specified-ledgers?from={{urlquery .FinanceSpecifiedLedgerFrom}}&to={{urlquery .FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">All ledgers</a>
-        <a href="/admin/finance/specified-ledgers/{{$ledger.Key}}?from={{urlquery .FinanceSpecifiedLedgerFrom}}&to={{urlquery .FinanceSpecifiedLedgerTo}}&format=csv" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">Export CSV</a>
-        <a href="/admin/finance/specified-ledgers/{{$ledger.Key}}?from={{urlquery .FinanceSpecifiedLedgerFrom}}&to={{urlquery .FinanceSpecifiedLedgerTo}}&format=pdf" target="_blank" rel="noopener" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud">Print / PDF</a>
+        <a href="{{$listURL}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">All ledgers</a>
+        <a href="{{$csvURL}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Export CSV</a>
+        <a href="{{$pdfURL}}" target="_blank" rel="noopener" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Print / PDF</a>
       </div>
     </div>
 
-    <form method="get" action="/admin/finance/specified-ledgers/{{$ledger.Key}}" class="mt-5 grid gap-3 sm:grid-cols-3">
-      <input name="from" type="date" value="{{.FinanceSpecifiedLedgerFrom}}" class="h-11 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
-      <input name="to" type="date" value="{{.FinanceSpecifiedLedgerTo}}" class="h-11 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
-      <div class="flex gap-2">
-        <button type="submit" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud">Apply</button>
-        <a href="/admin/finance/specified-ledgers/{{$ledger.Key}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">Reset</a>
+    <form method="get" action="{{$detailBase}}" class="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+      <label class="text-xs font-semibold text-slate/60">
+        From date
+        <input name="from" type="date" value="{{.FinanceSpecifiedLedgerFrom}}" class="mt-2 h-11 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
+      </label>
+      <label class="text-xs font-semibold text-slate/60">
+        To date
+        <input name="to" type="date" value="{{.FinanceSpecifiedLedgerTo}}" class="mt-2 h-11 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
+      </label>
+      <div class="flex gap-2 lg:self-end">
+        <button type="submit" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Apply</button>
+        <a href="{{$detailBase}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Reset</a>
       </div>
     </form>
+
+    <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">From</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{formatCalendarDate .FinanceSpecifiedLedgerFrom}}</p>
+      </article>
+      <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">To</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{formatCalendarDate .FinanceSpecifiedLedgerTo}}</p>
+      </article>
+      <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">Entries</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{$ledger.EntryCount}}</p>
+      </article>
+      <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">Debit entries</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{len $ledger.DebitEntries}}</p>
+      </article>
+      <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">Credit entries</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{len $ledger.CreditEntries}}</p>
+      </article>
+      <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">{{$ledger.BalanceLabel}}</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{money $ledger.NetBalance}}</p>
+      </article>
+    </div>
   </div>
 
   <article class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
     <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
-      <div class="grid gap-3 sm:grid-cols-4">
+      <div class="grid gap-3 sm:grid-cols-3">
         <div class="rounded-2xl bg-cloud px-4 py-3">
-          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Debit</p>
+          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Debit total</p>
           <p class="mt-1 text-base font-semibold text-obsidian">{{money $ledger.DebitTotal}}</p>
         </div>
         <div class="rounded-2xl bg-cloud px-4 py-3">
-          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Credit</p>
+          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Credit total</p>
           <p class="mt-1 text-base font-semibold text-obsidian">{{money $ledger.CreditTotal}}</p>
         </div>
         <div class="rounded-2xl bg-cloud px-4 py-3">
-          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Balance</p>
+          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Net movement</p>
           <p class="mt-1 text-base font-semibold text-obsidian">{{money $ledger.NetBalance}}</p>
-        </div>
-        <div class="rounded-2xl bg-cloud px-4 py-3">
-          <p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">{{$ledger.BalanceLabel}}</p>
-          <p class="mt-1 text-base font-semibold text-obsidian">{{$ledger.EntryCount}} entries</p>
         </div>
       </div>
     </div>
@@ -51,16 +84,25 @@
     <div class="grid gap-px bg-slate/10 xl:grid-cols-2">
       <div class="bg-white">
         <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
-          <p class="text-sm font-semibold text-obsidian">Debit</p>
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-sm font-semibold text-obsidian">Debit</p>
+            <span class="rounded-full bg-cloud px-3 py-1 text-xs font-semibold text-slate/60">{{len $ledger.DebitEntries}} entries</span>
+          </div>
         </div>
         <div class="divide-y divide-slate/10">
           {{range $ledger.DebitEntries}}
           <div class="grid gap-3 px-5 py-4 sm:grid-cols-[7rem_9rem_minmax(0,1fr)_9rem] sm:px-6">
             <div class="text-xs text-slate/55">{{formatCalendarDate (.RecordedAt.Format "2006-01-02")}}</div>
-            <div class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</div>
+            <div>
+              <p class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</p>
+              <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .TransactionID) $.SelectedDivision $.SelectedDivisionScope}}" class="mt-1 inline-block text-[0.7rem] font-semibold text-slate/55 underline decoration-slate/30 underline-offset-4">Voucher</a>
+            </div>
             <div>
               <p class="text-sm font-semibold text-obsidian">{{.Counterparty}}</p>
-              <p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}{{if .FinanceAccountName}} · {{financeAccountDisplayName .FinanceAccountName .DivisionName}}{{end}}</p>
+              <p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}</p>
+              {{if or .FinanceAccountName .DivisionName}}
+              <p class="mt-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-slate/45">{{financeAccountDisplayName .FinanceAccountName .DivisionName}}</p>
+              {{end}}
             </div>
             <div class="text-right text-sm font-semibold text-obsidian">{{money .DebitAmount}}</div>
           </div>
@@ -72,16 +114,25 @@
 
       <div class="bg-white">
         <div class="border-b border-slate/10 px-5 py-4 sm:px-6">
-          <p class="text-sm font-semibold text-obsidian">Credit</p>
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-sm font-semibold text-obsidian">Credit</p>
+            <span class="rounded-full bg-cloud px-3 py-1 text-xs font-semibold text-slate/60">{{len $ledger.CreditEntries}} entries</span>
+          </div>
         </div>
         <div class="divide-y divide-slate/10">
           {{range $ledger.CreditEntries}}
           <div class="grid gap-3 px-5 py-4 sm:grid-cols-[7rem_9rem_minmax(0,1fr)_9rem] sm:px-6">
             <div class="text-xs text-slate/55">{{formatCalendarDate (.RecordedAt.Format "2006-01-02")}}</div>
-            <div class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</div>
+            <div>
+              <p class="text-xs font-semibold text-slate">{{.ReferenceNumber}}</p>
+              <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .TransactionID) $.SelectedDivision $.SelectedDivisionScope}}" class="mt-1 inline-block text-[0.7rem] font-semibold text-slate/55 underline decoration-slate/30 underline-offset-4">Voucher</a>
+            </div>
             <div>
               <p class="text-sm font-semibold text-obsidian">{{.Counterparty}}</p>
-              <p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}{{if .FinanceAccountName}} · {{financeAccountDisplayName .FinanceAccountName .DivisionName}}{{end}}</p>
+              <p class="mt-1 text-xs leading-5 text-slate/60">{{.Description}}</p>
+              {{if or .FinanceAccountName .DivisionName}}
+              <p class="mt-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-slate/45">{{financeAccountDisplayName .FinanceAccountName .DivisionName}}</p>
+              {{end}}
             </div>
             <div class="text-right text-sm font-semibold text-obsidian">{{money .CreditAmount}}</div>
           </div>
@@ -93,23 +144,30 @@
     </div>
   </article>
   {{else}}
+  {{$pageBase := scopedURL "/admin/finance/specified-ledgers" .SelectedDivision .SelectedDivisionScope}}
   <div class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">T-account view</p>
         <h2 class="mt-2 text-xl font-semibold text-obsidian sm:text-2xl">Specified ledgers</h2>
-        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">This view groups posted finance transactions into the core ledgers first, then adds any remaining categories so the full period activity is covered without mixing unrelated entries together.</p>
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">This view groups posted finance transactions into core ledgers first, then keeps every configured finance category visible so the selected period can be reviewed without losing uncategorised movement.</p>
       </div>
-      <form method="get" action="/admin/finance/specified-ledgers" class="grid gap-2 sm:grid-cols-3">
-        <input name="from" type="date" value="{{.FinanceSpecifiedLedgerFrom}}" class="h-11 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
-        <input name="to" type="date" value="{{.FinanceSpecifiedLedgerTo}}" class="h-11 rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
-        <div class="flex gap-2">
-          <button type="submit" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud">Refresh</button>
-          <a href="/admin/finance/specified-ledgers" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate">Reset</a>
+      <form method="get" action="{{$pageBase}}" class="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+        <label class="text-xs font-semibold text-slate/60">
+          From date
+          <input name="from" type="date" value="{{.FinanceSpecifiedLedgerFrom}}" class="mt-2 h-11 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
+        </label>
+        <label class="text-xs font-semibold text-slate/60">
+          To date
+          <input name="to" type="date" value="{{.FinanceSpecifiedLedgerTo}}" class="mt-2 h-11 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
+        </label>
+        <div class="flex gap-2 lg:self-end">
+          <button type="submit" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Refresh</button>
+          <a href="{{$pageBase}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Reset</a>
         </div>
       </form>
     </div>
-    <div class="mt-5 grid gap-4 sm:grid-cols-3">
+    <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
         <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">From</p>
         <p class="mt-2 text-lg font-semibold text-obsidian">{{formatCalendarDate .FinanceSpecifiedLedgerFrom}}</p>
@@ -121,6 +179,14 @@
       <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
         <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">Ledgers shown</p>
         <p class="mt-2 text-lg font-semibold text-obsidian">{{len .FinanceSpecifiedLedgers}}</p>
+      </article>
+      <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">Core ledgers</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{len (financeSpecifiedSystemLedgers .FinanceSpecifiedLedgers)}}</p>
+      </article>
+      <article class="rounded-[1.35rem] border border-slate/10 bg-cloud/45 p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">Non-core ledgers</p>
+        <p class="mt-2 text-lg font-semibold text-obsidian">{{sub (len .FinanceSpecifiedLedgers) (len (financeSpecifiedSystemLedgers .FinanceSpecifiedLedgers))}}</p>
       </article>
     </div>
   </div>
@@ -142,12 +208,13 @@
       </div>
       <div class="grid gap-4 xl:grid-cols-2">
         {{range $systemLedgers}}
+        {{$ledgerURL := scopedURL (printf "/admin/finance/specified-ledgers/%s?from=%s&to=%s" .Key (urlquery $.FinanceSpecifiedLedgerFrom) (urlquery $.FinanceSpecifiedLedgerTo)) $.SelectedDivision $.SelectedDivisionScope}}
         <article class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
           <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">{{.BalanceLabel}}</p>
-                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
+                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="{{$ledgerURL}}" class="transition hover:text-slate">{{.Title}}</a></h3>
                 <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
               </div>
               <div class="grid grid-cols-3 gap-3 text-center">
@@ -157,8 +224,9 @@
               </div>
             </div>
           </div>
-          <div class="px-5 py-4 sm:px-6">
-            <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
+          <div class="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+            <p class="text-sm text-slate/55">{{.EntryCount}} entries{{if eq .EntryCount 0}} · No movement in period{{end}}</p>
+            <a href="{{$ledgerURL}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
           </div>
         </article>
         {{end}}
@@ -175,12 +243,13 @@
       </div>
       <div class="grid gap-4 xl:grid-cols-2">
         {{range $incomeLedgers}}
+        {{$ledgerURL := scopedURL (printf "/admin/finance/specified-ledgers/%s?from=%s&to=%s" .Key (urlquery $.FinanceSpecifiedLedgerFrom) (urlquery $.FinanceSpecifiedLedgerTo)) $.SelectedDivision $.SelectedDivisionScope}}
         <article class="overflow-hidden rounded-[2rem] border border-emerald-100 bg-white/90 shadow-sm">
           <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700/70">{{.BalanceLabel}}</p>
-                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
+                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="{{$ledgerURL}}" class="transition hover:text-slate">{{.Title}}</a></h3>
                 <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
               </div>
               <div class="grid grid-cols-3 gap-3 text-center">
@@ -190,8 +259,9 @@
               </div>
             </div>
           </div>
-          <div class="px-5 py-4 sm:px-6">
-            <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
+          <div class="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+            <p class="text-sm text-slate/55">{{.EntryCount}} entries{{if eq .EntryCount 0}} · No movement in period{{end}}</p>
+            <a href="{{$ledgerURL}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
           </div>
         </article>
         {{end}}
@@ -208,12 +278,13 @@
       </div>
       <div class="grid gap-4 xl:grid-cols-2">
         {{range $expenseLedgers}}
+        {{$ledgerURL := scopedURL (printf "/admin/finance/specified-ledgers/%s?from=%s&to=%s" .Key (urlquery $.FinanceSpecifiedLedgerFrom) (urlquery $.FinanceSpecifiedLedgerTo)) $.SelectedDivision $.SelectedDivisionScope}}
         <article class="overflow-hidden rounded-[2rem] border border-rose-100 bg-white/90 shadow-sm">
           <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700/70">{{.BalanceLabel}}</p>
-                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
+                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="{{$ledgerURL}}" class="transition hover:text-slate">{{.Title}}</a></h3>
                 <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
               </div>
               <div class="grid grid-cols-3 gap-3 text-center">
@@ -223,8 +294,9 @@
               </div>
             </div>
           </div>
-          <div class="px-5 py-4 sm:px-6">
-            <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
+          <div class="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+            <p class="text-sm text-slate/55">{{.EntryCount}} entries{{if eq .EntryCount 0}} · No movement in period{{end}}</p>
+            <a href="{{$ledgerURL}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
           </div>
         </article>
         {{end}}
@@ -242,12 +314,13 @@
       </div>
       <div class="grid gap-4 xl:grid-cols-2">
         {{range $otherLedgers}}
+        {{$ledgerURL := scopedURL (printf "/admin/finance/specified-ledgers/%s?from=%s&to=%s" .Key (urlquery $.FinanceSpecifiedLedgerFrom) (urlquery $.FinanceSpecifiedLedgerTo)) $.SelectedDivision $.SelectedDivisionScope}}
         <article class="overflow-hidden rounded-[2rem] border border-sky-100 bg-white/90 shadow-sm">
           <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700/70">{{.BalanceLabel}}</p>
-                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="transition hover:text-slate">{{.Title}}</a></h3>
+                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="{{$ledgerURL}}" class="transition hover:text-slate">{{.Title}}</a></h3>
                 <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
               </div>
               <div class="grid grid-cols-3 gap-3 text-center">
@@ -257,8 +330,9 @@
               </div>
             </div>
           </div>
-          <div class="px-5 py-4 sm:px-6">
-            <a href="/admin/finance/specified-ledgers/{{.Key}}?from={{urlquery $.FinanceSpecifiedLedgerFrom}}&to={{urlquery $.FinanceSpecifiedLedgerTo}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
+          <div class="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+            <p class="text-sm text-slate/55">{{.EntryCount}} entries{{if eq .EntryCount 0}} · No movement in period{{end}}</p>
+            <a href="{{$ledgerURL}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Open ledger</a>
           </div>
         </article>
         {{end}}

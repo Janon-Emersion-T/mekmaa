@@ -877,6 +877,7 @@ type FinanceSpecifiedLedgerEntry struct {
 	ReferenceNumber    string
 	Counterparty       string
 	Description        string
+	DivisionName       string
 	FinanceAccountName string
 	DebitAmount        float64
 	CreditAmount       float64
