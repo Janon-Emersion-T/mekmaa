@@ -1266,6 +1266,10 @@ func (a *App) referralCommissionsHandler(w http.ResponseWriter, r *http.Request)
 func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
 	paymentMonth := strings.TrimSpace(r.URL.Query().Get("month"))
+	paymentSearch := strings.TrimSpace(r.URL.Query().Get("search"))
+	paymentStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
+	paymentProgram := strings.TrimSpace(r.URL.Query().Get("program"))
+	paymentMethod := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("method")))
 	currentMonth := time.Now().Format("2006-01")
 	latestMonth := latestCollectiblePaymentMonth(time.Now())
 	if _, err := parsePaymentMonth(paymentMonth); err != nil || paymentMonth > currentMonth {
@@ -1297,35 +1301,47 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	programOptions := studentPaymentProgramOptions(rows)
+	filteredRows := filterStudentPaymentRows(rows, paymentSearch, paymentStatus, paymentProgram, paymentMethod)
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Student Payments"
 	data.Description = "Collect and track individual monthly student payments."
-	data.StudentPaymentRows = rows
+	data.StudentPaymentRows = filteredRows
 	data.PaymentMonth = paymentMonth
 	data.PaymentMonthLabel = paymentMonthLabel(paymentMonth)
 	data.PaymentCollectionOpen = paymentMonthCollectible(paymentMonth, time.Now())
 	data.PaymentCollectionNotice = monthlyPaymentCollectionNotice(paymentMonth, time.Now())
+	data.PaymentSearch = paymentSearch
+	data.PaymentStatusFilter = paymentStatus
+	data.PaymentProgramFilter = paymentProgram
+	data.PaymentMethodFilter = paymentMethod
+	data.PaymentProgramOptions = programOptions
 	data.TodayDate = time.Now().Format("2006-01")
 	if selectedDivision != nil {
 		data.SelectedDivision = selectedDivision
 		data.SelectedDivisionScope = selectedDivision.Slug
 	}
-	for _, row := range rows {
+	for _, row := range filteredRows {
 		if row.MonthlyFee > 0 {
-			data.PaymentTotalDue += row.MonthlyFee
+			data.PaymentTotalDue = normalizeMoney(data.PaymentTotalDue + row.MonthlyFee)
 		}
-		collectedAmount := row.CollectedAmount
-		data.PaymentCollected += collectedAmount
-		if row.MonthlyFee <= 0 {
-			continue
-		}
-		if collectedAmount+0.004 >= row.MonthlyFee {
+		data.PaymentCollected = normalizeMoney(data.PaymentCollected + row.CollectedAmount)
+		switch studentPaymentRowStatus(row) {
+		case "paid":
 			data.PaymentPaidCount++
-			continue
+		case "partial":
+			data.PaymentPartialCount++
+		case "free":
+			data.PaymentFreeCount++
+		case "unconfigured":
+			data.PaymentUnconfiguredCount++
+		default:
+			data.PaymentPendingCount++
 		}
-		data.PaymentOutstanding += row.MonthlyFee - collectedAmount
-		data.PaymentPendingCount++
+		if row.OutstandingAmount > 0 {
+			data.PaymentOutstanding = normalizeMoney(data.PaymentOutstanding + row.OutstandingAmount)
+		}
 	}
 	a.render(w, "student-payments", data, http.StatusOK)
 }

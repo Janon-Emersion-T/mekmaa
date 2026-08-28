@@ -185,6 +185,12 @@
         </div>
 
         <div class="mt-5 flex flex-col gap-2 border-t border-slate/10 pt-4 sm:flex-row sm:flex-wrap">
+          <a
+            href="{{scopedURL (printf "/admin/staff/id-card?id=%d" .User.ID) $.SelectedDivision $.SelectedDivisionScope}}"
+            class="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud sm:flex-none"
+          >
+            Print ID
+          </a>
 
           <a
             href="{{scopedURL (workspaceGroupPath $.User $.SelectedDivision $.SelectedDivisionScope) $.SelectedDivision $.SelectedDivisionScope}}"

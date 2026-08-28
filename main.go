@@ -143,6 +143,7 @@ func main() {
 	mux.Handle("/admin/students", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.admissionManagementHandler), "admissions.view")))
 	mux.Handle("/admin/admissions/student-id", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentIDCardHandler), "admissions.view")))
 	mux.Handle("/admin/students/student-id", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentIDCardHandler), "admissions.view")))
+	mux.Handle("/admin/staff/id-card", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffIDCardHandler), "coaches.view")))
 	mux.Handle("/admin/student-leaves", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentLeaveManagementHandler), "student_leaves.view")))
 	mux.Handle("/admin/admissions/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.create")))
 	mux.Handle("/admin/students/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createAdmissionHandler), "admissions.create")))

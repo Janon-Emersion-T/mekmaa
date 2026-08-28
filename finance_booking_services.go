@@ -257,30 +257,18 @@ func proratedMonthlyFee(baseAmount float64, leaveDays int, monthDays int) (float
 
 func paymentMonthCollectible(paymentMonth string, now time.Time) bool {
 	currentMonth := now.Format("2006-01")
-	if paymentMonth < currentMonth {
-		return true
-	}
-	if paymentMonth > currentMonth {
-		return false
-	}
-	lastDay := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
-	return now.Day() >= lastDay
+	return paymentMonth <= currentMonth
 }
 
 func latestCollectiblePaymentMonth(now time.Time) string {
-	currentMonth := now.Format("2006-01")
-	if paymentMonthCollectible(currentMonth, now) {
-		return currentMonth
-	}
-	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, -1, 0).Format("2006-01")
+	return now.Format("2006-01")
 }
 
 func monthlyPaymentCollectionNotice(paymentMonth string, now time.Time) string {
 	if paymentMonthCollectible(paymentMonth, now) {
 		return ""
 	}
-	lastCollectibleDay := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location())
-	return "Monthly payments for " + paymentMonthLabel(paymentMonth) + " can only be collected on " + lastCollectibleDay.Format("January 2, 2006") + " or later."
+	return "Monthly payments can only be collected for the current month or earlier."
 }
 
 func paymentBillingStartDate(
@@ -403,6 +391,9 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 			payment_rows.qr_code_value,
 			payment_rows.training_program_id,
 			payment_rows.training_program_name,
+			payment_rows.division_id,
+			payment_rows.division_code,
+			payment_rows.division_name,
 			payment_rows.free_monthly_fee,
 			payment_rows.discounted_monthly_fee,
 			payment_rows.original_monthly_fee,
@@ -422,6 +413,9 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 				COALESCE(a.qr_code_value, '') AS qr_code_value,
 				tp.id AS training_program_id,
 				tp.name AS training_program_name,
+				COALESCE(tp.division_id, 0) AS division_id,
+				COALESCE(d.code, '') AS division_code,
+				COALESCE(d.name, '') AS division_name,
 				COALESCE(se.free_monthly_fee, 0) AS free_monthly_fee,
 				COALESCE(se.discounted_monthly_fee, 0) AS discounted_monthly_fee,
 				COALESCE(tp.monthly_fee, 0) AS original_monthly_fee,
@@ -433,6 +427,8 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 				ON a.id = se.admission_id
 			JOIN training_programs tp
 				ON tp.id = se.training_program_id
+			LEFT JOIN divisions d
+				ON d.id = tp.division_id
 			WHERE se.enrollment_date <= ?
 			  AND COALESCE(se.active, 1) = 1
 	`
@@ -478,6 +474,9 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 			&row.Admission.QRCodeValue,
 			&row.Enrollment.TrainingProgramID,
 			&row.Enrollment.TrainingProgramName,
+			&row.Enrollment.DivisionID,
+			&row.Enrollment.DivisionCode,
+			&row.Enrollment.DivisionName,
 			&freeMonthlyFee,
 			&discountedMonthlyFee,
 			&row.OriginalMonthlyFee,
@@ -934,11 +933,14 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 			smp.id,
 			smp.admission_id,
 			COALESCE(smp.enrollment_id, 0),
+			COALESCE(tp.name, adm_tp.name, '') AS training_program_name,
+			COALESCE(d.name, adm_d.name, '') AS division_name,
 			smp.payment_month,
 			smp.amount,
 			smp.payment_method,
 			smp.finance_transaction_id,
 			COALESCE(smp.collected_by_user_id, 0),
+			COALESCE(u.display_name, '') AS collected_by_user_name,
 			smp.collected_at,
 			smp.created_at
 		FROM student_monthly_payments smp
@@ -946,6 +948,10 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 		LEFT JOIN training_programs se_tp ON se_tp.id = se.training_program_id
 		LEFT JOIN admissions adm ON adm.id = smp.admission_id
 		LEFT JOIN training_programs adm_tp ON adm_tp.id = adm.training_program_id
+		LEFT JOIN training_programs tp ON tp.id = COALESCE(se.training_program_id, adm.training_program_id)
+		LEFT JOIN divisions d ON d.id = se_tp.division_id
+		LEFT JOIN divisions adm_d ON adm_d.id = adm_tp.division_id
+		LEFT JOIN users u ON u.id = smp.collected_by_user_id
 		WHERE smp.payment_month = ?
 		  AND COALESCE(smp.voided, 0) = 0
 	`
@@ -968,11 +974,14 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 			&payment.ID,
 			&payment.AdmissionID,
 			&payment.EnrollmentID,
+			&payment.TrainingProgramName,
+			&payment.DivisionName,
 			&payment.PaymentMonth,
 			&payment.Amount,
 			&payment.PaymentMethod,
 			&payment.FinanceTransactionID,
 			&payment.CollectedByUserID,
+			&payment.CollectedByUserName,
 			&payment.CollectedAt,
 			&payment.CreatedAt,
 		); err != nil {

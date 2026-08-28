@@ -1812,6 +1812,8 @@ type TemplateData struct {
 	AdmissionsPageBaseURL        string
 	AdmissionsFilter             AdmissionsFilter
 	SelectedAdmission            *Admission
+	SelectedStaff                *User
+	StaffIDCardQRCodeDataURI     string
 	AdmissionMode                string
 	StudentGroups                []StudentGroup
 	SelectedGroup                *StudentGroup
@@ -1964,10 +1966,18 @@ type TemplateData struct {
 	PaymentMonthLabel                string
 	PaymentCollectionOpen            bool
 	PaymentCollectionNotice          string
+	PaymentSearch                    string
+	PaymentStatusFilter              string
+	PaymentProgramFilter             string
+	PaymentMethodFilter              string
+	PaymentProgramOptions            []string
 	PaymentTotalDue                  float64
 	PaymentCollected                 float64
 	PaymentOutstanding               float64
 	PaymentPaidCount                 int
+	PaymentPartialCount              int
+	PaymentFreeCount                 int
+	PaymentUnconfiguredCount         int
 	PaymentPendingCount              int
 	BookingSlots                     []BookingSlotAvailability
 	AdminCalendarHours               []AdminCalendarHour

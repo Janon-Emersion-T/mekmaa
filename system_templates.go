@@ -346,6 +346,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"admission-management":           "templates/dashboard/admission-management.html",
 		"student-leave-management":       "templates/dashboard/student-leave-management.html",
 		"student-id-card":                "templates/dashboard/student-id-card.html",
+		"staff-id-card":                  "templates/dashboard/staff-id-card.html",
 		"enrollment-management":          "templates/dashboard/enrollment-management.html",
 		"coach-management":               "templates/dashboard/coach-management.html",
 		"staff-directory":                "templates/dashboard/staff-directory.html",

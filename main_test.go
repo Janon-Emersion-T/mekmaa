@@ -743,16 +743,16 @@ func TestStudentIDCardTemplateRenders(t *testing.T) {
 		Description: "Printable student identity card.",
 		HideChrome:  true,
 		SelectedAdmission: &Admission{
-			ID:            1,
-			StudentID:     "STU-0001",
-			FullName:      "Test Student",
-			DateOfBirth:   "2012-01-15",
-			AdmissionDate: "2026-08-01",
-			TrainingProgramName: "Cricket",
-			GuardianName: "Parent Name",
+			ID:                    1,
+			StudentID:             "STU-0001",
+			FullName:              "Test Student",
+			DateOfBirth:           "2012-01-15",
+			AdmissionDate:         "2026-08-01",
+			TrainingProgramName:   "Cricket",
+			GuardianName:          "Parent Name",
 			GuardianContactNumber: "0771234567",
-			PhotoPath:     "/uploads/students/photos/student-photo-test.jpg",
-			QRCodePath:    "/uploads/students/qr/student-qr-test.png",
+			PhotoPath:             "/uploads/students/photos/student-photo-test.jpg",
+			QRCodePath:            "/uploads/students/qr/student-qr-test.png",
 		},
 	})
 
@@ -4997,8 +4997,11 @@ func TestCollectStudentMonthlyPaymentRejectsFullMonthLeave(t *testing.T) {
 	}
 }
 
-func TestCollectStudentPaymentHandlerRejectsCurrentMonthBeforeMonthEnd(t *testing.T) {
+func TestCollectStudentPaymentHandlerAllowsCurrentMonthCollection(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
+	currentMonthStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.Local)
+	currentMonth := currentMonthStart.Format("2006-01")
+	admissionDate := currentMonthStart.AddDate(0, -1, 0).Format("2006-01-02")
 	programID, err := app.createTrainingProgram(TrainingProgram{
 		Name:           "Collection Timing Programme",
 		Activity:       "cricket",
@@ -5013,7 +5016,7 @@ func TestCollectStudentPaymentHandlerRejectsCurrentMonthBeforeMonthEnd(t *testin
 	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
 		StudentID:             "STD-TIMING-001",
 		FullName:              "Timing Student",
-		AdmissionDate:         "2026-07-01",
+		AdmissionDate:         admissionDate,
 		DateOfBirth:           "2012-01-01",
 		Gender:                "male",
 		PracticeType:          "group_practice",
@@ -5049,8 +5052,9 @@ func TestCollectStudentPaymentHandlerRejectsCurrentMonthBeforeMonthEnd(t *testin
 	form := url.Values{
 		"csrf_token":     {"token"},
 		"enrollment_id":  {strconv.FormatInt(enrollmentID, 10)},
-		"payment_month":  {"2026-08"},
+		"payment_month":  {currentMonth},
 		"payment_method": {"cash"},
+		"amount":         {"4000"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/admin/student-payments/collect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -5063,25 +5067,15 @@ func TestCollectStudentPaymentHandlerRejectsCurrentMonthBeforeMonthEnd(t *testin
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("student payment collect status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
-	if got := rec.Header().Get("Location"); got != "/admin/student-payments?month=2026-08" {
+	if got := rec.Header().Get("Location"); !strings.HasPrefix(got, "/admin/finance/receipt?transaction_id=") {
 		t.Fatalf("student payment collect redirect = %q", got)
 	}
-	flashFound := false
-	for _, cookie := range rec.Result().Cookies() {
-		if cookie.Name == flashCookieName && cookie.Value != "" {
-			flashFound = true
-			break
-		}
-	}
-	if !flashFound {
-		t.Fatal("expected flash cookie for non-collectible current month")
-	}
 	var count int
-	if err := app.db.QueryRow(`SELECT COUNT(*) FROM student_monthly_payments WHERE enrollment_id = ? AND payment_month = '2026-08' AND COALESCE(voided, 0) = 0`, enrollmentID).Scan(&count); err != nil {
-		t.Fatalf("count blocked monthly payments: %v", err)
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM student_monthly_payments WHERE enrollment_id = ? AND payment_month = ? AND COALESCE(voided, 0) = 0`, enrollmentID, currentMonth).Scan(&count); err != nil {
+		t.Fatalf("count collected monthly payments: %v", err)
 	}
-	if count != 0 {
-		t.Fatalf("expected no monthly payment row to be created, got %d", count)
+	if count != 1 {
+		t.Fatalf("expected monthly payment row to be created, got %d", count)
 	}
 }
 
@@ -5390,6 +5384,91 @@ func TestWithQueryHelpersPreserveExistingParameters(t *testing.T) {
 	}
 	if got := withMonthQuery("/admin/student-payments?division=sports&action=view", "2026-07"); got != "/admin/student-payments?action=view&division=sports&month=2026-07" {
 		t.Fatalf("withMonthQuery existing params = %q", got)
+	}
+}
+
+func TestStudentPaymentRowFiltersAndStatus(t *testing.T) {
+	rows := []StudentPaymentRow{
+		{
+			Admission: Admission{FullName: "Alpha Student", StudentID: "STD-001"},
+			Enrollment: StudentEnrollment{
+				TrainingProgramName: "Cricket Elite",
+				DivisionName:        "Sports",
+			},
+			MonthlyFee:      4000,
+			CollectedAmount: 4000,
+			Payments: []StudentMonthlyPayment{
+				{PaymentMethod: "cash"},
+			},
+		},
+		{
+			Admission: Admission{FullName: "Beta Student", StudentID: "STD-002"},
+			Enrollment: StudentEnrollment{
+				TrainingProgramName: "Cricket Elite",
+				DivisionName:        "Sports",
+			},
+			MonthlyFee:      4000,
+			CollectedAmount: 2000,
+			Payments: []StudentMonthlyPayment{
+				{PaymentMethod: "bank_transfer"},
+			},
+		},
+		{
+			Admission: Admission{FullName: "Gamma Student", StudentID: "STD-003"},
+			Enrollment: StudentEnrollment{
+				TrainingProgramName: "Chess Beginners",
+				DivisionName:        "Education",
+				FreeMonthlyFee:      true,
+			},
+			MonthlyFee: 0,
+		},
+		{
+			Admission: Admission{FullName: "Delta Student", StudentID: "STD-004"},
+			Enrollment: StudentEnrollment{
+				TrainingProgramName: "Robotics Lab",
+				DivisionName:        "STEM",
+			},
+			MonthlyFee: 0,
+		},
+		{
+			Admission: Admission{FullName: "Echo Student", StudentID: "STD-005"},
+			Enrollment: StudentEnrollment{
+				TrainingProgramName: "Design Basics",
+				DivisionName:        "Creative",
+			},
+			MonthlyFee: 3500,
+		},
+	}
+
+	wantStatuses := []string{"paid", "partial", "free", "unconfigured", "pending"}
+	for i, want := range wantStatuses {
+		if got := studentPaymentRowStatus(rows[i]); got != want {
+			t.Fatalf("row %d status = %q, want %q", i, got, want)
+		}
+	}
+
+	if got := len(filterStudentPaymentRows(rows, "beta", "", "", "")); got != 1 {
+		t.Fatalf("search match count = %d, want 1", got)
+	}
+	if got := len(filterStudentPaymentRows(rows, "", "partial", "", "")); got != 1 {
+		t.Fatalf("partial filter count = %d, want 1", got)
+	}
+	if got := len(filterStudentPaymentRows(rows, "", "", "Cricket Elite", "")); got != 2 {
+		t.Fatalf("program filter count = %d, want 2", got)
+	}
+	if got := len(filterStudentPaymentRows(rows, "", "", "", "bank_transfer")); got != 1 {
+		t.Fatalf("method filter count = %d, want 1", got)
+	}
+	if got := len(filterStudentPaymentRows(rows, "", "", "", "unpaid")); got != 3 {
+		t.Fatalf("unpaid method filter count = %d, want 3", got)
+	}
+
+	options := studentPaymentProgramOptions(rows)
+	if len(options) != 4 {
+		t.Fatalf("program option count = %d, want 4", len(options))
+	}
+	if options[0] != "Chess Beginners" || options[1] != "Cricket Elite" || options[2] != "Design Basics" || options[3] != "Robotics Lab" {
+		t.Fatalf("unexpected program options: %#v", options)
 	}
 }
 
@@ -10639,6 +10718,33 @@ func TestBuildTemplatesIncludesStaffDirectory(t *testing.T) {
 
 	if tmpl == nil {
 		t.Fatal("staff-directory template is nil")
+	}
+}
+
+func TestStaffIDCardTemplateRenders(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	html := renderTemplateToString(t, templates, "staff-id-card", TemplateData{
+		Title:       "Staff ID",
+		Description: "Printable staff identity card.",
+		HideChrome:  true,
+		SelectedStaff: &User{
+			ID:    12,
+			Name:  "Staff Member",
+			Email: "staff@example.com",
+			Phone: "0771234567",
+		},
+		StaffIDCardQRCodeDataURI: "data:image/png;base64,Zm9v",
+	})
+
+	if !strings.Contains(html, "staff-id-grid") ||
+		!strings.Contains(html, "Staff Member") ||
+		!strings.Contains(html, "STF/0012") ||
+		!strings.Contains(html, "/images/logos/mekmaa.png") {
+		t.Fatalf("expected staff id card content to render")
 	}
 }
 

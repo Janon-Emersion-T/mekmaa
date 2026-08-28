@@ -5287,6 +5287,10 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if redirectTarget := strings.TrimSpace(r.FormValue("division")); redirectTarget != "" {
 		target = withDivisionQuery(target, redirectTarget)
 	}
+	target = withQueryValue(target, "search", strings.TrimSpace(r.FormValue("search")))
+	target = withQueryValue(target, "status", strings.ToLower(strings.TrimSpace(r.FormValue("status"))))
+	target = withQueryValue(target, "program", strings.TrimSpace(r.FormValue("program")))
+	target = withQueryValue(target, "method", strings.ToLower(strings.TrimSpace(r.FormValue("method"))))
 
 	enrollmentID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("enrollment_id")), 10, 64)
 	if err != nil || enrollmentID <= 0 {
@@ -5303,11 +5307,6 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 	if paymentMonth > time.Now().Format("2006-01") {
 		a.setFlash(w, "Payments cannot be collected for a future month.")
-		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
-		return
-	}
-	if !paymentMonthCollectible(paymentMonth, time.Now()) {
-		a.setFlash(w, monthlyPaymentCollectionNotice(paymentMonth, time.Now()))
 		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
