@@ -5312,13 +5312,25 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	}
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.FormValue("payment_method")))
 	amount, amountErr := strconv.ParseFloat(strings.TrimSpace(r.FormValue("amount")), 64)
+	discountAmount, discountErr := strconv.ParseFloat(strings.TrimSpace(r.FormValue("discount_amount")), 64)
 	collectedAt, collectedAtErr := parseFinanceRecordedAtDate(
 		r.FormValue("payment_collected_at"),
 		time.Now(),
 		"Payment collection date",
 	)
+	applyDiscount := r.FormValue("apply_discount") == "1"
+	adjustmentReason := strings.TrimSpace(r.FormValue("adjustment_reason"))
 	if amountErr != nil {
 		a.setFlash(w, "Enter a valid payment amount.")
+		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
+		return
+	}
+	if strings.TrimSpace(r.FormValue("discount_amount")) == "" {
+		discountAmount = 0
+		discountErr = nil
+	}
+	if discountErr != nil {
+		a.setFlash(w, "Enter a valid discount amount.")
 		http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 		return
 	}
@@ -5352,7 +5364,11 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 	if currentUser != nil {
 		recordedByUserID = currentUser.ID
 	}
-	transactionID, err := a.collectStudentMonthlyPaymentAmountAt(enrollmentID, paymentMonth, monthDate, paymentMethod, amount, collectedAt, recordedByUserID)
+	if !applyDiscount {
+		discountAmount = 0
+		adjustmentReason = ""
+	}
+	transactionID, err := a.collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID, paymentMonth, monthDate, paymentMethod, amount, collectedAt, recordedByUserID, discountAmount, adjustmentReason)
 	if err != nil {
 		if errors.Is(err, ErrStudentPaymentAlreadyCollected) {
 			a.setFlash(w, "That enrollment payment has already been collected for "+paymentMonthLabel(paymentMonth)+".")
@@ -5365,6 +5381,13 @@ func (a *App) collectStudentPaymentHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if errors.Is(err, ErrMonthlyFeeNotConfigured) {
+			a.setFlash(w, err.Error())
+			http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
+			return
+		}
+		if errors.Is(err, ErrStudentPaymentAmountExceedsDue) ||
+			errors.Is(err, ErrStudentPaymentDiscountInvalid) ||
+			errors.Is(err, ErrStudentPaymentDiscountReason) {
 			a.setFlash(w, err.Error())
 			http.Redirect(w, r, withMonthQuery(target, paymentMonth), http.StatusSeeOther)
 			return

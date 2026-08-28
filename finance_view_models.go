@@ -20,10 +20,11 @@ func pendingStudentPaymentRows(rows []StudentPaymentRow) []StudentPaymentRow {
 }
 
 func studentPaymentRowStatus(row StudentPaymentRow) string {
-	if row.CollectedAmount > 0 && row.CollectedAmount+0.004 >= row.MonthlyFee {
+	settledAmount := row.CollectedAmount + row.DiscountAmount
+	if settledAmount > 0 && settledAmount+0.004 >= row.MonthlyFee {
 		return "paid"
 	}
-	if row.CollectedAmount > 0 {
+	if settledAmount > 0 {
 		return "partial"
 	}
 	if row.Enrollment.FreeMonthlyFee || (row.MonthlyFee == 0 && row.LeaveDays > 0) {

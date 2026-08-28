@@ -1061,6 +1061,8 @@ type StudentMonthlyPayment struct {
 	DivisionName         string
 	PaymentMonth         string
 	Amount               float64
+	DiscountAmount       float64
+	AdjustmentReason     string
 	PaymentMethod        string
 	FinanceTransactionID int64
 	CollectedByUserID    int64
@@ -1107,6 +1109,7 @@ type StudentPaymentRow struct {
 	LeaveAmount               float64
 	Leaves                    []StudentEnrollmentLeave
 	CollectedAmount           float64
+	DiscountAmount            float64
 	OutstandingAmount         float64
 	Payment                   *StudentMonthlyPayment
 	Payments                  []StudentMonthlyPayment
@@ -2042,6 +2045,9 @@ var (
 	ErrStudentLeaveOverlap               = errors.New("this leave overlaps an existing leave period for the selected enrollment")
 	ErrStudentLeaveCoversMonth           = errors.New("student is fully on leave for the selected month")
 	ErrStudentPaymentMonthNotCollectible = errors.New("monthly payments can only be collected after the month ends or on the final day of that month")
+	ErrStudentPaymentDiscountInvalid     = errors.New("discount amount must be greater than zero and cannot exceed the outstanding balance")
+	ErrStudentPaymentDiscountReason      = errors.New("enter a reason for the discount")
+	ErrStudentPaymentAmountExceedsDue    = errors.New("payment amount exceeds the outstanding balance")
 	ErrAdmissionFeeNotConfigured         = errors.New(
 		"admission fee is not configured for the selected training programme",
 	)

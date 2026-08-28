@@ -805,14 +805,18 @@ func admissionPricingByPracticeTypeTx(
 }
 
 func (a *App) collectStudentMonthlyPayment(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, recordedByUserID int64) (int64, error) {
-	return a.collectStudentMonthlyPaymentAmountAt(enrollmentID, paymentMonth, monthDate, paymentMethod, 0, time.Now().UTC(), recordedByUserID)
+	return a.collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID, paymentMonth, monthDate, paymentMethod, 0, time.Now().UTC(), recordedByUserID, 0, "")
 }
 
 func (a *App) collectStudentMonthlyPaymentAmount(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, amount float64, recordedByUserID int64) (int64, error) {
-	return a.collectStudentMonthlyPaymentAmountAt(enrollmentID, paymentMonth, monthDate, paymentMethod, amount, time.Now().UTC(), recordedByUserID)
+	return a.collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID, paymentMonth, monthDate, paymentMethod, amount, time.Now().UTC(), recordedByUserID, 0, "")
 }
 
 func (a *App) collectStudentMonthlyPaymentAmountAt(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, amount float64, collectedAt time.Time, recordedByUserID int64) (int64, error) {
+	return a.collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID, paymentMonth, monthDate, paymentMethod, amount, collectedAt, recordedByUserID, 0, "")
+}
+
+func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, amount float64, collectedAt time.Time, recordedByUserID int64, discountAmount float64, adjustmentReason string) (int64, error) {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, err
@@ -846,13 +850,13 @@ func (a *App) collectStudentMonthlyPaymentAmountAt(enrollmentID int64, paymentMo
 	totalCollected := 0.0
 	if enrollment != nil {
 		err = tx.QueryRow(`
-			SELECT COALESCE(SUM(amount), 0)
+			SELECT COALESCE(SUM(amount + COALESCE(discount_amount, 0)), 0)
 			FROM student_monthly_payments
 			WHERE enrollment_id = ? AND payment_month = ? AND COALESCE(voided, 0) = 0
 		`, enrollment.ID, paymentMonth).Scan(&totalCollected)
 	} else {
 		err = tx.QueryRow(`
-			SELECT COALESCE(SUM(amount), 0)
+			SELECT COALESCE(SUM(amount + COALESCE(discount_amount, 0)), 0)
 			FROM student_monthly_payments
 			WHERE admission_id = ? AND (enrollment_id IS NULL OR enrollment_id = 0) AND payment_month = ? AND COALESCE(voided, 0) = 0
 		`, admission.ID, paymentMonth).Scan(&totalCollected)
@@ -914,12 +918,30 @@ func (a *App) collectStudentMonthlyPaymentAmountAt(enrollmentID int64, paymentMo
 	if math.IsNaN(amount) || math.IsInf(amount, 0) {
 		return 0, errors.New("payment amount is invalid")
 	}
+	if math.IsNaN(discountAmount) || math.IsInf(discountAmount, 0) {
+		return 0, ErrStudentPaymentDiscountInvalid
+	}
 	amount = normalizeMoney(amount)
+	discountAmount = normalizeMoney(discountAmount)
 	if amount <= 0 {
 		amount = outstanding
 	}
 	if amount > outstanding+0.004 {
-		return 0, errors.New("payment amount exceeds the outstanding balance")
+		return 0, ErrStudentPaymentAmountExceedsDue
+	}
+	if discountAmount < 0.01 && strings.TrimSpace(adjustmentReason) != "" {
+		return 0, ErrStudentPaymentDiscountInvalid
+	}
+	if discountAmount > 0 {
+		if discountAmount > outstanding+0.004 {
+			return 0, ErrStudentPaymentDiscountInvalid
+		}
+		if strings.TrimSpace(adjustmentReason) == "" {
+			return 0, ErrStudentPaymentDiscountReason
+		}
+		if amount+discountAmount > outstanding+0.004 {
+			return 0, ErrStudentPaymentAmountExceedsDue
+		}
 	}
 	collectedAt = collectedAt.UTC()
 	now := time.Now().UTC()
@@ -941,13 +963,22 @@ func (a *App) collectStudentMonthlyPaymentAmountAt(enrollmentID int64, paymentMo
 	if err != nil {
 		return 0, err
 	}
-	referenceID := admission.ID
 	description := fmt.Sprintf("%s monthly payment for %s", paymentMonthLabel(paymentMonth), admission.FullName)
 	if enrollment != nil {
-		referenceID = enrollment.ID
 		description = fmt.Sprintf("%s monthly payment for %s - %s", paymentMonthLabel(paymentMonth), admission.FullName, enrollment.TrainingProgramName)
 	}
-	receiptNumber := fmt.Sprintf("STU-%s-%06d-%s", strings.ReplaceAll(paymentMonth, "-", ""), referenceID, collectedAt.Format("150405"))
+	receiptNumber, err := a.nextReceiptNumberTx(tx, "student_monthly_payment", collectedAt)
+	if err != nil {
+		return 0, err
+	}
+	transactionNotes := ""
+	if discountAmount > 0 {
+		transactionNotes = joinPaymentNotes(
+			transactionNotes,
+			fmt.Sprintf("Discount: %.2f", discountAmount),
+			"Reason: "+strings.TrimSpace(adjustmentReason),
+		)
+	}
 	transactionID, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		DivisionID:       divisionID,
 		ReceiptNumber:    receiptNumber,
@@ -959,6 +990,7 @@ func (a *App) collectStudentMonthlyPaymentAmountAt(enrollmentID int64, paymentMo
 		FinanceAccountID: account.ID,
 		PersonName:       admission.FullName,
 		Description:      description,
+		Notes:            transactionNotes,
 		PaymentMethod:    paymentMethod,
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
@@ -970,15 +1002,15 @@ func (a *App) collectStudentMonthlyPaymentAmountAt(enrollmentID int64, paymentMo
 
 	result, err := tx.Exec(`
 		INSERT INTO student_monthly_payments (
-			admission_id, enrollment_id, payment_month, amount, payment_method, finance_transaction_id,
+			admission_id, enrollment_id, payment_month, amount, discount_amount, adjustment_reason, payment_method, finance_transaction_id,
 			collected_by_user_id, collected_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, admission.ID, nullIfZero(func() int64 {
 		if enrollment != nil {
 			return enrollment.ID
 		}
 		return 0
-	}()), paymentMonth, amount, paymentMethod, transactionID, recordedByUserID, collectedAt, now)
+	}()), paymentMonth, amount, discountAmount, strings.TrimSpace(adjustmentReason), paymentMethod, transactionID, recordedByUserID, collectedAt, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return 0, ErrStudentPaymentAlreadyCollected

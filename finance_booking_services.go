@@ -587,12 +587,13 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 		paymentRows[i].Payments = paymentMap[studentMonthlyPaymentKey(paymentRows[i].Admission.ID, paymentRows[i].Enrollment.ID)]
 		for _, payment := range paymentRows[i].Payments {
 			paymentRows[i].CollectedAmount = normalizeMoney(paymentRows[i].CollectedAmount + payment.Amount)
+			paymentRows[i].DiscountAmount = normalizeMoney(paymentRows[i].DiscountAmount + payment.DiscountAmount)
 			if paymentRows[i].Payment == nil || payment.CollectedAt.After(paymentRows[i].Payment.CollectedAt) || (payment.CollectedAt.Equal(paymentRows[i].Payment.CollectedAt) && payment.ID > paymentRows[i].Payment.ID) {
 				latest := payment
 				paymentRows[i].Payment = &latest
 			}
 		}
-		paymentRows[i].OutstandingAmount = normalizeMoney(paymentRows[i].MonthlyFee - paymentRows[i].CollectedAmount)
+		paymentRows[i].OutstandingAmount = normalizeMoney(paymentRows[i].MonthlyFee - paymentRows[i].CollectedAmount - paymentRows[i].DiscountAmount)
 		if paymentRows[i].OutstandingAmount < 0 {
 			paymentRows[i].OutstandingAmount = 0
 		}
@@ -937,6 +938,8 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 			COALESCE(d.name, adm_d.name, '') AS division_name,
 			smp.payment_month,
 			smp.amount,
+			COALESCE(smp.discount_amount, 0),
+			COALESCE(smp.adjustment_reason, ''),
 			smp.payment_method,
 			smp.finance_transaction_id,
 			COALESCE(smp.collected_by_user_id, 0),
@@ -978,6 +981,8 @@ func (a *App) listActiveStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth
 			&payment.DivisionName,
 			&payment.PaymentMonth,
 			&payment.Amount,
+			&payment.DiscountAmount,
+			&payment.AdjustmentReason,
 			&payment.PaymentMethod,
 			&payment.FinanceTransactionID,
 			&payment.CollectedByUserID,

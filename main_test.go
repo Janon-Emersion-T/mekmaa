@@ -3245,6 +3245,135 @@ func TestCollectStudentMonthlyPaymentAmountAtUsesRequestedCollectionDate(t *test
 	}
 }
 
+func TestCollectStudentMonthlyPaymentDiscountSettlementClearsOutstanding(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Student Discount Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     4000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-DISC-001",
+		FullName:              "Discounted Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000010",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-07-15",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	monthDate, _ := parsePaymentMonth("2026-08")
+	transactionID, err := app.collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID, "2026-08", monthDate, "cash", 3000, time.Now().UTC(), 0, 1000, "approved concession")
+	if err != nil {
+		t.Fatalf("collect discounted student payment: %v", err)
+	}
+
+	var amount, discountAmount float64
+	var reason string
+	if err := app.db.QueryRow(`SELECT amount, discount_amount, adjustment_reason FROM student_monthly_payments WHERE finance_transaction_id = ?`, transactionID).Scan(&amount, &discountAmount, &reason); err != nil {
+		t.Fatalf("load discounted student payment: %v", err)
+	}
+	if amount != 3000 {
+		t.Fatalf("payment amount = %.2f, want 3000.00", amount)
+	}
+	if discountAmount != 1000 {
+		t.Fatalf("discount amount = %.2f, want 1000.00", discountAmount)
+	}
+	if reason != "approved concession" {
+		t.Fatalf("adjustment reason = %q, want %q", reason, "approved concession")
+	}
+
+	rows, err := app.listStudentPaymentRows("2026-08")
+	if err != nil {
+		t.Fatalf("list student payment rows: %v", err)
+	}
+	for _, row := range rows {
+		if row.Enrollment.ID != enrollmentID {
+			continue
+		}
+		if row.OutstandingAmount != 0 {
+			t.Fatalf("outstanding amount = %.2f, want 0", row.OutstandingAmount)
+		}
+		if row.DiscountAmount != 1000 {
+			t.Fatalf("row discount amount = %.2f, want 1000.00", row.DiscountAmount)
+		}
+		return
+	}
+	t.Fatalf("expected discounted payment row for enrollment %d", enrollmentID)
+}
+
+func TestCollectStudentMonthlyPaymentAllowsMultipleCollectionsAtSameTimestamp(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Student Partial Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     4000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-PARTIAL-001",
+		FullName:              "Partial Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000011",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-07-15",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	monthDate, _ := parsePaymentMonth("2026-08")
+	collectedAt := time.Date(2026, time.August, 21, 16, 5, 0, 0, time.Local).UTC()
+	firstTxnID, err := app.collectStudentMonthlyPaymentAmountAt(enrollmentID, "2026-08", monthDate, "cash", 1500, collectedAt, 0)
+	if err != nil {
+		t.Fatalf("first partial collection: %v", err)
+	}
+	secondTxnID, err := app.collectStudentMonthlyPaymentAmountAt(enrollmentID, "2026-08", monthDate, "cash", 2500, collectedAt, 0)
+	if err != nil {
+		t.Fatalf("second partial collection: %v", err)
+	}
+	if firstTxnID == secondTxnID {
+		t.Fatalf("expected distinct transaction ids, got %d", firstTxnID)
+	}
+}
+
 func TestCashAndBankExpensesAffectCorrectAccounts(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 2000, time.Now(), 0); err != nil {
@@ -8012,6 +8141,15 @@ func TestRunMigrationsHandlesLegacyAdmissionsWithoutQRCodeColumns(t *testing.T) 
 	}
 	if !exists {
 		t.Fatal("expected student_enrollments.discounted_monthly_fee to exist after migration")
+	}
+	for _, column := range []string{"discount_amount", "adjustment_reason"} {
+		exists, err = tableHasColumn(db, "student_monthly_payments", column)
+		if err != nil {
+			t.Fatalf("check student_monthly_payments %s column: %v", column, err)
+		}
+		if !exists {
+			t.Fatalf("expected student_monthly_payments.%s to exist after migration", column)
+		}
 	}
 }
 

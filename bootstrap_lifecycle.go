@@ -365,6 +365,8 @@ func runMigrations(db *sql.DB) error {
 			enrollment_id INTEGER,
 			payment_month TEXT NOT NULL,
 			amount REAL NOT NULL DEFAULT 0,
+			discount_amount REAL NOT NULL DEFAULT 0,
+			adjustment_reason TEXT NOT NULL DEFAULT '',
 			payment_method TEXT NOT NULL DEFAULT 'cash',
 			finance_transaction_id INTEGER NOT NULL,
 			collected_by_user_id INTEGER,
@@ -866,6 +868,16 @@ ON court_closures(activity, active, closure_date)`,
 			stmt:   `ALTER TABLE student_monthly_payments ADD COLUMN enrollment_id INTEGER`,
 		},
 		{
+			table:  "student_monthly_payments",
+			column: "discount_amount",
+			stmt:   `ALTER TABLE student_monthly_payments ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0`,
+		},
+		{
+			table:  "student_monthly_payments",
+			column: "adjustment_reason",
+			stmt:   `ALTER TABLE student_monthly_payments ADD COLUMN adjustment_reason TEXT NOT NULL DEFAULT ''`,
+		},
+		{
 			table:  "student_enrollments",
 			column: "enrollment_date",
 			stmt:   `ALTER TABLE student_enrollments ADD COLUMN enrollment_date TEXT NOT NULL DEFAULT ''`,
@@ -1176,11 +1188,17 @@ ON court_closures(activity, active, closure_date)`,
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_admissions_qr_code_value ON admissions(qr_code_value)`); err != nil {
 		return fmt.Errorf("create admissions qr code index: %w", err)
 	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_student_month ON student_monthly_payments(admission_id, payment_month) WHERE enrollment_id IS NULL`); err != nil {
-		return fmt.Errorf("create legacy student monthly payment unique index: %w", err)
+	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_student_monthly_payment_student_month`); err != nil {
+		return fmt.Errorf("drop legacy student monthly payment unique index: %w", err)
 	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_monthly_payment_enrollment_month ON student_monthly_payments(enrollment_id, payment_month) WHERE enrollment_id IS NOT NULL`); err != nil {
-		return fmt.Errorf("create enrollment student monthly payment unique index: %w", err)
+	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_student_monthly_payment_enrollment_month`); err != nil {
+		return fmt.Errorf("drop enrollment student monthly payment unique index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_admission_month ON student_monthly_payments(admission_id, payment_month, collected_at)`); err != nil {
+		return fmt.Errorf("create student monthly payment admission index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_monthly_payments_enrollment_month ON student_monthly_payments(enrollment_id, payment_month, collected_at)`); err != nil {
+		return fmt.Errorf("create student monthly payment enrollment index: %w", err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO student_enrollments (
