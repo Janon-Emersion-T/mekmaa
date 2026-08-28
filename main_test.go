@@ -758,10 +758,10 @@ func TestStudentIDCardTemplateRenders(t *testing.T) {
 
 	if !strings.Contains(html, "Student ID Card") ||
 		!strings.Contains(html, "Mekmaa Private Limited") ||
-		!strings.Contains(html, "Back Side") ||
 		!strings.Contains(html, "Test Student") ||
 		!strings.Contains(html, "STU-0001") ||
-		!strings.Contains(html, "Student Verification") {
+		!strings.Contains(html, "/images/logos/mekmaa.png") ||
+		!strings.Contains(html, "Date of Birth") {
 		t.Fatalf("expected student id card content to render")
 	}
 }
