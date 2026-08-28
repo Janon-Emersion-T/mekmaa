@@ -2,166 +2,660 @@
 
 {{define "content"}}
 <section class="w-full max-w-5xl">
+
   <style>
+    /*
+     * Standard CR80 / ATM card size:
+     * Landscape: 85.6mm × 54mm
+     * Portrait:  54mm × 85.6mm
+     */
+
     .student-id-grid {
       display: grid;
-      gap: 1.5rem;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+      align-items: start;
     }
 
     .student-id-face {
-      width: 100%;
-      max-width: 85.6mm;
-      min-height: 54mm;
+      position: relative;
+
+      width: 54mm;
+      height: 85.6mm;
+
       margin: 0 auto;
+
       overflow: hidden;
-      border: 1px solid rgba(11, 18, 21, 0.08);
-      border-radius: 2rem;
-      background: #fff;
-      box-shadow: 0 30px 80px rgba(11, 18, 21, 0.16);
+
+      border: 1px solid rgba(8, 38, 75, 0.12);
+      border-radius: 4mm;
+
+      background: #ffffff;
+
+      box-shadow:
+        0 25px 60px rgba(6, 24, 44, 0.15),
+        0 6px 18px rgba(6, 24, 44, 0.08);
     }
 
+
+    /* -------------------------------------
+       FRONT
+    -------------------------------------- */
+
     .student-id-front {
-      position: relative;
       background:
-        radial-gradient(circle at top right, rgba(98, 242, 193, 0.18), transparent 34%),
-        linear-gradient(180deg, rgba(17, 33, 39, 1) 0%, rgba(28, 43, 50, 1) 20%, rgba(244, 248, 249, 1) 20.2%, rgba(255, 255, 255, 1) 100%);
+        linear-gradient(
+          160deg,
+          #062c5a 0%,
+          #073c74 25%,
+          #087446 25.2%,
+          #0d8a51 34%,
+          #ffffff 34.2%,
+          #ffffff 100%
+        );
+    }
+
+    .student-id-front::before {
+      content: "";
+
+      position: absolute;
+      width: 45mm;
+      height: 45mm;
+
+      right: -25mm;
+      top: 18mm;
+
+      border-radius: 50%;
+
+      border: 7mm solid rgba(216, 174, 53, 0.08);
     }
 
     .student-id-front::after {
       content: "";
+
       position: absolute;
-      inset: 20% -28% auto auto;
-      width: 120mm;
-      height: 120mm;
-      border-radius: 999px;
-      border: 14mm solid rgba(98, 242, 193, 0.08);
-      transform: rotate(-14deg);
+
+      width: 52mm;
+      height: 18mm;
+
+      left: -18mm;
+      bottom: -8mm;
+
+      transform: rotate(-18deg);
+
+      background:
+        linear-gradient(
+          90deg,
+          rgba(5, 50, 100, 0.05),
+          rgba(13, 138, 81, 0.12)
+        );
     }
 
-    .student-id-vertical {
+
+    /* FRONT LOGO */
+
+    .student-id-main-logo {
+      width: 22mm;
+      height: 22mm;
+
+      object-fit: contain;
+
+      filter:
+        drop-shadow(0 3px 5px rgba(0, 0, 0, 0.15));
+    }
+
+
+    /* STUDENT PHOTO */
+
+    .student-id-photo {
+      width: 31mm;
+      height: 39mm;
+
+      overflow: hidden;
+
+      border-radius: 2.2mm;
+
+      border: 1mm solid #ffffff;
+
+      background: #eef3f6;
+
+      box-shadow:
+        0 5px 12px rgba(7, 35, 64, 0.14);
+    }
+
+    .student-id-photo img {
+      width: 100%;
+      height: 100%;
+
+      object-fit: cover;
+      object-position: top center;
+    }
+
+
+    /* VERTICAL STUDENT ID */
+
+    .student-id-number {
       writing-mode: vertical-rl;
       transform: rotate(180deg);
-      letter-spacing: 0.34em;
+
+      letter-spacing: 0.13em;
+      white-space: nowrap;
     }
+
+
+    /* -------------------------------------
+       BACK
+    -------------------------------------- */
 
     .student-id-back {
       background:
-        linear-gradient(180deg, rgba(17, 33, 39, 1) 0%, rgba(28, 43, 50, 1) 18%, rgba(249, 251, 252, 1) 18.2%, rgba(255, 255, 255, 1) 100%);
+        linear-gradient(
+          155deg,
+          #062c5a 0%,
+          #073c74 16%,
+          #0d8a51 16.2%,
+          #ffffff 28%,
+          #ffffff 100%
+        );
     }
 
+    .student-id-back::before {
+      content: "";
+
+      position: absolute;
+
+      width: 48mm;
+      height: 48mm;
+
+      left: -28mm;
+      bottom: 5mm;
+
+      border-radius: 50%;
+
+      border: 8mm solid rgba(13, 138, 81, 0.06);
+    }
+
+
+    /* QR */
+
+    .student-id-qr-wrap {
+      width: 25mm;
+      height: 25mm;
+
+      padding: 1.5mm;
+
+      background: #ffffff;
+
+      border-radius: 2.5mm;
+
+      border: 0.4mm solid rgba(8, 44, 90, 0.12);
+
+      box-shadow:
+        0 4px 10px rgba(6, 36, 69, 0.12);
+    }
+
+    .student-id-qr-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+
+    /* DIVISION LOGOS */
+
+    .student-id-division-logo {
+      height: 8mm;
+      max-width: 12mm;
+
+      object-fit: contain;
+    }
+
+
+    /* -------------------------------------
+       PRINT
+    -------------------------------------- */
+
     @media print {
+
+      @page {
+        margin: 8mm;
+      }
+
+      body {
+        background: #ffffff !important;
+      }
+
       .student-id-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 4mm;
+        display: grid;
+
+        grid-template-columns:
+          repeat(2, 54mm);
+
+        justify-content: center;
+
+        gap: 8mm;
       }
 
       .student-id-face {
-        width: 85.6mm;
-        max-width: 85.6mm;
-        min-height: 54mm;
-        border-radius: 0;
+        width: 54mm;
+        height: 85.6mm;
+
+        margin: 0;
+
         box-shadow: none;
+
+        border-radius: 4mm;
+
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
       }
     }
   </style>
 
-  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
+
+
+  <!-- =====================================================
+       ADMIN PAGE HEADER
+  ====================================================== -->
+
+  <div
+    class="mb-7 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden"
+  >
+
     <div>
-      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate/45">Students</p>
-      <h1 class="mt-2 text-2xl font-semibold text-obsidian">Student ID Card</h1>
-      <p class="mt-2 text-sm text-slate/60">Two-sided printable ID with a dedicated front design and a verification back.</p>
+
+      <p
+        class="text-xs font-semibold uppercase tracking-[0.24em] text-slate/45"
+      >
+        Students
+      </p>
+
+      <h1
+        class="mt-2 text-2xl font-semibold text-obsidian"
+      >
+        Student ID Card
+      </h1>
+
+      <p
+        class="mt-2 max-w-xl text-sm text-slate/60"
+      >
+        Standard portrait PVC student identity card valid across all Mekmaa divisions.
+      </p>
+
     </div>
+
+
     <div class="flex gap-3">
-      <a href="/admin/students?action=view&id={{.SelectedAdmission.ID}}#admission-view" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/15 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">
+
+      <a
+        href="/admin/students?action=view&id={{.SelectedAdmission.ID}}#admission-view"
+        class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/15 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+      >
         Back
       </a>
-      <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">
+
+
+      <button
+        type="button"
+        onclick="window.print()"
+        class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate"
+      >
         Print ID
       </button>
+
     </div>
+
   </div>
+
+
+
+  <!-- =====================================================
+       ID CARDS
+  ====================================================== -->
 
   <div class="student-id-grid">
-    <article class="student-id-face student-id-front p-4 print:p-3">
-      <div class="relative flex h-full flex-col overflow-hidden rounded-[1.6rem] print:rounded-none">
-        <div class="relative z-10 px-4 pb-3 pt-4 text-center text-cloud">
-          <img src="/images/mekmaa-private-limited.jpeg" alt="Mekmaa Private Limited" class="mx-auto h-14 w-auto rounded-2xl bg-white/90 px-3 py-2 object-contain" />
-          <p class="mt-2 text-[0.62rem] font-bold uppercase tracking-[0.28em] text-cloud/82">Mekmaa Private Limited</p>
-        </div>
 
-        <div class="relative z-10 flex-1 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,250,251,0.98))] px-4 pb-4 pt-3">
-          <div class="border-b border-slate/10 pb-3 text-center">
-            <p class="text-[0.58rem] font-bold uppercase tracking-[0.2em] text-slate/45">Student Name</p>
-            <h2 class="mt-1 text-[1.15rem] font-semibold leading-tight text-obsidian">{{.SelectedAdmission.FullName}}</h2>
-          </div>
 
-          <div class="mt-3 grid min-h-[32mm] grid-cols-[10mm_1fr] gap-3">
-            <div class="flex items-center justify-center rounded-[1rem] bg-obsidian text-center text-[0.62rem] font-bold uppercase text-cloud shadow-sm">
-              <span class="student-id-vertical">{{.SelectedAdmission.StudentID}}</span>
-            </div>
+    <!-- ===================================================
+         FRONT
+    ==================================================== -->
 
-            <div class="overflow-hidden rounded-[1.1rem] border border-slate/10 bg-slate-100">
-              {{if .SelectedAdmission.PhotoPath}}
-              <img src="{{.SelectedAdmission.PhotoPath}}" alt="{{.SelectedAdmission.FullName}}" class="h-full min-h-[32mm] w-full object-cover object-top" />
-              {{else}}
-              <div class="flex h-full min-h-[32mm] items-center justify-center bg-cloud text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">
-                No Photo
-              </div>
-              {{end}}
-            </div>
-          </div>
+    <article class="student-id-face student-id-front">
+
+      <div
+        class="relative z-10 flex h-full flex-col"
+      >
+
+
+        <!-- Logo -->
+
+        <div
+          class="flex h-[29mm] items-center justify-center pt-[2mm]"
+        >
+
+          <img
+            src="/images/logos/mekmaa.png"
+            alt="Mekmaa Private Limited"
+            class="student-id-main-logo"
+          />
 
         </div>
+
+
+
+        <!-- Student Name -->
+
+        <div class="px-[4mm] text-center">
+
+          <p
+            class="text-[2.1mm] font-bold uppercase tracking-[0.18em] text-[#0d8a51]"
+          >
+            Student
+          </p>
+
+          <h2
+            class="mt-[1mm] line-clamp-2 text-[4.1mm] font-bold leading-[1.05] text-[#062c5a]"
+          >
+            {{.SelectedAdmission.FullName}}
+          </h2>
+
+        </div>
+
+
+
+        <!-- Photo and ID -->
+
+        <div
+          class="relative mt-[3mm] flex flex-1 items-start justify-center px-[5mm] pb-[4mm]"
+        >
+
+
+          <!-- Student Photo -->
+
+          <div class="student-id-photo">
+
+            {{if .SelectedAdmission.PhotoPath}}
+
+            <img
+              src="{{.SelectedAdmission.PhotoPath}}"
+              alt="{{.SelectedAdmission.FullName}}"
+            />
+
+            {{else}}
+
+            <div
+              class="flex h-full w-full items-center justify-center text-center text-[2.3mm] font-semibold uppercase tracking-[0.12em] text-slate/40"
+            >
+              No Photo
+            </div>
+
+            {{end}}
+
+          </div>
+
+
+
+          <!-- Vertical Student ID -->
+
+          <div
+            class="ml-[2.5mm] flex h-[39mm] w-[7mm] items-center justify-center rounded-[2mm] bg-[#062c5a]"
+          >
+
+            <span
+              class="student-id-number font-mono text-[2.4mm] font-bold text-white"
+            >
+              {{.SelectedAdmission.StudentID}}
+            </span>
+
+          </div>
+
+
+        </div>
+
+
+        <!-- Bottom colour accent -->
+
+        <div
+          class="relative z-20 h-[3mm] bg-[linear-gradient(90deg,#062c5a_0%,#0d8a51_65%,#d6ad35_100%)]"
+        ></div>
+
+
       </div>
+
     </article>
 
-    <article class="student-id-face student-id-back p-4 print:p-3">
-      <div class="flex h-full flex-col overflow-hidden rounded-[1.6rem] print:rounded-none">
-        <div class="flex-1 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,250,251,0.98))] px-4 pb-4 pt-5">
-          <div class="rounded-[1.2rem] border border-slate/10 bg-white px-3 py-4 shadow-sm">
-            <div class="pb-3">
-              {{if .SelectedAdmission.QRCodePath}}
-              <img src="{{.SelectedAdmission.QRCodePath}}" alt="QR code for {{.SelectedAdmission.StudentID}}" class="mx-auto h-[27mm] w-[27mm] object-contain" />
-              {{else}}
-              <div class="mx-auto flex h-[27mm] w-[27mm] items-center justify-center bg-cloud text-center text-[0.6rem] font-semibold uppercase tracking-[0.14em] text-slate/45">
-                No QR
-              </div>
-              {{end}}
+
+
+
+    <!-- ===================================================
+         BACK
+    ==================================================== -->
+
+    <article class="student-id-face student-id-back">
+
+      <div
+        class="relative z-10 flex h-full flex-col"
+      >
+
+
+        <!-- QR -->
+
+        <div
+          class="flex justify-center pt-[7mm]"
+        >
+
+          <div class="student-id-qr-wrap">
+
+            {{if .SelectedAdmission.QRCodePath}}
+
+            <img
+              src="{{.SelectedAdmission.QRCodePath}}"
+              alt="Student QR Code"
+            />
+
+            {{else}}
+
+            <div
+              class="flex h-full w-full items-center justify-center text-center text-[2.3mm] font-semibold uppercase tracking-[0.12em] text-slate/40"
+            >
+              No QR
             </div>
 
-            <div class="divide-y divide-slate/10">
-              <div class="flex items-center justify-between gap-3 py-2.5">
-                <p class="text-[0.58rem] font-bold uppercase tracking-[0.18em] text-slate/45">Date of Birth</p>
-                <p class="text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.DateOfBirth}}</p>
-              </div>
-              <div class="flex items-center justify-between gap-3 py-2.5">
-                <p class="text-[0.58rem] font-bold uppercase tracking-[0.18em] text-slate/45">Admission Date</p>
-                <p class="text-sm font-semibold text-obsidian">{{formatCalendarDate .SelectedAdmission.AdmissionDate}}</p>
-              </div>
-              <div class="flex items-center justify-between gap-3 py-2.5">
-                <p class="text-[0.58rem] font-bold uppercase tracking-[0.18em] text-slate/45">Student ID No</p>
-                <p class="font-mono text-sm font-semibold tracking-[0.14em] text-obsidian">{{.SelectedAdmission.StudentID}}</p>
-              </div>
-            </div>
+            {{end}}
 
-            <div class="mt-3 rounded-[0.95rem] bg-cloud/60 px-3 py-2.5">
-              <div class="grid grid-cols-3 gap-2">
-                <div class="flex items-center justify-center rounded-[0.75rem] bg-white px-2 py-2">
-                  <img src="/images/logos/mekmaa.png" alt="Mekmaa logo" class="h-7 w-auto object-contain" />
-                </div>
-                <div class="flex items-center justify-center rounded-[0.75rem] bg-white px-2 py-2">
-                  <img src="/images/logos/cricket.png" alt="Cricket logo" class="h-7 w-auto object-contain" />
-                </div>
-                <div class="flex items-center justify-center rounded-[0.75rem] bg-white px-2 py-2">
-                  <img src="/images/logos/chess.png" alt="Chess logo" class="h-7 w-auto object-contain" />
-                </div>
-              </div>
-            </div>
           </div>
+
         </div>
+
+
+
+        <!-- QR description -->
+
+        <p
+          class="mt-[2mm] text-center text-[2mm] font-semibold uppercase tracking-[0.15em] text-[#062c5a]/55"
+        >
+          Student Attendance ID
+        </p>
+
+
+
+        <!-- DETAILS -->
+
+        <div
+          class="mx-[5mm] mt-[4mm] overflow-hidden rounded-[2.5mm] border border-[#062c5a]/10 bg-white/90"
+        >
+
+
+          <div
+            class="flex items-center justify-between border-b border-[#062c5a]/10 px-[3mm] py-[2mm]"
+          >
+
+            <span
+              class="text-[2mm] font-bold uppercase tracking-[0.1em] text-slate/50"
+            >
+              Date of Birth
+            </span>
+
+            <span
+              class="text-[2.7mm] font-bold text-[#062c5a]"
+            >
+              {{formatCalendarDate .SelectedAdmission.DateOfBirth}}
+            </span>
+
+          </div>
+
+
+
+          <div
+            class="flex items-center justify-between px-[3mm] py-[2mm]"
+          >
+
+            <span
+              class="text-[2mm] font-bold uppercase tracking-[0.1em] text-slate/50"
+            >
+              Admission Date
+            </span>
+
+            <span
+              class="text-[2.7mm] font-bold text-[#062c5a]"
+            >
+              {{formatCalendarDate .SelectedAdmission.AdmissionDate}}
+            </span>
+
+          </div>
+
+
+        </div>
+
+
+
+        <!-- SIGNATURE -->
+
+        <div
+          class="mx-[6mm] mt-[4mm] text-center"
+        >
+
+          <div
+            class="mx-auto h-[7mm] w-[27mm] border-b border-[#062c5a]/60"
+          ></div>
+
+          <p
+            class="mt-[1mm] text-[2.1mm] font-semibold uppercase tracking-[0.13em] text-[#062c5a]"
+          >
+            Director
+          </p>
+
+        </div>
+
+
+
+        <!-- RETURN / CONTACT -->
+
+        <div
+          class="mx-[4mm] mt-[3mm] rounded-[2mm] bg-[#f2f6f8] px-[3mm] py-[2.5mm] text-center"
+        >
+
+          <p
+            class="text-[2mm] font-bold text-[#062c5a]"
+          >
+            If found, please return to Mekmaa Private Limited
+          </p>
+
+          <p
+            class="mt-[1mm] text-[1.85mm] font-medium leading-[1.5] text-slate/65"
+          >
+            077 220 7297
+            &nbsp;•&nbsp;
+            www.mekmaa.com
+          </p>
+
+          <p
+            class="text-[1.85mm] font-medium text-slate/65"
+          >
+            mekmaa.jo@gmail.com
+          </p>
+
+        </div>
+
+
+
+        <!-- DIVISION LOGOS -->
+
+        <div
+          class="mt-auto border-t border-[#062c5a]/10 bg-white/90 px-[3mm] py-[3mm]"
+        >
+
+          <div
+            class="grid grid-cols-3 items-center gap-[2mm]"
+          >
+
+
+            <!-- Chess -->
+
+            <div
+              class="flex h-[10mm] items-center justify-center"
+            >
+
+              <img
+                src="/images/logos/chess.png"
+                alt="Mekmaa Chess Academy"
+                class="student-id-division-logo"
+              />
+
+            </div>
+
+
+
+            <!-- Cricket -->
+
+            <div
+              class="flex h-[10mm] items-center justify-center"
+            >
+
+              <img
+                src="/images/logos/cricket.png"
+                alt="Mekmaa Cricket Academy"
+                class="student-id-division-logo"
+              />
+
+            </div>
+
+
+
+            <!-- Kids Education Center -->
+
+            <div
+              class="flex h-[10mm] items-center justify-center"
+            >
+
+              <img
+                src="/images/logos/kec.png"
+                alt="Mekmaa Kids Education Center"
+                class="student-id-division-logo"
+              />
+
+            </div>
+
+
+          </div>
+
+        </div>
+
+
+
+        <!-- bottom strip -->
+
+        <div
+          class="h-[2.5mm] bg-[linear-gradient(90deg,#062c5a_0%,#0d8a51_65%,#d6ad35_100%)]"
+        ></div>
+
+
       </div>
+
     </article>
+
+
   </div>
+
 </section>
 {{end}}
