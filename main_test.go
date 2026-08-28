@@ -5601,6 +5601,68 @@ func TestStudentPaymentRowFiltersAndStatus(t *testing.T) {
 	}
 }
 
+func TestStudentPaymentsHandlerRendersPage(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Student Page Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     4000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-PAGE-001",
+		FullName:              "Page Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000012",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-07-15",
+	}, false, "cash", 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/student-payments?month=2026-08", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          1,
+		Name:        "Finance User",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"finance.view"},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.studentPaymentsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("student payments handler status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Student payments") || !strings.Contains(body, "Page Student") {
+		t.Fatalf("unexpected student payments page body: %s", body)
+	}
+}
+
 func TestCollectStudentPaymentHandlerPreservesDivisionAndMonthOnRedirect(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 

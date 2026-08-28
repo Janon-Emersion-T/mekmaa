@@ -817,12 +817,6 @@ func (a *App) collectStudentMonthlyPaymentAmountAt(enrollmentID int64, paymentMo
 }
 
 func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID int64, paymentMonth string, monthDate time.Time, paymentMethod string, amount float64, collectedAt time.Time, recordedByUserID int64, discountAmount float64, adjustmentReason string) (int64, error) {
-	tx, err := a.db.Begin()
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-
 	hasDiscountAmount, err := tableHasColumn(a.db, "student_monthly_payments", "discount_amount")
 	if err != nil {
 		return 0, err
@@ -831,6 +825,12 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 	if err != nil {
 		return 0, err
 	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
 
 	enrollment, err := findStudentEnrollmentByIDTx(tx, a.runtimeConfig.DBDriver, enrollmentID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
