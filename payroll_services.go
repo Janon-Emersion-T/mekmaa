@@ -966,7 +966,16 @@ func (a *App) calculatePayrollProfileQuantity(
 		)
 
 	case SalaryTypePerSession:
-		return 0, "sessions - manual entry required", nil
+		count, err := a.countPayrollWorkedSessions(
+			profile,
+			periodStart,
+			periodEnd,
+		)
+		if err != nil {
+			return 0, "", err
+		}
+
+		return float64(count), "worked sessions", nil
 
 	default:
 		return 0, "", errors.New("unsupported salary type")
@@ -981,7 +990,11 @@ func (a *App) calculatePerStudentPayrollQuantity(
 	switch normalizeSalaryStudentBasis(profile.StudentBasis) {
 
 	case SalaryStudentBasisActiveEnrollment:
-		count, err := a.countPayrollActiveEnrollments(profile)
+		count, err := a.countPayrollActiveEnrollments(
+			profile,
+			periodStart,
+			periodEnd,
+		)
 		if err != nil {
 			return 0, "", err
 		}
@@ -1015,6 +1028,8 @@ func (a *App) calculatePerStudentPayrollQuantity(
 
 func (a *App) countPayrollActiveEnrollments(
 	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
 ) (int, error) {
 	query := `
 		SELECT COUNT(DISTINCT se.admission_id)
@@ -1022,9 +1037,46 @@ func (a *App) countPayrollActiveEnrollments(
 		JOIN training_programs tp
 			ON tp.id = se.training_program_id
 		WHERE COALESCE(se.active, 1) = 1
+		  AND se.enrollment_date <= ?
+		  AND EXISTS (
+			  SELECT 1
+			  FROM student_group_members sgm
+			  JOIN student_groups sg
+			    ON sg.id = sgm.group_id
+			  WHERE sgm.admission_id = se.admission_id
+			    AND sg.training_program_id = se.training_program_id
+			    AND (
+			        EXISTS (
+			            SELECT 1
+			            FROM student_group_staff sgs
+			            WHERE sgs.group_id = sg.id
+			              AND sgs.user_id = ?
+			        )
+			        OR EXISTS (
+			            SELECT 1
+			            FROM student_group_coaches sgc
+			            WHERE sgc.group_id = sg.id
+			              AND sgc.user_id = ?
+			        )
+			    )
+		  )
+		  AND NOT EXISTS (
+			  SELECT 1
+			  FROM student_enrollment_leaves sel
+			  WHERE sel.enrollment_id = se.id
+			    AND COALESCE(sel.active, 1) = 1
+			    AND sel.start_date <= ?
+			    AND sel.end_date >= ?
+		  )
 	`
 
-	args := make([]any, 0, 2)
+	args := []any{
+		periodEnd,
+		profile.UserID,
+		profile.UserID,
+		periodStart,
+		periodEnd,
+	}
 
 	if profile.TrainingProgramID > 0 {
 		query += `
@@ -1107,6 +1159,56 @@ func (a *App) countPayrollAttendingStudents(
 		  AND ar.attendance_date >= ?
 		  AND ar.attendance_date <= ?
 		  AND LOWER(ar.status) IN ('present', 'late')
+	`
+
+	args := []any{
+		profile.UserID,
+		periodStart,
+		periodEnd,
+	}
+
+	if profile.TrainingProgramID > 0 {
+		query += `
+			AND sg.training_program_id = ?
+		`
+		args = append(args, profile.TrainingProgramID)
+	}
+
+	if profile.DivisionID > 0 {
+		query += `
+			AND tp.division_id = ?
+		`
+		args = append(args, profile.DivisionID)
+	}
+
+	var count int
+
+	if err := a.queryRowDB(query, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (a *App) countPayrollWorkedSessions(
+	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
+) (int, error) {
+	query := `
+		SELECT COUNT(DISTINCT sso.id)
+		FROM student_group_session_occurrences sso
+		JOIN student_group_session_staff ssos
+			ON ssos.occurrence_id = sso.id
+		JOIN student_groups sg
+			ON sg.id = sso.group_id
+		LEFT JOIN training_programs tp
+			ON tp.id = sg.training_program_id
+		WHERE ssos.user_id = ?
+		  AND ssos.work_status = 'worked'
+		  AND sso.status = 'completed'
+		  AND sso.occurrence_date >= ?
+		  AND sso.occurrence_date <= ?
 	`
 
 	args := []any{
