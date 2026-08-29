@@ -6,14 +6,11 @@
 
   <div class="receipt-print-shell">
   <div class="receipt-printable mx-auto overflow-hidden rounded-[1.5rem] border border-slate/10 bg-white px-2.5 py-5 text-obsidian shadow-sm">
-    <div class="flex items-center justify-center gap-2 pb-1">
-      <img src="/images/mekmaa-private-limited.jpeg" alt="Mekmaa Private Limited" class="receipt-logo h-[4.375rem] max-w-[46%] rounded-lg object-contain object-center" />
-      <div class="h-14 w-px bg-slate/20"></div>
-      <img src="/images/mekmaa-cricket-academy.jpeg" alt="Mekmaa Cricket Academy" class="receipt-logo h-[4.375rem] max-w-[46%] rounded-lg object-contain object-center" />
-    </div>
-    <div class="flex items-center justify-center gap-3 pb-2">
-      <img src="/images/logos/chess.png" alt="Mekmaa Chess Academy" class="receipt-logo h-10 w-auto object-contain object-center" />
-      <img src="/images/logos/kec.png" alt="Kids Education Center" class="receipt-logo h-10 w-auto object-contain object-center" />
+    <div class="receipt-brand-row pb-2">
+      <img src="/images/mekmaa-private-limited.jpeg" alt="Mekmaa Private Limited" class="receipt-brand-logo" />
+      <img src="/images/mekmaa-cricket-academy.jpeg" alt="Mekmaa Cricket Academy" class="receipt-brand-logo" />
+      <img src="/images/logos/chess.png" alt="Mekmaa Chess Academy" class="receipt-brand-logo" />
+      <img src="/images/logos/kec.png" alt="Kids Education Center" class="receipt-brand-logo" />
     </div>
 
     {{if and (eq .SelectedFinance.Category "booking_payment") .ReceiptBookingPayment .ReceiptBookingSchedule .ReceiptBookingFinancial}}

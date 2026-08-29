@@ -1932,6 +1932,17 @@ func TestBookingFinanceReceiptTemplateRendersBookingPaymentDetails(t *testing.T)
 			t.Fatalf("booking receipt is missing %q", marker)
 		}
 	}
+	for _, marker := range []string{
+		`class="receipt-brand-row pb-2"`,
+		`/images/mekmaa-private-limited.jpeg`,
+		`/images/mekmaa-cricket-academy.jpeg`,
+		`/images/logos/chess.png`,
+		`/images/logos/kec.png`,
+	} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("booking receipt branding is missing %q", marker)
+		}
+	}
 }
 
 func TestFinanceReceiptTemplateRendersVoidedStudentMonthlyPaymentDetails(t *testing.T) {
@@ -3588,6 +3599,45 @@ func TestBuildFinanceSummaryAggregatesSystemAccountBalancesAcrossDivisions(t *te
 	}
 	if summary.TotalAvailableFunds != 11000 {
 		t.Fatalf("available funds = %.2f, want 11000.00", summary.TotalAvailableFunds)
+	}
+}
+
+func TestBuildFinanceSummaryUsesAllBankTypeAccountsForBankBalance(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("lookup sports division: %v", err)
+	}
+
+	secondaryBankID, err := app.createFinanceAccount(sportsID, "BANK-777", "Commercial Bank", financeAccountTypeBank, "Secondary bank account", 0)
+	if err != nil {
+		t.Fatalf("create secondary bank account: %v", err)
+	}
+	if _, err := app.createManualFinanceTransactionForAccount(
+		"manual_income",
+		"Wire Client",
+		"Bank receipt into custom account",
+		"",
+		secondaryBankID,
+		6800,
+		time.Date(2026, 8, 20, 9, 0, 0, 0, time.Local),
+		0,
+	); err != nil {
+		t.Fatalf("create custom bank income: %v", err)
+	}
+
+	allTransactions, err := app.listFinanceTransactions()
+	if err != nil {
+		t.Fatalf("list finance transactions: %v", err)
+	}
+	summary := buildFinanceSummary(mustFinanceAccounts(t, app), allTransactions, nil, nil, nil, nil)
+
+	if summary.BankBalance != 6800 {
+		t.Fatalf("bank balance = %.2f, want 6800.00", summary.BankBalance)
+	}
+	if summary.TotalAvailableFunds != 6800 {
+		t.Fatalf("available funds = %.2f, want 6800.00", summary.TotalAvailableFunds)
 	}
 }
 

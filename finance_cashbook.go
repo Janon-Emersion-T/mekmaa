@@ -3094,6 +3094,20 @@ func financeAccountDisplayBalance(accounts []FinanceAccount, transactions []Fina
 			accountIDs[account.ID] = struct{}{}
 		}
 	}
+	return financeAccountDisplayBalanceForIDs(accountIDs, transactions)
+}
+
+func financeAccountTypeDisplayBalance(accounts []FinanceAccount, transactions []FinanceTransaction, accountType string) float64 {
+	accountIDs := make(map[int64]struct{})
+	for _, account := range accounts {
+		if strings.EqualFold(account.AccountType, accountType) {
+			accountIDs[account.ID] = struct{}{}
+		}
+	}
+	return financeAccountDisplayBalanceForIDs(accountIDs, transactions)
+}
+
+func financeAccountDisplayBalanceForIDs(accountIDs map[int64]struct{}, transactions []FinanceTransaction) float64 {
 	if len(accountIDs) == 0 {
 		return 0
 	}

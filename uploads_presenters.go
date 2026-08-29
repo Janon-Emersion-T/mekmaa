@@ -836,8 +836,8 @@ func financeSourceTypeLabel(value string) string {
 
 func buildFinanceSummary(accounts []FinanceAccount, transactions []FinanceTransaction, bookings []BookingFinancial, monthly []StudentPaymentRow, referrals []BookingReferral, reconciliations []CashReconciliation) FinanceSummary {
 	var summary FinanceSummary
-	summary.CashBalance = financeAccountDisplayBalance(accounts, transactions, financeAccountCashInHand)
-	summary.BankBalance = financeAccountDisplayBalance(accounts, transactions, financeAccountMainBank)
+	summary.CashBalance = financeAccountTypeDisplayBalance(accounts, transactions, financeAccountTypeCash)
+	summary.BankBalance = financeAccountTypeDisplayBalance(accounts, transactions, financeAccountTypeBank)
 	summary.TotalAvailableFunds = normalizeMoney(summary.CashBalance + summary.BankBalance)
 	for _, transaction := range transactions {
 		if !financeTransactionPosted(transaction) {

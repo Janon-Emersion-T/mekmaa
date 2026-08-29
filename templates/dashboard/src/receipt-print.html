@@ -21,6 +21,20 @@
     border-top: 1px dashed #0f172a;
   }
 
+  .receipt-brand-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .receipt-brand-logo {
+    width: 100%;
+    height: 2.75rem;
+    object-fit: contain;
+    object-position: center;
+  }
+
   .receipt-inline-row {
     display: flex;
     flex-wrap: wrap;
@@ -120,6 +134,10 @@
     }
 
     .receipt-logo {
+      filter: grayscale(1) contrast(1.2);
+    }
+
+    .receipt-brand-logo {
       filter: grayscale(1) contrast(1.2);
     }
 
