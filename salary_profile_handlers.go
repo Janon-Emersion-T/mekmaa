@@ -24,9 +24,9 @@ func (a *App) salaryProfileManagementHandler(
 
 	user, _ := a.currentUser(r.Context())
 
-	profiles, err := a.listStaffSalaryProfiles()
+	staff, err := a.listPayrollEligibleUsersVisibleTo(user)
 	if err != nil {
-		log.Printf("list salary profiles: %v", err)
+		log.Printf("list salary profile staff: %v", err)
 		http.Error(
 			w,
 			"internal server error",
@@ -35,9 +35,9 @@ func (a *App) salaryProfileManagementHandler(
 		return
 	}
 
-	staff, err := a.listAssignableGroupStaffByDivisionIDs(nil)
+	profiles, err := a.listStaffSalaryProfiles()
 	if err != nil {
-		log.Printf("list salary profile staff: %v", err)
+		log.Printf("list salary profiles: %v", err)
 		http.Error(
 			w,
 			"internal server error",
@@ -180,6 +180,63 @@ func (a *App) createSalaryProfileHandler(
 	actorUserID := int64(0)
 	if user != nil {
 		actorUserID = user.ID
+	}
+
+	selectedUser, err := a.findUserByID(profile.UserID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(
+				w,
+				"Selected staff member was not found.",
+			)
+		} else {
+			log.Printf("find salary profile staff %d: %v", profile.UserID, err)
+			a.setFlash(
+				w,
+				"Unable to validate the selected staff member.",
+			)
+		}
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/staff/salary-profiles",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	if !payrollEligibleUser(*selectedUser) {
+		a.setFlash(
+			w,
+			"Selected account is not eligible for staff payroll.",
+		)
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/staff/salary-profiles",
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	if user != nil &&
+		!canViewAllDivisions(user) &&
+		len(user.DivisionIDs) > 0 &&
+		!divisionSlicesOverlap(user.DivisionIDs, selectedUser.DivisionIDs) {
+		a.setFlash(
+			w,
+			"You do not have access to create salary profiles for that staff member.",
+		)
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/staff/salary-profiles",
+			http.StatusSeeOther,
+		)
+		return
 	}
 
 	_, err = a.createStaffSalaryProfile(

@@ -79,10 +79,15 @@
 
                         {{range .Users}}
                         <option value="{{.ID}}">
-                            {{.Name}} — {{.Email}}
+                            {{.Name}}{{if .Divisions}} — {{(index .Divisions 0).Name}}{{end}} — {{.Email}}
                         </option>
                         {{end}}
                     </select>
+
+                    <p class="mt-1.5 text-xs leading-5 text-slate-500">
+                        Includes academic and non-academic staff such as coaches, teachers,
+                        managers and shared corporate staff.
+                    </p>
                 </div>
 
                 <div>
@@ -147,7 +152,7 @@
                     </p>
                 </div>
 
-                <div>
+                <div data-programme-scope>
                     <label class="mb-1.5 block text-sm font-medium text-slate-700">
                         Training programme
                     </label>
@@ -164,9 +169,14 @@
                         </option>
                         {{end}}
                     </select>
+
+                    <p class="mt-1.5 text-xs leading-5 text-slate-500">
+                        Use this only when the salary component belongs to a specific class,
+                        programme or coaching stream.
+                    </p>
                 </div>
 
-                <div>
+                <div data-student-basis-scope>
                     <label class="mb-1.5 block text-sm font-medium text-slate-700">
                         Per-student calculation basis
                     </label>
@@ -427,4 +437,42 @@
         </section>
     </div>
 </div>
+
+<script>
+    (() => {
+        const form = document.getElementById("salary-profile-form");
+        if (!form) {
+            return;
+        }
+
+        const typeField = form.querySelector('select[name="compensation_type"]');
+        const programmeScope = form.querySelector("[data-programme-scope]");
+        const studentBasisScope = form.querySelector("[data-student-basis-scope]");
+        const programmeField = form.querySelector('select[name="training_program_id"]');
+        const studentBasisField = form.querySelector('select[name="student_basis"]');
+
+        const syncSalaryTypeFields = () => {
+            const isPerStudent = typeField && typeField.value === "per_student";
+
+            if (studentBasisScope) {
+                studentBasisScope.style.display = isPerStudent ? "" : "none";
+            }
+
+            if (studentBasisField) {
+                studentBasisField.disabled = !isPerStudent;
+            }
+
+            if (programmeScope) {
+                programmeScope.style.opacity = isPerStudent ? "1" : "0.85";
+            }
+
+            if (programmeField && !isPerStudent && typeField.value === "monthly") {
+                programmeField.value = "0";
+            }
+        };
+
+        syncSalaryTypeFields();
+        typeField?.addEventListener("change", syncSalaryTypeFields);
+    })();
+</script>
 {{end}}

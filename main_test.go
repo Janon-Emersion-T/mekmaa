@@ -9109,6 +9109,71 @@ func TestRequirePermissionBlocksUnauthorizedBookingAutoAcceptAndHold(t *testing.
 	}
 }
 
+func TestListPayrollEligibleUsersVisibleToIncludesNonAcademicStaff(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	corporateID, err := divisionIDByCode(app.db, divisionCodeCorporate)
+	if err != nil {
+		t.Fatalf("find corporate division: %v", err)
+	}
+
+	manager, err := app.createManagedUser(
+		"Operations Manager",
+		"manager@example.com",
+		"password-123",
+		[]string{"admin"},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("create manager: %v", err)
+	}
+
+	if err := app.replaceUserDivisions(manager.ID, []int64{corporateID}); err != nil {
+		t.Fatalf("assign manager division: %v", err)
+	}
+
+	customer, err := app.createManagedUser(
+		"Customer Only",
+		"customer-only@example.com",
+		"password-123",
+		[]string{"customer"},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("create customer: %v", err)
+	}
+
+	users, err := app.listPayrollEligibleUsersVisibleTo(&User{
+		ID:          1,
+		Name:        "Superadmin",
+		Roles:       []string{"superadmin"},
+		Permissions: allPermissions,
+		Verified:    true,
+	})
+	if err != nil {
+		t.Fatalf("list payroll eligible users: %v", err)
+	}
+
+	managerFound := false
+	customerFound := false
+	for _, listedUser := range users {
+		if listedUser.ID == manager.ID {
+			managerFound = true
+		}
+		if listedUser.ID == customer.ID {
+			customerFound = true
+		}
+	}
+
+	if !managerFound {
+		t.Fatalf("expected non-academic manager %d in payroll-eligible users", manager.ID)
+	}
+
+	if customerFound {
+		t.Fatalf("customer-only account %d should not be payroll-eligible", customer.ID)
+	}
+}
+
 func TestRunMigrationsPreservesExistingConfirmedBookingAndAutoAcceptDefaults(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:migration-compat-booking-test?mode=memory&cache=shared")
 	if err != nil {

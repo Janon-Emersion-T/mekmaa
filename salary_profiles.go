@@ -88,6 +88,20 @@ func validSalaryStudentBasis(value string) bool {
 	}
 }
 
+func payrollEligibleUser(user User) bool {
+	if user.ID <= 0 {
+		return false
+	}
+
+	for _, role := range user.Roles {
+		if !strings.EqualFold(strings.TrimSpace(role), "customer") {
+			return true
+		}
+	}
+
+	return len(user.DivisionIDs) > 0
+}
+
 func salaryTypeLabel(value string) string {
 	switch normalizeSalaryType(value) {
 	case SalaryTypeHourly:
@@ -299,6 +313,25 @@ func (a *App) listStaffSalaryProfiles() (
 	return profiles, rows.Err()
 }
 
+func (a *App) listPayrollEligibleUsersVisibleTo(
+	current *User,
+) ([]User, error) {
+	users, err := a.listUsersVisibleToManager(current)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]User, 0, len(users))
+	for _, user := range users {
+		if !payrollEligibleUser(user) {
+			continue
+		}
+		filtered = append(filtered, user)
+	}
+
+	return filtered, nil
+}
+
 func (a *App) findStaffSalaryProfileByID(
 	profileID int64,
 ) (*StaffSalaryProfile, error) {
@@ -366,6 +399,15 @@ func (a *App) createStaffSalaryProfile(
 
 	if exists == 0 {
 		return 0, errors.New("staff member was not found")
+	}
+
+	staff, err := a.findUserByID(profile.UserID)
+	if err != nil {
+		return 0, err
+	}
+
+	if !payrollEligibleUser(*staff) {
+		return 0, errors.New("selected account is not eligible for staff payroll")
 	}
 
 	if profile.DivisionID > 0 {
