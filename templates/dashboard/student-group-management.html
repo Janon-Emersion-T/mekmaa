@@ -258,6 +258,185 @@
         </div>
 
         <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
+          <div class="flex flex-col gap-4 border-b border-slate/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Actual sessions</h3>
+              <p class="mt-1 text-xs text-slate/55">Record dated session occurrences separately from the recurring timetable.</p>
+            </div>
+
+            <form method="get" action="/admin/student-groups" class="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <input type="hidden" name="division" value="{{.SelectedDivisionScope}}" />
+              <input type="hidden" name="action" value="view" />
+              <input type="hidden" name="id" value="{{.SelectedGroup.ID}}" />
+              <div>
+                <label for="occurrence-date" class="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate/50">Date</label>
+                <input id="occurrence-date" type="date" name="occurrence_date" value="{{.GroupSessionOccurrenceDate}}" min="{{.HistoricalStartDate}}" class="h-11 rounded-xl border border-slate/10 bg-white px-3 text-sm text-obsidian outline-none focus:border-aqua" />
+              </div>
+              <button type="submit" class="h-11 rounded-xl bg-aqua px-5 text-sm font-semibold text-obsidian transition hover:bg-mint">Load date</button>
+            </form>
+          </div>
+
+          <form action="/admin/student-groups/occurrences/save" method="post" class="mt-4 space-y-4 rounded-2xl border border-dashed border-slate/20 bg-white/85 p-4">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="division" value="{{.SelectedDivisionScope}}" />
+            <input type="hidden" name="group_id" value="{{.SelectedGroup.ID}}" />
+
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h4 class="text-sm font-semibold text-obsidian">Add actual session</h4>
+                <p class="mt-1 text-xs text-slate/55">Use Ad hoc / extra session when you intentionally need a second occurrence on the same date.</p>
+              </div>
+            </div>
+
+            <div class="grid gap-3 md:grid-cols-2">
+              <select name="timetable_session_id" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+                <option value="0">Ad hoc / no timetable session</option>
+                {{range .SelectedGroup.Sessions}}
+                <option value="{{.ID}}">{{.Title}} · {{.DayOfWeek}} · {{.StartTime}} to {{.EndTime}}</option>
+                {{end}}
+              </select>
+              <input type="date" name="occurrence_date" value="{{.GroupSessionOccurrenceDate}}" min="{{.HistoricalStartDate}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+              <input type="time" name="actual_start_time" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+              <input type="time" name="actual_end_time" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+              <select name="status" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+                <option value="scheduled">Scheduled</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <label class="flex items-center gap-3 rounded-2xl border border-slate/10 bg-cloud/60 px-4 py-3 text-sm text-slate">
+                <input type="checkbox" name="is_ad_hoc" value="1" class="h-4 w-4 rounded border-slate/300" />
+                Ad hoc / extra session
+              </label>
+            </div>
+
+            <textarea name="notes" rows="2" placeholder="Optional session notes" class="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua"></textarea>
+
+            <div class="space-y-3">
+              <div class="flex items-center justify-between gap-3">
+                <h5 class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/55">Staff participation</h5>
+                <p class="text-xs text-slate/50">{{len .AvailableGroupStaff}} available staff</p>
+              </div>
+              <div class="grid gap-3 xl:grid-cols-2">
+                {{range .AvailableGroupStaff}}
+                <div class="rounded-2xl border border-slate/10 bg-cloud/40 p-4">
+                  <input type="hidden" name="staff_user_id" value="{{.ID}}" />
+                  <p class="font-medium text-obsidian">{{.Name}}</p>
+                  <p class="mt-1 text-xs text-slate/60">{{.Email}}</p>
+                  <div class="mt-3 grid gap-3 md:grid-cols-2">
+                    <select name="staff_assignment_role" class="rounded-xl border border-slate/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-aqua">
+                      <option value="">Role</option>
+                      {{range $.GroupStaffRoles}}
+                      <option value="{{.Key}}">{{.Label}}</option>
+                      {{end}}
+                    </select>
+                    <select name="staff_work_status" class="rounded-xl border border-slate/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-aqua">
+                      <option value="">Not recorded</option>
+                      <option value="worked">Worked</option>
+                      <option value="absent">Absent</option>
+                      <option value="excused">Excused</option>
+                    </select>
+                  </div>
+                  <input type="text" name="staff_note" placeholder="Optional staff note" class="mt-3 w-full rounded-xl border border-slate/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-aqua" />
+                </div>
+                {{else}}
+                <p class="text-sm text-slate/60">No staff are available in this division yet.</p>
+                {{end}}
+              </div>
+            </div>
+
+            <div class="flex justify-end">
+              <button type="submit" class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save actual session</button>
+            </div>
+          </form>
+
+          <div class="mt-4 space-y-4">
+            {{range .GroupSessionOccurrences}}
+            {{$occurrence := .}}
+            <form action="/admin/student-groups/occurrences/save" method="post" class="rounded-2xl border border-slate/10 bg-white p-4">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+              <input type="hidden" name="division" value="{{$.SelectedDivisionScope}}" />
+              <input type="hidden" name="group_id" value="{{$.SelectedGroup.ID}}" />
+              <input type="hidden" name="occurrence_id" value="{{.ID}}" />
+
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h4 class="text-base font-semibold text-obsidian">{{if .TimetableSessionTitle}}{{.TimetableSessionTitle}}{{else}}Ad hoc session{{end}}</h4>
+                    <span class="rounded-full border border-slate/10 bg-cloud px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/60">{{groupSessionOccurrenceStatusLabel .Status}}</span>
+                    {{if .IsAdHoc}}<span class="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-amber-700">Ad hoc</span>{{end}}
+                  </div>
+                  <p class="mt-1 text-sm text-slate/60">{{.OccurrenceDate}}{{if .ActualStartTime}} · {{.ActualStartTime}}{{end}}{{if .ActualEndTime}} to {{.ActualEndTime}}{{end}}</p>
+                </div>
+                <button type="submit" class="inline-flex h-11 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Update session</button>
+              </div>
+
+              <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <select name="timetable_session_id" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+                  <option value="0">Ad hoc / no timetable session</option>
+                  {{range $.SelectedGroup.Sessions}}
+                  <option value="{{.ID}}" {{if eq $occurrence.TimetableSessionID .ID}}selected{{end}}>{{.Title}} · {{.DayOfWeek}} · {{.StartTime}} to {{.EndTime}}</option>
+                  {{end}}
+                </select>
+                <input type="date" name="occurrence_date" value="{{.OccurrenceDate}}" min="{{$.HistoricalStartDate}}" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+                <input type="time" name="actual_start_time" value="{{.ActualStartTime}}" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+                <input type="time" name="actual_end_time" value="{{.ActualEndTime}}" class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua" />
+                <select name="status" required class="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">
+                  <option value="scheduled" {{if eq .Status "scheduled"}}selected{{end}}>Scheduled</option>
+                  <option value="completed" {{if eq .Status "completed"}}selected{{end}}>Completed</option>
+                  <option value="cancelled" {{if eq .Status "cancelled"}}selected{{end}}>Cancelled</option>
+                </select>
+                <label class="flex items-center gap-3 rounded-2xl border border-slate/10 bg-cloud/60 px-4 py-3 text-sm text-slate">
+                  <input type="checkbox" name="is_ad_hoc" value="1" {{if .IsAdHoc}}checked{{end}} class="h-4 w-4 rounded border-slate/300" />
+                  Ad hoc / extra session
+                </label>
+              </div>
+
+              <textarea name="notes" rows="2" placeholder="Optional session notes" class="mt-3 w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm outline-none focus:border-aqua">{{.Notes}}</textarea>
+
+              <div class="mt-4 space-y-3">
+                <div class="flex items-center justify-between gap-3">
+                  <h5 class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/55">Staff participation</h5>
+                  <p class="text-xs text-slate/50">{{len .StaffAssignments}} recorded</p>
+                </div>
+                <div class="grid gap-3 xl:grid-cols-2">
+                  {{range $.AvailableGroupStaff}}
+                  {{$assignment := groupSessionParticipationForUser $.StaffAssignments .ID}}
+                  <div class="rounded-2xl border border-slate/10 bg-cloud/40 p-4">
+                    <input type="hidden" name="staff_user_id" value="{{.ID}}" />
+                    <p class="font-medium text-obsidian">{{.Name}}</p>
+                    <p class="mt-1 text-xs text-slate/60">{{.Email}}</p>
+                    <div class="mt-3 grid gap-3 md:grid-cols-2">
+                      <select name="staff_assignment_role" class="rounded-xl border border-slate/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-aqua">
+                        <option value="">Role</option>
+                        {{range $.GroupStaffRoles}}
+                        <option value="{{.Key}}" {{if and $assignment (eq $assignment.AssignmentRole .Key)}}selected{{end}}>{{.Label}}</option>
+                        {{end}}
+                      </select>
+                      <select name="staff_work_status" class="rounded-xl border border-slate/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-aqua">
+                        <option value="">Not recorded</option>
+                        <option value="worked" {{if and $assignment (eq $assignment.WorkStatus "worked")}}selected{{end}}>Worked</option>
+                        <option value="absent" {{if and $assignment (eq $assignment.WorkStatus "absent")}}selected{{end}}>Absent</option>
+                        <option value="excused" {{if and $assignment (eq $assignment.WorkStatus "excused")}}selected{{end}}>Excused</option>
+                      </select>
+                    </div>
+                    <input type="text" name="staff_note" value="{{if $assignment}}{{$assignment.Notes}}{{end}}" placeholder="Optional staff note" class="mt-3 w-full rounded-xl border border-slate/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-aqua" />
+                    {{if $assignment}}
+                    <p class="mt-2 text-xs text-slate/50">Current status: {{groupSessionParticipationStatusLabel $assignment.WorkStatus}}</p>
+                    {{end}}
+                  </div>
+                  {{else}}
+                  <p class="text-sm text-slate/60">No staff are available in this division yet.</p>
+                  {{end}}
+                </div>
+              </div>
+            </form>
+            {{else}}
+            <p class="rounded-2xl border border-dashed border-slate/15 bg-white/80 px-4 py-3 text-sm text-slate/60">No actual sessions recorded for {{.GroupSessionOccurrenceDate}}.</p>
+            {{end}}
+          </div>
+        </div>
+
+        <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
           <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Assigned staff</h3>
           <div class="mt-4 space-y-3">
             {{range .SelectedGroup.AssignedStaff}}

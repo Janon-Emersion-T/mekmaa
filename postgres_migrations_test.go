@@ -248,6 +248,68 @@ func TestPostgresMigrationDiscoveryIncludesStudentMonthlyPaymentAdjustments(t *t
 	}
 }
 
+func TestPostgresMigrationDiscoveryIncludesPayrollSessionFoundation(t *testing.T) {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		t.Fatalf("load PostgreSQL migrations: %v", err)
+	}
+
+	var found *postgresMigration
+	for i := range migrations {
+		if migrations[i].Version == 15 {
+			found = &migrations[i]
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("expected PostgreSQL migration 000015_payroll_session_foundation.sql")
+	}
+
+	if found.Filename != "000015_payroll_session_foundation.sql" {
+		t.Fatalf("migration 15 filename = %q, want %q", found.Filename, "000015_payroll_session_foundation.sql")
+	}
+
+	if found.Name != "payroll_session_foundation" {
+		t.Fatalf("migration 15 name = %q, want %q", found.Name, "payroll_session_foundation")
+	}
+
+	if found.Checksum == "" {
+		t.Fatal("migration 15 checksum must not be empty")
+	}
+}
+
+func TestPostgresMigrationDiscoveryIncludesPayrollPaymentCalculationDetails(t *testing.T) {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		t.Fatalf("load PostgreSQL migrations: %v", err)
+	}
+
+	var found *postgresMigration
+	for i := range migrations {
+		if migrations[i].Version == 16 {
+			found = &migrations[i]
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("expected PostgreSQL migration 000016_payroll_payment_calculation_details.sql")
+	}
+
+	if found.Filename != "000016_payroll_payment_calculation_details.sql" {
+		t.Fatalf("migration 16 filename = %q, want %q", found.Filename, "000016_payroll_payment_calculation_details.sql")
+	}
+
+	if found.Name != "payroll_payment_calculation_details" {
+		t.Fatalf("migration 16 name = %q, want %q", found.Name, "payroll_payment_calculation_details")
+	}
+
+	if found.Checksum == "" {
+		t.Fatal("migration 16 checksum must not be empty")
+	}
+}
+
 func TestPostgresMCPMigrationAppliesCleanly(t *testing.T) {
 	runPostgresMigrationHelper(t, "apply_all")
 }
@@ -370,13 +432,16 @@ func runPostgresMigrationHelperAction(action string) error {
 		"tournament_sponsorships",
 		"tournament_official_payments",
 		"tournament_expenses",
+		"student_group_session_occurrences",
+		"student_group_session_staff",
+		"payroll_payment_calculation_details",
 	} {
 		if err := postgresRelationMustExist(db, relation); err != nil {
 			return err
 		}
 	}
 
-	for _, version := range []int{6, 7, 9, 14} {
+	for _, version := range []int{6, 7, 9, 14, 15, 16} {
 		var appliedCount int
 
 		if err := db.QueryRow(`
@@ -401,6 +466,8 @@ func runPostgresMigrationHelperAction(action string) error {
 		7:  "one_to_one_session_attendance",
 		9:  "tournaments",
 		14: "student_monthly_payment_adjustments",
+		15: "payroll_session_foundation",
+		16: "payroll_payment_calculation_details",
 	}
 	for version, wantName := range expectedNames {
 		var migrationName string
@@ -449,10 +516,36 @@ func runPostgresMigrationHelperAction(action string) error {
 		{"tournament_expenses", "expense_type"},
 		{"student_monthly_payments", "discount_amount"},
 		{"student_monthly_payments", "adjustment_reason"},
+		{"student_group_session_occurrences", "timetable_session_id"},
+		{"student_group_session_occurrences", "occurrence_date"},
+		{"student_group_session_occurrences", "is_ad_hoc"},
+		{"student_group_session_staff", "assignment_role"},
+		{"student_group_session_staff", "work_status"},
+		{"payroll_payments", "finance_transaction_id"},
+		{"payroll_payment_calculation_details", "detail_type"},
+		{"payroll_payment_calculation_details", "source_type"},
+		{"payroll_payment_calculation_details", "amount_snapshot"},
 	} {
 		if err := postgresColumnMustExist(db, column.table, column.column); err != nil {
 			return err
 		}
+	}
+
+	if err := postgresConstraintMustExist(db, "payroll_payments_finance_transaction_id_fkey"); err != nil {
+		return err
+	}
+
+	for _, indexName := range []string{
+		"idx_student_group_session_occurrences_normal_unique",
+		"idx_finance_transactions_source_payroll_payment",
+	} {
+		if err := postgresRelationMustExist(db, indexName); err != nil {
+			return err
+		}
+	}
+
+	if err := postgresColumnMustBeNullable(db, "payroll_payments", "finance_transaction_id"); err != nil {
+		return err
 	}
 
 	return nil
@@ -506,6 +599,53 @@ func postgresColumnMustExist(
 			table,
 			column,
 		)
+	}
+
+	return nil
+}
+
+func postgresConstraintMustExist(
+	db *sql.DB,
+	constraintName string,
+) error {
+	var exists bool
+
+	if err := db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_constraint
+			WHERE conname = $1
+		)
+	`, constraintName).Scan(&exists); err != nil {
+		return err
+	}
+
+	if !exists {
+		return fmt.Errorf("expected PostgreSQL constraint %s to exist", constraintName)
+	}
+
+	return nil
+}
+
+func postgresColumnMustBeNullable(
+	db *sql.DB,
+	table string,
+	column string,
+) error {
+	var nullable string
+
+	if err := db.QueryRow(`
+		SELECT is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = $1
+		  AND column_name = $2
+	`, table, column).Scan(&nullable); err != nil {
+		return err
+	}
+
+	if nullable != "YES" {
+		return fmt.Errorf("expected PostgreSQL column %s.%s to remain nullable", table, column)
 	}
 
 	return nil

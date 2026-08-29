@@ -61,6 +61,8 @@ type PayrollRun struct {
 	AdditionsTotal  float64
 	DeductionsTotal float64
 	NetTotal        float64
+	PaidTotal       float64
+	OutstandingTotal float64
 }
 
 type PayrollPayment struct {
@@ -107,6 +109,7 @@ type PayrollPayment struct {
 	UpdatedAt time.Time
 
 	Adjustments []PayrollAdjustment
+	CalculationDetails []PayrollPaymentCalculationDetail
 }
 
 type PayrollAdjustment struct {
@@ -123,6 +126,26 @@ type PayrollAdjustment struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type PayrollPaymentCalculationDetail struct {
+	ID int64
+
+	PayrollPaymentID int64
+
+	DetailType string
+	SourceType string
+	SourceID   int64
+
+	Label      string
+	DetailNote string
+
+	Quantity       float64
+	RateSnapshot   float64
+	AmountSnapshot float64
+
+	SortOrder int
+	CreatedAt time.Time
 }
 
 func payrollAdjustmentTypeLabel(value string) string {
@@ -174,6 +197,82 @@ func validPayrollDirection(value string) bool {
 	}
 }
 
+func isCalendarMonthPeriod(start, end time.Time) bool {
+	if start.Day() != 1 {
+		return false
+	}
+	return end.Equal(start.AddDate(0, 1, 0).AddDate(0, 0, -1))
+}
+
+func payrollUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique") ||
+		strings.Contains(message, "duplicate key")
+}
+
+func payrollRunAllowsGenerate(run *PayrollRun) bool {
+	return run != nil &&
+		run.Status == PayrollRunStatusDraft &&
+		run.StaffCount == 0
+}
+
+func payrollRunAllowsRecalculate(run *PayrollRun) bool {
+	return run != nil &&
+		len(run.Payments) > 0 &&
+		(run.Status == PayrollRunStatusDraft ||
+			run.Status == PayrollRunStatusCalculated)
+}
+
+func payrollRunAllowsApprove(run *PayrollRun) bool {
+	return run != nil &&
+		run.Status == PayrollRunStatusCalculated &&
+		len(run.Payments) > 0
+}
+
+func payrollRunAllowsClose(run *PayrollRun) bool {
+	if run == nil || run.Status != PayrollRunStatusApproved || len(run.Payments) == 0 {
+		return false
+	}
+	for _, payment := range run.Payments {
+		switch payment.Status {
+		case PayrollPaymentStatusPaid, PayrollPaymentStatusVoid:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func payrollPaymentAllowsAdjustments(payment PayrollPayment) bool {
+	switch payment.Status {
+	case PayrollPaymentStatusDraft, PayrollPaymentStatusCalculated:
+		return true
+	default:
+		return false
+	}
+}
+
+func payrollPaymentAllowsPay(payment PayrollPayment) bool {
+	return payment.Status == PayrollPaymentStatusApproved &&
+		payment.NetAmount > 0 &&
+		payment.FinanceTransactionID <= 0
+}
+
+func payrollPaymentAllowsVoid(payment PayrollPayment) bool {
+	return payment.Status == PayrollPaymentStatusPaid &&
+		payment.FinanceTransactionID > 0
+}
+
+func payrollPaymentReferenceCode(payment PayrollPayment) string {
+	if payment.ID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("PAY-%06d", payment.ID)
+}
+
 func (a *App) createPayrollRun(
 	periodStart,
 	periodEnd,
@@ -198,6 +297,37 @@ func (a *App) createPayrollRun(
 		return 0, errors.New(
 			"payroll end date cannot be before start date",
 		)
+	}
+
+	var exactCount int
+	if err := a.queryRowDB(
+		`SELECT COUNT(*) FROM payroll_runs WHERE period_start = ? AND period_end = ?`,
+		periodStart,
+		periodEnd,
+	).Scan(&exactCount); err != nil {
+		return 0, err
+	}
+	if exactCount > 0 {
+		return 0, errors.New("a payroll run already exists for this exact period")
+	}
+
+	if isCalendarMonthPeriod(start, end) {
+		var overlapCount int
+		if err := a.queryRowDB(
+			`
+			SELECT COUNT(*)
+			FROM payroll_runs
+			WHERE period_start <= ?
+			  AND period_end >= ?
+			`,
+			periodEnd,
+			periodStart,
+		).Scan(&overlapCount); err != nil {
+			return 0, err
+		}
+		if overlapCount > 0 {
+			return 0, errors.New("a payroll run already overlaps this calendar month")
+		}
 	}
 
 	if label == "" {
@@ -236,6 +366,9 @@ func (a *App) createPayrollRun(
 			now,
 		).Scan(&runID)
 
+		if payrollUniqueConstraintError(err) {
+			return 0, errors.New("a payroll run already exists for this exact period")
+		}
 		return runID, err
 	}
 
@@ -261,6 +394,9 @@ func (a *App) createPayrollRun(
 		now,
 	)
 	if err != nil {
+		if payrollUniqueConstraintError(err) {
+			return 0, errors.New("a payroll run already exists for this exact period")
+		}
 		return 0, err
 	}
 
@@ -284,7 +420,9 @@ func (a *App) listPayrollRuns() ([]PayrollRun, error) {
 			COALESCE(SUM(pp.base_amount), 0),
 			COALESCE(SUM(pp.additions_total), 0),
 			COALESCE(SUM(pp.deductions_total), 0),
-			COALESCE(SUM(pp.net_amount), 0)
+			COALESCE(SUM(pp.net_amount), 0),
+			COALESCE(SUM(CASE WHEN pp.status = 'paid' THEN pp.net_amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN pp.status IN ('draft', 'calculated', 'approved') THEN pp.net_amount ELSE 0 END), 0)
 		FROM payroll_runs pr
 		LEFT JOIN payroll_payments pp
 			ON pp.payroll_run_id = pr.id
@@ -329,6 +467,8 @@ func (a *App) listPayrollRuns() ([]PayrollRun, error) {
 			&run.AdditionsTotal,
 			&run.DeductionsTotal,
 			&run.NetTotal,
+			&run.PaidTotal,
+			&run.OutstandingTotal,
 		); err != nil {
 			return nil, err
 		}
@@ -579,6 +719,11 @@ func (a *App) findPayrollRunByID(
 		run.AdditionsTotal += payment.AdditionsTotal
 		run.DeductionsTotal += payment.DeductionsTotal
 		run.NetTotal += payment.NetAmount
+		if payment.Status == PayrollPaymentStatusPaid {
+			run.PaidTotal += payment.NetAmount
+		} else {
+			run.OutstandingTotal += payment.NetAmount
+		}
 	}
 
 	return &run, nil
@@ -678,18 +823,30 @@ func (a *App) listPayrollPaymentsForRun(
 			payment.PaidAt = paidAt.Time
 		}
 
-		adjustments, err :=
-			a.listPayrollAdjustments(payment.ID)
+		payments = append(payments, payment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for index := range payments {
+		adjustments, err := a.listPayrollAdjustments(payments[index].ID)
 		if err != nil {
 			return nil, err
 		}
+		payments[index].Adjustments = adjustments
 
-		payment.Adjustments = adjustments
-
-		payments = append(payments, payment)
+		details, err := a.listPayrollPaymentCalculationDetails(payments[index].ID)
+		if err != nil {
+			return nil, err
+		}
+		payments[index].CalculationDetails = details
 	}
 
-	return payments, rows.Err()
+	return payments, nil
 }
 
 func (a *App) listPayrollAdjustments(
@@ -791,6 +948,9 @@ func (a *App) calculatePayrollProfileQuantity(
 	case SalaryTypeMonthly:
 		return 1, "month", nil
 
+	case SalaryTypeDaily:
+		return 0, "days - manual entry required", nil
+
 	case SalaryTypeWeekly:
 		days := int(end.Sub(start).Hours()/24) + 1
 		return float64(days) / 7.0, "weeks", nil
@@ -804,6 +964,9 @@ func (a *App) calculatePayrollProfileQuantity(
 			periodStart,
 			periodEnd,
 		)
+
+	case SalaryTypePerSession:
+		return 0, "sessions - manual entry required", nil
 
 	default:
 		return 0, "", errors.New("unsupported salary type")
@@ -1018,168 +1181,11 @@ func (a *App) generatePayrollRunPayments(
 		)
 	}
 
-	var existingCount int
-
-	if err := a.queryRowDB(
-		`
-		SELECT COUNT(*)
-		FROM payroll_payments
-		WHERE payroll_run_id = ?
-		`,
-		runID,
-	).Scan(&existingCount); err != nil {
-		return err
-	}
-
-	if existingCount > 0 {
-		return errors.New(
-			"payroll has already been generated for this period",
-		)
-	}
-
-	profiles, err := a.listStaffSalaryProfiles()
-	if err != nil {
-		return err
-	}
-
-	applicable := make(
-		[]StaffSalaryProfile,
-		0,
-		len(profiles),
+	return a.syncPayrollRunPayments(
+		*run,
+		actorUserID,
+		false,
 	)
-
-	for _, profile := range profiles {
-		if salaryProfileAppliesToPayrollPeriod(
-			profile,
-			run.PeriodStart,
-			run.PeriodEnd,
-		) {
-			applicable = append(
-				applicable,
-				profile,
-			)
-		}
-	}
-
-	if len(applicable) == 0 {
-		return errors.New(
-			"no active salary profiles apply to this payroll period",
-		)
-	}
-
-	tx, err := a.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	now := time.Now().UTC()
-
-	for _, profile := range applicable {
-		quantity, quantityLabel, err :=
-			a.calculatePayrollProfileQuantity(
-				profile,
-				run.PeriodStart,
-				run.PeriodEnd,
-			)
-		if err != nil {
-			return fmt.Errorf(
-				"calculate salary for %s: %w",
-				profile.UserName,
-				err,
-			)
-		}
-
-		baseAmount :=
-			profile.Rate * quantity
-
-		paymentStatus :=
-			PayrollPaymentStatusCalculated
-
-		notes := strings.TrimSpace(profile.Notes)
-
-		if normalizeSalaryType(
-			profile.CompensationType,
-		) == SalaryTypeHourly {
-			paymentStatus =
-				PayrollPaymentStatusDraft
-
-			if notes != "" {
-				notes += "\n"
-			}
-
-			notes +=
-				"Hourly quantity requires manual approval before salary payment."
-		}
-
-		_, err = a.execTxDB(
-			tx,
-			`
-			INSERT INTO payroll_payments (
-				payroll_run_id,
-				user_id,
-				salary_profile_id,
-				division_id,
-				training_program_id,
-				compensation_type,
-				rate_snapshot,
-				quantity,
-				quantity_label,
-				base_amount,
-				additions_total,
-				deductions_total,
-				net_amount,
-				status,
-				notes,
-				created_at,
-				updated_at
-			)
-			VALUES (
-				?, ?, ?, ?, ?, ?, ?, ?, ?,
-				?, 0, 0, ?, ?, ?, ?, ?
-			)
-			`,
-			runID,
-			profile.UserID,
-			profile.ID,
-			nullIfZero(profile.DivisionID),
-			nullIfZero(profile.TrainingProgramID),
-			normalizeSalaryType(
-				profile.CompensationType,
-			),
-			profile.Rate,
-			quantity,
-			quantityLabel,
-			baseAmount,
-			baseAmount,
-			paymentStatus,
-			notes,
-			now,
-			now,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	_, err = a.execTxDB(
-		tx,
-		`
-		UPDATE payroll_runs
-		SET
-			status = ?,
-			updated_at = ?
-		WHERE id = ?
-		`,
-		PayrollRunStatusCalculated,
-		now,
-		runID,
-	)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
 }
 
 func (a *App) updatePayrollPaymentQuantity(
@@ -1233,13 +1239,46 @@ func (a *App) updatePayrollPaymentQuantity(
 		)
 	}
 
-	if normalizeSalaryType(compensationType) != SalaryTypeHourly {
+	quantityLabel := ""
+	switch normalizeSalaryType(compensationType) {
+	case SalaryTypeHourly, SalaryTypeDaily:
+	default:
+		if err := a.queryRowTxDB(
+			tx,
+			`
+			SELECT COALESCE(quantity_label, '')
+			FROM payroll_payments
+			WHERE id = ?
+			`,
+			paymentID,
+		).Scan(&quantityLabel); err != nil {
+			return err
+		}
+	}
+
+	if !payrollPaymentAllowsManualQuantity(PayrollPayment{
+		Status:        status,
+		CompensationType: compensationType,
+		QuantityLabel: quantityLabel,
+	}) {
 		return errors.New(
-			"manual quantity editing is currently allowed only for hourly salary profiles",
+			"manual quantity editing is currently allowed only for payroll rows that require manual entry",
 		)
 	}
 
 	baseAmount := rate * quantity
+
+	quantityLabel = "approved quantity"
+	switch normalizeSalaryType(compensationType) {
+	case SalaryTypeHourly:
+		quantityLabel = "approved hours"
+	case SalaryTypeDaily:
+		quantityLabel = "approved days"
+	case SalaryTypePerSession:
+		quantityLabel = "approved sessions"
+	case SalaryTypePerStudent:
+		quantityLabel = "approved students"
+	}
 
 	if _, err := a.execTxDB(
 		tx,
@@ -1254,7 +1293,7 @@ func (a *App) updatePayrollPaymentQuantity(
 		WHERE id = ?
 		`,
 		quantity,
-		"approved hours",
+		quantityLabel,
 		baseAmount,
 		PayrollPaymentStatusCalculated,
 		time.Now().UTC(),
@@ -1376,26 +1415,31 @@ func (a *App) approvePayrollRun(
 	if status == PayrollRunStatusClosed {
 		return errors.New("closed payroll cannot be approved")
 	}
+	if status == PayrollRunStatusDraft {
+		return errors.New("calculate payroll before approval")
+	}
 
 	var paymentCount int
-	var incompleteCount int
+	var draftCount int
+	var unresolvedCount int
 
 	if err := a.queryRowTxDB(
 		tx,
 		`
 		SELECT
 			COUNT(*),
+			COUNT(*) FILTER (WHERE status = 'draft'),
 			COUNT(*) FILTER (
-				WHERE status <> 'calculated'
+				WHERE status NOT IN ('calculated', 'void')
 			)
 		FROM payroll_payments
 		WHERE payroll_run_id = ?
-		  AND status <> 'void'
 		`,
 		runID,
 	).Scan(
 		&paymentCount,
-		&incompleteCount,
+		&draftCount,
+		&unresolvedCount,
 	); err != nil {
 		return err
 	}
@@ -1406,7 +1450,13 @@ func (a *App) approvePayrollRun(
 		)
 	}
 
-	if incompleteCount > 0 {
+	if draftCount > 0 {
+		return errors.New(
+			"complete all manual salary quantities before approval",
+		)
+	}
+
+	if unresolvedCount > 0 {
 		return errors.New(
 			"all salary rows must be calculated before payroll approval",
 		)
@@ -1469,6 +1519,14 @@ func (a *App) payPayrollPayment(
 		return errors.New("finance account is required")
 	}
 
+	categoryExists, err := a.financeCategoryExists("expense", "staff_salary_expense", true)
+	if err != nil {
+		return err
+	}
+	if !categoryExists {
+		return errors.New("finance category staff_salary_expense is missing or inactive")
+	}
+
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
@@ -1476,7 +1534,6 @@ func (a *App) payPayrollPayment(
 	defer tx.Rollback()
 
 	var (
-		runID             int64
 		userID            int64
 		userName          string
 		divisionID        int64
@@ -1489,7 +1546,6 @@ func (a *App) payPayrollPayment(
 		tx,
 		`
 		SELECT
-			pp.payroll_run_id,
 			pp.user_id,
 			COALESCE(u.name, ''),
 			COALESCE(pp.division_id, 0),
@@ -1503,7 +1559,6 @@ func (a *App) payPayrollPayment(
 		`,
 		paymentID,
 	).Scan(
-		&runID,
 		&userID,
 		&userName,
 		&divisionID,
@@ -1602,6 +1657,24 @@ func (a *App) payPayrollPayment(
 		},
 	)
 	if err != nil {
+		if payrollUniqueConstraintError(err) {
+			var linkedID int64
+			queryErr := a.queryRowTxDB(
+				tx,
+				`
+				SELECT id
+				FROM finance_transactions
+				WHERE source_type = 'payroll_payment'
+				  AND source_id = ?
+				ORDER BY id ASC
+				LIMIT 1
+				`,
+				paymentID,
+			).Scan(&linkedID)
+			if queryErr == nil && linkedID > 0 {
+				return errors.New("salary payment was already recorded")
+			}
+		}
 		return err
 	}
 
@@ -1631,40 +1704,149 @@ func (a *App) payPayrollPayment(
 		return err
 	}
 
-	var unpaidCount int
+	_ = userID
 
+	return tx.Commit()
+}
+
+func (a *App) closePayrollRun(
+	runID int64,
+	actorUserID int64,
+) error {
+	if runID <= 0 {
+		return errors.New("invalid payroll run")
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var status string
+	if err := a.queryRowTxDB(
+		tx,
+		`SELECT status FROM payroll_runs WHERE id = ?`,
+		runID,
+	).Scan(&status); err != nil {
+		return err
+	}
+	if status == PayrollRunStatusClosed {
+		return errors.New("payroll is already closed")
+	}
+	if status != PayrollRunStatusApproved {
+		return errors.New("only approved payroll can be closed")
+	}
+
+	var paymentCount int
+	var unresolvedCount int
 	if err := a.queryRowTxDB(
 		tx,
 		`
-		SELECT COUNT(*)
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE status NOT IN ('paid', 'void'))
 		FROM payroll_payments
 		WHERE payroll_run_id = ?
-		  AND status NOT IN ('paid', 'void')
 		`,
 		runID,
-	).Scan(&unpaidCount); err != nil {
+	).Scan(&paymentCount, &unresolvedCount); err != nil {
+		return err
+	}
+	if paymentCount == 0 {
+		return errors.New("generate payroll before closing")
+	}
+	if unresolvedCount > 0 {
+		return errors.New("all salary payments must be paid or void before closing payroll")
+	}
+
+	if _, err := a.execTxDB(
+		tx,
+		`
+		UPDATE payroll_runs
+		SET
+			status = ?,
+			updated_at = ?
+		WHERE id = ?
+		`,
+		PayrollRunStatusClosed,
+		time.Now().UTC(),
+		runID,
+	); err != nil {
 		return err
 	}
 
-	if unpaidCount == 0 {
-		if _, err := a.execTxDB(
-			tx,
-			`
-			UPDATE payroll_runs
-			SET
-				status = ?,
-				updated_at = ?
-			WHERE id = ?
-			`,
-			PayrollRunStatusClosed,
-			now,
-			runID,
-		); err != nil {
-			return err
-		}
+	_ = actorUserID
+	return tx.Commit()
+}
+
+func (a *App) voidPayrollPayment(
+	paymentID int64,
+	reason string,
+	actorUserID int64,
+) error {
+	if paymentID <= 0 {
+		return errors.New("invalid salary payment")
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("void reason is required")
 	}
 
-	_ = userID
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var status string
+	var financeTransactionID int64
+	var existingNotes string
+	if err := a.queryRowTxDB(
+		tx,
+		`
+		SELECT
+			status,
+			COALESCE(finance_transaction_id, 0),
+			COALESCE(notes, '')
+		FROM payroll_payments
+		WHERE id = ?
+		`,
+		paymentID,
+	).Scan(&status, &financeTransactionID, &existingNotes); err != nil {
+		return err
+	}
+	if status == PayrollPaymentStatusVoid {
+		return errors.New("salary payment is already void")
+	}
+	if status != PayrollPaymentStatusPaid {
+		return errors.New("only paid salary payments can be voided")
+	}
+	if financeTransactionID <= 0 {
+		return errors.New("paid salary payment is missing its finance transaction")
+	}
+
+	if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, actorUserID); err != nil {
+		return err
+	}
+
+	if _, err := a.execTxDB(
+		tx,
+		`
+		UPDATE payroll_payments
+		SET
+			status = ?,
+			notes = ?,
+			updated_at = ?
+		WHERE id = ?
+		`,
+		PayrollPaymentStatusVoid,
+		appendPayrollCalculationNote(existingNotes, "Payment voided: "+reason),
+		time.Now().UTC(),
+		paymentID,
+	); err != nil {
+		return err
+	}
 
 	return tx.Commit()
 }
@@ -1766,6 +1948,12 @@ func (a *App) findPayrollPaymentByID(
 	}
 
 	payment.Adjustments = adjustments
+
+	details, err := a.listPayrollPaymentCalculationDetails(payment.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	payment.CalculationDetails = details
 
 	run, err := a.findPayrollRunByID(payment.PayrollRunID)
 	if err != nil {

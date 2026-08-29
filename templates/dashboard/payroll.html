@@ -103,13 +103,45 @@
 
     <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div class="border-b border-slate-200 px-5 py-4">
-        <h2 class="text-base font-semibold text-slate-950">
-          Payroll history
-        </h2>
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 class="text-base font-semibold text-slate-950">
+              Payroll history
+            </h2>
 
-        <p class="mt-1 text-sm text-slate-500">
-          {{len .PayrollRuns}} payroll periods
-        </p>
+            <p class="mt-1 text-sm text-slate-500">
+              {{len .PayrollRuns}} payroll periods
+            </p>
+          </div>
+
+          <form method="get" action="/admin/payroll" class="grid gap-3 sm:grid-cols-[180px_160px_auto]">
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Status</label>
+              <select name="status" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                <option value="">All statuses</option>
+                <option value="draft" {{if eq .SelectedPayrollStatus "draft"}}selected{{end}}>Draft</option>
+                <option value="calculated" {{if eq .SelectedPayrollStatus "calculated"}}selected{{end}}>Calculated</option>
+                <option value="approved" {{if eq .SelectedPayrollStatus "approved"}}selected{{end}}>Approved</option>
+                <option value="closed" {{if eq .SelectedPayrollStatus "closed"}}selected{{end}}>Closed</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Year</label>
+              <select name="year" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                <option value="">All years</option>
+                {{range .PayrollRunYears}}
+                <option value="{{.}}" {{if eq $.SelectedPayrollYear .}}selected{{end}}>{{.}}</option>
+                {{end}}
+              </select>
+            </div>
+
+            <div class="flex items-end gap-2">
+              <button type="submit" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Filter</button>
+              <a href="/admin/payroll" class="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-500 hover:bg-slate-50">Reset</a>
+            </div>
+          </form>
+        </div>
       </div>
 
       {{if .PayrollRuns}}
@@ -123,6 +155,14 @@
 
               <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Staff
+              </th>
+
+              <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Paid
+              </th>
+
+              <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Outstanding
               </th>
 
               <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -143,6 +183,14 @@
 
               <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Status
+              </th>
+
+              <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Dates
+              </th>
+
+              <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Actions
               </th>
             </tr>
           </thead>
@@ -167,6 +215,14 @@
                 {{.StaffCount}}
               </td>
 
+              <td class="px-5 py-4 text-right font-medium text-emerald-700">
+                {{money .PaidTotal}}
+              </td>
+
+              <td class="px-5 py-4 text-right font-medium text-amber-700">
+                {{money .OutstandingTotal}}
+              </td>
+
               <td class="px-5 py-4 text-right text-slate-700">
                 {{money .BaseTotal}}
               </td>
@@ -187,6 +243,47 @@
                 <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                   {{.Status}}
                 </span>
+              </td>
+
+              <td class="px-5 py-4 text-xs text-slate-500">
+                <div>Created {{formatDateTime .CreatedAt}}</div>
+                {{if not .ApprovedAt.IsZero}}
+                <div class="mt-1">Approved {{formatDateTime .ApprovedAt}}</div>
+                {{end}}
+              </td>
+
+              <td class="px-5 py-4">
+                <div class="flex flex-wrap justify-end gap-2">
+                  <a href="/admin/payroll/run?id={{.ID}}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
+                  {{if payrollRunAllowsGenerate .}}
+                  <form method="post" action="/admin/payroll/generate">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <button type="submit" class="rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white">Calculate</button>
+                  </form>
+                  {{end}}
+                  {{if payrollRunAllowsRecalculate .}}
+                  <form method="post" action="/admin/payroll/recalculate">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Recalculate</button>
+                  </form>
+                  {{end}}
+                  {{if payrollRunAllowsApprove .}}
+                  <form method="post" action="/admin/payroll/approve">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <button type="submit" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white">Approve</button>
+                  </form>
+                  {{end}}
+                  {{if payrollRunAllowsClose .}}
+                  <form method="post" action="/admin/payroll/close">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">Close</button>
+                  </form>
+                  {{end}}
+                </div>
               </td>
             </tr>
             {{end}}

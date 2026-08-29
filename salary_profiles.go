@@ -9,9 +9,11 @@ import (
 
 const (
 	SalaryTypeHourly     = "hourly"
+	SalaryTypeDaily      = "daily"
 	SalaryTypeWeekly     = "weekly"
 	SalaryTypeMonthly    = "monthly"
 	SalaryTypePerStudent = "per_student"
+	SalaryTypePerSession = "per_session"
 )
 
 const (
@@ -58,9 +60,11 @@ func normalizeSalaryType(value string) string {
 func validSalaryType(value string) bool {
 	switch normalizeSalaryType(value) {
 	case SalaryTypeHourly,
+		SalaryTypeDaily,
 		SalaryTypeWeekly,
 		SalaryTypeMonthly,
-		SalaryTypePerStudent:
+		SalaryTypePerStudent,
+		SalaryTypePerSession:
 		return true
 	default:
 		return false
@@ -106,12 +110,16 @@ func salaryTypeLabel(value string) string {
 	switch normalizeSalaryType(value) {
 	case SalaryTypeHourly:
 		return "Per hour"
+	case SalaryTypeDaily:
+		return "Per day"
 	case SalaryTypeWeekly:
 		return "Per week"
 	case SalaryTypeMonthly:
 		return "Per month"
 	case SalaryTypePerStudent:
 		return "Per student"
+	case SalaryTypePerSession:
+		return "Per session"
 	default:
 		return strings.TrimSpace(value)
 	}
@@ -191,6 +199,51 @@ func validateStaffSalaryProfile(profile StaffSalaryProfile) error {
 	}
 
 	return nil
+}
+
+func salaryProfilesOverlap(fromA, toA, fromB, toB string) bool {
+	endA := strings.TrimSpace(toA)
+	if endA == "" {
+		endA = "9999-12-31"
+	}
+	endB := strings.TrimSpace(toB)
+	if endB == "" {
+		endB = "9999-12-31"
+	}
+
+	startA := strings.TrimSpace(fromA)
+	startB := strings.TrimSpace(fromB)
+	return startA <= endB && startB <= endA
+}
+
+func salaryProfileConflictMessage(profile StaffSalaryProfile) string {
+	switch normalizeSalaryType(profile.CompensationType) {
+	case SalaryTypePerStudent:
+		return "an overlapping active per-student salary profile already exists for this staff member and programme scope"
+	case SalaryTypePerSession:
+		return "an overlapping active per-session salary profile already exists for this staff member and programme scope"
+	case SalaryTypeMonthly:
+		return "an overlapping active monthly salary profile already exists for this staff member and scope"
+	default:
+		return "an overlapping active salary profile already exists for this staff member with the same scope and compensation type"
+	}
+}
+
+func salaryProfilesConflict(a, b StaffSalaryProfile) bool {
+	if a.UserID != b.UserID {
+		return false
+	}
+	if normalizeSalaryType(a.CompensationType) != normalizeSalaryType(b.CompensationType) {
+		return false
+	}
+	if a.DivisionID != b.DivisionID || a.TrainingProgramID != b.TrainingProgramID {
+		return false
+	}
+	if normalizeSalaryType(a.CompensationType) == SalaryTypePerStudent &&
+		normalizeSalaryStudentBasis(a.StudentBasis) != normalizeSalaryStudentBasis(b.StudentBasis) {
+		return false
+	}
+	return salaryProfilesOverlap(a.EffectiveFrom, a.EffectiveTo, b.EffectiveFrom, b.EffectiveTo)
 }
 
 func scanStaffSalaryProfile(
@@ -460,6 +513,26 @@ func (a *App) createStaffSalaryProfile(
 		studentBasis = SalaryStudentBasisActiveEnrollment
 	}
 
+	profile.CompensationType = normalizeSalaryType(profile.CompensationType)
+	profile.StudentBasis = studentBasis
+	profile.EffectiveFrom = strings.TrimSpace(profile.EffectiveFrom)
+	profile.EffectiveTo = strings.TrimSpace(profile.EffectiveTo)
+
+	if profile.Active {
+		existingProfiles, err := a.listStaffSalaryProfiles()
+		if err != nil {
+			return 0, err
+		}
+		for _, existing := range existingProfiles {
+			if !existing.Active {
+				continue
+			}
+			if salaryProfilesConflict(profile, existing) {
+				return 0, errors.New(salaryProfileConflictMessage(profile))
+			}
+		}
+	}
+
 	profileID, err := a.insertAndReturnID(
 		`
 		INSERT INTO staff_salary_profiles (
@@ -500,4 +573,60 @@ func (a *App) createStaffSalaryProfile(
 	}
 
 	return profileID, nil
+}
+
+func (a *App) setStaffSalaryProfileActive(
+	profileID int64,
+	active bool,
+	actorUserID int64,
+) error {
+	if profileID <= 0 {
+		return errors.New("invalid salary profile")
+	}
+
+	profile, err := a.findStaffSalaryProfileByID(profileID)
+	if err != nil {
+		return err
+	}
+
+	if active && !profile.Active {
+		existingProfiles, err := a.listStaffSalaryProfiles()
+		if err != nil {
+			return err
+		}
+		for _, existing := range existingProfiles {
+			if existing.ID == profile.ID || !existing.Active {
+				continue
+			}
+			if salaryProfilesConflict(*profile, existing) {
+				return errors.New(salaryProfileConflictMessage(*profile))
+			}
+		}
+	}
+
+	result, err := a.execDB(
+		`
+		UPDATE staff_salary_profiles
+		SET
+			active = ?,
+			updated_by_user_id = ?,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+		`,
+		boolToInt(active),
+		nullIfZero(actorUserID),
+		profileID,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }

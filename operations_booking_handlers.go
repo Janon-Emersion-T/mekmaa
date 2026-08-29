@@ -205,6 +205,23 @@ func (a *App) studentGroupManagementHandler(w http.ResponseWriter, r *http.Reque
 						}
 					}
 				}
+
+				if len(data.GroupStaffRoles) == 0 {
+					data.GroupStaffRoles = allGroupStaffRoleOptions()
+				}
+
+				data.GroupSessionOccurrenceDate = loadStudentGroupOccurrenceDate(r)
+
+				occurrences, occurrenceErr := a.listStudentGroupSessionOccurrencesByGroupAndDate(
+					selectedGroup.ID,
+					data.GroupSessionOccurrenceDate,
+				)
+				if occurrenceErr != nil {
+					log.Printf("list group session occurrences: %v", occurrenceErr)
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+				data.GroupSessionOccurrences = occurrences
 			}
 		}
 	}

@@ -24,7 +24,25 @@
     </a>
   </div>
 
-  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-8">
+
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Payroll period
+      </div>
+      <div class="mt-2 text-sm font-semibold text-slate-950">
+        {{.PayrollRun.PeriodStart}} → {{.PayrollRun.PeriodEnd}}
+      </div>
+    </div>
+
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Run status
+      </div>
+      <div class="mt-2 text-2xl font-semibold text-slate-950">
+        {{.PayrollRun.Status}}
+      </div>
+    </div>
 
     <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -71,6 +89,24 @@
       </div>
     </div>
 
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Paid
+      </div>
+      <div class="mt-2 text-xl font-semibold text-emerald-700">
+        {{money .PayrollRun.PaidTotal}}
+      </div>
+    </div>
+
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Outstanding
+      </div>
+      <div class="mt-2 text-xl font-semibold text-amber-700">
+        {{money .PayrollRun.OutstandingTotal}}
+      </div>
+    </div>
+
   </div>
 
   <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -87,7 +123,8 @@
           </p>
         </div>
 
-        {{if eq .PayrollRun.StaffCount 0}}
+        <div class="flex flex-wrap gap-2">
+        {{if payrollRunAllowsGenerate .PayrollRun}}
         <form
           method="post"
           action="/admin/payroll/generate"
@@ -112,6 +149,34 @@
           </button>
         </form>
         {{end}}
+        {{if payrollRunAllowsRecalculate .PayrollRun}}
+        <form method="post" action="/admin/payroll/recalculate">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <input type="hidden" name="id" value="{{.PayrollRun.ID}}">
+          <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            Recalculate payroll
+          </button>
+        </form>
+        {{end}}
+        {{if payrollRunAllowsApprove .PayrollRun}}
+        <form method="post" action="/admin/payroll/approve">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <input type="hidden" name="id" value="{{.PayrollRun.ID}}">
+          <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">
+            Approve payroll
+          </button>
+        </form>
+        {{end}}
+        {{if payrollRunAllowsClose .PayrollRun}}
+        <form method="post" action="/admin/payroll/close">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <input type="hidden" name="id" value="{{.PayrollRun.ID}}">
+          <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
+            Close payroll
+          </button>
+        </form>
+        {{end}}
+        </div>
       </div>
     </div>
 
@@ -122,6 +187,7 @@
         <thead class="bg-slate-50">
           <tr>
             <th class="px-5 py-3 text-left">Staff</th>
+            <th class="px-5 py-3 text-left">Division / Programme</th>
             <th class="px-5 py-3 text-left">Type</th>
             <th class="px-5 py-3 text-right">Rate</th>
             <th class="px-5 py-3 text-right">Qty</th>
@@ -130,6 +196,8 @@
             <th class="px-5 py-3 text-right">Deductions</th>
             <th class="px-5 py-3 text-right">Net</th>
             <th class="px-5 py-3 text-left">Status</th>
+            <th class="px-5 py-3 text-left">Payment</th>
+            <th class="px-5 py-3 text-right">Actions</th>
           </tr>
         </thead>
 
@@ -148,13 +216,18 @@
             </td>
 
             <td class="px-5 py-4">
-              {{salaryTypeLabel .CompensationType}}
-
               {{if .DivisionName}}
-              <div class="mt-1 text-xs text-slate-500">
-                {{.DivisionName}}
-              </div>
+              <div class="font-medium text-slate-900">{{.DivisionName}}</div>
+              {{else}}
+              <div class="font-medium text-slate-900">Shared</div>
               {{end}}
+              {{if .TrainingProgramName}}
+              <div class="mt-1 text-xs text-slate-500">{{.TrainingProgramName}}</div>
+              {{end}}
+            </td>
+
+            <td class="px-5 py-4">
+              {{salaryTypeLabel .CompensationType}}
             </td>
 
             <td class="px-5 py-4 text-right">
@@ -163,6 +236,9 @@
 
             <td class="px-5 py-4 text-right">
               {{.Quantity}}
+              {{if .QuantityLabel}}
+              <div class="mt-1 text-xs text-slate-500">{{.QuantityLabel}}</div>
+              {{end}}
             </td>
 
             <td class="px-5 py-4 text-right">
@@ -183,6 +259,27 @@
 
             <td class="px-5 py-4">
               {{.Status}}
+            </td>
+
+            <td class="px-5 py-4 text-xs text-slate-500">
+              {{if eq .Status "paid"}}
+              <div>{{.PaymentMethod}}</div>
+              {{if .PaymentReference}}<div class="mt-1">{{.PaymentReference}}</div>{{end}}
+              {{if not .PaidAt.IsZero}}<div class="mt-1">{{formatDateTime .PaidAt}}</div>{{end}}
+              {{else if eq .Status "void"}}
+              <div class="font-medium text-rose-700">Voided</div>
+              {{if .PaymentReference}}<div class="mt-1">{{.PaymentReference}}</div>{{end}}
+              {{else}}
+              <div>Not paid yet</div>
+              {{end}}
+            </td>
+
+            <td class="px-5 py-4">
+              <div class="flex flex-wrap justify-end gap-2">
+                {{if or (eq .Status "approved") (eq .Status "paid") (eq .Status "void")}}
+                <a href="/admin/payroll/slip?id={{.ID}}" target="_blank" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Slip</a>
+                {{end}}
+              </div>
             </td>
           </tr>
           {{end}}
@@ -206,22 +303,6 @@
     {{end}}
 
   </section>
-
-  {{if and .PayrollPayments (eq .PayrollRun.Status "calculated")}}
-  <div class="flex justify-end">
-    <form method="post" action="/admin/payroll/approve">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <input type="hidden" name="id" value="{{.PayrollRun.ID}}">
-
-      <button
-        type="submit"
-        class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"
-      >
-        Approve payroll
-      </button>
-    </form>
-  </div>
-  {{end}}
 
   {{if .PayrollPayments}}
   <div class="space-y-5">
@@ -268,8 +349,9 @@
       </div>
 
       <div class="space-y-5 p-5">
+        {{$payment := .}}
 
-        {{if eq .CompensationType "hourly"}}
+        {{if payrollPaymentAllowsManualQuantity .}}
         <form
           method="post"
           action="/admin/payroll/quantity"
@@ -281,7 +363,7 @@
 
           <div class="flex-1">
             <label class="mb-1.5 block text-sm font-medium text-slate-800">
-              Approved payable hours
+              Approved payable quantity
             </label>
 
             <input
@@ -299,9 +381,29 @@
             type="submit"
             class="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
           >
-            Update hours
+            Update quantity
           </button>
         </form>
+        {{end}}
+
+        {{if .CalculationDetails}}
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h4 class="text-sm font-semibold text-slate-900">Calculation details</h4>
+          <p class="mt-1 text-sm text-slate-500">
+            {{.QuantityLabel}} at {{money .RateSnapshot}}
+          </p>
+          <div class="mt-3 space-y-2">
+            {{range .CalculationDetails}}
+            <div class="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+              <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div class="text-sm font-medium text-slate-900">{{.Label}}</div>
+                {{if gt .AmountSnapshot 0.0}}<div class="text-xs font-semibold text-slate-600">{{money .AmountSnapshot}}</div>{{end}}
+              </div>
+              {{if .DetailNote}}<div class="mt-1 text-xs text-slate-500">{{.DetailNote}}</div>{{end}}
+            </div>
+            {{end}}
+          </div>
+        </div>
         {{end}}
 
         <div class="grid gap-5 lg:grid-cols-[1fr_420px]">
@@ -323,7 +425,7 @@
                   </div>
 
                   <div class="mt-0.5 text-xs text-slate-500">
-                    {{.AdjustmentType}} · {{.Direction}}
+                    {{payrollAdjustmentTypeLabel .AdjustmentType}} · {{.Direction}}
                   </div>
                 </div>
 
@@ -339,6 +441,7 @@
                   </span>
                   {{end}}
 
+                  {{if payrollPaymentAllowsAdjustments $payment}}
                   <form
                     method="post"
                     action="/admin/payroll/adjustment/delete"
@@ -354,6 +457,7 @@
                       Remove
                     </button>
                   </form>
+                  {{end}}
 
                 </div>
               </div>
@@ -367,6 +471,7 @@
             {{end}}
           </div>
 
+          {{if payrollPaymentAllowsAdjustments .}}
           <form
             method="post"
             action="/admin/payroll/adjustment/add"
@@ -449,6 +554,12 @@
             </button>
 
           </form>
+          {{else}}
+          <div class="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+            <div class="font-semibold text-slate-700">Adjustments locked</div>
+            <div>Adjustments can be changed only while the salary row is still draft or calculated.</div>
+          </div>
+          {{end}}
 
         </div>
 
@@ -482,7 +593,7 @@
 
         </div>
 
-        {{if eq .Status "approved"}}
+        {{if payrollPaymentAllowsPay .}}
         <div class="border-t border-slate-200 pt-5">
 
           {{if $.FinanceAccounts}}
@@ -575,6 +686,33 @@
               class="mt-3 inline-flex rounded-lg bg-white px-3 py-2 text-sm font-semibold text-emerald-800 shadow-sm"
             >
               Print salary slip
+            </a>
+
+            {{if payrollPaymentAllowsVoid .}}
+            <form method="post" action="/admin/payroll/void" class="mt-4 space-y-2">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="run_id" value="{{$.PayrollRun.ID}}">
+              <input type="hidden" name="payment_id" value="{{.ID}}">
+              <label class="block text-xs font-semibold uppercase tracking-wide text-emerald-900">Void reason</label>
+              <input type="text" name="void_reason" required placeholder="Payment cancelled / bank reversal" class="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-800">
+              <button type="submit" class="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-800">
+                Void payment
+              </button>
+            </form>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+
+        {{if eq .Status "void"}}
+        <div class="border-t border-slate-200 pt-5">
+          <div class="rounded-xl border border-rose-200 bg-rose-50 p-4">
+            <div class="text-sm font-semibold text-rose-900">Salary payment voided</div>
+            <p class="mt-1 text-sm text-rose-800">
+              The linked finance expense remains in the ledger as a voided record for audit history. This phase does not reopen the same payroll row for re-payment automatically.
+            </p>
+            <a href="/admin/payroll/slip?id={{.ID}}" target="_blank" class="mt-3 inline-flex rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-800 shadow-sm">
+              View salary slip
             </a>
           </div>
         </div>

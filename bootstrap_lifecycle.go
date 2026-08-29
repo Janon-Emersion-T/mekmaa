@@ -191,6 +191,39 @@ func runMigrations(db *sql.DB) error {
 			updated_at DATETIME NOT NULL,
 			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS student_group_session_occurrences (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			timetable_session_id INTEGER,
+			occurrence_date TEXT NOT NULL,
+			actual_start_time TEXT NOT NULL DEFAULT '',
+			actual_end_time TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'scheduled',
+			is_ad_hoc INTEGER NOT NULL DEFAULT 0,
+			notes TEXT NOT NULL DEFAULT '',
+			created_by_user_id INTEGER,
+			updated_by_user_id INTEGER,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (timetable_session_id) REFERENCES student_group_sessions(id) ON DELETE SET NULL,
+			FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS student_group_session_staff (
+			occurrence_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			assignment_role TEXT NOT NULL,
+			work_status TEXT NOT NULL,
+			notes TEXT NOT NULL DEFAULT '',
+			recorded_by_user_id INTEGER,
+			recorded_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY (occurrence_id, user_id),
+			FOREIGN KEY (occurrence_id) REFERENCES student_group_session_occurrences(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (recorded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS coach_profiles (
 			user_id INTEGER PRIMARY KEY,
 			phone TEXT NOT NULL DEFAULT '',
@@ -232,6 +265,102 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (session_id) REFERENCES student_group_sessions(id) ON DELETE CASCADE,
 			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE,
 			FOREIGN KEY (recorded_by_user_id) REFERENCES users(id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS staff_salary_profiles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			division_id INTEGER,
+			training_program_id INTEGER,
+			compensation_type TEXT NOT NULL,
+			rate REAL NOT NULL DEFAULT 0,
+			student_basis TEXT NOT NULL DEFAULT 'active_enrollment',
+			effective_from TEXT NOT NULL,
+			effective_to TEXT NOT NULL DEFAULT '',
+			active INTEGER NOT NULL DEFAULT 1,
+			notes TEXT NOT NULL DEFAULT '',
+			created_by_user_id INTEGER,
+			updated_by_user_id INTEGER,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
+			FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE RESTRICT,
+			FOREIGN KEY (training_program_id) REFERENCES training_programs(id) ON DELETE RESTRICT,
+			FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS payroll_runs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			period_start TEXT NOT NULL,
+			period_end TEXT NOT NULL,
+			label TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'draft',
+			created_by_user_id INTEGER,
+			approved_by_user_id INTEGER,
+			approved_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			FOREIGN KEY (approved_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS payroll_payments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			payroll_run_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			salary_profile_id INTEGER,
+			division_id INTEGER,
+			training_program_id INTEGER,
+			compensation_type TEXT NOT NULL,
+			rate_snapshot REAL NOT NULL DEFAULT 0,
+			quantity REAL NOT NULL DEFAULT 1,
+			quantity_label TEXT NOT NULL DEFAULT '',
+			base_amount REAL NOT NULL DEFAULT 0,
+			additions_total REAL NOT NULL DEFAULT 0,
+			deductions_total REAL NOT NULL DEFAULT 0,
+			net_amount REAL NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'draft',
+			payment_method TEXT NOT NULL DEFAULT '',
+			payment_reference TEXT NOT NULL DEFAULT '',
+			paid_at DATETIME,
+			paid_by_user_id INTEGER,
+			finance_transaction_id INTEGER,
+			notes TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (payroll_run_id) REFERENCES payroll_runs(id) ON DELETE RESTRICT,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
+			FOREIGN KEY (salary_profile_id) REFERENCES staff_salary_profiles(id) ON DELETE SET NULL,
+			FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE SET NULL,
+			FOREIGN KEY (training_program_id) REFERENCES training_programs(id) ON DELETE SET NULL,
+			FOREIGN KEY (paid_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id) ON DELETE SET NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS payroll_adjustments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			payroll_payment_id INTEGER NOT NULL,
+			adjustment_type TEXT NOT NULL,
+			direction TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			amount REAL NOT NULL DEFAULT 0,
+			created_by_user_id INTEGER,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			FOREIGN KEY (payroll_payment_id) REFERENCES payroll_payments(id) ON DELETE CASCADE,
+			FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS payroll_payment_calculation_details (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			payroll_payment_id INTEGER NOT NULL,
+			detail_type TEXT NOT NULL,
+			source_type TEXT NOT NULL DEFAULT '',
+			source_id INTEGER,
+			label TEXT NOT NULL,
+			detail_note TEXT NOT NULL DEFAULT '',
+			quantity REAL NOT NULL DEFAULT 0,
+			rate_snapshot REAL NOT NULL DEFAULT 0,
+			amount_snapshot REAL NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			FOREIGN KEY (payroll_payment_id) REFERENCES payroll_payments(id) ON DELETE CASCADE
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS courts (
@@ -1175,6 +1304,57 @@ ON court_closures(activity, active, closure_date)`,
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_group_sessions_group_id ON student_group_sessions(group_id, active, day_of_week, start_time)`); err != nil {
 		return fmt.Errorf("create student group sessions index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_group_session_occurrences_group_date ON student_group_session_occurrences(group_id, occurrence_date, id)`); err != nil {
+		return fmt.Errorf("create student group session occurrences group date index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_group_session_occurrences_timetable_date ON student_group_session_occurrences(timetable_session_id, occurrence_date, id)`); err != nil {
+		return fmt.Errorf("create student group session occurrences timetable date index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_group_session_occurrences_normal_unique ON student_group_session_occurrences(group_id, timetable_session_id, occurrence_date) WHERE timetable_session_id IS NOT NULL AND is_ad_hoc = 0`); err != nil {
+		return fmt.Errorf("create student group session occurrences uniqueness index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_group_session_staff_user ON student_group_session_staff(user_id, recorded_at)`); err != nil {
+		return fmt.Errorf("create student group session staff user index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_staff_salary_profiles_user ON staff_salary_profiles(user_id)`); err != nil {
+		return fmt.Errorf("create staff salary profiles user index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_staff_salary_profiles_division ON staff_salary_profiles(division_id)`); err != nil {
+		return fmt.Errorf("create staff salary profiles division index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_staff_salary_profiles_training_program ON staff_salary_profiles(training_program_id)`); err != nil {
+		return fmt.Errorf("create staff salary profiles programme index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_staff_salary_profiles_active ON staff_salary_profiles(active)`); err != nil {
+		return fmt.Errorf("create staff salary profiles active index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_staff_salary_profiles_effective ON staff_salary_profiles(effective_from, effective_to)`); err != nil {
+		return fmt.Errorf("create staff salary profiles effective index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_runs_period ON payroll_runs(period_start, period_end)`); err != nil {
+		return fmt.Errorf("create payroll runs period index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_payments_run ON payroll_payments(payroll_run_id)`); err != nil {
+		return fmt.Errorf("create payroll payments run index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_payments_user ON payroll_payments(user_id)`); err != nil {
+		return fmt.Errorf("create payroll payments user index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_payments_status ON payroll_payments(status)`); err != nil {
+		return fmt.Errorf("create payroll payments status index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_payments_run_profile ON payroll_payments(payroll_run_id, user_id, salary_profile_id) WHERE salary_profile_id IS NOT NULL`); err != nil {
+		return fmt.Errorf("create payroll payments profile index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_adjustments_payment ON payroll_adjustments(payroll_payment_id)`); err != nil {
+		return fmt.Errorf("create payroll adjustments payment index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_payment_calculation_details_payment ON payroll_payment_calculation_details(payroll_payment_id, sort_order, id)`); err != nil {
+		return fmt.Errorf("create payroll payment calculation details payment index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_payment_calculation_details_type ON payroll_payment_calculation_details(detail_type, payroll_payment_id)`); err != nil {
+		return fmt.Errorf("create payroll payment calculation details type index: %w", err)
 	}
 	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_attendance_group_student_date`); err != nil {
 		return fmt.Errorf("drop legacy attendance uniqueness index: %w", err)

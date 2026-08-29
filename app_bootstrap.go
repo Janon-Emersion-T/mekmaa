@@ -1163,6 +1163,47 @@ type StudentGroupSession struct {
 	UpdatedAt time.Time
 }
 
+type StudentGroupSessionOccurrence struct {
+	ID int64
+
+	GroupID int64
+
+	TimetableSessionID    int64
+	TimetableSessionTitle string
+
+	OccurrenceDate string
+	ActualStartTime string
+	ActualEndTime   string
+
+	Status string
+	IsAdHoc bool
+	Notes string
+
+	CreatedByUserID int64
+	UpdatedByUserID int64
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	StaffAssignments []StudentGroupSessionStaffAssignment
+}
+
+type StudentGroupSessionStaffAssignment struct {
+	OccurrenceID int64
+	UserID       int64
+
+	UserName  string
+	UserEmail string
+
+	AssignmentRole string
+	WorkStatus     string
+	Notes          string
+
+	RecordedByUserID int64
+	RecordedAt       time.Time
+	UpdatedAt        time.Time
+}
+
 type CoachAttendanceRecord struct {
 	ID               int64
 	UserID           int64
@@ -1835,6 +1876,8 @@ type TemplateData struct {
 	SelectedGroup                *StudentGroup
 	GroupMode                    string
 	GroupSessions                []StudentGroupSession
+	GroupSessionOccurrenceDate   string
+	GroupSessionOccurrences      []StudentGroupSessionOccurrence
 	SelectedGroupSessionID       int64
 	AvailableCoaches             []User
 	AvailableGroupStaff          []User
@@ -1842,6 +1885,9 @@ type TemplateData struct {
 	StaffDirectoryRows           []StaffDirectoryRow
 	SalaryProfiles               []StaffSalaryProfile
 	PayrollRuns                  []PayrollRun
+	PayrollRunYears              []string
+	SelectedPayrollStatus        string
+	SelectedPayrollYear          string
 	PayrollRun                   *PayrollRun
 	PayrollPayments              []PayrollPayment
 	PayrollPayment               *PayrollPayment

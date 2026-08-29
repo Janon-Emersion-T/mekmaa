@@ -36,10 +36,33 @@ func (a *App) payrollManagementHandler(
 	}
 
 	data := a.newTemplateData(w, r, user)
+	selectedStatus := strings.TrimSpace(r.URL.Query().Get("status"))
+	selectedYear := strings.TrimSpace(r.URL.Query().Get("year"))
+	yearSeen := make(map[string]struct{})
+	filteredRuns := make([]PayrollRun, 0, len(runs))
+	for _, run := range runs {
+		year := ""
+		if len(run.PeriodStart) >= 4 {
+			year = run.PeriodStart[:4]
+			if _, ok := yearSeen[year]; !ok {
+				yearSeen[year] = struct{}{}
+				data.PayrollRunYears = append(data.PayrollRunYears, year)
+			}
+		}
+		if selectedStatus != "" && run.Status != selectedStatus {
+			continue
+		}
+		if selectedYear != "" && year != selectedYear {
+			continue
+		}
+		filteredRuns = append(filteredRuns, run)
+	}
 	data.Title = "Payroll"
 	data.Description =
 		"Manage salary periods, calculations, incentives, deductions and staff payments."
-	data.PayrollRuns = runs
+	data.PayrollRuns = filteredRuns
+	data.SelectedPayrollStatus = selectedStatus
+	data.SelectedPayrollYear = selectedYear
 
 	a.render(
 		w,
@@ -63,6 +86,15 @@ func (a *App) createPayrollRunHandler(
 	}
 
 	user, _ := a.currentUser(r.Context())
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
 
 	if err := r.ParseForm(); err != nil {
 		a.setFlash(
@@ -232,6 +264,15 @@ func (a *App) generatePayrollRunHandler(
 		return
 	}
 
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(
 			w,
@@ -305,6 +346,107 @@ func (a *App) generatePayrollRunHandler(
 	)
 }
 
+func (a *App) recalculatePayrollRunHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(
+			w,
+			"invalid request",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	runID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.FormValue("id"),
+		),
+		10,
+		64,
+	)
+	if err != nil || runID <= 0 {
+		http.Error(
+			w,
+			"invalid payroll run",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+	actorUserID := int64(0)
+	if user != nil {
+		actorUserID = user.ID
+	}
+
+	if err := a.recalculatePayrollRun(
+		runID,
+		actorUserID,
+	); err != nil {
+		log.Printf(
+			"recalculate payroll run %d: %v",
+			runID,
+			err,
+		)
+
+		a.setFlash(
+			w,
+			err.Error(),
+		)
+
+		http.Redirect(
+			w,
+			r,
+			"/admin/payroll/run?id="+
+				strconv.FormatInt(runID, 10),
+			http.StatusSeeOther,
+		)
+		return
+	}
+
+	a.setFlash(
+		w,
+		"Payroll recalculated.",
+	)
+
+	http.Redirect(
+		w,
+		r,
+		"/admin/payroll/run?id="+
+			strconv.FormatInt(runID, 10),
+		http.StatusSeeOther,
+	)
+}
+
 func (a *App) updatePayrollQuantityHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -362,7 +504,7 @@ func (a *App) updatePayrollQuantityHandler(
 	if err != nil {
 		a.setFlash(
 			w,
-			"Approved hours must be a valid number.",
+			"Approved quantity must be a valid number.",
 		)
 
 		http.Redirect(
@@ -388,7 +530,7 @@ func (a *App) updatePayrollQuantityHandler(
 	} else {
 		a.setFlash(
 			w,
-			"Approved hours updated.",
+			"Approved quantity updated.",
 		)
 	}
 
@@ -410,6 +552,15 @@ func (a *App) addPayrollAdjustmentHandler(
 			w,
 			"method not allowed",
 			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
 		)
 		return
 	}
@@ -523,6 +674,15 @@ func (a *App) deletePayrollAdjustmentHandler(
 		return
 	}
 
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(
 			w,
@@ -594,6 +754,15 @@ func (a *App) approvePayrollRunHandler(
 		return
 	}
 
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(
 			w,
@@ -660,6 +829,15 @@ func (a *App) payPayrollPaymentHandler(
 			w,
 			"method not allowed",
 			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
 		)
 		return
 	}
@@ -747,6 +925,45 @@ func (a *App) payPayrollPaymentHandler(
 	)
 }
 
+func (a *App) closePayrollRunHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	runID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("id")), 10, 64)
+	if err != nil || runID <= 0 {
+		http.Error(w, "invalid payroll run", http.StatusBadRequest)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+	actorUserID := int64(0)
+	if user != nil {
+		actorUserID = user.ID
+	}
+
+	if err := a.closePayrollRun(runID, actorUserID); err != nil {
+		log.Printf("close payroll run %d: %v", runID, err)
+		a.setFlash(w, err.Error())
+	} else {
+		a.setFlash(w, "Payroll closed.")
+	}
+
+	http.Redirect(w, r, "/admin/payroll/run?id="+strconv.FormatInt(runID, 10), http.StatusSeeOther)
+}
+
 func (a *App) payrollSalarySlipHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -801,12 +1018,15 @@ func (a *App) payrollSalarySlipHandler(
 	}
 
 	if payment.Status != PayrollPaymentStatusPaid {
-		http.Error(
-			w,
-			"salary slip is available only after payment",
-			http.StatusConflict,
-		)
-		return
+		if payment.Status != PayrollPaymentStatusApproved &&
+			payment.Status != PayrollPaymentStatusVoid {
+			http.Error(
+				w,
+				"salary slip is available after payroll approval",
+				http.StatusConflict,
+			)
+			return
+		}
 	}
 
 	user, _ := a.currentUser(r.Context())
@@ -849,4 +1069,45 @@ func (a *App) payrollSalarySlipHandler(
 		data,
 		http.StatusOK,
 	)
+}
+
+func (a *App) voidPayrollPaymentHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	paymentID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("payment_id")), 10, 64)
+	runID, runErr := strconv.ParseInt(strings.TrimSpace(r.FormValue("run_id")), 10, 64)
+	reason := strings.TrimSpace(r.FormValue("void_reason"))
+	if err != nil || paymentID <= 0 || runErr != nil || runID <= 0 {
+		http.Error(w, "invalid salary payment request", http.StatusBadRequest)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+	if user == nil || !containsPermission(user.Permissions, "finance_transactions.delete") {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	if err := a.voidPayrollPayment(paymentID, reason, user.ID); err != nil {
+		log.Printf("void payroll payment %d: %v", paymentID, err)
+		a.setFlash(w, err.Error())
+	} else {
+		a.setFlash(w, "Salary payment voided. Re-payment is not reopened automatically; the original finance audit trail is preserved.")
+	}
+
+	http.Redirect(w, r, "/admin/payroll/run?id="+strconv.FormatInt(runID, 10), http.StatusSeeOther)
 }
