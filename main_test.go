@@ -5898,6 +5898,88 @@ func TestStudentMonthlyPaymentVoidRestoresOutstandingAndAllowsReplacement(t *tes
 	}
 }
 
+func TestVoidStudentPaymentHandlerAllowsAuthorizedUser(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Student Void Handler Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     4200,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-VOID-HANDLER-001",
+		FullName:              "Void Handler Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000015",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-07-15",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	monthDate, _ := parsePaymentMonth("2026-08")
+	transactionID, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-08", monthDate, "cash", 1)
+	if err != nil {
+		t.Fatalf("collect student payment: %v", err)
+	}
+	var paymentID int64
+	if err := app.db.QueryRow(`SELECT id FROM student_monthly_payments WHERE finance_transaction_id = ?`, transactionID).Scan(&paymentID); err != nil {
+		t.Fatalf("lookup payment row: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":    {"token"},
+		"payment_id":    {strconv.FormatInt(paymentID, 10)},
+		"payment_month": {"2026-08"},
+		"void_reason":   {"Duplicate collection"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/student-payments/void", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          1,
+		Name:        "Finance User",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"student_payments.delete"},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.voidStudentPaymentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("void student payment handler status = %d, want %d body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != "/admin/student-payments?month=2026-08" {
+		t.Fatalf("void student payment redirect = %q", got)
+	}
+	var voided int
+	if err := app.db.QueryRow(`SELECT voided FROM student_monthly_payments WHERE id = ?`, paymentID).Scan(&voided); err != nil {
+		t.Fatalf("reload student payment row: %v", err)
+	}
+	if voided != 1 {
+		t.Fatal("expected student payment row to be marked voided")
+	}
+}
+
 func TestCollectStudentPaymentHandlerPreservesDivisionAndMonthOnRedirect(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 

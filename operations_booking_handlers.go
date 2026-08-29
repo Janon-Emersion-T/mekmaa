@@ -5629,7 +5629,7 @@ func (a *App) voidStudentPaymentHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	currentUser, _ := a.currentUser(r.Context())
-	if !financeHighRiskAuthorized(currentUser) {
+	if !financeHighRiskAuthorized(currentUser, "student_payments.delete") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
