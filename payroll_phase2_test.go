@@ -1,0 +1,514 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func createPayrollTestAdmission(t *testing.T, app *App, studentID, fullName string) int64 {
+	t.Helper()
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:                 studentID,
+		FullName:                  fullName,
+		AdmissionDate:             "2026-01-10",
+		DateOfBirth:               "2012-06-01",
+		Gender:                    "male",
+		PracticeType:              "group_practice",
+		Address:                   "Jaffna",
+		School:                    "Mekmaa College",
+		GuardianName:              "Guardian",
+		GuardianRelationship:      "Parent",
+		GuardianContactNumber:     "0771234567",
+		GuardianAlternativePhone:  "0771234568",
+		MedicalInformation:        "",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission %s: %v", studentID, err)
+	}
+
+	return admissionID
+}
+
+func createPayrollTestProgram(t *testing.T, app *App, name, activity string) int64 {
+	t.Helper()
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           name,
+		Activity:       activity,
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     3000,
+		Active:         true,
+		SortOrder:      1,
+	})
+	if err != nil {
+		t.Fatalf("create training program %s: %v", name, err)
+	}
+
+	return programID
+}
+
+func createPayrollTestEnrollment(t *testing.T, app *App, admissionID, programID int64, enrollmentDate string) int64 {
+	t.Helper()
+
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:      admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:   enrollmentDate,
+		Active:           true,
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment admission=%d program=%d: %v", admissionID, programID, err)
+	}
+
+	return enrollmentID
+}
+
+func createPayrollTestGroup(t *testing.T, app *App, name, code string, programID int64, admissionIDs []int64, coachIDs []int64, sessions []StudentGroupSession) int64 {
+	t.Helper()
+
+	if err := app.createStudentGroup(StudentGroup{
+		Name:              name,
+		Code:              code,
+		Description:       name,
+		TrainingProgramID: programID,
+	}, admissionIDs, coachIDs, sessions); err != nil {
+		t.Fatalf("create group %s: %v", code, err)
+	}
+
+	var groupID int64
+	if err := app.db.QueryRow(`SELECT id FROM student_groups WHERE code = ?`, code).Scan(&groupID); err != nil {
+		t.Fatalf("lookup group %s: %v", code, err)
+	}
+	return groupID
+}
+
+func createPayrollTestSalaryProfile(t *testing.T, app *App, profile StaffSalaryProfile, actorUserID int64) int64 {
+	t.Helper()
+
+	profileID, err := app.createStaffSalaryProfile(profile, actorUserID)
+	if err != nil {
+		t.Fatalf("create salary profile: %v", err)
+	}
+	return profileID
+}
+
+func payrollPaymentForProfile(t *testing.T, app *App, runID, profileID int64) PayrollPayment {
+	t.Helper()
+
+	run, err := app.findPayrollRunByID(runID)
+	if err != nil {
+		t.Fatalf("find payroll run: %v", err)
+	}
+	for _, payment := range run.Payments {
+		if payment.SalaryProfileID == profileID {
+			return payment
+		}
+	}
+	t.Fatalf("payment for profile %d not found", profileID)
+	return PayrollPayment{}
+}
+
+func TestPayrollPhase2PerStudentActiveEnrollmentCalculation(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	coach, err := app.createManagedUser("Main Coach", "main-coach@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create coach: %v", err)
+	}
+
+	programID := createPayrollTestProgram(t, app, "Cricket Monthly", "cricket")
+	otherProgramID := createPayrollTestProgram(t, app, "Badminton Monthly", "badminton")
+
+	activeID := createPayrollTestAdmission(t, app, "STD-PAY-001", "Active Student")
+	createPayrollTestEnrollment(t, app, activeID, programID, "2026-07-01")
+
+	lateEnrollID := createPayrollTestAdmission(t, app, "STD-PAY-002", "Late Student")
+	createPayrollTestEnrollment(t, app, lateEnrollID, programID, "2026-09-01")
+
+	fullLeaveID := createPayrollTestAdmission(t, app, "STD-PAY-003", "Full Leave Student")
+	fullLeaveEnrollmentID := createPayrollTestEnrollment(t, app, fullLeaveID, programID, "2026-06-15")
+	if err := app.createStudentEnrollmentLeave(fullLeaveEnrollmentID, "2026-08-01", "2026-08-31", "Medical leave"); err != nil {
+		t.Fatalf("create full leave: %v", err)
+	}
+
+	spanningLeaveID := createPayrollTestAdmission(t, app, "STD-PAY-004", "Spanning Leave Student")
+	spanningLeaveEnrollmentID := createPayrollTestEnrollment(t, app, spanningLeaveID, programID, "2026-05-01")
+	if err := app.createStudentEnrollmentLeave(spanningLeaveEnrollmentID, "2026-07-15", "2026-09-10", "Extended leave"); err != nil {
+		t.Fatalf("create spanning leave: %v", err)
+	}
+
+	partialLeaveID := createPayrollTestAdmission(t, app, "STD-PAY-005", "Partial Leave Student")
+	partialLeaveEnrollmentID := createPayrollTestEnrollment(t, app, partialLeaveID, programID, "2026-04-10")
+	if err := app.createStudentEnrollmentLeave(partialLeaveEnrollmentID, "2026-08-15", "2026-08-20", "Short leave"); err != nil {
+		t.Fatalf("create partial leave: %v", err)
+	}
+
+	duplicateID := createPayrollTestAdmission(t, app, "STD-PAY-006", "Duplicate Group Student")
+	createPayrollTestEnrollment(t, app, duplicateID, programID, "2026-02-01")
+
+	unrelatedProgramID := createPayrollTestAdmission(t, app, "STD-PAY-007", "Unrelated Programme Student")
+	createPayrollTestEnrollment(t, app, unrelatedProgramID, otherProgramID, "2026-02-01")
+
+	unassignedGroupID := createPayrollTestAdmission(t, app, "STD-PAY-008", "Same Programme Unassigned Group")
+	createPayrollTestEnrollment(t, app, unassignedGroupID, programID, "2026-02-01")
+
+	sessions := []StudentGroupSession{{Title: "Saturday", DayOfWeek: "saturday", StartTime: "16:00", EndTime: "18:00", Active: true}}
+	createPayrollTestGroup(t, app, "Assigned Group A", "PAY-GRP-A", programID, []int64{activeID, lateEnrollID, fullLeaveID, spanningLeaveID, partialLeaveID, duplicateID}, []int64{coach.ID}, sessions)
+	createPayrollTestGroup(t, app, "Assigned Group B", "PAY-GRP-B", programID, []int64{duplicateID}, []int64{coach.ID}, sessions)
+	createPayrollTestGroup(t, app, "Unassigned Group", "PAY-GRP-C", programID, []int64{unassignedGroupID}, nil, sessions)
+	createPayrollTestGroup(t, app, "Other Program Group", "PAY-GRP-D", otherProgramID, []int64{unrelatedProgramID}, []int64{coach.ID}, sessions)
+
+	profileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:            coach.ID,
+		TrainingProgramID: programID,
+		CompensationType:  SalaryTypePerStudent,
+		Rate:              1100,
+		StudentBasis:      SalaryStudentBasisActiveEnrollment,
+		EffectiveFrom:     "2026-01-01",
+		Active:            true,
+	}, coach.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", coach.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+
+	if err := app.generatePayrollRunPayments(runID, coach.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	payment := payrollPaymentForProfile(t, app, runID, profileID)
+	if payment.Quantity != 3 {
+		t.Fatalf("quantity = %.2f, want 3", payment.Quantity)
+	}
+	if payment.BaseAmount != 3300 {
+		t.Fatalf("base amount = %.2f, want 3300", payment.BaseAmount)
+	}
+	if payment.QuantityLabel != "3 eligible students" {
+		t.Fatalf("quantity label = %q", payment.QuantityLabel)
+	}
+
+	included := 0
+	excluded := 0
+	for _, detail := range payment.CalculationDetails {
+		switch detail.DetailType {
+		case payrollDetailTypePerStudentIncluded:
+			included++
+		case payrollDetailTypePerStudentExcludedFullLeave:
+			excluded++
+		}
+	}
+	if included != 3 {
+		t.Fatalf("included student details = %d, want 3", included)
+	}
+	if excluded != 2 {
+		t.Fatalf("excluded leave details = %d, want 2", excluded)
+	}
+}
+
+func TestPayrollPhase2PerStudentManualFallbacks(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	coach, err := app.createManagedUser("Coach", "manual-coach@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create coach: %v", err)
+	}
+
+	noProgrammeProfileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:           coach.ID,
+		CompensationType: SalaryTypePerStudent,
+		Rate:             1100,
+		StudentBasis:     SalaryStudentBasisActiveEnrollment,
+		EffectiveFrom:    "2026-01-01",
+		Active:           true,
+	}, coach.ID)
+
+	attendanceProfileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:           coach.ID,
+		CompensationType: SalaryTypePerStudent,
+		Rate:             1100,
+		StudentBasis:     SalaryStudentBasisAttendance,
+		TrainingProgramID: createPayrollTestProgram(t, app, "Attendance Program", "cricket-attendance"),
+		EffectiveFrom:    "2026-01-01",
+		Active:           true,
+	}, coach.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", coach.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+	if err := app.generatePayrollRunPayments(runID, coach.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	noProgramme := payrollPaymentForProfile(t, app, runID, noProgrammeProfileID)
+	if noProgramme.Status != PayrollPaymentStatusDraft || !payrollPaymentAllowsManualQuantity(noProgramme) {
+		t.Fatalf("no-programme per-student payment should be manual draft: %#v", noProgramme)
+	}
+
+	attendance := payrollPaymentForProfile(t, app, runID, attendanceProfileID)
+	if attendance.Status != PayrollPaymentStatusDraft || !payrollPaymentAllowsManualQuantity(attendance) {
+		t.Fatalf("attendance-basis per-student payment should be manual draft: %#v", attendance)
+	}
+}
+
+func TestPayrollPhase2PerSessionCalculation(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	subCoach, err := app.createManagedUser("Sub Coach", "sub-coach@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create sub coach: %v", err)
+	}
+
+	programID := createPayrollTestProgram(t, app, "Cricket Sessions", "cricket-session")
+	otherProgramID := createPayrollTestProgram(t, app, "Other Sessions", "other-session")
+	sessions := []StudentGroupSession{{Title: "Saturday", DayOfWeek: "saturday", StartTime: "16:00", EndTime: "18:00", Active: true}}
+	groupID := createPayrollTestGroup(t, app, "Session Group", "SESSION-GRP-A", programID, nil, []int64{subCoach.ID}, sessions)
+	otherGroupID := createPayrollTestGroup(t, app, "Other Group", "SESSION-GRP-B", otherProgramID, nil, nil, sessions)
+
+	group, err := app.findStudentGroupByID(groupID)
+	if err != nil {
+		t.Fatalf("find group: %v", err)
+	}
+	otherGroup, err := app.findStudentGroupByID(otherGroupID)
+	if err != nil {
+		t.Fatalf("find other group: %v", err)
+	}
+
+	actor, err := app.createManagedUser("Payroll Admin", "session-admin@example.com", "password-123", []string{"admin"}, true)
+	if err != nil {
+		t.Fatalf("create actor: %v", err)
+	}
+
+	save := func(groupID int64, timetableSessionID int64, date, status, workStatus string, adHoc bool) {
+		t.Helper()
+		_, err := app.saveStudentGroupSessionOccurrence(StudentGroupSessionOccurrenceInput{
+			GroupID:            groupID,
+			TimetableSessionID: timetableSessionID,
+			OccurrenceDate:     date,
+			Status:             status,
+			IsAdHoc:            adHoc,
+			StaffAssignments: []StudentGroupSessionStaffAssignmentInput{
+				{
+					UserID:         subCoach.ID,
+					AssignmentRole: groupStaffRoleAssistantCoach,
+					WorkStatus:     workStatus,
+				},
+			},
+		}, actor.ID)
+		if err != nil {
+			t.Fatalf("save occurrence %s %s: %v", date, status, err)
+		}
+	}
+
+	save(group.ID, group.Sessions[0].ID, "2026-08-02", GroupSessionOccurrenceStatusCompleted, GroupSessionWorkStatusWorked, false)
+	save(group.ID, group.Sessions[0].ID, "2026-08-09", GroupSessionOccurrenceStatusCompleted, GroupSessionWorkStatusAbsent, false)
+	save(group.ID, group.Sessions[0].ID, "2026-08-16", GroupSessionOccurrenceStatusCompleted, GroupSessionWorkStatusExcused, false)
+	save(group.ID, group.Sessions[0].ID, "2026-08-23", GroupSessionOccurrenceStatusCancelled, GroupSessionWorkStatusWorked, false)
+	save(group.ID, group.Sessions[0].ID, "2026-08-30", GroupSessionOccurrenceStatusScheduled, GroupSessionWorkStatusWorked, false)
+	save(group.ID, group.Sessions[0].ID, "2026-07-26", GroupSessionOccurrenceStatusCompleted, GroupSessionWorkStatusWorked, false)
+	save(group.ID, group.Sessions[0].ID, "2026-08-05", GroupSessionOccurrenceStatusCompleted, GroupSessionWorkStatusWorked, true)
+	save(otherGroup.ID, otherGroup.Sessions[0].ID, "2026-08-12", GroupSessionOccurrenceStatusCompleted, GroupSessionWorkStatusWorked, false)
+
+	profileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:            subCoach.ID,
+		TrainingProgramID: programID,
+		CompensationType:  SalaryTypePerSession,
+		Rate:              300,
+		EffectiveFrom:     "2026-01-01",
+		Active:            true,
+	}, actor.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", actor.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+	if err := app.generatePayrollRunPayments(runID, actor.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	payment := payrollPaymentForProfile(t, app, runID, profileID)
+	if payment.Quantity != 2 {
+		t.Fatalf("per-session quantity = %.2f, want 2", payment.Quantity)
+	}
+	if payment.BaseAmount != 600 {
+		t.Fatalf("per-session base = %.2f, want 600", payment.BaseAmount)
+	}
+	if payment.QuantityLabel != "2 sessions worked" {
+		t.Fatalf("per-session quantity label = %q", payment.QuantityLabel)
+	}
+
+	occurrenceDetails := 0
+	for _, detail := range payment.CalculationDetails {
+		if detail.DetailType == payrollDetailTypePerSessionOccurrence {
+			occurrenceDetails++
+		}
+	}
+	if occurrenceDetails != 2 {
+		t.Fatalf("per-session detail count = %d, want 2", occurrenceDetails)
+	}
+}
+
+func TestPayrollPhase2MonthlyCalculationAndRecalculationSnapshot(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	manager, err := app.createManagedUser("Manager", "manager@example.com", "password-123", []string{"admin"}, true)
+	if err != nil {
+		t.Fatalf("create manager: %v", err)
+	}
+
+	profileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:           manager.ID,
+		CompensationType: SalaryTypeMonthly,
+		Rate:             50000,
+		EffectiveFrom:    "2026-01-01",
+		Active:           true,
+	}, manager.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", manager.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+	if err := app.generatePayrollRunPayments(runID, manager.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	payment := payrollPaymentForProfile(t, app, runID, profileID)
+	if payment.Quantity != 1 || payment.BaseAmount != 50000 {
+		t.Fatalf("monthly payment = %#v", payment)
+	}
+
+	if _, err := app.db.Exec(`UPDATE staff_salary_profiles SET rate = 55000 WHERE id = ?`, profileID); err != nil {
+		t.Fatalf("update salary rate: %v", err)
+	}
+
+	stillSnapshotted := payrollPaymentForProfile(t, app, runID, profileID)
+	if stillSnapshotted.RateSnapshot != 50000 || stillSnapshotted.BaseAmount != 50000 {
+		t.Fatalf("payment changed without recalculation: %#v", stillSnapshotted)
+	}
+
+	if err := app.addPayrollAdjustment(payment.ID, PayrollAdjustmentBonus, PayrollDirectionAddition, "Performance bonus", 1000, manager.ID); err != nil {
+		t.Fatalf("add payroll adjustment: %v", err)
+	}
+
+	if err := app.recalculatePayrollRun(runID, manager.ID); err != nil {
+		t.Fatalf("recalculate payroll run: %v", err)
+	}
+
+	recalculated := payrollPaymentForProfile(t, app, runID, profileID)
+	if recalculated.RateSnapshot != 55000 || recalculated.BaseAmount != 55000 || recalculated.Quantity != 1 {
+		t.Fatalf("recalculated payment = %#v", recalculated)
+	}
+	if recalculated.AdditionsTotal != 1000 || recalculated.NetAmount != 56000 {
+		t.Fatalf("recalculated totals = additions %.2f net %.2f", recalculated.AdditionsTotal, recalculated.NetAmount)
+	}
+
+	if err := app.approvePayrollRun(runID, manager.ID); err != nil {
+		t.Fatalf("approve payroll run: %v", err)
+	}
+	if err := app.recalculatePayrollRun(runID, manager.ID); err == nil {
+		t.Fatal("expected approved payroll recalculation to fail")
+	}
+}
+
+func TestPayrollPhase2PaidPayrollCannotRecalculate(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	manager, err := app.createManagedUser("Paid Manager", "paid-manager@example.com", "password-123", []string{"admin"}, true)
+	if err != nil {
+		t.Fatalf("create manager: %v", err)
+	}
+
+	var divisionID int64
+	if err := app.db.QueryRow(`SELECT id FROM divisions ORDER BY id ASC LIMIT 1`).Scan(&divisionID); err != nil {
+		t.Fatalf("find division: %v", err)
+	}
+
+	accountID, err := app.createFinanceAccount(divisionID, "", "Payroll Bank", financeAccountTypeBank, "payroll bank", manager.ID)
+	if err != nil {
+		t.Fatalf("create finance account: %v", err)
+	}
+
+	profileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:           manager.ID,
+		DivisionID:       divisionID,
+		CompensationType: SalaryTypeMonthly,
+		Rate:             40000,
+		EffectiveFrom:    "2026-01-01",
+		Active:           true,
+	}, manager.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", manager.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+	if err := app.generatePayrollRunPayments(runID, manager.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	payment := payrollPaymentForProfile(t, app, runID, profileID)
+	if err := app.approvePayrollRun(runID, manager.ID); err != nil {
+		t.Fatalf("approve payroll run: %v", err)
+	}
+	if err := app.payPayrollPayment(payment.ID, accountID, "BANK-REF-2026-08-29", manager.ID); err != nil {
+		t.Fatalf("pay payroll payment: %v", err)
+	}
+	if err := app.recalculatePayrollRun(runID, manager.ID); err == nil {
+		t.Fatal("expected paid payroll recalculation to fail")
+	}
+}
+
+func TestPayrollPhase2RecalculateRouteRequiresPermission(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	user, err := app.createManagedUser("Coach User", "coach-recalc@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	protected := app.requirePermission(
+		http.HandlerFunc(app.recalculatePayrollRunHandler),
+		"payroll.update",
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/payroll/recalculate", strings.NewReader("id=1&csrf_token=test"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+
+	protected.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+}
+
+func TestPayrollPhase2SQLiteBootstrapIncludesPayrollTables(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	for _, table := range []string{
+		"staff_salary_profiles",
+		"payroll_runs",
+		"payroll_payments",
+		"payroll_adjustments",
+		"payroll_payment_calculation_details",
+	} {
+		var count int
+		if err := app.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil {
+			t.Fatalf("check table %s: %v", table, err)
+		}
+		if count != 1 {
+			t.Fatalf("expected table %s to exist once, got %d", table, count)
+		}
+	}
+}

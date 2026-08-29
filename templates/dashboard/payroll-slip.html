@@ -50,6 +50,16 @@
 
         <div class="flex items-start justify-between gap-4">
           <dt class="font-medium text-slate/60">
+            Slip reference
+          </dt>
+
+          <dd class="text-right font-semibold text-obsidian">
+            {{payrollPaymentReferenceCode .PayrollPayment}}
+          </dd>
+        </div>
+
+        <div class="flex items-start justify-between gap-4">
+          <dt class="font-medium text-slate/60">
             Employee
           </dt>
 
@@ -140,6 +150,16 @@
           </dd>
         </div>
 
+        <div class="flex items-start justify-between gap-4">
+          <dt class="font-medium text-slate/60">
+            Payroll status
+          </dt>
+
+          <dd class="text-right font-semibold text-obsidian">
+            {{.PayrollPayment.Status}}
+          </dd>
+        </div>
+
       </dl>
 
       <div class="receipt-divider"></div>
@@ -196,6 +216,16 @@
 
           <div class="flex items-center justify-between text-sm">
             <span class="text-slate/60">
+              Gross salary
+            </span>
+
+            <span class="font-semibold">
+              {{money .PayrollPayment.BaseAmount}} + {{money .PayrollPayment.AdditionsTotal}}
+            </span>
+          </div>
+
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-slate/60">
               Total additions
             </span>
 
@@ -240,7 +270,7 @@
           </dt>
 
           <dd class="text-right font-semibold text-obsidian">
-            {{.PayrollPayment.PaymentMethod}}
+            {{if .PayrollPayment.PaymentMethod}}{{.PayrollPayment.PaymentMethod}}{{else}}Pending{{end}}
           </dd>
         </div>
 
@@ -262,7 +292,7 @@
           </dt>
 
           <dd class="text-right font-semibold text-obsidian">
-            {{formatDateTime .PayrollPayment.PaidAt}}
+            {{if not .PayrollPayment.PaidAt.IsZero}}{{formatDateTime .PayrollPayment.PaidAt}}{{else}}Not yet paid{{end}}
           </dd>
         </div>
 

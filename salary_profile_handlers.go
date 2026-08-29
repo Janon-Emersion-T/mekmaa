@@ -102,6 +102,15 @@ func (a *App) createSalaryProfileHandler(
 
 	user, _ := a.currentUser(r.Context())
 
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		a.setFlash(
 			w,
@@ -288,6 +297,15 @@ func (a *App) toggleSalaryProfileHandler(
 
 	user, _ := a.currentUser(r.Context())
 
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(
+			w,
+			"invalid csrf token",
+			http.StatusForbidden,
+		)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(
 			w,
@@ -339,25 +357,17 @@ func (a *App) toggleSalaryProfileHandler(
 		actorUserID = user.ID
 	}
 
-	_, err = a.execDB(
-		`
-		UPDATE staff_salary_profiles
-		SET
-			active = ?,
-			updated_by_user_id = ?,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-		`,
-		boolToInt(!profile.Active),
-		nullIfZero(actorUserID),
+	err = a.setStaffSalaryProfileActive(
 		profileID,
+		!profile.Active,
+		actorUserID,
 	)
 	if err != nil {
 		log.Printf("toggle salary profile: %v", err)
 
 		a.setFlash(
 			w,
-			"Unable to update salary profile.",
+			err.Error(),
 		)
 
 		http.Redirect(

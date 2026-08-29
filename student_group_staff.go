@@ -103,6 +103,31 @@ func groupStaffRoleOptionsForDivisionCode(
 	return options
 }
 
+func allGroupStaffRoleOptions() []GroupStaffRoleOption {
+	keys := []string{
+		groupStaffRoleCoach,
+		groupStaffRoleAssistantCoach,
+		groupStaffRoleTeacher,
+		groupStaffRoleAssistantTeacher,
+		groupStaffRoleCoordinator,
+	}
+
+	options := make([]GroupStaffRoleOption, 0, len(keys))
+	for _, key := range keys {
+		label := groupStaffRoleLabel(key)
+		if label == "" {
+			continue
+		}
+
+		options = append(options, GroupStaffRoleOption{
+			Key:   key,
+			Label: label,
+		})
+	}
+
+	return options
+}
+
 func (a *App) listAssignableGroupStaffByDivisionIDs(
 	divisionIDs []int64,
 ) ([]User, error) {

@@ -102,8 +102,10 @@
                     >
                         <option value="monthly">Per month</option>
                         <option value="weekly">Per week</option>
+                        <option value="daily">Per day</option>
                         <option value="hourly">Per hour</option>
                         <option value="per_student">Per student</option>
+                        <option value="per_session">Per session</option>
                     </select>
                 </div>
 
@@ -171,8 +173,8 @@
                     </select>
 
                     <p class="mt-1.5 text-xs leading-5 text-slate-500">
-                        Use this only when the salary component belongs to a specific class,
-                        programme or coaching stream.
+                        Per-student payroll normally needs a programme for automatic calculation.
+                        Per-session can be programme-specific or broader if intentionally shared.
                     </p>
                 </div>
 
@@ -199,7 +201,7 @@
                     </select>
 
                     <p class="mt-1.5 text-xs leading-5 text-slate-500">
-                        Used only when Salary Type is Per student.
+                        Used only when Salary Type is Per student. Active enrollment excludes only full-period leave in payroll calculations.
                     </p>
                 </div>
 
@@ -346,6 +348,18 @@
                                     {{salaryStudentBasisLabel .StudentBasis}}
                                 </div>
                                 {{end}}
+
+                                {{if eq .CompensationType "per_session"}}
+                                <div class="mt-1 text-xs text-slate-500">
+                                    Completed worked occurrences are counted during payroll.
+                                </div>
+                                {{end}}
+
+                                {{if or (eq .CompensationType "daily") (eq .CompensationType "hourly") (eq .CompensationType "weekly")}}
+                                <div class="mt-1 text-xs text-slate-500">
+                                    Quantity may still require payroll-stage review depending on available source data.
+                                </div>
+                                {{end}}
                             </td>
 
                             <td class="px-5 py-4">
@@ -452,7 +466,11 @@
         const studentBasisField = form.querySelector('select[name="student_basis"]');
 
         const syncSalaryTypeFields = () => {
-            const isPerStudent = typeField && typeField.value === "per_student";
+            const selectedType = typeField ? typeField.value : "";
+            const isPerStudent = selectedType === "per_student";
+            const isPerSession = selectedType === "per_session";
+            const programmeHint = programmeScope?.querySelector("p");
+            const studentBasisHint = studentBasisScope?.querySelector("p");
 
             if (studentBasisScope) {
                 studentBasisScope.style.display = isPerStudent ? "" : "none";
@@ -464,6 +482,20 @@
 
             if (programmeScope) {
                 programmeScope.style.opacity = isPerStudent ? "1" : "0.85";
+            }
+
+            if (programmeHint) {
+                if (isPerStudent) {
+                    programmeHint.textContent = "Per-student payroll normally needs a programme for automatic calculation.";
+                } else if (isPerSession) {
+                    programmeHint.textContent = "Per-session payroll counts completed worked occurrences. Choose a programme when this component belongs to a specific coaching stream.";
+                } else {
+                    programmeHint.textContent = "Use this only when the salary component belongs to a specific class, programme or coaching stream.";
+                }
+            }
+
+            if (studentBasisHint) {
+                studentBasisHint.textContent = "Used only when Salary Type is Per student. Active enrollment excludes only full-period leave in payroll calculations.";
             }
 
             if (programmeField && !isPerStudent && typeField.value === "monthly") {
