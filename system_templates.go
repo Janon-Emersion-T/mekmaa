@@ -187,6 +187,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"trainingProgramActivityPlaceholder":        trainingProgramActivityPlaceholder,
 		"trainingProgramActivityHelp":               trainingProgramActivityHelp,
 		"tournamentExpenseTypeLabel":                tournamentExpenseTypeLabel,
+		"payrollAdjustmentTypeLabel":                payrollAdjustmentTypeLabel,
 		"enrollmentsForAdmission":                   enrollmentsForAdmission,
 		"enrollmentCountForAdmission":               enrollmentCountForAdmission,
 		"coachAttendanceCount":                      coachAttendanceCount,

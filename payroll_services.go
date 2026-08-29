@@ -56,12 +56,12 @@ type PayrollRun struct {
 
 	Payments []PayrollPayment
 
-	StaffCount      int
-	BaseTotal       float64
-	AdditionsTotal  float64
-	DeductionsTotal float64
-	NetTotal        float64
-	PaidTotal       float64
+	StaffCount       int
+	BaseTotal        float64
+	AdditionsTotal   float64
+	DeductionsTotal  float64
+	NetTotal         float64
+	PaidTotal        float64
 	OutstandingTotal float64
 }
 
@@ -108,7 +108,7 @@ type PayrollPayment struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
-	Adjustments []PayrollAdjustment
+	Adjustments        []PayrollAdjustment
 	CalculationDetails []PayrollPaymentCalculationDetail
 }
 
@@ -1257,9 +1257,9 @@ func (a *App) updatePayrollPaymentQuantity(
 	}
 
 	if !payrollPaymentAllowsManualQuantity(PayrollPayment{
-		Status:        status,
+		Status:           status,
 		CompensationType: compensationType,
-		QuantityLabel: quantityLabel,
+		QuantityLabel:    quantityLabel,
 	}) {
 		return errors.New(
 			"manual quantity editing is currently allowed only for payroll rows that require manual entry",

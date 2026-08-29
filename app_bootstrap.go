@@ -1171,13 +1171,13 @@ type StudentGroupSessionOccurrence struct {
 	TimetableSessionID    int64
 	TimetableSessionTitle string
 
-	OccurrenceDate string
+	OccurrenceDate  string
 	ActualStartTime string
 	ActualEndTime   string
 
-	Status string
+	Status  string
 	IsAdHoc bool
-	Notes string
+	Notes   string
 
 	CreatedByUserID int64
 	UpdatedByUserID int64
