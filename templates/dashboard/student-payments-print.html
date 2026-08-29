@@ -1,0 +1,140 @@
+{{define "student-payments-print"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<style>
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .print-card {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+}
+</style>
+
+<section class="mx-auto w-full max-w-[1600px] space-y-6 pb-10">
+  <header class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <div class="max-w-3xl">
+      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-aqua">
+        {{workspaceName .User .SelectedDivision .SelectedDivisionScope}}
+      </p>
+      <h1 class="mt-2 text-3xl font-semibold tracking-tight text-obsidian sm:text-4xl">Student Payments Report</h1>
+      <p class="mt-2 text-sm leading-6 text-slate/65">Register month {{.PaymentMonthLabel}} with payment activity from {{paymentMonthLabel .PaymentActivityFrom}} to {{paymentMonthLabel .PaymentActivityTo}}.</p>
+    </div>
+
+    <div class="no-print flex flex-wrap gap-2">
+      <a href="{{scopedURL (printf "/admin/student-payments?month=%s&from_month=%s&to_month=%s&search=%s&status=%s&program=%s&method=%s" (urlquery .PaymentMonth) (urlquery .PaymentActivityFrom) (urlquery .PaymentActivityTo) (urlquery .PaymentSearch) (urlquery .PaymentStatusFilter) (urlquery .PaymentProgramFilter) (urlquery .PaymentMethodFilter)) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Back to register</a>
+      <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Print / Save PDF</button>
+    </div>
+  </header>
+
+  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <article class="print-card rounded-[1.5rem] border border-slate/10 bg-white p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate/45">Expected</p>
+      <p class="mt-2 text-3xl font-semibold text-obsidian">{{money .PaymentTotalDue}}</p>
+    </article>
+    <article class="print-card rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-emerald-700/70">Collected</p>
+      <p class="mt-2 text-3xl font-semibold text-emerald-900">{{money .PaymentCollected}}</p>
+    </article>
+    <article class="print-card rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-amber-700/70">Outstanding</p>
+      <p class="mt-2 text-3xl font-semibold text-amber-900">{{money .PaymentOutstanding}}</p>
+    </article>
+    <article class="print-card rounded-[1.5rem] border border-sky-200 bg-sky-50 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-sky-700/70">Activity range</p>
+      <p class="mt-2 text-lg font-semibold text-sky-900">{{paymentMonthLabel .PaymentActivityFrom}} to {{paymentMonthLabel .PaymentActivityTo}}</p>
+    </article>
+  </section>
+
+  <section class="rounded-[1.75rem] border border-slate/10 bg-white p-5 shadow-sm">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <h2 class="text-xl font-semibold text-obsidian">{{.PaymentMonthLabel}} register</h2>
+        <p class="mt-1 text-sm text-slate/60">{{len .StudentPaymentRows}} enrollments in view.</p>
+      </div>
+    </div>
+    <div class="mt-5 overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate/10 text-sm">
+        <thead>
+          <tr class="text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate/50">
+            <th class="px-3 py-3">Student</th>
+            <th class="px-3 py-3">Programme</th>
+            <th class="px-3 py-3">Due</th>
+            <th class="px-3 py-3">Collected</th>
+            <th class="px-3 py-3">Discount</th>
+            <th class="px-3 py-3">Outstanding</th>
+            <th class="px-3 py-3">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .StudentPaymentRows}}
+          <tr>
+            <td class="px-3 py-3">
+              <p class="font-semibold text-obsidian">{{.Admission.FullName}}</p>
+              <p class="text-xs text-slate/55">{{.Admission.StudentID}}</p>
+            </td>
+            <td class="px-3 py-3 text-slate/70">{{.Enrollment.TrainingProgramName}}{{if .Enrollment.DivisionName}} · {{.Enrollment.DivisionName}}{{end}}</td>
+            <td class="px-3 py-3 text-slate/70">{{money .MonthlyFee}}</td>
+            <td class="px-3 py-3 text-slate/70">{{money .CollectedAmount}}</td>
+            <td class="px-3 py-3 text-slate/70">{{money .DiscountAmount}}</td>
+            <td class="px-3 py-3 text-slate/70">{{money .OutstandingAmount}}</td>
+            <td class="px-3 py-3 text-slate/70">{{studentPaymentRowStatus .}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rounded-[1.75rem] border border-slate/10 bg-white p-5 shadow-sm">
+    <div>
+      <h2 class="text-xl font-semibold text-obsidian">Collection activity</h2>
+      <p class="mt-1 text-sm text-slate/60">{{len .PaymentActivityRows}} payment records in range.</p>
+    </div>
+    <div class="mt-5 overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate/10 text-sm">
+        <thead>
+          <tr class="text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate/50">
+            <th class="px-3 py-3">Month</th>
+            <th class="px-3 py-3">Student</th>
+            <th class="px-3 py-3">Programme</th>
+            <th class="px-3 py-3">Receipt</th>
+            <th class="px-3 py-3">Method</th>
+            <th class="px-3 py-3">Settled</th>
+            <th class="px-3 py-3">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .PaymentActivityRows}}
+          <tr>
+            <td class="px-3 py-3 text-slate/70">{{paymentMonthLabel .Payment.PaymentMonth}}</td>
+            <td class="px-3 py-3">
+              <p class="font-semibold text-obsidian">{{.StudentName}}</p>
+              <p class="text-xs text-slate/55">{{.StudentID}}</p>
+            </td>
+            <td class="px-3 py-3 text-slate/70">{{.TrainingProgramName}}{{if .DivisionName}} · {{.DivisionName}}{{end}}</td>
+            <td class="px-3 py-3 font-mono text-xs text-slate/70">{{.Payment.ReceiptNumber}}</td>
+            <td class="px-3 py-3 text-slate/70">{{paymentMethodLabel .Payment.PaymentMethod}}</td>
+            <td class="px-3 py-3 text-slate/70">{{money .SettledAmount}}</td>
+            <td class="px-3 py-3 text-slate/70">{{if .Payment.Voided}}Voided{{else}}Active{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>
+
+<script>
+  window.addEventListener("load", () => {
+    window.print();
+  });
+</script>
+{{end}}

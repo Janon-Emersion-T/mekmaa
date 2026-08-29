@@ -74,9 +74,13 @@
         <p class="mt-2 text-sm font-semibold text-amber-800">{{.PaymentCollectionNotice}}</p>
         {{end}}
       </div>
+      <div class="flex flex-wrap gap-2 no-print">
+        <a href="{{scopedURL (printf "/admin/student-payments?month=%s&from_month=%s&to_month=%s&search=%s&status=%s&program=%s&method=%s&format=csv" (urlquery .PaymentMonth) (urlquery .PaymentActivityFrom) (urlquery .PaymentActivityTo) (urlquery .PaymentSearch) (urlquery .PaymentStatusFilter) (urlquery .PaymentProgramFilter) (urlquery .PaymentMethodFilter)) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Export CSV</a>
+        <a href="{{scopedURL (printf "/admin/student-payments?month=%s&from_month=%s&to_month=%s&search=%s&status=%s&program=%s&method=%s&format=pdf" (urlquery .PaymentMonth) (urlquery .PaymentActivityFrom) (urlquery .PaymentActivityTo) (urlquery .PaymentSearch) (urlquery .PaymentStatusFilter) (urlquery .PaymentProgramFilter) (urlquery .PaymentMethodFilter)) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Print / PDF</a>
+      </div>
     </div>
 
-    <form action="/admin/student-payments" method="get" class="mt-6 grid gap-3 rounded-[1.5rem] border border-slate/10 bg-cloud/55 p-4 lg:grid-cols-[minmax(0,1.5fr)_repeat(4,minmax(0,1fr))]">
+    <form action="/admin/student-payments" method="get" class="mt-6 grid gap-3 rounded-[1.5rem] border border-slate/10 bg-cloud/55 p-4 lg:grid-cols-[minmax(0,1.5fr)_repeat(6,minmax(0,1fr))]">
       {{if .SelectedDivision}}
       <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />
       {{else if eq .SelectedDivisionScope "all"}}
@@ -109,14 +113,17 @@
         <option value="bank_transfer" {{if eq .PaymentMethodFilter "bank_transfer"}}selected{{end}}>Bank transfer</option>
         <option value="qr_pay" {{if eq .PaymentMethodFilter "qr_pay"}}selected{{end}}>QR pay</option>
       </select>
+      <input type="month" name="from_month" value="{{.PaymentActivityFrom}}" max="{{.TodayDate}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      <input type="month" name="to_month" value="{{.PaymentActivityTo}}" max="{{.TodayDate}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
       <div class="flex gap-2">
         <button class="h-12 flex-1 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Apply</button>
-        <a href="{{scopedURL (printf "/admin/student-payments?month=%s" .PaymentMonth) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-12 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua hover:text-obsidian">Reset</a>
+        <a href="{{scopedURL (printf "/admin/student-payments?month=%s&from_month=%s&to_month=%s" .PaymentMonth .PaymentMonth .PaymentMonth) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-12 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua hover:text-obsidian">Reset</a>
       </div>
     </form>
 
     <div class="mt-4 flex flex-wrap items-center gap-2 text-xs font-medium text-slate/60">
       <span class="rounded-full bg-cloud px-3 py-1.5">{{len .StudentPaymentRows}} results</span>
+      <span class="rounded-full bg-cloud px-3 py-1.5">Activity: {{.PaymentActivityFrom}} to {{.PaymentActivityTo}}</span>
       {{if .PaymentSearch}}<span class="rounded-full bg-cloud px-3 py-1.5">Search: {{.PaymentSearch}}</span>{{end}}
       {{if .PaymentStatusFilter}}<span class="rounded-full bg-cloud px-3 py-1.5">Status: {{.PaymentStatusFilter}}</span>{{end}}
       {{if .PaymentProgramFilter}}<span class="rounded-full bg-cloud px-3 py-1.5">Programme: {{.PaymentProgramFilter}}</span>{{end}}
@@ -365,6 +372,78 @@
         <p class="mt-2 text-sm text-slate/55">Add students through Admissions, then return to this register.</p>
       </div>
       {{end}}
+    </div>
+  </div>
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <h2 class="text-xl font-semibold text-obsidian">Collection activity</h2>
+        <p class="mt-1 text-sm text-slate/60">Collected student monthly payments from {{paymentMonthLabel .PaymentActivityFrom}} to {{paymentMonthLabel .PaymentActivityTo}}.</p>
+      </div>
+    </div>
+
+    <div class="mt-5 grid gap-4 sm:grid-cols-3">
+      <article class="rounded-[1.5rem] border border-emerald-200/70 bg-emerald-50/80 p-5">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700/70">Active collections</p>
+        <p class="mt-3 text-2xl font-semibold text-emerald-900">{{money .PaymentActivityCollected}}</p>
+      </article>
+      <article class="rounded-[1.5rem] border border-sky-200/70 bg-sky-50/80 p-5">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700/70">Discounts recorded</p>
+        <p class="mt-3 text-2xl font-semibold text-sky-900">{{money .PaymentActivityDiscounted}}</p>
+      </article>
+      <article class="rounded-[1.5rem] border border-rose-200/70 bg-rose-50/80 p-5">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700/70">Voided entries</p>
+        <p class="mt-3 text-2xl font-semibold text-rose-900">{{.PaymentActivityVoidedCount}}</p>
+      </article>
+    </div>
+
+    <div class="mt-5 overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate/10 text-sm">
+        <thead>
+          <tr class="text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate/50">
+            <th class="px-3 py-3">Month</th>
+            <th class="px-3 py-3">Student</th>
+            <th class="px-3 py-3">Programme</th>
+            <th class="px-3 py-3">Receipt</th>
+            <th class="px-3 py-3">Collected</th>
+            <th class="px-3 py-3">Amount</th>
+            <th class="px-3 py-3">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .PaymentActivityRows}}
+          <tr class="{{if .Payment.Voided}}bg-red-50/60{{else}}bg-white{{end}}">
+            <td class="px-3 py-3 font-semibold text-obsidian">{{paymentMonthLabel .Payment.PaymentMonth}}</td>
+            <td class="px-3 py-3">
+              <p class="font-semibold text-obsidian">{{.StudentName}}</p>
+              <p class="text-xs text-slate/55">{{.StudentID}}{{if .DivisionName}} · {{.DivisionName}}{{end}}</p>
+            </td>
+            <td class="px-3 py-3 text-slate/70">{{.TrainingProgramName}}</td>
+            <td class="px-3 py-3">
+              <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .Payment.FinanceTransactionID) $.SelectedDivision $.SelectedDivisionScope}}" class="font-mono text-xs font-semibold text-aqua underline decoration-aqua/60 underline-offset-4">{{.Payment.ReceiptNumber}}</a>
+            </td>
+            <td class="px-3 py-3 text-slate/70">{{formatDateTime .Payment.CollectedAt}}<br /><span class="text-xs text-slate/55">{{paymentMethodLabel .Payment.PaymentMethod}}</span></td>
+            <td class="px-3 py-3">
+              <p class="font-semibold text-obsidian">{{money .Payment.Amount}}</p>
+              {{if gt .Payment.DiscountAmount 0.0}}<p class="text-xs text-emerald-700">Discount {{money .Payment.DiscountAmount}}</p>{{end}}
+            </td>
+            <td class="px-3 py-3">
+              {{if .Payment.Voided}}
+              <span class="rounded-full bg-red-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-red-800">Void</span>
+              <p class="mt-1 text-xs text-red-800">{{.Payment.VoidReason}}</p>
+              {{else}}
+              <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-emerald-800">Active</span>
+              {{end}}
+            </td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="7" class="px-3 py-10 text-center text-sm text-slate/55">No student payment activity found for this month range.</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
     </div>
   </div>
 </section>

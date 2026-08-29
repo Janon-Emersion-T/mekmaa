@@ -1051,6 +1051,131 @@ func (a *App) listStudentMonthlyPaymentsForMonthByDivisionIDs(paymentMonth strin
 	return payments, rows.Err()
 }
 
+func (a *App) listStudentMonthlyPaymentActivityByDivisionIDs(
+	fromMonth string,
+	toMonth string,
+	divisionIDs []int64,
+) ([]StudentMonthlyPaymentActivityRow, error) {
+	if _, err := parsePaymentMonth(fromMonth); err != nil {
+		return nil, err
+	}
+	if _, err := parsePaymentMonth(toMonth); err != nil {
+		return nil, err
+	}
+	hasDiscountAmount, err := tableHasColumn(a.db, "student_monthly_payments", "discount_amount")
+	if err != nil {
+		return nil, err
+	}
+	hasAdjustmentReason, err := tableHasColumn(a.db, "student_monthly_payments", "adjustment_reason")
+	if err != nil {
+		return nil, err
+	}
+
+	query := `
+		SELECT
+			smp.id,
+			smp.admission_id,
+			COALESCE(smp.enrollment_id, 0),
+			COALESCE(ft.receipt_number, ''),
+			COALESCE(adm.student_id, ''),
+			COALESCE(adm.full_name, ''),
+			COALESCE(tp.name, adm_tp.name, '') AS training_program_name,
+			COALESCE(d.name, adm_d.name, '') AS division_name,
+			smp.payment_month,
+			smp.amount,
+	`
+	if hasDiscountAmount {
+		query += ` COALESCE(smp.discount_amount, 0),`
+	} else {
+		query += ` 0,`
+	}
+	if hasAdjustmentReason {
+		query += ` COALESCE(smp.adjustment_reason, ''),`
+	} else {
+		query += ` '',`
+	}
+	query += `
+			smp.payment_method,
+			smp.finance_transaction_id,
+			COALESCE(smp.collected_by_user_id, 0),
+			COALESCE(u.name, ''),
+			COALESCE(smp.voided, 0),
+			COALESCE(smp.void_reason, ''),
+			COALESCE(smp.voided_by_user_id, 0),
+			COALESCE(vu.name, ''),
+			smp.voided_at,
+			smp.collected_at,
+			smp.created_at
+		FROM student_monthly_payments smp
+		LEFT JOIN finance_transactions ft ON ft.id = smp.finance_transaction_id
+		LEFT JOIN admissions adm ON adm.id = smp.admission_id
+		LEFT JOIN student_enrollments se ON se.id = smp.enrollment_id
+		LEFT JOIN training_programs tp ON tp.id = se.training_program_id
+		LEFT JOIN training_programs adm_tp ON adm_tp.id = adm.training_program_id
+		LEFT JOIN divisions d ON d.id = tp.division_id
+		LEFT JOIN divisions adm_d ON adm_d.id = adm_tp.division_id
+		LEFT JOIN users u ON u.id = smp.collected_by_user_id
+		LEFT JOIN users vu ON vu.id = smp.voided_by_user_id
+		WHERE smp.payment_month >= ?
+		  AND smp.payment_month <= ?
+	`
+	args := []any{fromMonth, toMonth}
+	if placeholders, scopeArgs := int64ScopePlaceholders(divisionIDs); placeholders != "" {
+		query += ` AND COALESCE(tp.division_id, adm_tp.division_id, 0) IN (` + placeholders + `)`
+		args = append(args, scopeArgs...)
+	}
+	query += ` ORDER BY smp.payment_month DESC, smp.collected_at DESC, smp.id DESC`
+
+	rows, err := a.queryDB(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	activityRows := make([]StudentMonthlyPaymentActivityRow, 0)
+	for rows.Next() {
+		var row StudentMonthlyPaymentActivityRow
+		var voided int
+		var voidedAt sql.NullTime
+		if err := rows.Scan(
+			&row.Payment.ID,
+			&row.Payment.AdmissionID,
+			&row.Payment.EnrollmentID,
+			&row.Payment.ReceiptNumber,
+			&row.StudentID,
+			&row.StudentName,
+			&row.TrainingProgramName,
+			&row.DivisionName,
+			&row.Payment.PaymentMonth,
+			&row.Payment.Amount,
+			&row.Payment.DiscountAmount,
+			&row.Payment.AdjustmentReason,
+			&row.Payment.PaymentMethod,
+			&row.Payment.FinanceTransactionID,
+			&row.Payment.CollectedByUserID,
+			&row.Payment.CollectedByUserName,
+			&voided,
+			&row.Payment.VoidReason,
+			&row.Payment.VoidedByUserID,
+			&row.Payment.VoidedByUserName,
+			&voidedAt,
+			&row.Payment.CollectedAt,
+			&row.Payment.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		row.Payment.TrainingProgramName = row.TrainingProgramName
+		row.Payment.DivisionName = row.DivisionName
+		row.Payment.Voided = voided == 1
+		if voidedAt.Valid {
+			row.Payment.VoidedAt = voidedAt.Time
+		}
+		row.SettledAmount = normalizeMoney(row.Payment.Amount + row.Payment.DiscountAmount)
+		activityRows = append(activityRows, row)
+	}
+	return activityRows, rows.Err()
+}
+
 func aggregateBookingCustomerBalances(financials []BookingFinancial, search string) []BookingCustomerBalance {
 	search = strings.ToLower(strings.TrimSpace(search))
 	type bucket struct {

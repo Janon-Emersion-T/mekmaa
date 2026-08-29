@@ -1119,6 +1119,15 @@ type StudentPaymentRow struct {
 	Payments                  []StudentMonthlyPayment
 }
 
+type StudentMonthlyPaymentActivityRow struct {
+	Payment             StudentMonthlyPayment
+	StudentID           string
+	StudentName         string
+	TrainingProgramName string
+	DivisionName        string
+	SettledAmount       float64
+}
+
 type StudentGroup struct {
 	ID                  int64
 	Name                string
@@ -1977,6 +1986,8 @@ type TemplateData struct {
 	PaymentStatusFilter              string
 	PaymentProgramFilter             string
 	PaymentMethodFilter              string
+	PaymentActivityFrom              string
+	PaymentActivityTo                string
 	PaymentProgramOptions            []string
 	PaymentTotalDue                  float64
 	PaymentCollected                 float64
@@ -1986,6 +1997,10 @@ type TemplateData struct {
 	PaymentFreeCount                 int
 	PaymentUnconfiguredCount         int
 	PaymentPendingCount              int
+	PaymentActivityRows              []StudentMonthlyPaymentActivityRow
+	PaymentActivityCollected         float64
+	PaymentActivityDiscounted        float64
+	PaymentActivityVoidedCount       int
 	BookingSlots                     []BookingSlotAvailability
 	AdminCalendarHours               []AdminCalendarHour
 	AdminBookingOptions              []AdminBookingOption

@@ -14,6 +14,102 @@ import (
 	"time"
 )
 
+func normalizeStudentPaymentMonthRange(fromMonth string, toMonth string, fallbackMonth string, currentMonth string) (string, string) {
+	if _, err := parsePaymentMonth(fallbackMonth); err != nil {
+		fallbackMonth = latestCollectiblePaymentMonth(time.Now())
+	}
+	if _, err := parsePaymentMonth(fromMonth); err != nil || fromMonth > currentMonth {
+		fromMonth = fallbackMonth
+	}
+	if _, err := parsePaymentMonth(toMonth); err != nil || toMonth > currentMonth {
+		toMonth = fallbackMonth
+	}
+	if fromMonth > toMonth {
+		fromMonth, toMonth = toMonth, fromMonth
+	}
+	return fromMonth, toMonth
+}
+
+func filterStudentPaymentActivityRows(rows []StudentMonthlyPaymentActivityRow, search string, program string, method string) []StudentMonthlyPaymentActivityRow {
+	search = strings.ToLower(strings.TrimSpace(search))
+	program = strings.ToLower(strings.TrimSpace(program))
+	method = strings.ToLower(strings.TrimSpace(method))
+
+	filtered := make([]StudentMonthlyPaymentActivityRow, 0, len(rows))
+	for _, row := range rows {
+		if search != "" {
+			haystack := strings.ToLower(strings.TrimSpace(strings.Join([]string{
+				row.StudentName,
+				row.StudentID,
+				row.TrainingProgramName,
+				row.DivisionName,
+				row.Payment.ReceiptNumber,
+			}, " ")))
+			if !strings.Contains(haystack, search) {
+				continue
+			}
+		}
+		if program != "" && program != "all" && strings.ToLower(strings.TrimSpace(row.TrainingProgramName)) != program {
+			continue
+		}
+		if method != "" && method != "all" && method != "unpaid" && strings.ToLower(strings.TrimSpace(row.Payment.PaymentMethod)) != method {
+			continue
+		}
+		filtered = append(filtered, row)
+	}
+	return filtered
+}
+
+func (a *App) exportStudentPaymentActivityCSV(
+	w http.ResponseWriter,
+	rows []StudentMonthlyPaymentActivityRow,
+	paymentMonth string,
+	fromMonth string,
+	toMonth string,
+) {
+	filename := fmt.Sprintf("mekmaa-student-payments-%s-%s-to-%s.csv", paymentMonth, fromMonth, toMonth)
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	_ = writer.Write([]string{"Register Month", paymentMonthLabel(paymentMonth)})
+	_ = writer.Write([]string{"Activity Range", paymentMonthLabel(fromMonth), paymentMonthLabel(toMonth)})
+	_ = writer.Write([]string{})
+	_ = writer.Write([]string{"Payment Month", "Collected At", "Receipt", "Student ID", "Student Name", "Programme", "Division", "Payment Method", "Amount (LKR)", "Discount (LKR)", "Settled (LKR)", "Status", "Voided At", "Voided By", "Void Reason"})
+	for _, row := range rows {
+		status := "Active"
+		voidedAt := ""
+		voidedBy := ""
+		voidReason := ""
+		if row.Payment.Voided {
+			status = "Voided"
+			if !row.Payment.VoidedAt.IsZero() {
+				voidedAt = formatDateTime(row.Payment.VoidedAt)
+			}
+			voidedBy = row.Payment.VoidedByUserName
+			voidReason = row.Payment.VoidReason
+		}
+		_ = writer.Write([]string{
+			paymentMonthLabel(row.Payment.PaymentMonth),
+			formatDateTime(row.Payment.CollectedAt),
+			csvSafeCell(row.Payment.ReceiptNumber),
+			csvSafeCell(row.StudentID),
+			csvSafeCell(row.StudentName),
+			csvSafeCell(row.TrainingProgramName),
+			csvSafeCell(row.DivisionName),
+			csvSafeCell(paymentMethodLabel(row.Payment.PaymentMethod)),
+			fmt.Sprintf("%.2f", row.Payment.Amount),
+			fmt.Sprintf("%.2f", row.Payment.DiscountAmount),
+			fmt.Sprintf("%.2f", row.SettledAmount),
+			status,
+			voidedAt,
+			csvSafeCell(voidedBy),
+			csvSafeCell(voidReason),
+		})
+	}
+}
+
 func (a *App) financeManagementHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
 }
@@ -1270,11 +1366,15 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	paymentStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
 	paymentProgram := strings.TrimSpace(r.URL.Query().Get("program"))
 	paymentMethod := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("method")))
+	paymentActivityFrom := strings.TrimSpace(r.URL.Query().Get("from_month"))
+	paymentActivityTo := strings.TrimSpace(r.URL.Query().Get("to_month"))
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
 	currentMonth := time.Now().Format("2006-01")
 	latestMonth := latestCollectiblePaymentMonth(time.Now())
 	if _, err := parsePaymentMonth(paymentMonth); err != nil || paymentMonth > currentMonth {
 		paymentMonth = latestMonth
 	}
+	paymentActivityFrom, paymentActivityTo = normalizeStudentPaymentMonthRange(paymentActivityFrom, paymentActivityTo, paymentMonth, currentMonth)
 
 	selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
 	if err != nil {
@@ -1301,8 +1401,20 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	activityRows, err := a.listStudentMonthlyPaymentActivityByDivisionIDs(paymentActivityFrom, paymentActivityTo, rowDivisionIDs)
+	if err != nil {
+		log.Printf("list student payment activity: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	programOptions := studentPaymentProgramOptions(rows)
 	filteredRows := filterStudentPaymentRows(rows, paymentSearch, paymentStatus, paymentProgram, paymentMethod)
+	filteredActivityRows := filterStudentPaymentActivityRows(activityRows, paymentSearch, paymentProgram, paymentMethod)
+
+	if format == "csv" {
+		a.exportStudentPaymentActivityCSV(w, filteredActivityRows, paymentMonth, paymentActivityFrom, paymentActivityTo)
+		return
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Student Payments"
@@ -1316,7 +1428,10 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	data.PaymentStatusFilter = paymentStatus
 	data.PaymentProgramFilter = paymentProgram
 	data.PaymentMethodFilter = paymentMethod
+	data.PaymentActivityFrom = paymentActivityFrom
+	data.PaymentActivityTo = paymentActivityTo
 	data.PaymentProgramOptions = programOptions
+	data.PaymentActivityRows = filteredActivityRows
 	data.TodayDate = time.Now().Format("2006-01")
 	if selectedDivision != nil {
 		data.SelectedDivision = selectedDivision
@@ -1342,6 +1457,20 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		if row.OutstandingAmount > 0 {
 			data.PaymentOutstanding = normalizeMoney(data.PaymentOutstanding + row.OutstandingAmount)
 		}
+	}
+	for _, row := range filteredActivityRows {
+		if row.Payment.Voided {
+			data.PaymentActivityVoidedCount++
+			continue
+		}
+		data.PaymentActivityCollected = normalizeMoney(data.PaymentActivityCollected + row.Payment.Amount)
+		data.PaymentActivityDiscounted = normalizeMoney(data.PaymentActivityDiscounted + row.Payment.DiscountAmount)
+	}
+	if format == "pdf" {
+		data.HideChrome = true
+		data.Title = "Student Payments Report"
+		a.render(w, "student-payments-print", data, http.StatusOK)
+		return
 	}
 	a.render(w, "student-payments", data, http.StatusOK)
 }

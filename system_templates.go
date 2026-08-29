@@ -246,6 +246,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"financeFilterExportURL":                    financeFilterExportURL,
 		"admissionsPageURL":                         admissionsPageURL,
 		"paymentMonthLabel":                         paymentMonthLabel,
+		"studentPaymentRowStatus":                   studentPaymentRowStatus,
 		"formatDateTime":                            formatDateTime,
 		"relativeTime":                              relativeTime,
 		"todayDate": func() string {
@@ -377,6 +378,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"finance-specified-ledger-print": "templates/dashboard/finance-specified-ledger-print.html",
 		"finance-receipt":                "templates/dashboard/finance-receipt.html",
 		"student-payments":               "templates/dashboard/student-payments.html",
+		"student-payments-print":         "templates/dashboard/student-payments-print.html",
 		"referral-commissions":           "templates/dashboard/referral-commissions.html",
 		"reports":                        "templates/dashboard/reports.html",
 		"forbidden":                      "templates/dashboard/forbidden.html",

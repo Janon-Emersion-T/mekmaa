@@ -5699,8 +5699,140 @@ func TestStudentPaymentsHandlerRendersPage(t *testing.T) {
 		t.Fatalf("student payments handler status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Student payments") || !strings.Contains(body, "Page Student") {
-		t.Fatalf("unexpected student payments page body: %s", body)
+	for _, marker := range []string{
+		"Student payments",
+		"Page Student",
+		`name="from_month"`,
+		`name="to_month"`,
+		"Export CSV",
+		"Print / PDF",
+		"Collection activity",
+	} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("unexpected student payments page body, missing %q in %s", marker, body)
+		}
+	}
+}
+
+func TestStudentPaymentsHandlerExportsCSV(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Student Export Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     4000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-EXPORT-001",
+		FullName:              "Export Student",
+		AdmissionDate:         "2026-06-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000016",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-06-15",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	julyDate, _ := parsePaymentMonth("2026-07")
+	julyTxnID, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-07", julyDate, "cash", 1)
+	if err != nil {
+		t.Fatalf("collect july payment: %v", err)
+	}
+	var julyPaymentID int64
+	if err := app.db.QueryRow(`SELECT id FROM student_monthly_payments WHERE finance_transaction_id = ?`, julyTxnID).Scan(&julyPaymentID); err != nil {
+		t.Fatalf("lookup july payment row: %v", err)
+	}
+	if err := app.voidStudentMonthlyPayment(julyPaymentID, "Duplicate July payment", 1); err != nil {
+		t.Fatalf("void july payment: %v", err)
+	}
+
+	augDate, _ := parsePaymentMonth("2026-08")
+	if _, err := app.collectStudentMonthlyPayment(enrollmentID, "2026-08", augDate, "cash", 1); err != nil {
+		t.Fatalf("collect august payment: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/student-payments?month=2026-08&from_month=2026-07&to_month=2026-08&format=csv", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          1,
+		Name:        "Finance User",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"finance.view", "student_payments.view"},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.studentPaymentsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("student payments csv status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "text/csv") {
+		t.Fatalf("content type = %q, want text/csv", got)
+	}
+	body := rec.Body.String()
+	for _, marker := range []string{
+		"Register Month,August 2026",
+		"Activity Range,July 2026,August 2026",
+		"Export Student",
+		"Voided",
+		"Active",
+		"Duplicate July payment",
+	} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("student payments csv missing %q in %s", marker, body)
+		}
+	}
+}
+
+func TestStudentPaymentsHandlerRendersPDFReport(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/student-payments?month=2026-08&from_month=2026-07&to_month=2026-08&format=pdf", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          1,
+		Name:        "Finance User",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"finance.view", "student_payments.view"},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.studentPaymentsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("student payments pdf status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, marker := range []string{
+		"Student Payments Report",
+		"Print / Save PDF",
+		"Collection activity",
+	} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("student payments pdf missing %q in %s", marker, body)
+		}
 	}
 }
 
