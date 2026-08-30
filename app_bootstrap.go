@@ -1054,6 +1054,106 @@ type OperationalReport struct {
 	MaxDailyCash     float64
 }
 
+type ReportDomainOption struct {
+	Key         string
+	Label       string
+	Description string
+}
+
+type ReportMetric struct {
+	Label string
+	Value string
+	Note  string
+	Tone  string
+}
+
+type FinanceDomainReport struct {
+	Metrics      []ReportMetric
+	Breakdown    []ReportBreakdown
+	Transactions []FinanceTransaction
+}
+
+type PayrollReportRunRow struct {
+	Run                PayrollRun
+	PaymentCount       int
+	DraftPayments      int
+	CalculatedPayments int
+	ApprovedPayments   int
+	PaidPayments       int
+}
+
+type PayrollReportCompensationRow struct {
+	CompensationType string
+	PaymentCount     int
+	Quantity         float64
+	NetAmount        float64
+}
+
+type PayrollDomainReport struct {
+	Metrics      []ReportMetric
+	RunRows      []PayrollReportRunRow
+	Compensation []PayrollReportCompensationRow
+}
+
+type AttendanceDomainGroupRow struct {
+	GroupID             int64
+	GroupName           string
+	GroupCode           string
+	TrainingProgramName string
+	PresentCount        int
+	AbsentCount         int
+	LateCount           int
+	ExcusedCount        int
+	TotalEntries        int
+	AttendanceRate      float64
+}
+
+type AttendanceDomainStaffRow struct {
+	UserID         int64
+	UserName       string
+	PresentCount   int
+	AbsentCount    int
+	LateCount      int
+	ExcusedCount   int
+	TotalRecords   int
+	AttendanceRate float64
+}
+
+type AttendanceDomainReport struct {
+	Metrics   []ReportMetric
+	GroupRows []AttendanceDomainGroupRow
+	StaffRows []AttendanceDomainStaffRow
+}
+
+type StudentProgramReportRow struct {
+	TrainingProgramID   int64
+	TrainingProgramName string
+	DivisionName        string
+	TotalEnrollments    int
+	ActiveEnrollments   int
+	NewEnrollments      int
+	StudentPayments     int
+	PaymentCollected    float64
+	PaymentOutstanding  float64
+}
+
+type StudentDomainReport struct {
+	Metrics      []ReportMetric
+	Programs     []StudentProgramReportRow
+	PaymentMonth string
+}
+
+type ReportCenter struct {
+	Domain     string
+	Domains    []ReportDomainOption
+	Period     ReportPeriod
+	Overview   *OperationalReport
+	Finance    *FinanceDomainReport
+	Payroll    *PayrollDomainReport
+	Attendance *AttendanceDomainReport
+	Students   *StudentDomainReport
+}
+
 type StudentMonthlyPayment struct {
 	ID                   int64
 	AdmissionID          int64
@@ -2017,6 +2117,7 @@ type TemplateData struct {
 	BookingStatusUnavailable         bool
 	BookingStatusUnavailableMessage  string
 	Report                           *OperationalReport
+	ReportCenter                     *ReportCenter
 	ReceiptAdmission                 *Admission
 	ReceiptEnrollment                *StudentEnrollment
 	ReceiptBookingPayment            *BookingPaymentCollection

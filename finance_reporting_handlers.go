@@ -1250,27 +1250,51 @@ func (a *App) reportsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	period := reportPeriodFromRequest(r)
+	domain := reportDomainFromRequest(r)
 	scopeDivisionIDs := []int64(nil)
 	if selectedDivision != nil {
 		scopeDivisionIDs = []int64{selectedDivision.ID}
 	} else if !canViewAllDivisions(user) {
 		scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
 	}
-	report, err := a.buildOperationalReport(period, scopeDivisionIDs)
+
+	var (
+		report     *OperationalReport
+		finance    *FinanceDomainReport
+		payroll    *PayrollDomainReport
+		attendance *AttendanceDomainReport
+		students   *StudentDomainReport
+	)
+
+	switch domain {
+	case reportDomainFinance:
+		finance, err = a.buildFinanceDomainReport(period, scopeDivisionIDs)
+	case reportDomainPayroll:
+		payroll, err = a.buildPayrollDomainReport(period, scopeDivisionIDs)
+	case reportDomainAttendance:
+		attendance, err = a.buildAttendanceDomainReport(period, scopeDivisionIDs)
+	case reportDomainStudents:
+		students, err = a.buildStudentDomainReport(period, scopeDivisionIDs)
+	default:
+		report, err = a.buildOperationalReport(period, scopeDivisionIDs)
+	}
 	if err != nil {
-		log.Printf("build operational report: %v", err)
+		log.Printf("build report domain %s: %v", domain, err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
+	reportCenter := buildReportCenter(period, domain, report, finance, payroll, attendance, students)
+
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Reports"
-	data.Description = "Daily, weekly, and monthly performance reporting."
+	data.Description = "Operational, finance, payroll, attendance, and student reporting."
 	data.SelectedDivision = selectedDivision
 	if selectedDivision != nil {
 		data.SelectedDivisionScope = selectedDivision.Slug
 	}
 	data.Report = report
+	data.ReportCenter = reportCenter
 	a.render(w, "reports", data, http.StatusOK)
 }
 
@@ -1291,72 +1315,42 @@ func (a *App) reportsExportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	period := reportPeriodFromRequest(r)
+	domain := reportDomainFromRequest(r)
 	scopeDivisionIDs := []int64(nil)
 	if selectedDivision != nil {
 		scopeDivisionIDs = []int64{selectedDivision.ID}
 	} else if !canViewAllDivisions(user) {
 		scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
 	}
-	report, err := a.buildOperationalReport(period, scopeDivisionIDs)
+
+	var (
+		report     *OperationalReport
+		finance    *FinanceDomainReport
+		payroll    *PayrollDomainReport
+		attendance *AttendanceDomainReport
+		students   *StudentDomainReport
+	)
+
+	switch domain {
+	case reportDomainFinance:
+		finance, err = a.buildFinanceDomainReport(period, scopeDivisionIDs)
+	case reportDomainPayroll:
+		payroll, err = a.buildPayrollDomainReport(period, scopeDivisionIDs)
+	case reportDomainAttendance:
+		attendance, err = a.buildAttendanceDomainReport(period, scopeDivisionIDs)
+	case reportDomainStudents:
+		students, err = a.buildStudentDomainReport(period, scopeDivisionIDs)
+	default:
+		report, err = a.buildOperationalReport(period, scopeDivisionIDs)
+	}
 	if err != nil {
 		http.Error(w, "could not export report", http.StatusInternalServerError)
 		return
 	}
-	filename := fmt.Sprintf("mekmaa-%s-report-%s.csv", period.Kind, period.Anchor)
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	writer := csv.NewWriter(w)
-	_ = writer.Write([]string{"Mekmaa operational report", report.Period.Label})
-	_ = writer.Write([]string{"Period", report.Period.Start, report.Period.End})
-	_ = writer.Write([]string{})
-	_ = writer.Write([]string{"SUMMARY", "VALUE"})
-	summaryRows := [][]string{
-		{"Gross income (LKR)", formatReportNumber(report.Summary.Income)},
-		{"Expenses (LKR)", formatReportNumber(report.Summary.Expenses)},
-		{"Net cash (LKR)", formatReportNumber(report.Summary.NetCash)},
-		{"Confirmed bookings", strconv.Itoa(report.Summary.ConfirmedBookings)},
-		{"Pending bookings", strconv.Itoa(report.Summary.PendingBookings)},
-		{"New admissions", strconv.Itoa(report.Summary.NewAdmissions)},
-		{"Student payments", strconv.Itoa(report.Summary.StudentPayments)},
-		{"Attendance rate", fmt.Sprintf("%.1f%%", report.Summary.AttendanceRate)},
-		{"Facility utilization", fmt.Sprintf("%.1f%%", report.Summary.UtilizationRate)},
+	center := buildReportCenter(period, domain, report, finance, payroll, attendance, students)
+	if err := a.writeReportCenterCSV(w, center); err != nil {
+		log.Printf("write report export: %v", err)
 	}
-	for _, row := range summaryRows {
-		_ = writer.Write(row)
-	}
-	_ = writer.Write([]string{})
-	_ = writer.Write([]string{"DAILY TREND", "DATE", "INCOME", "EXPENSES", "NET CASH", "BOOKINGS", "ADMISSIONS", "PRESENT", "ATTENDANCE RECORDS"})
-	for _, point := range report.Series {
-		_ = writer.Write([]string{
-			"", point.Date, formatReportNumber(point.Income), formatReportNumber(point.Expenses),
-			formatReportNumber(point.NetCash), strconv.Itoa(point.Bookings), strconv.Itoa(point.Admissions),
-			strconv.Itoa(point.Present), strconv.Itoa(point.Attendance),
-		})
-	}
-	_ = writer.Write([]string{})
-	_ = writer.Write([]string{"FINANCE BREAKDOWN", "CATEGORY", "TRANSACTIONS", "AMOUNT"})
-	for _, item := range report.FinanceBreakdown {
-		_ = writer.Write([]string{"", item.Label, strconv.Itoa(item.Count), formatReportNumber(item.Amount)})
-	}
-	_ = writer.Write([]string{})
-	_ = writer.Write([]string{"BOOKING MIX", "ACTIVITY", "CONFIRMED BOOKINGS"})
-	for _, item := range report.BookingBreakdown {
-		_ = writer.Write([]string{"", item.Label, strconv.Itoa(item.Count)})
-	}
-	_ = writer.Write([]string{})
-	_ = writer.Write([]string{"TRANSACTIONS", "RECEIPT", "DATE", "DIRECTION", "CATEGORY", "PARTY", "DESCRIPTION", "METHOD", "AMOUNT"})
-	for _, transaction := range report.Transactions {
-		direction := "Income"
-		if transaction.Amount < 0 {
-			direction = "Expense"
-		}
-		_ = writer.Write([]string{
-			"", csvSafeCell(transaction.ReceiptNumber), formatDateTime(transaction.RecordedAt),
-			direction, financeCategoryLabel(transaction.Category), csvSafeCell(transaction.PersonName),
-			csvSafeCell(transaction.Description), csvSafeCell(transaction.PaymentMethod), formatReportNumber(transaction.Amount),
-		})
-	}
-	writer.Flush()
 }
 
 func (a *App) referralCommissionsHandler(w http.ResponseWriter, r *http.Request) {

@@ -1,29 +1,32 @@
 {{define "reports"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
+{{if .ReportCenter}}
+{{$center := .ReportCenter}}
 <section class="space-y-6">
   <style>
     @media print {
-      [data-sidebar], [data-dashboard-header], [data-dashboard-footer], [data-report-controls], [data-report-actions] { display: none !important; }
+      [data-sidebar], [data-dashboard-header], [data-dashboard-footer], [data-report-controls], [data-report-actions], [data-report-tabs] { display: none !important; }
       body, main, body > div, body > div > div { overflow: visible !important; height: auto !important; }
       main { padding: 0 !important; }
       section { break-inside: avoid; }
     }
   </style>
+
   <header class="relative overflow-hidden rounded-[2rem] bg-obsidian p-6 text-cloud shadow-[0_28px_80px_rgba(11,18,21,0.2)] sm:p-8">
     <div class="pointer-events-none absolute -right-20 -top-28 h-80 w-80 rounded-full border-[54px] border-aqua/10"></div>
     <div class="pointer-events-none absolute bottom-0 left-1/3 h-32 w-72 translate-y-1/2 rounded-full bg-aqua/10 blur-3xl"></div>
     <div class="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
       <div>
-        <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Performance intelligence</p>
-        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{{.Report.Period.Label}}</h1>
-        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/60">Finance, bookings, students, attendance, and facility utilization in one reconciled operational report.</p>
+        <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Report center</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{{$center.Period.Label}}</h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/60">Finance, payroll, attendance, and student reporting under one scoped period and division filter.</p>
       </div>
       <div data-report-actions class="flex flex-col gap-2 sm:flex-row">
         <button type="button" onclick="window.print()" class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-5 text-sm font-bold text-cloud transition hover:bg-white/15">Print / PDF</button>
-        <a href="{{scopedURL (printf "/admin/reports/export?period=%s&date=%s" .Report.Period.Kind .Report.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-aqua px-5 text-sm font-bold text-obsidian transition hover:bg-white">
+        <a href="{{scopedURL (printf "/admin/reports/export?domain=%s&period=%s&date=%s" $center.Domain $center.Period.Kind $center.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-aqua px-5 text-sm font-bold text-obsidian transition hover:bg-white">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3v9m-4-4 4 4 4-4M4 16h12" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Export full CSV
+          Export CSV
         </a>
       </div>
     </div>
@@ -32,151 +35,145 @@
   <section data-report-controls class="rounded-[1.5rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-5">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
       <div class="grid grid-cols-3 gap-1 rounded-2xl bg-cloud p-1">
-        <a href="{{scopedURL (printf "/admin/reports?period=day&date=%s" .Report.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="{{if eq .Report.Period.Kind "day"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Daily</a>
-        <a href="{{scopedURL (printf "/admin/reports?period=week&date=%s" .Report.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="{{if eq .Report.Period.Kind "week"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Weekly</a>
-        <a href="{{scopedURL (printf "/admin/reports?period=month&date=%s" .Report.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="{{if eq .Report.Period.Kind "month"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Monthly</a>
+        <a href="{{scopedURL (printf "/admin/reports?domain=%s&period=day&date=%s" $center.Domain $center.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="{{if eq $center.Period.Kind "day"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Daily</a>
+        <a href="{{scopedURL (printf "/admin/reports?domain=%s&period=week&date=%s" $center.Domain $center.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="{{if eq $center.Period.Kind "week"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Weekly</a>
+        <a href="{{scopedURL (printf "/admin/reports?domain=%s&period=month&date=%s" $center.Domain $center.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="{{if eq $center.Period.Kind "month"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/60 hover:text-obsidian{{end}} rounded-xl px-4 py-2.5 text-center text-xs font-bold transition">Monthly</a>
       </div>
       <div class="flex items-center gap-2">
-        <a href="{{scopedURL (printf "/admin/reports?period=%s&date=%s" .Report.Period.Kind .Report.Period.PreviousDate) .SelectedDivision .SelectedDivisionScope}}" aria-label="Previous period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
+        <a href="{{scopedURL (printf "/admin/reports?domain=%s&period=%s&date=%s" $center.Domain $center.Period.Kind $center.Period.PreviousDate) .SelectedDivision .SelectedDivisionScope}}" aria-label="Previous period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12.5 4.5-5.5 5.5 5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
         <form method="get" action="/admin/reports" class="flex min-w-0 flex-1 gap-2">
-          <input type="hidden" name="period" value="{{.Report.Period.Kind}}">
+          <input type="hidden" name="period" value="{{$center.Period.Kind}}">
+          <input type="hidden" name="domain" value="{{$center.Domain}}">
           {{if .SelectedDivision}}
           <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}">
           {{else if eq .SelectedDivisionScope "all"}}
           <input type="hidden" name="division" value="all">
           {{end}}
-          <input type="date" name="date" value="{{.Report.Period.Anchor}}" class="h-11 min-w-0 flex-1 rounded-2xl border border-slate/10 bg-cloud px-3 text-sm font-medium outline-none focus:border-aqua">
+          <input type="date" name="date" value="{{$center.Period.Anchor}}" class="h-11 min-w-0 flex-1 rounded-2xl border border-slate/10 bg-cloud px-3 text-sm font-medium outline-none focus:border-aqua">
           <button class="h-11 rounded-2xl bg-obsidian px-4 text-xs font-bold text-cloud">View</button>
         </form>
-        <a href="{{scopedURL (printf "/admin/reports?period=%s&date=%s" .Report.Period.Kind .Report.Period.NextDate) .SelectedDivision .SelectedDivisionScope}}" aria-label="Next period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
+        <a href="{{scopedURL (printf "/admin/reports?domain=%s&period=%s&date=%s" $center.Domain $center.Period.Kind $center.Period.NextDate) .SelectedDivision .SelectedDivisionScope}}" aria-label="Next period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
       </div>
     </div>
   </section>
 
-  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    <article class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50 p-5">
-      <p class="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Gross income</p>
-      <p class="mt-3 text-2xl font-semibold text-emerald-950">{{money .Report.Summary.Income}}</p>
-      <p class="mt-2 text-xs text-emerald-800/55">{{len .Report.Transactions}} ledger transactions</p>
-    </article>
-    <article class="rounded-[1.5rem] border border-rose-100 bg-rose-50 p-5">
-      <p class="text-xs font-bold uppercase tracking-[0.16em] text-rose-700">Expenses</p>
-      <p class="mt-3 text-2xl font-semibold text-rose-950">{{money .Report.Summary.Expenses}}</p>
-      <p class="mt-2 text-xs text-rose-800/55">Paid operational outflow</p>
-    </article>
-    <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
-      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Net cash</p>
-      <p class="mt-3 text-2xl font-semibold {{if lt .Report.Summary.NetCash 0.0}}text-rose-700{{else}}text-obsidian{{end}}">{{money .Report.Summary.NetCash}}</p>
-      <p class="mt-2 text-xs text-slate/45">Income minus expenses</p>
-    </article>
-    <article class="rounded-[1.5rem] border border-sky-100 bg-sky-50 p-5">
-      <p class="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Facility utilization</p>
-      <p class="mt-3 text-2xl font-semibold text-sky-950">{{printf "%.1f" .Report.Summary.UtilizationRate}}%</p>
-      <p class="mt-2 text-xs text-sky-800/55">{{.Report.Summary.OccupiedSlotHours}} of {{.Report.Summary.AvailableSlotHours}} operating hours</p>
-    </article>
-  </div>
+  <section data-report-tabs class="grid gap-3 md:grid-cols-5">
+    {{range $option := $center.Domains}}
+    <a href="{{scopedURL (printf "/admin/reports?domain=%s&period=%s&date=%s" $option.Key $center.Period.Kind $center.Period.Anchor) $.SelectedDivision $.SelectedDivisionScope}}" class="{{if eq $center.Domain $option.Key}}border-obsidian bg-obsidian text-cloud{{else}}border-slate/10 bg-white/90 text-obsidian hover:bg-cloud{{end}} rounded-[1.4rem] border p-4 shadow-sm transition">
+      <p class="text-sm font-semibold">{{$option.Label}}</p>
+      <p class="mt-1 text-xs {{if eq $center.Domain $option.Key}}text-cloud/65{{else}}text-slate/50{{end}}">{{$option.Description}}</p>
+    </a>
+    {{end}}
+  </section>
 
-  <div class="grid gap-6 xl:grid-cols-[1.45fr_.55fr]">
-    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-      <div class="flex items-end justify-between gap-4">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Cash flow</p>
-          <h2 class="mt-2 text-xl font-semibold text-obsidian">Period trend</h2>
+  {{if eq $center.Domain "overview"}}
+    {{$report := $center.Overview}}
+    {{if $report}}
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <article class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50 p-5"><p class="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Gross income</p><p class="mt-3 text-2xl font-semibold text-emerald-950">{{money $report.Summary.Income}}</p><p class="mt-2 text-xs text-emerald-800/55">{{len $report.Transactions}} ledger transactions</p></article>
+      <article class="rounded-[1.5rem] border border-rose-100 bg-rose-50 p-5"><p class="text-xs font-bold uppercase tracking-[0.16em] text-rose-700">Expenses</p><p class="mt-3 text-2xl font-semibold text-rose-950">{{money $report.Summary.Expenses}}</p><p class="mt-2 text-xs text-rose-800/55">Paid operational outflow</p></article>
+      <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Net cash</p><p class="mt-3 text-2xl font-semibold {{if lt $report.Summary.NetCash 0.0}}text-rose-700{{else}}text-obsidian{{end}}">{{money $report.Summary.NetCash}}</p><p class="mt-2 text-xs text-slate/45">Income minus expenses</p></article>
+      <article class="rounded-[1.5rem] border border-sky-100 bg-sky-50 p-5"><p class="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Facility utilization</p><p class="mt-3 text-2xl font-semibold text-sky-950">{{printf "%.1f" $report.Summary.UtilizationRate}}%</p><p class="mt-2 text-xs text-sky-800/55">{{$report.Summary.OccupiedSlotHours}} of {{$report.Summary.AvailableSlotHours}} operating hours</p></article>
+    </div>
+    <div class="grid gap-6 xl:grid-cols-[1.45fr_.55fr]">
+      <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+        <div class="flex items-end justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Cash flow</p><h2 class="mt-2 text-xl font-semibold text-obsidian">Period trend</h2></div><div class="flex gap-3 text-[0.65rem] font-semibold text-slate/55"><span class="flex items-center gap-1.5"><i class="h-2 w-2 rounded-full bg-emerald-500"></i>Income</span><span class="flex items-center gap-1.5"><i class="h-2 w-2 rounded-full bg-rose-400"></i>Expenses</span></div></div>
+        <div class="mt-5 max-h-[34rem] space-y-4 overflow-y-auto pr-1">
+          {{range $report.Series}}
+          <article class="grid grid-cols-[4.5rem_minmax(0,1fr)_5.5rem] items-center gap-3"><p class="text-xs font-semibold text-slate/55">{{.Label}}</p><div class="space-y-1.5"><div class="h-2 overflow-hidden rounded-full bg-emerald-50"><div class="h-full rounded-full bg-emerald-500" style="width: {{reportBarWidth .Income $report.MaxDailyCash}}"></div></div><div class="h-2 overflow-hidden rounded-full bg-rose-50"><div class="h-full rounded-full bg-rose-400" style="width: {{reportBarWidth .Expenses $report.MaxDailyCash}}"></div></div></div><p class="text-right text-xs font-bold {{if lt .NetCash 0.0}}text-rose-700{{else}}text-slate{{end}}">{{money .NetCash}}</p></article>
+          {{end}}
         </div>
-        <div class="flex gap-3 text-[0.65rem] font-semibold text-slate/55">
-          <span class="flex items-center gap-1.5"><i class="h-2 w-2 rounded-full bg-emerald-500"></i>Income</span>
-          <span class="flex items-center gap-1.5"><i class="h-2 w-2 rounded-full bg-rose-400"></i>Expenses</span>
+      </section>
+      <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Operations</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">At a glance</h2>
+        <div class="mt-5 grid grid-cols-2 gap-3">
+          <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">Confirmed bookings</p><p class="mt-2 text-2xl font-semibold">{{$report.Summary.ConfirmedBookings}}</p></div>
+          <div class="rounded-2xl bg-amber-50 p-4"><p class="text-xs text-amber-800/60">Awaiting review</p><p class="mt-2 text-2xl font-semibold text-amber-950">{{$report.Summary.PendingBookings}}</p></div>
+          <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">New enrollments</p><p class="mt-2 text-2xl font-semibold">{{$report.Summary.NewAdmissions}}</p></div>
+          <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">Student payments</p><p class="mt-2 text-2xl font-semibold">{{$report.Summary.StudentPayments}}</p></div>
         </div>
+        <div class="mt-4 rounded-2xl bg-obsidian p-4 text-cloud"><div class="flex items-center justify-between gap-4"><p class="text-xs text-cloud/55">Attendance rate</p><p class="font-bold text-aqua">{{printf "%.1f" $report.Summary.AttendanceRate}}%</p></div><div class="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-aqua" style="width: {{printf "%.1f%%" $report.Summary.AttendanceRate}}"></div></div><p class="mt-3 text-[0.65rem] text-cloud/45">{{$report.Summary.AttendancePresent}} present from {{$report.Summary.AttendanceTotal}} recorded statuses</p></div>
+      </section>
+    </div>
+    {{end}}
+  {{else}}
+    {{if eq $center.Domain "finance"}}
+      {{with $center.Finance}}
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{{range .Metrics}}<article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">{{.Label}}</p><p class="mt-3 text-2xl font-semibold {{if eq .Tone "negative"}}text-rose-700{{else if eq .Tone "positive"}}text-emerald-700{{else}}text-obsidian{{end}}">{{.Value}}</p><p class="mt-2 text-xs text-slate/45">{{.Note}}</p></article>{{end}}</div>
+      <div class="grid gap-6 lg:grid-cols-2">
+        <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6"><p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Breakdown</p><h2 class="mt-2 text-xl font-semibold">Category movement</h2><div class="mt-5 divide-y divide-slate/10">{{range .Breakdown}}<div class="flex items-center justify-between gap-4 py-3 first:pt-0"><div><p class="text-sm font-semibold text-obsidian">{{.Label}}</p><p class="mt-1 text-xs text-slate/45">{{.Count}} transactions</p></div><p class="text-sm font-bold {{if lt .Amount 0.0}}text-rose-700{{else}}text-emerald-700{{end}}">{{money .Amount}}</p></div>{{else}}<p class="rounded-2xl bg-cloud p-6 text-center text-sm text-slate/50">No finance activity in this period.</p>{{end}}</div></section>
+        <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm"><div class="border-b border-slate/10 p-5 sm:p-6"><p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Ledger</p><h2 class="mt-2 text-xl font-semibold">Transactions</h2></div><div class="max-h-[34rem] divide-y divide-slate/10 overflow-y-auto">{{range .Transactions}}<article class="p-5"><div class="flex items-start justify-between gap-3"><div><p class="font-mono text-xs font-semibold">{{.ReceiptNumber}}</p><p class="mt-1 text-xs text-slate/45">{{financeCategoryLabel .Category}}</p></div><p class="text-sm font-bold {{if lt .Amount 0.0}}text-rose-700{{else}}text-emerald-700{{end}}">{{money .Amount}}</p></div><p class="mt-3 text-sm text-slate/65">{{.PersonName}}</p><p class="mt-1 text-xs text-slate/45">{{formatDateTime .RecordedAt}}</p></article>{{else}}<p class="p-10 text-center text-sm text-slate/50">No transactions in this period.</p>{{end}}</div></section>
       </div>
-      <div class="mt-5 max-h-[34rem] space-y-4 overflow-y-auto pr-1">
-        {{range .Report.Series}}
-        <article class="grid grid-cols-[4.5rem_minmax(0,1fr)_5.5rem] items-center gap-3">
-          <p class="text-xs font-semibold text-slate/55">{{.Label}}</p>
-          <div class="space-y-1.5">
-            <div class="h-2 overflow-hidden rounded-full bg-emerald-50"><div class="h-full rounded-full bg-emerald-500" style="width: {{reportBarWidth .Income $.Report.MaxDailyCash}}"></div></div>
-            <div class="h-2 overflow-hidden rounded-full bg-rose-50"><div class="h-full rounded-full bg-rose-400" style="width: {{reportBarWidth .Expenses $.Report.MaxDailyCash}}"></div></div>
-          </div>
-          <p class="text-right text-xs font-bold {{if lt .NetCash 0.0}}text-rose-700{{else}}text-slate{{end}}">{{money .NetCash}}</p>
-        </article>
+      {{end}}
+    {{end}}
+
+    {{if eq $center.Domain "payroll"}}
+      {{with $center.Payroll}}
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{{range .Metrics}}<article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">{{.Label}}</p><p class="mt-3 text-2xl font-semibold {{if eq .Tone "negative"}}text-rose-700{{else}}text-obsidian{{end}}">{{.Value}}</p><p class="mt-2 text-xs text-slate/45">{{.Note}}</p></article>{{end}}</div>
+      <div class="grid gap-6 lg:grid-cols-2">
+        <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm"><div class="border-b border-slate/10 p-5 sm:p-6"><p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Runs</p><h2 class="mt-2 text-xl font-semibold">Payroll execution</h2></div><div class="max-h-[34rem] overflow-auto"><table class="min-w-full text-left text-sm"><thead class="sticky top-0 bg-cloud text-xs uppercase tracking-wider text-slate/45"><tr><th class="px-6 py-4">Run</th><th class="px-4 py-4">Status</th><th class="px-4 py-4">Payments</th><th class="px-4 py-4">Net</th><th class="px-4 py-4">Paid</th></tr></thead><tbody class="divide-y divide-slate/10">{{range .RunRows}}<tr><td class="px-6 py-4"><p class="font-semibold text-obsidian">{{if .Run.Label}}{{.Run.Label}}{{else}}{{.Run.PeriodStart}} to {{.Run.PeriodEnd}}{{end}}</p><p class="mt-1 text-xs text-slate/45">{{.Run.PeriodStart}} to {{.Run.PeriodEnd}}</p></td><td class="px-4 py-4 text-slate/60">{{.Run.Status}}</td><td class="px-4 py-4 text-slate/60">{{.PaymentCount}} total · {{.DraftPayments}} draft · {{.CalculatedPayments}} calculated · {{.ApprovedPayments}} approved · {{.PaidPayments}} paid</td><td class="px-4 py-4 font-bold text-obsidian">{{money .Run.NetTotal}}</td><td class="px-4 py-4 font-bold text-emerald-700">{{money .Run.PaidTotal}}</td></tr>{{else}}<tr><td colspan="5" class="px-6 py-14 text-center text-slate/50">No payroll runs in this period.</td></tr>{{end}}</tbody></table></div></section>
+        <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6"><p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Compensation mix</p><h2 class="mt-2 text-xl font-semibold">Salary structure</h2><div class="mt-5 divide-y divide-slate/10">{{range .Compensation}}<div class="flex items-center justify-between gap-4 py-3 first:pt-0"><div><p class="text-sm font-semibold text-obsidian">{{salaryTypeLabel .CompensationType}}</p><p class="mt-1 text-xs text-slate/45">{{.PaymentCount}} payments · {{printf "%.2f" .Quantity}} quantity</p></div><p class="text-sm font-bold text-obsidian">{{money .NetAmount}}</p></div>{{else}}<p class="rounded-2xl bg-cloud p-6 text-center text-sm text-slate/50">No payroll payments in this period.</p>{{end}}</div></section>
+      </div>
+      {{end}}
+    {{end}}
+
+    {{if eq $center.Domain "attendance"}}
+      {{with $center.Attendance}}
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{{range .Metrics}}<article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">{{.Label}}</p><p class="mt-3 text-2xl font-semibold text-obsidian">{{.Value}}</p><p class="mt-2 text-xs text-slate/45">{{.Note}}</p></article>{{end}}</div>
+      <div class="grid gap-6 lg:grid-cols-2">
+        <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm"><div class="border-b border-slate/10 p-5 sm:p-6"><p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Students</p><h2 class="mt-2 text-xl font-semibold">Group attendance</h2></div><div class="max-h-[34rem] overflow-auto"><table class="min-w-full text-left text-sm"><thead class="sticky top-0 bg-cloud text-xs uppercase tracking-wider text-slate/45"><tr><th class="px-6 py-4">Group</th><th class="px-4 py-4">Programme</th><th class="px-4 py-4">Present</th><th class="px-4 py-4">Late</th><th class="px-4 py-4">Absent</th><th class="px-4 py-4">Rate</th></tr></thead><tbody class="divide-y divide-slate/10">{{range .GroupRows}}<tr><td class="px-6 py-4"><p class="font-semibold text-obsidian">{{.GroupName}}</p><p class="mt-1 text-xs text-slate/45">{{.GroupCode}}</p></td><td class="px-4 py-4 text-slate/60">{{.TrainingProgramName}}</td><td class="px-4 py-4">{{.PresentCount}}</td><td class="px-4 py-4">{{.LateCount}}</td><td class="px-4 py-4">{{.AbsentCount}}</td><td class="px-4 py-4 font-bold text-obsidian">{{printf "%.1f%%" .AttendanceRate}}</td></tr>{{else}}<tr><td colspan="6" class="px-6 py-14 text-center text-slate/50">No student attendance in this period.</td></tr>{{end}}</tbody></table></div></section>
+        <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm"><div class="border-b border-slate/10 p-5 sm:p-6"><p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Staff</p><h2 class="mt-2 text-xl font-semibold">Staff attendance</h2></div><div class="max-h-[34rem] overflow-auto"><table class="min-w-full text-left text-sm"><thead class="sticky top-0 bg-cloud text-xs uppercase tracking-wider text-slate/45"><tr><th class="px-6 py-4">Staff</th><th class="px-4 py-4">Present</th><th class="px-4 py-4">Late</th><th class="px-4 py-4">Absent</th><th class="px-4 py-4">Rate</th></tr></thead><tbody class="divide-y divide-slate/10">{{range .StaffRows}}<tr><td class="px-6 py-4 font-semibold text-obsidian">{{.UserName}}</td><td class="px-4 py-4">{{.PresentCount}}</td><td class="px-4 py-4">{{.LateCount}}</td><td class="px-4 py-4">{{.AbsentCount}}</td><td class="px-4 py-4 font-bold text-obsidian">{{printf "%.1f%%" .AttendanceRate}}</td></tr>{{else}}<tr><td colspan="5" class="px-6 py-14 text-center text-slate/50">No staff attendance in this period.</td></tr>{{end}}</tbody></table></div></section>
+      </div>
+      {{end}}
+    {{end}}
+
+    {{if eq $center.Domain "students"}}
+      {{with $center.Students}}
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{{range .Metrics}}<article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">{{.Label}}</p><p class="mt-3 text-2xl font-semibold {{if eq .Tone "negative"}}text-rose-700{{else if eq .Tone "positive"}}text-emerald-700{{else}}text-obsidian{{end}}">{{.Value}}</p><p class="mt-2 text-xs text-slate/45">{{.Note}}</p></article>{{end}}</div>
+      <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm"><div class="border-b border-slate/10 p-5 sm:p-6"><p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Programme view</p><h2 class="mt-2 text-xl font-semibold">Enrollment and payment coverage</h2><p class="mt-1 text-xs text-slate/45">Payment figures are based on the monthly student register for {{.PaymentMonth}}.</p></div><div class="max-h-[38rem] overflow-auto"><table class="min-w-full text-left text-sm"><thead class="sticky top-0 bg-cloud text-xs uppercase tracking-wider text-slate/45"><tr><th class="px-6 py-4">Division</th><th class="px-4 py-4">Programme</th><th class="px-4 py-4">Total</th><th class="px-4 py-4">Active</th><th class="px-4 py-4">New</th><th class="px-4 py-4">Paying</th><th class="px-4 py-4">Collected</th><th class="px-4 py-4">Outstanding</th></tr></thead><tbody class="divide-y divide-slate/10">{{range .Programs}}<tr><td class="px-6 py-4 text-slate/60">{{.DivisionName}}</td><td class="px-4 py-4 font-semibold text-obsidian">{{.TrainingProgramName}}</td><td class="px-4 py-4">{{.TotalEnrollments}}</td><td class="px-4 py-4">{{.ActiveEnrollments}}</td><td class="px-4 py-4">{{.NewEnrollments}}</td><td class="px-4 py-4">{{.StudentPayments}}</td><td class="px-4 py-4 font-bold text-emerald-700">{{money .PaymentCollected}}</td><td class="px-4 py-4 font-bold {{if gt .PaymentOutstanding 0.0}}text-rose-700{{else}}text-slate/55{{end}}">{{money .PaymentOutstanding}}</td></tr>{{else}}<tr><td colspan="8" class="px-6 py-14 text-center text-slate/50">No student programme data in this scope.</td></tr>{{end}}</tbody></table></div></section>
+      {{end}}
+    {{end}}
+  {{end}}
+</section>
+{{else}}
+<section class="space-y-6">
+  <header class="relative overflow-hidden rounded-[2rem] bg-obsidian p-6 text-cloud shadow-[0_28px_80px_rgba(11,18,21,0.2)] sm:p-8">
+    <div class="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Performance intelligence</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{{.Report.Period.Label}}</h1>
+      </div>
+      <div data-report-actions class="flex flex-col gap-2 sm:flex-row">
+        <button type="button" onclick="window.print()" class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-5 text-sm font-bold text-cloud transition hover:bg-white/15">Print / PDF</button>
+        <a href="{{scopedURL (printf "/admin/reports/export?period=%s&date=%s" .Report.Period.Kind .Report.Period.Anchor) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-aqua px-5 text-sm font-bold text-obsidian transition hover:bg-white">Export full CSV</a>
+      </div>
+    </div>
+  </header>
+  <section data-report-controls class="rounded-[1.5rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-5">
+    <div class="flex items-center gap-2">
+      <a href="{{scopedURL (printf "/admin/reports?period=%s&date=%s" .Report.Period.Kind .Report.Period.PreviousDate) .SelectedDivision .SelectedDivisionScope}}" aria-label="Previous period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12.5 4.5-5.5 5.5 5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <form method="get" action="/admin/reports" class="flex min-w-0 flex-1 gap-2">
+        <input type="hidden" name="period" value="{{.Report.Period.Kind}}">
+        {{if .SelectedDivision}}
+        <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}">
+        {{else if eq .SelectedDivisionScope "all"}}
+        <input type="hidden" name="division" value="all">
         {{end}}
-      </div>
-    </section>
-
-    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-      <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Operations</p>
-      <h2 class="mt-2 text-xl font-semibold text-obsidian">At a glance</h2>
-      <div class="mt-5 grid grid-cols-2 gap-3">
-        <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">Confirmed bookings</p><p class="mt-2 text-2xl font-semibold">{{.Report.Summary.ConfirmedBookings}}</p></div>
-        <div class="rounded-2xl bg-amber-50 p-4"><p class="text-xs text-amber-800/60">Awaiting review</p><p class="mt-2 text-2xl font-semibold text-amber-950">{{.Report.Summary.PendingBookings}}</p></div>
-        <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">New enrollments</p><p class="mt-2 text-2xl font-semibold">{{.Report.Summary.NewAdmissions}}</p></div>
-        <div class="rounded-2xl bg-cloud p-4"><p class="text-xs text-slate/50">Student payments</p><p class="mt-2 text-2xl font-semibold">{{.Report.Summary.StudentPayments}}</p></div>
-      </div>
-      <dl class="mt-4 divide-y divide-slate/10 rounded-2xl border border-slate/10 px-4">
-        <div class="flex items-center justify-between gap-3 py-3"><dt class="text-xs text-slate/55">Booking revenue</dt><dd class="text-sm font-bold text-emerald-700">{{money .Report.Summary.BookingRevenue}}</dd></div>
-        <div class="flex items-center justify-between gap-3 py-3"><dt class="text-xs text-slate/55">Student fees</dt><dd class="text-sm font-bold text-emerald-700">{{money .Report.Summary.StudentRevenue}}</dd></div>
-        <div class="flex items-center justify-between gap-3 py-3"><dt class="text-xs text-slate/55">Admission revenue</dt><dd class="text-sm font-bold text-emerald-700">{{money .Report.Summary.AdmissionRevenue}}</dd></div>
-      </dl>
-      <div class="mt-4 rounded-2xl bg-obsidian p-4 text-cloud">
-        <div class="flex items-center justify-between gap-4"><p class="text-xs text-cloud/55">Attendance rate</p><p class="font-bold text-aqua">{{printf "%.1f" .Report.Summary.AttendanceRate}}%</p></div>
-        <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-aqua" style="width: {{printf "%.1f%%" .Report.Summary.AttendanceRate}}"></div></div>
-        <p class="mt-3 text-[0.65rem] text-cloud/45">{{.Report.Summary.AttendancePresent}} present from {{.Report.Summary.AttendanceTotal}} recorded statuses</p>
-      </div>
-    </section>
-  </div>
-
-  <div class="grid gap-6 lg:grid-cols-2">
-    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-      <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Revenue and spending</p>
-      <h2 class="mt-2 text-xl font-semibold">Finance breakdown</h2>
-      <div class="mt-5 divide-y divide-slate/10">
-        {{range .Report.FinanceBreakdown}}
-        <div class="flex items-center justify-between gap-4 py-3 first:pt-0">
-          <div><p class="text-sm font-semibold text-obsidian">{{.Label}}</p><p class="mt-1 text-xs text-slate/45">{{.Count}} transactions</p></div>
-          <p class="text-sm font-bold {{if lt .Amount 0.0}}text-rose-700{{else}}text-emerald-700{{end}}">{{if lt .Amount 0.0}}-{{money (negate .Amount)}}{{else}}+{{money .Amount}}{{end}}</p>
-        </div>
-        {{else}}<p class="rounded-2xl bg-cloud p-6 text-center text-sm text-slate/50">No finance activity in this period.</p>{{end}}
-      </div>
-    </section>
-
-    <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
-      <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Demand mix</p>
-      <h2 class="mt-2 text-xl font-semibold">Confirmed bookings</h2>
-      <div class="mt-5 grid gap-3 sm:grid-cols-2">
-        {{range .Report.BookingBreakdown}}
-        <div class="rounded-2xl border border-slate/10 bg-cloud/50 p-4">
-          <p class="text-sm font-semibold">{{.Label}}</p>
-          <p class="mt-3 text-2xl font-semibold">{{.Count}}</p>
-          <p class="mt-1 text-xs text-slate/45">confirmed sessions</p>
-        </div>
-        {{else}}<p class="rounded-2xl bg-cloud p-6 text-center text-sm text-slate/50 sm:col-span-2">No confirmed bookings in this period.</p>{{end}}
-      </div>
-    </section>
-  </div>
-
-  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-sm">
-    <div class="border-b border-slate/10 p-5 sm:p-6">
-      <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Reconciliation detail</p>
-      <h2 class="mt-2 text-xl font-semibold">Period transactions</h2>
-    </div>
-    <div class="hidden max-h-[34rem] overflow-auto lg:block">
-      <table class="min-w-full text-left text-sm">
-        <thead class="sticky top-0 bg-cloud text-xs uppercase tracking-wider text-slate/45"><tr><th class="px-6 py-4">Receipt</th><th class="px-4 py-4">Category</th><th class="px-4 py-4">Party</th><th class="px-4 py-4">Recorded</th><th class="px-6 py-4 text-right">Amount</th></tr></thead>
-        <tbody class="divide-y divide-slate/10">
-          {{range .Report.Transactions}}
-          <tr><td class="px-6 py-4 font-mono text-xs font-semibold">{{.ReceiptNumber}}</td><td class="px-4 py-4 text-slate/60">{{financeCategoryLabel .Category}}</td><td class="px-4 py-4 text-slate/60">{{.PersonName}}</td><td class="px-4 py-4 text-slate/50">{{formatDateTime .RecordedAt}}</td><td class="px-6 py-4 text-right font-bold {{if lt .Amount 0.0}}text-rose-700{{else}}text-emerald-700{{end}}">{{if lt .Amount 0.0}}-{{money (negate .Amount)}}{{else}}+{{money .Amount}}{{end}}</td></tr>
-          {{else}}<tr><td colspan="5" class="px-6 py-14 text-center text-slate/50">No transactions in this period.</td></tr>{{end}}
-        </tbody>
-      </table>
-    </div>
-    <div class="max-h-[34rem] divide-y divide-slate/10 overflow-y-auto lg:hidden">
-      {{range .Report.Transactions}}
-      <article class="p-5"><div class="flex justify-between gap-3"><div><p class="font-mono text-xs font-semibold">{{.ReceiptNumber}}</p><p class="mt-1 text-xs text-slate/45">{{financeCategoryLabel .Category}}</p></div><p class="font-bold {{if lt .Amount 0.0}}text-rose-700{{else}}text-emerald-700{{end}}">{{if lt .Amount 0.0}}-{{money (negate .Amount)}}{{else}}+{{money .Amount}}{{end}}</p></div><p class="mt-3 text-sm text-slate/65">{{.PersonName}}</p><p class="mt-2 text-xs text-slate/45">{{formatDateTime .RecordedAt}}</p></article>
-      {{else}}<p class="p-10 text-center text-sm text-slate/50">No transactions in this period.</p>{{end}}
+        <input type="date" name="date" value="{{.Report.Period.Anchor}}" class="h-11 min-w-0 flex-1 rounded-2xl border border-slate/10 bg-cloud px-3 text-sm font-medium outline-none focus:border-aqua">
+        <button class="h-11 rounded-2xl bg-obsidian px-4 text-xs font-bold text-cloud">View</button>
+      </form>
+      <a href="{{scopedURL (printf "/admin/reports?period=%s&date=%s" .Report.Period.Kind .Report.Period.NextDate) .SelectedDivision .SelectedDivisionScope}}" aria-label="Next period" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-white text-slate hover:bg-cloud">
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
     </div>
   </section>
 </section>
+{{end}}
 {{end}}
