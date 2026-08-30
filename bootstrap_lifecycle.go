@@ -163,6 +163,97 @@ func runMigrations(db *sql.DB) error {
 			ON student_group_staff(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_staff_group
 			ON student_group_staff(group_id)`,
+
+		`CREATE TABLE IF NOT EXISTS student_enrollment_status_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			enrollment_id INTEGER NOT NULL,
+			active INTEGER NOT NULL,
+			effective_from TEXT NOT NULL,
+			effective_to TEXT,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			CHECK (active IN (0, 1)),
+			CHECK (
+				effective_to IS NULL
+				OR effective_to > effective_from
+			),
+			FOREIGN KEY (enrollment_id)
+				REFERENCES student_enrollments(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_enrollment_status_history_enrollment
+			ON student_enrollment_status_history(enrollment_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_enrollment_status_history_open
+			ON student_enrollment_status_history(enrollment_id)
+			WHERE effective_to IS NULL`,
+
+		`CREATE TABLE IF NOT EXISTS student_group_membership_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			admission_id INTEGER NOT NULL,
+			effective_from TEXT NOT NULL,
+			effective_to TEXT,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			CHECK (
+				effective_to IS NULL
+				OR effective_to > effective_from
+			),
+			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (admission_id) REFERENCES admissions(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_group_membership_history_group
+			ON student_group_membership_history(group_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_group_membership_history_admission
+			ON student_group_membership_history(admission_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_group_membership_history_open
+			ON student_group_membership_history(group_id, admission_id)
+			WHERE effective_to IS NULL`,
+
+		`CREATE TABLE IF NOT EXISTS student_group_staff_assignment_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			assignment_role TEXT NOT NULL DEFAULT '',
+			primary_assignment INTEGER NOT NULL DEFAULT 0,
+			effective_from TEXT NOT NULL,
+			effective_to TEXT,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			CHECK (primary_assignment IN (0, 1)),
+			CHECK (
+				effective_to IS NULL
+				OR effective_to > effective_from
+			),
+			FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_group_staff_history_group
+			ON student_group_staff_assignment_history(group_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_group_staff_history_user
+			ON student_group_staff_assignment_history(user_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_group_staff_history_open
+			ON student_group_staff_assignment_history(group_id, user_id)
+			WHERE effective_to IS NULL`,
+
+		`CREATE TABLE IF NOT EXISTS staff_work_time_records (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			work_date TEXT NOT NULL,
+			clock_in TEXT NOT NULL,
+			clock_out TEXT NOT NULL,
+			break_minutes INTEGER NOT NULL DEFAULT 0,
+			note TEXT NOT NULL DEFAULT '',
+			recorded_by_user_id INTEGER,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			CHECK (clock_out <> clock_in),
+			CHECK (break_minutes >= 0 AND break_minutes < 1440),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (recorded_by_user_id) REFERENCES users(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_staff_work_time_user_date
+			ON staff_work_time_records(user_id, work_date)`,
+
 		`INSERT OR IGNORE INTO student_group_staff (
 			group_id,
 			user_id,

@@ -3521,11 +3521,21 @@ func (a *App) createAdmission(admission Admission) error {
 	return err
 }
 func replaceStudentGroupCoachesTx(
+	a *App,
 	tx *sql.Tx,
 	driver DatabaseDriver,
 	groupID int64,
 	coachIDs []int64,
 ) error {
+	if err := syncStudentGroupCoachHistoryTx(
+		a,
+		tx,
+		groupID,
+		coachIDs,
+		time.Now().Format("2006-01-02"),
+	); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(
 		rebindDatabaseQuery(
 			driver,
@@ -3679,9 +3689,20 @@ func (a *App) createStudentGroup(
 		}
 	}
 
+	if err := syncStudentGroupMembershipHistoryTx(
+		a,
+		tx,
+		groupID,
+		admissionIDs,
+		time.Now().Format("2006-01-02"),
+	); err != nil {
+		return err
+	}
+
 	// Legacy coach assignments are retained here for compatibility with
 	// existing attendance/group workflows.
 	if err := replaceStudentGroupCoachesTx(
+		a,
 		tx,
 		a.runtimeConfig.DBDriver,
 		groupID,
@@ -4790,6 +4811,16 @@ func (a *App) createStudentEnrollmentWithOptionalPaymentAt(enrollment StudentEnr
 
 	enrollment.ID = enrollmentID
 
+	if err := syncStudentEnrollmentStatusHistoryTx(
+		a,
+		tx,
+		enrollmentID,
+		true,
+		enrollment.EnrollmentDate,
+	); err != nil {
+		return 0, 0, err
+	}
+
 	if _, err := a.execTxDB(
 		tx,
 		`
@@ -5507,6 +5538,16 @@ func (a *App) updateStudentGroup(
 		return err
 	}
 
+	if err := syncStudentGroupMembershipHistoryTx(
+		a,
+		tx,
+		group.ID,
+		admissionIDs,
+		time.Now().Format("2006-01-02"),
+	); err != nil {
+		return err
+	}
+
 	if _, err := a.execTxDB(
 		tx,
 		`DELETE FROM student_group_members WHERE group_id = ?`,
@@ -5533,6 +5574,7 @@ func (a *App) updateStudentGroup(
 	}
 
 	if err := replaceStudentGroupCoachesTx(
+		a,
 		tx,
 		a.runtimeConfig.DBDriver,
 		group.ID,

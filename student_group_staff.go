@@ -490,6 +490,16 @@ func (a *App) replaceStudentGroupStaff(
 	}
 	defer tx.Rollback()
 
+	if err := syncStudentGroupStaffHistoryTx(
+		a,
+		tx,
+		groupID,
+		assignments,
+		time.Now().Format("2006-01-02"),
+	); err != nil {
+		return err
+	}
+
 	// Replace canonical group staff assignments.
 	if _, err := a.execTxDB(
 		tx,
