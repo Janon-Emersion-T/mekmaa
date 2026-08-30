@@ -137,25 +137,28 @@ func TestReportsExportSupportsMultipleDomains(t *testing.T) {
 		}
 
 		body := rec.Body.String()
+		if !strings.Contains(body, "Section,Field,Value") {
+			t.Fatalf("%s export missing report headings: %s", domain, body)
+		}
 		switch domain {
 		case reportDomainFinance:
-			if !strings.Contains(body, "Gross income") {
+			if !strings.Contains(body, "Gross income") || !strings.Contains(body, "Mekmaa Finance Report") {
 				t.Fatalf("finance export missing metric rows: %s", body)
 			}
 		case reportDomainPayroll:
-			if !strings.Contains(body, "COMPENSATION") || !strings.Contains(body, "Per student") {
+			if !strings.Contains(body, "COMPENSATION") || !strings.Contains(body, "Per student") || !strings.Contains(body, "Mekmaa Payroll Report") {
 				t.Fatalf("payroll export missing payroll data: %s", body)
 			}
 		case reportDomainAttendance:
-			if !strings.Contains(body, "STUDENT GROUPS") || !strings.Contains(body, "STAFF") {
+			if !strings.Contains(body, "STUDENT GROUPS") || !strings.Contains(body, "STAFF") || !strings.Contains(body, "Mekmaa Attendance Report") {
 				t.Fatalf("attendance export missing attendance data: %s", body)
 			}
 		case reportDomainStudents:
-			if !strings.Contains(body, "PROGRAMMES") || !strings.Contains(body, "Reporting Program") {
+			if !strings.Contains(body, "PROGRAMMES") || !strings.Contains(body, "Reporting Program") || !strings.Contains(body, "Mekmaa Students Report") {
 				t.Fatalf("students export missing student data: %s", body)
 			}
 		default:
-			if !strings.Contains(body, "SUMMARY") {
+			if !strings.Contains(body, "SUMMARY") || !strings.Contains(body, "Mekmaa Overview Report") {
 				t.Fatalf("overview export missing summary: %s", body)
 			}
 		}

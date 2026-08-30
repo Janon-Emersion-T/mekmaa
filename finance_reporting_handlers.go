@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
@@ -100,10 +99,16 @@ func (a *App) exportStudentPaymentActivityCSV(
 	toMonth string,
 ) {
 	filename := fmt.Sprintf("mekmaa-student-payments-%s-%s-to-%s.csv", paymentMonth, fromMonth, toMonth)
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	writer := csv.NewWriter(w)
+	writer := newCSVReportWriter(w, filename)
 	defer writer.Flush()
+
+	_ = writeCSVReportPreamble(
+		writer,
+		"Mekmaa Student Payments Report",
+		CSVReportMetaRow{Section: "report", Field: "Register Month", Value: paymentMonthLabel(paymentMonth)},
+		CSVReportMetaRow{Section: "period", Field: "Activity From", Value: paymentMonthLabel(fromMonth)},
+		CSVReportMetaRow{Section: "period", Field: "Activity To", Value: paymentMonthLabel(toMonth)},
+	)
 
 	_ = writer.Write([]string{"Register Month", paymentMonthLabel(paymentMonth)})
 	_ = writer.Write([]string{"Activity Range", paymentMonthLabel(fromMonth), paymentMonthLabel(toMonth)})
@@ -299,14 +304,16 @@ func (a *App) exportFinanceSpecifiedLedgerCSV(
 		from,
 		to,
 	)
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set(
-		"Content-Disposition",
-		fmt.Sprintf(`attachment; filename="%s"`, filename),
-	)
-
-	writer := csv.NewWriter(w)
+	writer := newCSVReportWriter(w, filename)
 	defer writer.Flush()
+
+	_ = writeCSVReportPreamble(
+		writer,
+		ledger.Title+" Specified Ledger Report",
+		CSVReportMetaRow{Section: "report", Field: "Ledger", Value: ledger.Title},
+		CSVReportMetaRow{Section: "period", Field: "From", Value: from},
+		CSVReportMetaRow{Section: "period", Field: "To", Value: to},
+	)
 
 	_ = writer.Write([]string{
 		"Ledger",
@@ -1215,9 +1222,42 @@ func (a *App) financeExportHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not export finance transactions", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="mekmaa-finance.csv"`)
-	writer := csv.NewWriter(w)
+	writer := newCSVReportWriter(w, "mekmaa-finance.csv")
+	defer writer.Flush()
+
+	metadata := []CSVReportMetaRow{
+		{Section: "report", Field: "Rows", Value: strconv.Itoa(len(transactions))},
+		{Section: "filter", Field: "From", Value: fallbackReportValue(filter.From, "All dates")},
+		{Section: "filter", Field: "To", Value: fallbackReportValue(filter.To, "All dates")},
+		{Section: "filter", Field: "Direction", Value: fallbackReportValue(strings.Title(filter.Direction), "All directions")},
+		{Section: "filter", Field: "Status", Value: fallbackReportValue(strings.Title(filter.Status), "All statuses")},
+		{Section: "filter", Field: "Reference", Value: fallbackReportValue(filter.Reference, "All references")},
+		{Section: "filter", Field: "Search", Value: fallbackReportValue(filter.Search, "No search filter")},
+	}
+	if len(filter.Categories) > 0 {
+		labels := make([]string, 0, len(filter.Categories))
+		for _, category := range filter.Categories {
+			labels = append(labels, financeCategoryLabel(category))
+		}
+		metadata = append(metadata, CSVReportMetaRow{
+			Section: "filter",
+			Field:   "Categories",
+			Value:   strings.Join(labels, ", "),
+		})
+	}
+	if len(filter.PaymentMethods) > 0 {
+		labels := make([]string, 0, len(filter.PaymentMethods))
+		for _, method := range filter.PaymentMethods {
+			labels = append(labels, paymentMethodLabel(method))
+		}
+		metadata = append(metadata, CSVReportMetaRow{
+			Section: "filter",
+			Field:   "Payment Methods",
+			Value:   strings.Join(labels, ", "),
+		})
+	}
+	_ = writeCSVReportPreamble(writer, "Mekmaa Finance Ledger Report", metadata...)
+
 	_ = writer.Write([]string{"Receipt", "Date", "Direction", "Category", "Person", "Description", "Payment method", "Amount (LKR)"})
 	for _, transaction := range transactions {
 		direction := "Income"
@@ -1230,7 +1270,6 @@ func (a *App) financeExportHandler(w http.ResponseWriter, r *http.Request) {
 			csvSafeCell(transaction.PaymentMethod), strconv.FormatFloat(transaction.Amount, 'f', 2, 64),
 		})
 	}
-	writer.Flush()
 }
 
 func (a *App) reportsHandler(w http.ResponseWriter, r *http.Request) {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
@@ -450,6 +449,7 @@ func staffAttendanceReportURL(
 func writeStaffAttendanceReportCSV(
 	w http.ResponseWriter,
 	month string,
+	userName string,
 	rows []StaffAttendanceReportRow,
 ) error {
 	filename := fmt.Sprintf(
@@ -457,21 +457,33 @@ func writeStaffAttendanceReportCSV(
 		month,
 	)
 
-	w.Header().Set(
-		"Content-Type",
-		"text/csv; charset=utf-8",
+	writer := newCSVReportWriter(
+		w,
+		filename,
 	)
-
-	w.Header().Set(
-		"Content-Disposition",
-		fmt.Sprintf(
-			`attachment; filename="%s"`,
-			filename,
-		),
-	)
-
-	writer := csv.NewWriter(w)
 	defer writer.Flush()
+
+	if err := writeCSVReportPreamble(
+		writer,
+		"Mekmaa Staff Attendance Report",
+		CSVReportMetaRow{
+			Section: "report",
+			Field:   "Month",
+			Value:   month,
+		},
+		CSVReportMetaRow{
+			Section: "filter",
+			Field:   "Staff Member",
+			Value:   fallbackReportValue(userName, "All staff"),
+		},
+		CSVReportMetaRow{
+			Section: "report",
+			Field:   "Rows",
+			Value:   strconv.Itoa(len(rows)),
+		},
+	); err != nil {
+		return err
+	}
 
 	if err := writer.Write(
 		[]string{
@@ -643,30 +655,6 @@ func (a *App) staffAttendanceReportHandler(
 			records,
 		)
 
-	if strings.EqualFold(
-		strings.TrimSpace(
-			r.URL.Query().Get(
-				"format",
-			),
-		),
-		"csv",
-	) {
-		if err :=
-			writeStaffAttendanceReportCSV(
-				w,
-				month,
-				reportRows,
-			); err != nil {
-
-			log.Printf(
-				"write staff attendance csv: %v",
-				err,
-			)
-		}
-
-		return
-	}
-
 	selectedUserID := int64(0)
 
 	if raw :=
@@ -691,8 +679,6 @@ func (a *App) staffAttendanceReportHandler(
 	}
 
 	var selectedUser *User
-	var history []StaffAttendanceHistoryRow
-
 	if selectedUserID > 0 {
 		selectedUser =
 			staffAttendanceUserByID(
@@ -700,8 +686,6 @@ func (a *App) staffAttendanceReportHandler(
 				selectedUserID,
 			)
 
-		// Do not expose attendance history for a user
-		// outside the currently authorized division scope.
 		if selectedUser == nil {
 			http.Error(
 				w,
@@ -710,7 +694,41 @@ func (a *App) staffAttendanceReportHandler(
 			)
 			return
 		}
+	}
 
+	if strings.EqualFold(
+		strings.TrimSpace(
+			r.URL.Query().Get(
+				"format",
+			),
+		),
+		"csv",
+	) {
+		if err :=
+			writeStaffAttendanceReportCSV(
+				w,
+				month,
+				func() string {
+					if selectedUser == nil {
+						return ""
+					}
+					return selectedUser.Name
+				}(),
+				reportRows,
+			); err != nil {
+
+			log.Printf(
+				"write staff attendance csv: %v",
+				err,
+			)
+		}
+
+		return
+	}
+
+	var history []StaffAttendanceHistoryRow
+
+	if selectedUserID > 0 {
 		history =
 			staffAttendanceHistoryForUser(
 				records,

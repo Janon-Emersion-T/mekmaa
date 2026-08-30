@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
 	"net/http"
 	"sort"
@@ -477,12 +476,22 @@ func (a *App) writeReportCenterCSV(
 	center *ReportCenter,
 ) error {
 	filename := fmt.Sprintf("mekmaa-%s-%s-report-%s.csv", center.Domain, center.Period.Kind, center.Period.Anchor)
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	writer := csv.NewWriter(w)
+	writer := newCSVReportWriter(w, filename)
 	defer writer.Flush()
 
-	_ = writer.Write([]string{"Mekmaa report", strings.Title(center.Domain)})
+	if err := writeCSVReportPreamble(
+		writer,
+		"Mekmaa "+reportDomainLabel(center.Domain)+" Report",
+		CSVReportMetaRow{Section: "report", Field: "Domain", Value: reportDomainLabel(center.Domain)},
+		CSVReportMetaRow{Section: "report", Field: "Cadence", Value: reportPeriodKindLabel(center.Period.Kind)},
+		CSVReportMetaRow{Section: "period", Field: "Label", Value: center.Period.Label},
+		CSVReportMetaRow{Section: "period", Field: "From", Value: center.Period.Start},
+		CSVReportMetaRow{Section: "period", Field: "To", Value: center.Period.End},
+	); err != nil {
+		return err
+	}
+
+	_ = writer.Write([]string{"Mekmaa report", reportDomainLabel(center.Domain)})
 	_ = writer.Write([]string{"Period", center.Period.Label, center.Period.Start, center.Period.End})
 	_ = writer.Write([]string{})
 
@@ -612,4 +621,21 @@ func (a *App) writeReportCenterCSV(
 
 	writer.Flush()
 	return writer.Error()
+}
+
+func reportDomainLabel(
+	domain string,
+) string {
+	switch strings.ToLower(strings.TrimSpace(domain)) {
+	case reportDomainFinance:
+		return "Finance"
+	case reportDomainPayroll:
+		return "Payroll"
+	case reportDomainAttendance:
+		return "Attendance"
+	case reportDomainStudents:
+		return "Students"
+	default:
+		return "Overview"
+	}
 }

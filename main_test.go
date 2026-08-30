@@ -5841,6 +5841,8 @@ func TestStudentPaymentsHandlerExportsCSV(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, marker := range []string{
+		"Section,Field,Value",
+		"Mekmaa Student Payments Report",
 		"Register Month,August 2026",
 		"Activity Range,July 2026,August 2026",
 		"Export Student",

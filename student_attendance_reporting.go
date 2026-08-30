@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
@@ -571,6 +570,8 @@ func studentAttendanceGroupInScope(
 func writeStudentAttendanceReportCSV(
 	w http.ResponseWriter,
 	month string,
+	groupName string,
+	studentQuery string,
 	rows []StudentAttendanceReportRow,
 ) error {
 	filename :=
@@ -579,23 +580,39 @@ func writeStudentAttendanceReportCSV(
 			month,
 		)
 
-	w.Header().Set(
-		"Content-Type",
-		"text/csv; charset=utf-8",
+	writer := newCSVReportWriter(
+		w,
+		filename,
 	)
-
-	w.Header().Set(
-		"Content-Disposition",
-		fmt.Sprintf(
-			`attachment; filename="%s"`,
-			filename,
-		),
-	)
-
-	writer :=
-		csv.NewWriter(w)
 
 	defer writer.Flush()
+
+	if err := writeCSVReportPreamble(
+		writer,
+		"Mekmaa Student Attendance Report",
+		CSVReportMetaRow{
+			Section: "report",
+			Field:   "Month",
+			Value:   month,
+		},
+		CSVReportMetaRow{
+			Section: "filter",
+			Field:   "Group",
+			Value:   fallbackReportValue(groupName, "All groups"),
+		},
+		CSVReportMetaRow{
+			Section: "filter",
+			Field:   "Student",
+			Value:   fallbackReportValue(studentQuery, "All students"),
+		},
+		CSVReportMetaRow{
+			Section: "report",
+			Field:   "Rows",
+			Value:   strconv.Itoa(len(rows)),
+		},
+	); err != nil {
+		return err
+	}
 
 	if err := writer.Write(
 		[]string{
@@ -828,10 +845,21 @@ func (a *App) studentAttendanceReportHandler(
 		),
 		"csv",
 	) {
+		selectedGroupName := ""
+		if groupID > 0 {
+			for _, group := range groups {
+				if group.ID == groupID {
+					selectedGroupName = group.Name
+					break
+				}
+			}
+		}
 		if err :=
 			writeStudentAttendanceReportCSV(
 				w,
 				month,
+				selectedGroupName,
+				studentQuery,
 				rows,
 			); err != nil {
 
