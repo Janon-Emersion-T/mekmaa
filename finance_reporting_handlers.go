@@ -60,6 +60,38 @@ func filterStudentPaymentActivityRows(rows []StudentMonthlyPaymentActivityRow, s
 	return filtered
 }
 
+func studentPaymentsPDFChoice(value string, allowed ...string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, option := range allowed {
+		if value == option {
+			return value
+		}
+	}
+	if len(allowed) == 0 {
+		return ""
+	}
+	return allowed[0]
+}
+
+func studentPaymentsPDFBool(r *http.Request, key string, fallback bool) bool {
+	values, ok := r.URL.Query()[key]
+	if !ok {
+		return fallback
+	}
+	if len(values) == 0 {
+		return fallback
+	}
+	value := strings.ToLower(strings.TrimSpace(values[len(values)-1]))
+	switch value {
+	case "", "0", "false", "no", "off":
+		return false
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return fallback
+	}
+}
+
 func (a *App) exportStudentPaymentActivityCSV(
 	w http.ResponseWriter,
 	rows []StudentMonthlyPaymentActivityRow,
@@ -1369,6 +1401,14 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	paymentActivityFrom := strings.TrimSpace(r.URL.Query().Get("from_month"))
 	paymentActivityTo := strings.TrimSpace(r.URL.Query().Get("to_month"))
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	pdfOrientation := studentPaymentsPDFChoice(r.URL.Query().Get("pdf_orientation"), "landscape", "portrait")
+	pdfPaperSize := studentPaymentsPDFChoice(r.URL.Query().Get("pdf_paper"), "a4", "letter")
+	pdfDensity := studentPaymentsPDFChoice(r.URL.Query().Get("pdf_density"), "comfortable", "compact")
+	pdfIncludeSummary := studentPaymentsPDFBool(r, "pdf_summary", true)
+	pdfIncludeRegister := studentPaymentsPDFBool(r, "pdf_register", true)
+	pdfIncludeActivity := studentPaymentsPDFBool(r, "pdf_activity", true)
+	pdfIncludeFilters := studentPaymentsPDFBool(r, "pdf_filters", true)
+	pdfAutoPrint := studentPaymentsPDFBool(r, "pdf_autoprint", true)
 	currentMonth := time.Now().Format("2006-01")
 	latestMonth := latestCollectiblePaymentMonth(time.Now())
 	if _, err := parsePaymentMonth(paymentMonth); err != nil || paymentMonth > currentMonth {
@@ -1433,6 +1473,14 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	data.PaymentProgramOptions = programOptions
 	data.PaymentActivityRows = filteredActivityRows
 	data.TodayDate = time.Now().Format("2006-01")
+	data.PaymentPDFOrientation = pdfOrientation
+	data.PaymentPDFPaperSize = pdfPaperSize
+	data.PaymentPDFDensity = pdfDensity
+	data.PaymentPDFIncludeSummary = pdfIncludeSummary
+	data.PaymentPDFIncludeRegister = pdfIncludeRegister
+	data.PaymentPDFIncludeActivity = pdfIncludeActivity
+	data.PaymentPDFIncludeFilters = pdfIncludeFilters
+	data.PaymentPDFAutoPrint = pdfAutoPrint
 	if selectedDivision != nil {
 		data.SelectedDivision = selectedDivision
 		data.SelectedDivisionScope = selectedDivision.Slug
@@ -1465,6 +1513,11 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		data.PaymentActivityCollected = normalizeMoney(data.PaymentActivityCollected + row.Payment.Amount)
 		data.PaymentActivityDiscounted = normalizeMoney(data.PaymentActivityDiscounted + row.Payment.DiscountAmount)
+	}
+	if !data.PaymentPDFIncludeSummary && !data.PaymentPDFIncludeRegister && !data.PaymentPDFIncludeActivity {
+		data.PaymentPDFIncludeSummary = true
+		data.PaymentPDFIncludeRegister = true
+		data.PaymentPDFIncludeActivity = true
 	}
 	if format == "pdf" {
 		data.HideChrome = true

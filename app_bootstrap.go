@@ -2047,6 +2047,14 @@ type TemplateData struct {
 	PaymentActivityCollected         float64
 	PaymentActivityDiscounted        float64
 	PaymentActivityVoidedCount       int
+	PaymentPDFOrientation            string
+	PaymentPDFPaperSize              string
+	PaymentPDFDensity                string
+	PaymentPDFIncludeSummary         bool
+	PaymentPDFIncludeRegister        bool
+	PaymentPDFIncludeActivity        bool
+	PaymentPDFIncludeFilters         bool
+	PaymentPDFAutoPrint              bool
 	BookingSlots                     []BookingSlotAvailability
 	AdminCalendarHours               []AdminCalendarHour
 	AdminBookingOptions              []AdminBookingOption

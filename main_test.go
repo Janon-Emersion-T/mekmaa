@@ -5755,7 +5755,9 @@ func TestStudentPaymentsHandlerRendersPage(t *testing.T) {
 		`name="from_month"`,
 		`name="to_month"`,
 		"Export CSV",
-		"Print / PDF",
+		"Export PDF",
+		"Student payments PDF",
+		`name="pdf_orientation"`,
 		"Collection activity",
 	} {
 		if !strings.Contains(body, marker) {
@@ -5879,9 +5881,58 @@ func TestStudentPaymentsHandlerRendersPDFReport(t *testing.T) {
 		"Student Payments Report",
 		"Print / Save PDF",
 		"Collection activity",
+		"Applied filters",
+		"Landscape",
 	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("student payments pdf missing %q in %s", marker, body)
+		}
+	}
+}
+
+func TestStudentPaymentsHandlerRendersConfiguredPDFReport(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/student-payments?month=2026-08&from_month=2026-07&to_month=2026-08&search=Kasun&program=SCHOLARSHIP+SPECIAL+CLASS+GR-03&method=bank_transfer&format=pdf&pdf_orientation=portrait&pdf_paper=letter&pdf_density=compact&pdf_summary=0&pdf_register=1&pdf_activity=0&pdf_filters=1&pdf_autoprint=0", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          1,
+		Name:        "Finance User",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"finance.view", "student_payments.view"},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.studentPaymentsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("configured student payments pdf status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, marker := range []string{
+		"Portrait",
+		"Letter",
+		"Compact",
+		"Applied filters",
+		"Search: Kasun",
+		"Programme: SCHOLARSHIP SPECIAL CLASS GR-03",
+		"Method: Bank transfer",
+		"if (false)",
+	} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("configured student payments pdf missing %q in %s", marker, body)
+		}
+	}
+	for _, marker := range []string{
+		"Expected",
+		"Collection activity",
+	} {
+		if strings.Contains(body, marker) {
+			t.Fatalf("configured student payments pdf unexpectedly contains %q in %s", marker, body)
 		}
 	}
 }
