@@ -495,7 +495,7 @@ func (a *App) replaceStudentGroupStaff(
 		tx,
 		groupID,
 		assignments,
-		time.Now().Format("2006-01-02"),
+		currentBusinessDate(),
 	); err != nil {
 		return err
 	}

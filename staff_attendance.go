@@ -42,7 +42,7 @@ func normalizeStaffAttendanceDate(value string) (string, error) {
 		return "", errors.New("invalid attendance date")
 	}
 
-	today := time.Now().Format("2006-01-02")
+	today := currentBusinessDate()
 
 	if parsed.Format("2006-01-02") > today {
 		return "", errors.New(

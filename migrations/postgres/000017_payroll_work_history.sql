@@ -167,10 +167,7 @@ SELECT
     COALESCE(se.active, 1),
     CASE
         WHEN COALESCE(se.active, 1) = 1
-        THEN COALESCE(
-            NULLIF(TRIM(se.enrollment_date), '')::DATE,
-            CURRENT_DATE
-        )
+        THEN COALESCE(se.enrollment_date, CURRENT_DATE)
         ELSE CURRENT_DATE
     END,
     NULL,

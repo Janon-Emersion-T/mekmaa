@@ -310,6 +310,37 @@ func TestPostgresMigrationDiscoveryIncludesPayrollPaymentCalculationDetails(t *t
 	}
 }
 
+func TestPostgresMigrationDiscoveryIncludesPayrollWorkHistory(t *testing.T) {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		t.Fatalf("load PostgreSQL migrations: %v", err)
+	}
+
+	var found *postgresMigration
+	for i := range migrations {
+		if migrations[i].Version == 17 {
+			found = &migrations[i]
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("expected PostgreSQL migration 000017_payroll_work_history.sql")
+	}
+
+	if found.Filename != "000017_payroll_work_history.sql" {
+		t.Fatalf("migration 17 filename = %q, want %q", found.Filename, "000017_payroll_work_history.sql")
+	}
+
+	if found.Name != "payroll_work_history" {
+		t.Fatalf("migration 17 name = %q, want %q", found.Name, "payroll_work_history")
+	}
+
+	if found.Checksum == "" {
+		t.Fatal("migration 17 checksum must not be empty")
+	}
+}
+
 func TestPostgresMCPMigrationAppliesCleanly(t *testing.T) {
 	runPostgresMigrationHelper(t, "apply_all")
 }
@@ -435,13 +466,17 @@ func runPostgresMigrationHelperAction(action string) error {
 		"student_group_session_occurrences",
 		"student_group_session_staff",
 		"payroll_payment_calculation_details",
+		"staff_work_time_records",
+		"student_enrollment_status_history",
+		"student_group_membership_history",
+		"student_group_staff_assignment_history",
 	} {
 		if err := postgresRelationMustExist(db, relation); err != nil {
 			return err
 		}
 	}
 
-	for _, version := range []int{6, 7, 9, 14, 15, 16} {
+	for _, version := range []int{6, 7, 9, 14, 15, 16, 17} {
 		var appliedCount int
 
 		if err := db.QueryRow(`
@@ -468,6 +503,7 @@ func runPostgresMigrationHelperAction(action string) error {
 		14: "student_monthly_payment_adjustments",
 		15: "payroll_session_foundation",
 		16: "payroll_payment_calculation_details",
+		17: "payroll_work_history",
 	}
 	for version, wantName := range expectedNames {
 		var migrationName string
@@ -525,6 +561,10 @@ func runPostgresMigrationHelperAction(action string) error {
 		{"payroll_payment_calculation_details", "detail_type"},
 		{"payroll_payment_calculation_details", "source_type"},
 		{"payroll_payment_calculation_details", "amount_snapshot"},
+		{"staff_work_time_records", "break_minutes"},
+		{"student_enrollment_status_history", "effective_to"},
+		{"student_group_membership_history", "effective_to"},
+		{"student_group_staff_assignment_history", "assignment_role"},
 	} {
 		if err := postgresColumnMustExist(db, column.table, column.column); err != nil {
 			return err
@@ -538,6 +578,9 @@ func runPostgresMigrationHelperAction(action string) error {
 	for _, indexName := range []string{
 		"idx_student_group_session_occurrences_normal_unique",
 		"idx_finance_transactions_source_payroll_payment",
+		"idx_enrollment_status_history_open",
+		"idx_group_membership_history_open",
+		"idx_group_staff_history_open",
 	} {
 		if err := postgresRelationMustExist(db, indexName); err != nil {
 			return err

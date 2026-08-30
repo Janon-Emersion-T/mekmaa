@@ -155,6 +155,19 @@ func runEnrollmentUpdatePostgresWorkflow() error {
 		return fmt.Errorf("updated_at was not refreshed: %s", updated.UpdatedAt)
 	}
 
+	var initialHistoryFrom string
+	if err := db.QueryRow(`
+		SELECT CAST(effective_from AS TEXT)
+		FROM student_enrollment_status_history
+		WHERE enrollment_id = $1
+		  AND effective_to IS NULL
+	`, enrollmentID).Scan(&initialHistoryFrom); err != nil {
+		return fmt.Errorf("load enrollment history after service update: %w", err)
+	}
+	if initialHistoryFrom != "2026-08-05" {
+		return fmt.Errorf("service update history effective_from = %q, want 2026-08-05", initialHistoryFrom)
+	}
+
 	form := url.Values{
 		"csrf_token":             {"token"},
 		"enrollment_id":          {fmt.Sprintf("%d", enrollmentID)},
@@ -192,6 +205,19 @@ func runEnrollmentUpdatePostgresWorkflow() error {
 	}
 	if updated.EnrollmentDate != "2026-08-06" {
 		return fmt.Errorf("handler enrollment date = %q, want 2026-08-06", updated.EnrollmentDate)
+	}
+
+	var handlerHistoryFrom string
+	if err := db.QueryRow(`
+		SELECT CAST(effective_from AS TEXT)
+		FROM student_enrollment_status_history
+		WHERE enrollment_id = $1
+		  AND effective_to IS NULL
+	`, enrollmentID).Scan(&handlerHistoryFrom); err != nil {
+		return fmt.Errorf("load enrollment history after handler update: %w", err)
+	}
+	if handlerHistoryFrom != "2026-08-06" {
+		return fmt.Errorf("handler update history effective_from = %q, want 2026-08-06", handlerHistoryFrom)
 	}
 
 	return nil

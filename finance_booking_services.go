@@ -3532,7 +3532,7 @@ func replaceStudentGroupCoachesTx(
 		tx,
 		groupID,
 		coachIDs,
-		time.Now().Format("2006-01-02"),
+		currentBusinessDate(),
 	); err != nil {
 		return err
 	}
@@ -3694,7 +3694,7 @@ func (a *App) createStudentGroup(
 		tx,
 		groupID,
 		admissionIDs,
-		time.Now().Format("2006-01-02"),
+		currentBusinessDate(),
 	); err != nil {
 		return err
 	}
@@ -4932,6 +4932,16 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 		return sql.ErrNoRows
 	}
 
+	if err := syncStudentEnrollmentActiveStartDateTx(
+		a,
+		tx,
+		enrollment.ID,
+		existing.EnrollmentDate,
+		enrollment.EnrollmentDate,
+	); err != nil {
+		return err
+	}
+
 	if enrollment.TrainingProgramID != existing.TrainingProgramID {
 		if _, err := a.execTxDB(
 			tx,
@@ -5543,7 +5553,7 @@ func (a *App) updateStudentGroup(
 		tx,
 		group.ID,
 		admissionIDs,
-		time.Now().Format("2006-01-02"),
+		currentBusinessDate(),
 	); err != nil {
 		return err
 	}

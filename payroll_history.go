@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -45,6 +46,10 @@ func uniquePositiveHistoryIDs(values []int64) []int64 {
 	}
 
 	return result
+}
+
+func syncPayrollHistoryTimestamp() time.Time {
+	return time.Now().UTC()
 }
 
 func syncStudentGroupMembershipHistoryTx(
@@ -115,7 +120,7 @@ func syncStudentGroupMembershipHistoryTx(
 		desired[admissionID] = struct{}{}
 	}
 
-	now := time.Now().UTC()
+	now := syncPayrollHistoryTimestamp()
 
 	// Close memberships that no longer exist.
 	for admissionID, current := range open {
@@ -272,7 +277,7 @@ func syncStudentGroupStaffHistoryTx(
 		desired[assignment.UserID] = assignment
 	}
 
-	now := time.Now().UTC()
+	now := syncPayrollHistoryTimestamp()
 
 	for userID, current := range open {
 		next, stillAssigned := desired[userID]
@@ -435,7 +440,7 @@ func syncStudentGroupCoachHistoryTx(
 		desired[coachID] = struct{}{}
 	}
 
-	now := time.Now().UTC()
+	now := syncPayrollHistoryTimestamp()
 
 	for userID, current := range open {
 		if _, exists := desired[userID]; exists {
@@ -557,7 +562,7 @@ func syncStudentEnrollmentStatusHistoryTx(
 	)
 
 	desiredActive := boolToInt(active)
-	now := time.Now().UTC()
+	now := syncPayrollHistoryTimestamp()
 
 	if errors.Is(err, sql.ErrNoRows) {
 		_, err = a.execTxDB(
@@ -636,6 +641,85 @@ func syncStudentEnrollmentStatusHistoryTx(
 		effectiveDate,
 		now,
 		now,
+	)
+
+	return err
+}
+
+func syncStudentEnrollmentActiveStartDateTx(
+	a *App,
+	tx *sql.Tx,
+	enrollmentID int64,
+	previousDate string,
+	nextDate string,
+) error {
+	if enrollmentID <= 0 {
+		return errors.New("invalid student enrollment")
+	}
+
+	previousDate = strings.TrimSpace(previousDate)
+	nextDate = strings.TrimSpace(nextDate)
+	if previousDate == "" || nextDate == "" || previousDate == nextDate {
+		return nil
+	}
+
+	previousDate, err := normalizePayrollHistoryDate(previousDate)
+	if err != nil {
+		return fmt.Errorf("invalid previous enrollment date: %w", err)
+	}
+	nextDate, err = normalizePayrollHistoryDate(nextDate)
+	if err != nil {
+		return fmt.Errorf("invalid next enrollment date: %w", err)
+	}
+
+	var (
+		historyID     int64
+		currentActive int
+		effectiveFrom string
+	)
+
+	err = a.queryRowTxDB(
+		tx,
+		`
+		SELECT
+			id,
+			active,
+			CAST(effective_from AS TEXT)
+		FROM student_enrollment_status_history
+		WHERE enrollment_id = ?
+		  AND effective_to IS NULL
+		ORDER BY id DESC
+		LIMIT 1
+		`,
+		enrollmentID,
+	).Scan(
+		&historyID,
+		&currentActive,
+		&effectiveFrom,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if currentActive != 1 || strings.TrimSpace(effectiveFrom) != previousDate {
+		return nil
+	}
+
+	_, err = a.execTxDB(
+		tx,
+		`
+		UPDATE student_enrollment_status_history
+		SET
+			effective_from = ?,
+			updated_at = ?
+		WHERE id = ?
+		`,
+		nextDate,
+		syncPayrollHistoryTimestamp(),
+		historyID,
 	)
 
 	return err

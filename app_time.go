@@ -20,3 +20,11 @@ func loadSriLankaLocation() *time.Location {
 	}
 	return time.FixedZone("Asia/Colombo", 5*60*60+30*60)
 }
+
+func currentBusinessTime() time.Time {
+	return time.Now().In(sriLankaLocation)
+}
+
+func currentBusinessDate() string {
+	return currentBusinessTime().Format("2006-01-02")
+}

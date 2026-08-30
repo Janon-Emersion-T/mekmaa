@@ -10,11 +10,14 @@ import (
 )
 
 const (
-	payrollDetailTypePerStudentIncluded         = "per_student_included"
+	payrollDetailTypePerStudentIncluded          = "per_student_included"
 	payrollDetailTypePerStudentExcludedFullLeave = "per_student_excluded_full_month_leave"
-	payrollDetailTypePerSessionOccurrence       = "per_session_occurrence"
-	payrollDetailTypeSummary                    = "summary"
-	payrollDetailTypeManualNote                 = "manual_note"
+	payrollDetailTypePerStudentAttendance        = "per_student_attendance"
+	payrollDetailTypePerSessionOccurrence        = "per_session_occurrence"
+	payrollDetailTypeDailyAttendance             = "daily_attendance"
+	payrollDetailTypeHourlyWorkRecord            = "hourly_work_record"
+	payrollDetailTypeSummary                     = "summary"
+	payrollDetailTypeManualNote                  = "manual_note"
 )
 
 type payrollCalculatedSnapshot struct {
@@ -27,11 +30,11 @@ type payrollCalculatedSnapshot struct {
 }
 
 type payrollStudentCandidate struct {
-	AdmissionID     int64
-	StudentID       string
-	FullName        string
-	EnrollmentID    int64
-	EnrollmentDate  string
+	AdmissionID    int64
+	StudentID      string
+	FullName       string
+	EnrollmentID   int64
+	EnrollmentDate string
 }
 
 type payrollSessionCandidate struct {
@@ -39,6 +42,20 @@ type payrollSessionCandidate struct {
 	OccurrenceDate        string
 	GroupName             string
 	TimetableSessionTitle string
+}
+
+type payrollDailyAttendanceCandidate struct {
+	AttendanceDate string
+	Status         string
+}
+
+type payrollHourlyWorkCandidate struct {
+	RecordID     int64
+	WorkDate     string
+	ClockIn      string
+	ClockOut     string
+	BreakMinutes int
+	PayableHours float64
 }
 
 func payrollPaymentAllowsManualQuantity(payment PayrollPayment) bool {
@@ -258,18 +275,10 @@ func (a *App) buildPayrollCalculationSnapshot(
 		return a.buildPerStudentPayrollSnapshot(profile, periodStart, periodEnd)
 
 	case SalaryTypeHourly:
-		return payrollManualCalculationSnapshot(
-			profile,
-			"hours - manual entry required",
-			"Hourly quantity requires manual approval before salary payment.",
-		), nil
+		return a.buildHourlyPayrollSnapshot(profile, periodStart, periodEnd)
 
 	case SalaryTypeDaily:
-		return payrollManualCalculationSnapshot(
-			profile,
-			"days - manual entry required",
-			"Daily quantity requires manual approval before salary payment.",
-		), nil
+		return a.buildDailyPayrollSnapshot(profile, periodStart, periodEnd)
 
 	case SalaryTypeWeekly:
 		quantity, quantityLabel, err := a.calculatePayrollProfileQuantity(profile, periodStart, periodEnd)
@@ -316,11 +325,7 @@ func (a *App) buildPerStudentPayrollSnapshot(
 	case SalaryStudentBasisGroupMembership:
 		return a.buildPerStudentGroupMembershipSnapshot(profile, periodStart, periodEnd)
 	case SalaryStudentBasisAttendance:
-		return payrollManualCalculationSnapshot(
-			profile,
-			"attendance students - manual entry required",
-			"Per-student attendance-based salary calculation is not defined for automatic payroll yet.",
-		), nil
+		return a.buildPerStudentAttendanceSnapshot(profile, periodStart, periodEnd)
 	default:
 		return payrollManualCalculationSnapshot(
 			profile,
@@ -335,7 +340,7 @@ func (a *App) buildPerStudentActiveEnrollmentSnapshot(
 	periodStart string,
 	periodEnd string,
 ) (payrollCalculatedSnapshot, error) {
-	candidates, err := a.listPayrollAssignedStudentEnrollmentCandidates(profile)
+	candidates, err := a.listPayrollAssignedStudentEnrollmentCandidates(profile, periodStart, periodEnd)
 	if err != nil {
 		return payrollCalculatedSnapshot{}, err
 	}
@@ -435,7 +440,7 @@ func (a *App) buildPerStudentGroupMembershipSnapshot(
 	periodStart string,
 	periodEnd string,
 ) (payrollCalculatedSnapshot, error) {
-	candidates, err := a.listPayrollAssignedGroupMembershipCandidates(profile)
+	candidates, err := a.listPayrollAssignedGroupMembershipCandidates(profile, periodStart, periodEnd)
 	if err != nil {
 		return payrollCalculatedSnapshot{}, err
 	}
@@ -471,6 +476,53 @@ func (a *App) buildPerStudentGroupMembershipSnapshot(
 		Notes: appendPayrollCalculationNote(
 			profile.Notes,
 			"Group-membership basis counts deduplicated students from assigned groups in the scoped training programme.",
+		),
+		Details: details,
+	}, nil
+}
+
+func (a *App) buildPerStudentAttendanceSnapshot(
+	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
+) (payrollCalculatedSnapshot, error) {
+	candidates, err := a.listPayrollAttendanceStudentCandidates(profile, periodStart, periodEnd)
+	if err != nil {
+		return payrollCalculatedSnapshot{}, err
+	}
+
+	details := make([]PayrollPaymentCalculationDetail, 0, len(candidates)+1)
+	for _, candidate := range candidates {
+		details = append(details, PayrollPaymentCalculationDetail{
+			DetailType:     payrollDetailTypePerStudentAttendance,
+			SourceType:     "admission",
+			SourceID:       candidate.AdmissionID,
+			Label:          payrollStudentLabel(candidate.StudentID, candidate.FullName),
+			DetailNote:     "Attended during payroll period with an assigned staff relationship on the attendance date.",
+			Quantity:       1,
+			RateSnapshot:   normalizeMoney(profile.Rate),
+			AmountSnapshot: normalizeMoney(profile.Rate),
+		})
+	}
+
+	baseAmount := normalizeMoney(profile.Rate * float64(len(candidates)))
+	details = append([]PayrollPaymentCalculationDetail{
+		payrollSummaryDetail(
+			fmt.Sprintf("%d attended students", len(candidates)),
+			float64(len(candidates)),
+			profile.Rate,
+			baseAmount,
+		),
+	}, details...)
+
+	return payrollCalculatedSnapshot{
+		Quantity:      float64(len(candidates)),
+		QuantityLabel: fmt.Sprintf("%d attended students", len(candidates)),
+		BaseAmount:    baseAmount,
+		Status:        PayrollPaymentStatusCalculated,
+		Notes: appendPayrollCalculationNote(
+			profile.Notes,
+			"Attendance basis counts unique students with present or late attendance during the payroll period.",
 		),
 		Details: details,
 	}, nil
@@ -569,8 +621,16 @@ func payrollEnrollmentHasFullPeriodLeave(
 	return false, "", nil
 }
 
+func payrollHistoryOverlapsWhereClause(
+	alias string,
+) string {
+	return alias + `.effective_from <= ? AND (` + alias + `.effective_to IS NULL OR ` + alias + `.effective_to > ?)`
+}
+
 func (a *App) listPayrollAssignedStudentEnrollmentCandidates(
 	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
 ) ([]payrollStudentCandidate, error) {
 	query := `
 		SELECT DISTINCT
@@ -578,41 +638,41 @@ func (a *App) listPayrollAssignedStudentEnrollmentCandidates(
 			COALESCE(a.student_id, ''),
 			COALESCE(a.full_name, ''),
 			se.id,
-			COALESCE(se.enrollment_date, '')
-		FROM student_groups sg
-		JOIN student_group_members sgm
-			ON sgm.group_id = sg.id
+			CAST(se.enrollment_date AS TEXT)
+		FROM student_group_staff_assignment_history sgsh
+		JOIN student_groups sg
+			ON sg.id = sgsh.group_id
+		JOIN student_group_membership_history sgmh
+			ON sgmh.group_id = sg.id
 		JOIN admissions a
-			ON a.id = sgm.admission_id
+			ON a.id = sgmh.admission_id
 		JOIN student_enrollments se
-			ON se.admission_id = sgm.admission_id
+			ON se.admission_id = sgmh.admission_id
 		   AND se.training_program_id = sg.training_program_id
+		JOIN student_enrollment_status_history sesh
+			ON sesh.enrollment_id = se.id
 		JOIN training_programs tp
 			ON tp.id = sg.training_program_id
-		WHERE sg.training_program_id = ?
-		  AND COALESCE(se.active, 1) = 1
-		  AND TRIM(COALESCE(se.enrollment_date, '')) <> ''
-		  AND (
-			EXISTS (
-				SELECT 1
-				FROM student_group_staff sgs
-				WHERE sgs.group_id = sg.id
-				  AND sgs.user_id = ?
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM student_group_coaches sgc
-				WHERE sgc.group_id = sg.id
-				  AND sgc.user_id = ?
-			)
-		  )
+		WHERE sgsh.user_id = ?
+		  AND sg.training_program_id = ?
+		  AND ` + payrollHistoryOverlapsWhereClause("sgsh") + `
+		  AND ` + payrollHistoryOverlapsWhereClause("sgmh") + `
+		  AND sesh.active = 1
+		  AND ` + payrollHistoryOverlapsWhereClause("sesh") + `
+		  AND CAST(se.enrollment_date AS TEXT) <> ''
 	`
-	args := []any{profile.TrainingProgramID, profile.UserID, profile.UserID}
+	args := []any{
+		profile.UserID,
+		profile.TrainingProgramID,
+		periodEnd, periodStart,
+		periodEnd, periodStart,
+		periodEnd, periodStart,
+	}
 	if profile.DivisionID > 0 {
 		query += ` AND tp.division_id = ?`
 		args = append(args, profile.DivisionID)
 	}
-	query += ` ORDER BY LOWER(COALESCE(a.full_name, '')) ASC, LOWER(COALESCE(a.student_id, '')) ASC, a.id ASC`
+	query += ` ORDER BY 3 ASC, 2 ASC, 1 ASC`
 
 	rows, err := a.queryDB(query, args...)
 	if err != nil {
@@ -640,6 +700,8 @@ func (a *App) listPayrollAssignedStudentEnrollmentCandidates(
 
 func (a *App) listPayrollAssignedGroupMembershipCandidates(
 	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
 ) ([]payrollStudentCandidate, error) {
 	query := `
 		SELECT DISTINCT
@@ -648,35 +710,31 @@ func (a *App) listPayrollAssignedGroupMembershipCandidates(
 			COALESCE(a.full_name, ''),
 			0,
 			''
-		FROM student_groups sg
-		JOIN student_group_members sgm
-			ON sgm.group_id = sg.id
+		FROM student_group_staff_assignment_history sgsh
+		JOIN student_groups sg
+			ON sg.id = sgsh.group_id
+		JOIN student_group_membership_history sgmh
+			ON sgmh.group_id = sg.id
 		JOIN admissions a
-			ON a.id = sgm.admission_id
+			ON a.id = sgmh.admission_id
 		JOIN training_programs tp
 			ON tp.id = sg.training_program_id
-		WHERE sg.training_program_id = ?
-		  AND (
-			EXISTS (
-				SELECT 1
-				FROM student_group_staff sgs
-				WHERE sgs.group_id = sg.id
-				  AND sgs.user_id = ?
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM student_group_coaches sgc
-				WHERE sgc.group_id = sg.id
-				  AND sgc.user_id = ?
-			)
-		  )
+		WHERE sgsh.user_id = ?
+		  AND sg.training_program_id = ?
+		  AND ` + payrollHistoryOverlapsWhereClause("sgsh") + `
+		  AND ` + payrollHistoryOverlapsWhereClause("sgmh") + `
 	`
-	args := []any{profile.TrainingProgramID, profile.UserID, profile.UserID}
+	args := []any{
+		profile.UserID,
+		profile.TrainingProgramID,
+		periodEnd, periodStart,
+		periodEnd, periodStart,
+	}
 	if profile.DivisionID > 0 {
 		query += ` AND tp.division_id = ?`
 		args = append(args, profile.DivisionID)
 	}
-	query += ` ORDER BY LOWER(COALESCE(a.full_name, '')) ASC, LOWER(COALESCE(a.student_id, '')) ASC, a.id ASC`
+	query += ` ORDER BY 3 ASC, 2 ASC, 1 ASC`
 
 	rows, err := a.queryDB(query, args...)
 	if err != nil {
@@ -700,6 +758,290 @@ func (a *App) listPayrollAssignedGroupMembershipCandidates(
 	}
 
 	return candidates, rows.Err()
+}
+
+func (a *App) listPayrollAttendanceStudentCandidates(
+	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
+) ([]payrollStudentCandidate, error) {
+	query := `
+		SELECT DISTINCT
+			a.id,
+			COALESCE(a.student_id, ''),
+			COALESCE(a.full_name, ''),
+			0,
+			''
+		FROM attendance_records ar
+		JOIN admissions a
+			ON a.id = ar.admission_id
+		JOIN student_groups sg
+			ON sg.id = ar.group_id
+		JOIN training_programs tp
+			ON tp.id = sg.training_program_id
+		JOIN student_group_staff_assignment_history sgsh
+			ON sgsh.group_id = sg.id
+		WHERE sgsh.user_id = ?
+		  AND sg.training_program_id = ?
+		  AND ar.attendance_date >= ?
+		  AND ar.attendance_date <= ?
+		  AND LOWER(COALESCE(ar.status, '')) IN ('present', 'late')
+		  AND sgsh.effective_from <= ar.attendance_date
+		  AND (sgsh.effective_to IS NULL OR sgsh.effective_to > ar.attendance_date)
+	`
+	args := []any{profile.UserID, profile.TrainingProgramID, periodStart, periodEnd}
+	if profile.DivisionID > 0 {
+		query += ` AND tp.division_id = ?`
+		args = append(args, profile.DivisionID)
+	}
+	query += ` ORDER BY 3 ASC, 2 ASC, 1 ASC`
+
+	rows, err := a.queryDB(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	candidates := make([]payrollStudentCandidate, 0)
+	for rows.Next() {
+		var candidate payrollStudentCandidate
+		if err := rows.Scan(
+			&candidate.AdmissionID,
+			&candidate.StudentID,
+			&candidate.FullName,
+			&candidate.EnrollmentID,
+			&candidate.EnrollmentDate,
+		); err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, candidate)
+	}
+
+	return candidates, rows.Err()
+}
+
+func (a *App) buildDailyPayrollSnapshot(
+	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
+) (payrollCalculatedSnapshot, error) {
+	records, err := a.listPayrollDailyAttendance(profile, periodStart, periodEnd)
+	if err != nil {
+		return payrollCalculatedSnapshot{}, err
+	}
+
+	details := make([]PayrollPaymentCalculationDetail, 0, len(records)+1)
+	for _, record := range records {
+		details = append(details, PayrollPaymentCalculationDetail{
+			DetailType:     payrollDetailTypeDailyAttendance,
+			SourceType:     "coach_attendance_record",
+			Label:          record.AttendanceDate,
+			DetailNote:     "Staff attendance status: " + record.Status,
+			Quantity:       1,
+			RateSnapshot:   normalizeMoney(profile.Rate),
+			AmountSnapshot: normalizeMoney(profile.Rate),
+		})
+	}
+
+	quantity := float64(len(records))
+	baseAmount := normalizeMoney(profile.Rate * quantity)
+	details = append([]PayrollPaymentCalculationDetail{
+		payrollSummaryDetail(
+			fmt.Sprintf("%d paid days", len(records)),
+			quantity,
+			profile.Rate,
+			baseAmount,
+		),
+	}, details...)
+
+	return payrollCalculatedSnapshot{
+		Quantity:      quantity,
+		QuantityLabel: fmt.Sprintf("%d paid days", len(records)),
+		BaseAmount:    baseAmount,
+		Status:        PayrollPaymentStatusCalculated,
+		Notes: appendPayrollCalculationNote(
+			profile.Notes,
+			"Daily salary counts distinct staff attendance dates marked present or late.",
+		),
+		Details: details,
+	}, nil
+}
+
+func (a *App) listPayrollDailyAttendance(
+	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
+) ([]payrollDailyAttendanceCandidate, error) {
+	rows, err := a.queryDB(`
+		SELECT
+			attendance_date,
+			LOWER(COALESCE(status, ''))
+		FROM coach_attendance_records
+		WHERE user_id = ?
+		  AND attendance_date >= ?
+		  AND attendance_date <= ?
+		  AND LOWER(COALESCE(status, '')) IN ('present', 'late')
+		ORDER BY attendance_date ASC, id ASC
+	`, profile.UserID, periodStart, periodEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	seenDates := make(map[string]struct{})
+	records := make([]payrollDailyAttendanceCandidate, 0)
+	for rows.Next() {
+		var record payrollDailyAttendanceCandidate
+		if err := rows.Scan(&record.AttendanceDate, &record.Status); err != nil {
+			return nil, err
+		}
+		if _, exists := seenDates[record.AttendanceDate]; exists {
+			continue
+		}
+		seenDates[record.AttendanceDate] = struct{}{}
+		records = append(records, record)
+	}
+
+	return records, rows.Err()
+}
+
+func payrollDurationHours(
+	workDate string,
+	clockIn string,
+	clockOut string,
+	breakMinutes int,
+) (float64, error) {
+	if breakMinutes < 0 {
+		return 0, errors.New("break minutes cannot be negative")
+	}
+
+	start, err := time.ParseInLocation("2006-01-02 15:04:05", workDate+" "+clockIn, sriLankaLocation)
+	if err != nil {
+		start, err = time.ParseInLocation("2006-01-02 15:04", workDate+" "+clockIn, sriLankaLocation)
+		if err != nil {
+			return 0, errors.New("invalid clock-in time")
+		}
+	}
+
+	end, err := time.ParseInLocation("2006-01-02 15:04:05", workDate+" "+clockOut, sriLankaLocation)
+	if err != nil {
+		end, err = time.ParseInLocation("2006-01-02 15:04", workDate+" "+clockOut, sriLankaLocation)
+		if err != nil {
+			return 0, errors.New("invalid clock-out time")
+		}
+	}
+	if !end.After(start) {
+		end = end.Add(24 * time.Hour)
+	}
+
+	durationMinutes := int(end.Sub(start).Minutes()) - breakMinutes
+	if durationMinutes <= 0 {
+		return 0, errors.New("payable duration must be positive")
+	}
+
+	return float64(durationMinutes) / 60.0, nil
+}
+
+func (a *App) listPayrollHourlyWorkRecords(
+	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
+) ([]payrollHourlyWorkCandidate, error) {
+	rows, err := a.queryDB(`
+		SELECT
+			id,
+			work_date,
+			clock_in,
+			clock_out,
+			break_minutes
+		FROM staff_work_time_records
+		WHERE user_id = ?
+		  AND work_date >= ?
+		  AND work_date <= ?
+		ORDER BY work_date ASC, clock_in ASC, id ASC
+	`, profile.UserID, periodStart, periodEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]payrollHourlyWorkCandidate, 0)
+	for rows.Next() {
+		var record payrollHourlyWorkCandidate
+		if err := rows.Scan(
+			&record.RecordID,
+			&record.WorkDate,
+			&record.ClockIn,
+			&record.ClockOut,
+			&record.BreakMinutes,
+		); err != nil {
+			return nil, err
+		}
+
+		payableHours, err := payrollDurationHours(
+			record.WorkDate,
+			record.ClockIn,
+			record.ClockOut,
+			record.BreakMinutes,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("work time record %d: %w", record.RecordID, err)
+		}
+		record.PayableHours = payableHours
+		records = append(records, record)
+	}
+
+	return records, rows.Err()
+}
+
+func (a *App) buildHourlyPayrollSnapshot(
+	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
+) (payrollCalculatedSnapshot, error) {
+	records, err := a.listPayrollHourlyWorkRecords(profile, periodStart, periodEnd)
+	if err != nil {
+		return payrollCalculatedSnapshot{}, err
+	}
+
+	details := make([]PayrollPaymentCalculationDetail, 0, len(records)+1)
+	totalHours := 0.0
+	for _, record := range records {
+		totalHours += record.PayableHours
+		amount := normalizeMoney(record.PayableHours * profile.Rate)
+		details = append(details, PayrollPaymentCalculationDetail{
+			DetailType:     payrollDetailTypeHourlyWorkRecord,
+			SourceType:     "staff_work_time_record",
+			SourceID:       record.RecordID,
+			Label:          fmt.Sprintf("%s · %s-%s", record.WorkDate, record.ClockIn, record.ClockOut),
+			DetailNote:     fmt.Sprintf("Break %d minutes", record.BreakMinutes),
+			Quantity:       record.PayableHours,
+			RateSnapshot:   normalizeMoney(profile.Rate),
+			AmountSnapshot: amount,
+		})
+	}
+
+	baseAmount := normalizeMoney(profile.Rate * totalHours)
+	details = append([]PayrollPaymentCalculationDetail{
+		payrollSummaryDetail(
+			fmt.Sprintf("%.2f payable hours", totalHours),
+			totalHours,
+			profile.Rate,
+			baseAmount,
+		),
+	}, details...)
+
+	return payrollCalculatedSnapshot{
+		Quantity:      totalHours,
+		QuantityLabel: fmt.Sprintf("%.2f payable hours", totalHours),
+		BaseAmount:    baseAmount,
+		Status:        PayrollPaymentStatusCalculated,
+		Notes: appendPayrollCalculationNote(
+			profile.Notes,
+			"Hourly salary uses recorded work-time intervals with break deductions.",
+		),
+		Details: details,
+	}, nil
 }
 
 func (a *App) listPayrollSessionOccurrencesWorked(
@@ -737,7 +1079,7 @@ func (a *App) listPayrollSessionOccurrencesWorked(
 		query += ` AND tp.division_id = ?`
 		args = append(args, profile.DivisionID)
 	}
-	query += ` ORDER BY CAST(o.occurrence_date AS TEXT) ASC, LOWER(COALESCE(g.name, '')) ASC, o.id ASC`
+	query += ` ORDER BY 2 ASC, 3 ASC, 1 ASC`
 
 	rows, err := a.queryDB(query, args...)
 	if err != nil {

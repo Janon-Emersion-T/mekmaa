@@ -6,25 +6,26 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func createPayrollTestAdmission(t *testing.T, app *App, studentID, fullName string) int64 {
 	t.Helper()
 
 	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
-		StudentID:                 studentID,
-		FullName:                  fullName,
-		AdmissionDate:             "2026-01-10",
-		DateOfBirth:               "2012-06-01",
-		Gender:                    "male",
-		PracticeType:              "group_practice",
-		Address:                   "Jaffna",
-		School:                    "Mekmaa College",
-		GuardianName:              "Guardian",
-		GuardianRelationship:      "Parent",
-		GuardianContactNumber:     "0771234567",
-		GuardianAlternativePhone:  "0771234568",
-		MedicalInformation:        "",
+		StudentID:                studentID,
+		FullName:                 fullName,
+		AdmissionDate:            "2026-01-10",
+		DateOfBirth:              "2012-06-01",
+		Gender:                   "male",
+		PracticeType:             "group_practice",
+		Address:                  "Jaffna",
+		School:                   "Mekmaa College",
+		GuardianName:             "Guardian",
+		GuardianRelationship:     "Parent",
+		GuardianContactNumber:    "0771234567",
+		GuardianAlternativePhone: "0771234568",
+		MedicalInformation:       "",
 	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission %s: %v", studentID, err)
@@ -56,10 +57,10 @@ func createPayrollTestEnrollment(t *testing.T, app *App, admissionID, programID 
 	t.Helper()
 
 	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
-		AdmissionID:      admissionID,
+		AdmissionID:       admissionID,
 		TrainingProgramID: programID,
-		EnrollmentDate:   enrollmentDate,
-		Active:           true,
+		EnrollmentDate:    enrollmentDate,
+		Active:            true,
 	}, false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create enrollment admission=%d program=%d: %v", admissionID, programID, err)
@@ -229,13 +230,13 @@ func TestPayrollPhase2PerStudentManualFallbacks(t *testing.T) {
 	}, coach.ID)
 
 	attendanceProfileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
-		UserID:           coach.ID,
-		CompensationType: SalaryTypePerStudent,
-		Rate:             1100,
-		StudentBasis:     SalaryStudentBasisAttendance,
+		UserID:            coach.ID,
+		CompensationType:  SalaryTypePerStudent,
+		Rate:              1100,
+		StudentBasis:      SalaryStudentBasisAttendance,
 		TrainingProgramID: createPayrollTestProgram(t, app, "Attendance Program", "cricket-attendance"),
-		EffectiveFrom:    "2026-01-01",
-		Active:           true,
+		EffectiveFrom:     "2026-01-01",
+		Active:            true,
 	}, coach.ID)
 
 	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", coach.ID)
@@ -252,8 +253,302 @@ func TestPayrollPhase2PerStudentManualFallbacks(t *testing.T) {
 	}
 
 	attendance := payrollPaymentForProfile(t, app, runID, attendanceProfileID)
-	if attendance.Status != PayrollPaymentStatusDraft || !payrollPaymentAllowsManualQuantity(attendance) {
-		t.Fatalf("attendance-basis per-student payment should be manual draft: %#v", attendance)
+	if attendance.Status != PayrollPaymentStatusCalculated || attendance.Quantity != 0 || attendance.BaseAmount != 0 {
+		t.Fatalf("attendance-basis per-student payment without records should auto-calculate to zero: %#v", attendance)
+	}
+}
+
+func TestPayrollPhase2DailyCalculation(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	staff, err := app.createManagedUser("Daily Staff", "daily-staff@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create staff: %v", err)
+	}
+
+	if err := app.saveStaffAttendanceRecords("2026-08-03", []StaffAttendanceInput{{UserID: staff.ID, Status: "present"}}, staff.ID); err != nil {
+		t.Fatalf("save first attendance: %v", err)
+	}
+	if err := app.saveStaffAttendanceRecords("2026-08-04", []StaffAttendanceInput{{UserID: staff.ID, Status: "late"}}, staff.ID); err != nil {
+		t.Fatalf("save second attendance: %v", err)
+	}
+	if err := app.saveStaffAttendanceRecords("2026-08-05", []StaffAttendanceInput{{UserID: staff.ID, Status: "absent"}}, staff.ID); err != nil {
+		t.Fatalf("save absent attendance: %v", err)
+	}
+	if err := app.saveStaffAttendanceRecords("2026-08-06", []StaffAttendanceInput{{UserID: staff.ID, Status: "excused"}}, staff.ID); err != nil {
+		t.Fatalf("save excused attendance: %v", err)
+	}
+
+	profileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:           staff.ID,
+		CompensationType: SalaryTypeDaily,
+		Rate:             2500,
+		EffectiveFrom:    "2026-01-01",
+		Active:           true,
+	}, staff.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", staff.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+	if err := app.generatePayrollRunPayments(runID, staff.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	payment := payrollPaymentForProfile(t, app, runID, profileID)
+	if payment.Status != PayrollPaymentStatusCalculated || payment.Quantity != 2 || payment.BaseAmount != 5000 {
+		t.Fatalf("daily payment = %#v", payment)
+	}
+
+	detailCount := 0
+	for _, detail := range payment.CalculationDetails {
+		if detail.DetailType == payrollDetailTypeDailyAttendance {
+			detailCount++
+		}
+	}
+	if detailCount != 2 {
+		t.Fatalf("daily detail count = %d, want 2", detailCount)
+	}
+}
+
+func TestPayrollPhase2HourlyCalculation(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	staff, err := app.createManagedUser("Hourly Staff", "hourly-staff@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create staff: %v", err)
+	}
+
+	now := time.Now().UTC()
+	for _, record := range []struct {
+		workDate     string
+		clockIn      string
+		clockOut     string
+		breakMinutes int
+	}{
+		{"2026-08-02", "09:00", "17:00", 60},
+		{"2026-08-03", "22:00", "01:00", 30},
+	} {
+		if _, err := app.db.Exec(`
+			INSERT INTO staff_work_time_records (
+				user_id,
+				work_date,
+				clock_in,
+				clock_out,
+				break_minutes,
+				note,
+				recorded_by_user_id,
+				created_at,
+				updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, '', ?, ?, ?)
+		`,
+			staff.ID,
+			record.workDate,
+			record.clockIn,
+			record.clockOut,
+			record.breakMinutes,
+			staff.ID,
+			now,
+			now,
+		); err != nil {
+			t.Fatalf("insert work time record: %v", err)
+		}
+	}
+
+	profileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:           staff.ID,
+		CompensationType: SalaryTypeHourly,
+		Rate:             1000,
+		EffectiveFrom:    "2026-01-01",
+		Active:           true,
+	}, staff.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", staff.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+	if err := app.generatePayrollRunPayments(runID, staff.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	payment := payrollPaymentForProfile(t, app, runID, profileID)
+	if payment.Status != PayrollPaymentStatusCalculated {
+		t.Fatalf("hourly payment status = %q", payment.Status)
+	}
+	if payment.Quantity != 9.5 {
+		t.Fatalf("hourly quantity = %.2f, want 9.50", payment.Quantity)
+	}
+	if payment.BaseAmount != 9500 {
+		t.Fatalf("hourly base amount = %.2f, want 9500", payment.BaseAmount)
+	}
+
+	detailCount := 0
+	for _, detail := range payment.CalculationDetails {
+		if detail.DetailType == payrollDetailTypeHourlyWorkRecord {
+			detailCount++
+		}
+	}
+	if detailCount != 2 {
+		t.Fatalf("hourly detail count = %d, want 2", detailCount)
+	}
+}
+
+func TestPayrollPhase2HistoricalRecalculationUsesHistory(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	coach, err := app.createManagedUser("History Coach", "history-coach@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create coach: %v", err)
+	}
+	replacement, err := app.createManagedUser("Replacement Coach", "replacement-coach@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create replacement coach: %v", err)
+	}
+
+	programID := createPayrollTestProgram(t, app, "History Program", "history-program")
+	admissionID := createPayrollTestAdmission(t, app, "STD-HIST-001", "Historical Student")
+	createPayrollTestEnrollment(t, app, admissionID, programID, "2026-07-15")
+	groupID := createPayrollTestGroup(
+		t,
+		app,
+		"History Group",
+		"HISTORY-GRP",
+		programID,
+		[]int64{admissionID},
+		[]int64{coach.ID},
+		[]StudentGroupSession{{Title: "Saturday", DayOfWeek: "saturday", StartTime: "16:00", EndTime: "18:00", Active: true}},
+	)
+
+	profileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:            coach.ID,
+		TrainingProgramID: programID,
+		CompensationType:  SalaryTypePerStudent,
+		Rate:              1000,
+		StudentBasis:      SalaryStudentBasisActiveEnrollment,
+		EffectiveFrom:     "2026-01-01",
+		Active:            true,
+	}, coach.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", coach.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+	if err := app.generatePayrollRunPayments(runID, coach.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	initial := payrollPaymentForProfile(t, app, runID, profileID)
+	if initial.Quantity != 1 {
+		t.Fatalf("initial historical payment = %#v", initial)
+	}
+
+	tx, err := app.db.Begin()
+	if err != nil {
+		t.Fatalf("begin history tx: %v", err)
+	}
+	if err := syncStudentGroupMembershipHistoryTx(app, tx, groupID, nil, "2026-09-01"); err != nil {
+		t.Fatalf("close membership history: %v", err)
+	}
+	if err := syncStudentGroupStaffHistoryTx(app, tx, groupID, []GroupStaffAssignmentInput{{UserID: replacement.ID, AssignmentRole: groupStaffRoleCoach}}, "2026-09-01"); err != nil {
+		t.Fatalf("replace staff history: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit history tx: %v", err)
+	}
+
+	if _, err := app.db.Exec(`DELETE FROM student_group_members WHERE group_id = ?`, groupID); err != nil {
+		t.Fatalf("delete current membership: %v", err)
+	}
+	if _, err := app.db.Exec(`DELETE FROM student_group_staff WHERE group_id = ?`, groupID); err != nil {
+		t.Fatalf("delete current staff: %v", err)
+	}
+	if _, err := app.db.Exec(`DELETE FROM student_group_coaches WHERE group_id = ?`, groupID); err != nil {
+		t.Fatalf("delete current coach: %v", err)
+	}
+	if _, err := app.db.Exec(`INSERT INTO student_group_staff (group_id, user_id, assignment_role, primary_assignment, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)`, groupID, replacement.ID, groupStaffRoleCoach, time.Now().UTC(), time.Now().UTC()); err != nil {
+		t.Fatalf("insert replacement staff: %v", err)
+	}
+	if _, err := app.db.Exec(`INSERT INTO student_group_coaches (group_id, user_id, created_at) VALUES (?, ?, ?)`, groupID, replacement.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("insert replacement coach: %v", err)
+	}
+
+	if err := app.recalculatePayrollRun(runID, coach.ID); err != nil {
+		t.Fatalf("recalculate payroll run: %v", err)
+	}
+
+	recalculated := payrollPaymentForProfile(t, app, runID, profileID)
+	if recalculated.Quantity != 1 || recalculated.BaseAmount != 1000 {
+		t.Fatalf("recalculated historical payment = %#v", recalculated)
+	}
+}
+
+func TestPayrollPhase2HistoricalRecalculationIgnoresLaterEnrollmentDeactivation(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	coach, err := app.createManagedUser("Enrollment History Coach", "enrollment-history-coach@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create coach: %v", err)
+	}
+
+	programID := createPayrollTestProgram(t, app, "Enrollment History Program", "enrollment-history-program")
+	admissionID := createPayrollTestAdmission(t, app, "STD-HIST-ENR-001", "Enrollment Stable Student")
+	enrollmentID := createPayrollTestEnrollment(t, app, admissionID, programID, "2026-07-01")
+	createPayrollTestGroup(
+		t,
+		app,
+		"Enrollment History Group",
+		"ENROLLMENT-HISTORY-GRP",
+		programID,
+		[]int64{admissionID},
+		[]int64{coach.ID},
+		nil,
+	)
+
+	profileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:            coach.ID,
+		TrainingProgramID: programID,
+		CompensationType:  SalaryTypePerStudent,
+		Rate:              800,
+		StudentBasis:      SalaryStudentBasisActiveEnrollment,
+		EffectiveFrom:     "2026-01-01",
+		Active:            true,
+	}, coach.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", coach.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+	if err := app.generatePayrollRunPayments(runID, coach.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	initial := payrollPaymentForProfile(t, app, runID, profileID)
+	if initial.Quantity != 1 {
+		t.Fatalf("initial payment = %#v", initial)
+	}
+
+	tx, err := app.db.Begin()
+	if err != nil {
+		t.Fatalf("begin enrollment history tx: %v", err)
+	}
+	if err := syncStudentEnrollmentStatusHistoryTx(app, tx, enrollmentID, false, "2026-09-01"); err != nil {
+		t.Fatalf("deactivate enrollment history: %v", err)
+	}
+	if _, err := tx.Exec(`UPDATE student_enrollments SET active = 0, updated_at = ? WHERE id = ?`, time.Now().UTC(), enrollmentID); err != nil {
+		t.Fatalf("update current enrollment active flag: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit enrollment history tx: %v", err)
+	}
+
+	if err := app.recalculatePayrollRun(runID, coach.ID); err != nil {
+		t.Fatalf("recalculate payroll run: %v", err)
+	}
+
+	recalculated := payrollPaymentForProfile(t, app, runID, profileID)
+	if recalculated.Quantity != 1 || recalculated.BaseAmount != 800 {
+		t.Fatalf("recalculated payment after later deactivation = %#v", recalculated)
 	}
 }
 
@@ -502,6 +797,10 @@ func TestPayrollPhase2SQLiteBootstrapIncludesPayrollTables(t *testing.T) {
 		"payroll_payments",
 		"payroll_adjustments",
 		"payroll_payment_calculation_details",
+		"staff_work_time_records",
+		"student_enrollment_status_history",
+		"student_group_membership_history",
+		"student_group_staff_assignment_history",
 	} {
 		var count int
 		if err := app.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil {
