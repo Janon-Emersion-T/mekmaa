@@ -277,6 +277,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"mcpPlanContinueMonthDefault": mcpPlanContinueMonthDefault,
 		"mcpContinueAction":           mcpContinueAction,
 		"mcpPaymentCollectionAction":  mcpPaymentCollectionAction,
+		"mcpPaymentVoidAction":        mcpPaymentVoidAction,
 		"mcpCustomerMailto":           mcpCustomerMailto,
 		"formatEventTiming":           formatEventTiming,
 		"eventScheduleLabel":          eventScheduleLabel,

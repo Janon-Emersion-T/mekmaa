@@ -2287,6 +2287,61 @@ func TestListRecentBookingPaymentCollectionsByDivisionIDsReturnsLatestActivePaym
 	}
 }
 
+func TestBookingFinancialSnapshotUsesLatestActivePaymentMethod(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 6, "19:00")
+
+	firstCollectedAt := time.Now().UTC().Add(-2 * time.Hour)
+	secondCollectedAt := time.Now().UTC().Add(-1 * time.Hour)
+
+	firstTransactionID, err := app.collectBookingPaymentAt(scheduleID, "cash", 1000, "deposit", firstCollectedAt, 0, false)
+	if err != nil {
+		t.Fatalf("collect first booking payment: %v", err)
+	}
+	secondTransactionID, err := app.collectBookingPaymentAt(scheduleID, "bank_transfer", 1500, "balance", secondCollectedAt, 0, false)
+	if err != nil {
+		t.Fatalf("collect second booking payment: %v", err)
+	}
+
+	financials, err := app.listBookingFinancialsForScheduleIDs([]int64{scheduleID})
+	if err != nil {
+		t.Fatalf("list booking financials: %v", err)
+	}
+	financial := bookingFinancialForSchedule(financials, scheduleID)
+	if financial == nil {
+		t.Fatal("booking financial was not found")
+	}
+	if financial.PaymentMethod != "bank_transfer" {
+		t.Fatalf("payment method = %q, want bank_transfer", financial.PaymentMethod)
+	}
+	if financial.FinanceTransactionID != secondTransactionID {
+		t.Fatalf("finance transaction id = %d, want %d", financial.FinanceTransactionID, secondTransactionID)
+	}
+
+	var firstCollectionID int64
+	if err := app.db.QueryRow(`SELECT id FROM booking_payment_collections WHERE finance_transaction_id = ?`, firstTransactionID).Scan(&firstCollectionID); err != nil {
+		t.Fatalf("find first booking collection: %v", err)
+	}
+	if err := app.voidBookingPayment(firstCollectionID, "deposit entered on wrong booking", 1); err != nil {
+		t.Fatalf("void first booking payment: %v", err)
+	}
+
+	financials, err = app.listBookingFinancialsForScheduleIDs([]int64{scheduleID})
+	if err != nil {
+		t.Fatalf("reload booking financials: %v", err)
+	}
+	financial = bookingFinancialForSchedule(financials, scheduleID)
+	if financial == nil {
+		t.Fatal("booking financial missing after void")
+	}
+	if financial.PaymentMethod != "bank_transfer" {
+		t.Fatalf("payment method after void = %q, want bank_transfer", financial.PaymentMethod)
+	}
+	if financial.FinanceTransactionID != secondTransactionID {
+		t.Fatalf("finance transaction id after void = %d, want %d", financial.FinanceTransactionID, secondTransactionID)
+	}
+}
+
 func TestCreateSpaceSchedulesCreatesConsecutiveHourlyBookings(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	slotDate := time.Now().AddDate(0, 0, 3).Format("2006-01-02")
@@ -15191,6 +15246,75 @@ func TestTournamentLineItemsRollUpIntoTotalsAndFinance(t *testing.T) {
 
 	if transactionCount != 4 {
 		t.Fatalf("active tournament finance transactions = %d, want 4", transactionCount)
+	}
+
+	for _, record := range []struct {
+		recordType string
+		recordID   int64
+	}{
+		{recordType: "sponsorship", recordID: tournament.Sponsorships[0].ID},
+		{recordType: "official_payment", recordID: tournament.OfficialPayments[0].ID},
+		{recordType: "expense", recordID: tournament.Expenses[0].ID},
+	} {
+		if _, err := app.voidTournamentFinanceRecord(record.recordType, record.recordID, "duplicate tournament entry", 0); err != nil {
+			t.Fatalf("void %s: %v", record.recordType, err)
+		}
+	}
+	tournament, err = app.findTournamentByID(tournamentID)
+	if err != nil {
+		t.Fatalf("reload tournament after voids: %v", err)
+	}
+	if tournament.SponsorshipIncomeTotal != 0 || tournament.TotalExpense != 0 || tournament.TotalIncome != 15000 || tournament.NetIncome != 15000 {
+		t.Fatalf("unexpected tournament totals after voids: %#v", tournament)
+	}
+	if !tournament.Sponsorships[0].Voided || !tournament.OfficialPayments[0].Voided || !tournament.Expenses[0].Voided {
+		t.Fatal("expected all voided tournament records to remain visible in the audit history")
+	}
+	if err := app.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM finance_transactions
+		WHERE reference_type = 'tournament'
+		  AND reference_id = ?
+		  AND voided_at IS NULL
+	`, tournamentID).Scan(&transactionCount); err != nil {
+		t.Fatalf("count active tournament finance transactions after voids: %v", err)
+	}
+	if transactionCount != 1 {
+		t.Fatalf("active tournament finance transactions after voids = %d, want 1", transactionCount)
+	}
+}
+
+func TestFinanceScopeIncludesSports(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	if err := seedDivisions(app.db); err != nil {
+		t.Fatalf("seed divisions: %v", err)
+	}
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	kecID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find KEC division: %v", err)
+	}
+	for _, test := range []struct {
+		name        string
+		divisionIDs []int64
+		want        bool
+	}{
+		{name: "all divisions", want: true},
+		{name: "sports only", divisionIDs: []int64{sportsID}, want: true},
+		{name: "KEC only", divisionIDs: []int64{kecID}, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := app.financeScopeIncludesSports(test.divisionIDs)
+			if err != nil {
+				t.Fatalf("check sports scope: %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("includes sports = %t, want %t", got, test.want)
+			}
+		})
 	}
 }
 

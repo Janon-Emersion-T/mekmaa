@@ -1637,6 +1637,12 @@ func financeVoidWorkflowMessage(transaction *FinanceTransaction) string {
 		return "Void monthly income from the student payment workflow so the monthly payment record stays synchronized."
 	case "booking_referral_payment":
 		return "Void referral payouts from the referral payment workflow so the payout record stays synchronized."
+	case "mcp_payment_collection":
+		return "Void MCP income from the MCP receivables workflow so the plan balance stays synchronized."
+	case "tournament_sponsorship", "tournament_official_payment", "tournament_expense":
+		return "Void this tournament entry from its tournament finance workflow so the tournament totals stay synchronized."
+	case "payroll_payment":
+		return "Void payroll payments from the payroll workflow so payment status stays synchronized."
 	case "finance_transfer":
 		return "Void transfers from the transfer workflow so both sides of the transfer are reversed together."
 	default:
@@ -1691,6 +1697,36 @@ func financeTransactionSourceExistsQuery(queryer sqlQueryer, transaction *Financ
 	case "mcp_payment_collection":
 		var count int
 		if err := queryer.QueryRow(`SELECT COUNT(*) FROM mcp_payment_collections WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	case "tournament":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM tournaments WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	case "tournament_sponsorship":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM tournament_sponsorships WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	case "tournament_official_payment":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM tournament_official_payments WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	case "tournament_expense":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM tournament_expenses WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	case "payroll_payment":
+		var count int
+		if err := queryer.QueryRow(`SELECT COUNT(*) FROM payroll_payments WHERE id = $1`, transaction.SourceID).Scan(&count); err != nil {
 			return false, err
 		}
 		return count > 0, nil

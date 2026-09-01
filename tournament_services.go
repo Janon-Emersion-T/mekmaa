@@ -100,14 +100,23 @@ func buildTournamentFinancialSummary(tournament *Tournament) {
 	)
 	var sponsorshipTotal float64
 	for _, sponsor := range tournament.Sponsorships {
+		if sponsor.Voided {
+			continue
+		}
 		sponsorshipTotal += sponsor.Amount
 	}
 	var officialTotal float64
 	for _, payment := range tournament.OfficialPayments {
+		if payment.Voided {
+			continue
+		}
 		officialTotal += payment.Amount
 	}
 	var expenseTotal float64
 	for _, expense := range tournament.Expenses {
+		if expense.Voided {
+			continue
+		}
 		expenseTotal += expense.Amount
 	}
 	tournament.SponsorshipIncomeTotal = normalizeMoney(sponsorshipTotal)
@@ -145,16 +154,19 @@ func (a *App) listTournaments() ([]Tournament, error) {
 				SELECT SUM(amount)
 				FROM tournament_sponsorships
 				WHERE tournament_id = t.id
+				  AND EXISTS (SELECT 1 FROM finance_transactions ft WHERE ft.id = finance_transaction_id AND ft.voided_at IS NULL)
 			), 0),
 			COALESCE((
 				SELECT SUM(amount)
 				FROM tournament_official_payments
 				WHERE tournament_id = t.id
+				  AND EXISTS (SELECT 1 FROM finance_transactions ft WHERE ft.id = finance_transaction_id AND ft.voided_at IS NULL)
 			), 0),
 			COALESCE((
 				SELECT SUM(amount)
 				FROM tournament_expenses
 				WHERE tournament_id = t.id
+				  AND EXISTS (SELECT 1 FROM finance_transactions ft WHERE ft.id = finance_transaction_id AND ft.voided_at IS NULL)
 			), 0)
 		FROM tournaments t
 		LEFT JOIN games g ON g.id = t.game_id
@@ -291,11 +303,13 @@ func (a *App) listTournamentSponsorships(tournamentID int64) ([]TournamentSponso
 			COALESCE(ts.finance_transaction_id, 0),
 			COALESCE(ts.finance_account_id, 0),
 			COALESCE(fa.name, ''),
+			CASE WHEN ft.voided_at IS NULL THEN FALSE ELSE TRUE END,
 			ts.recorded_at,
 			ts.created_at,
 			ts.updated_at
 		FROM tournament_sponsorships ts
 		LEFT JOIN finance_accounts fa ON fa.id = ts.finance_account_id
+		LEFT JOIN finance_transactions ft ON ft.id = ts.finance_transaction_id
 		WHERE ts.tournament_id = ?
 		ORDER BY ts.recorded_at DESC, ts.id DESC
 	`, tournamentID)
@@ -316,6 +330,7 @@ func (a *App) listTournamentSponsorships(tournamentID int64) ([]TournamentSponso
 			&sponsorship.FinanceTransactionID,
 			&sponsorship.FinanceAccountID,
 			&sponsorship.FinanceAccountName,
+			&sponsorship.Voided,
 			&sponsorship.RecordedAt,
 			&sponsorship.CreatedAt,
 			&sponsorship.UpdatedAt,
@@ -339,11 +354,13 @@ func (a *App) listTournamentOfficialPayments(tournamentID int64) ([]TournamentOf
 			COALESCE(top.finance_transaction_id, 0),
 			COALESCE(top.finance_account_id, 0),
 			COALESCE(fa.name, ''),
+			CASE WHEN ft.voided_at IS NULL THEN FALSE ELSE TRUE END,
 			top.recorded_at,
 			top.created_at,
 			top.updated_at
 		FROM tournament_official_payments top
 		LEFT JOIN finance_accounts fa ON fa.id = top.finance_account_id
+		LEFT JOIN finance_transactions ft ON ft.id = top.finance_transaction_id
 		WHERE top.tournament_id = ?
 		ORDER BY top.recorded_at DESC, top.id DESC
 	`, tournamentID)
@@ -365,6 +382,7 @@ func (a *App) listTournamentOfficialPayments(tournamentID int64) ([]TournamentOf
 			&payment.FinanceTransactionID,
 			&payment.FinanceAccountID,
 			&payment.FinanceAccountName,
+			&payment.Voided,
 			&payment.RecordedAt,
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
@@ -388,11 +406,13 @@ func (a *App) listTournamentExpenses(tournamentID int64) ([]TournamentExpense, e
 			COALESCE(te.finance_transaction_id, 0),
 			COALESCE(te.finance_account_id, 0),
 			COALESCE(fa.name, ''),
+			CASE WHEN ft.voided_at IS NULL THEN FALSE ELSE TRUE END,
 			te.recorded_at,
 			te.created_at,
 			te.updated_at
 		FROM tournament_expenses te
 		LEFT JOIN finance_accounts fa ON fa.id = te.finance_account_id
+		LEFT JOIN finance_transactions ft ON ft.id = te.finance_transaction_id
 		WHERE te.tournament_id = ?
 		ORDER BY te.recorded_at DESC, te.id DESC
 	`, tournamentID)
@@ -414,6 +434,7 @@ func (a *App) listTournamentExpenses(tournamentID int64) ([]TournamentExpense, e
 			&expense.FinanceTransactionID,
 			&expense.FinanceAccountID,
 			&expense.FinanceAccountName,
+			&expense.Voided,
 			&expense.RecordedAt,
 			&expense.CreatedAt,
 			&expense.UpdatedAt,
@@ -1231,4 +1252,43 @@ func (a *App) createTournamentExpense(
 	}
 
 	return tx.Commit()
+}
+
+func (a *App) voidTournamentFinanceRecord(recordType string, recordID int64, reason string, voidedByUserID int64) (int64, error) {
+	var table string
+	switch recordType {
+	case "sponsorship":
+		table = "tournament_sponsorships"
+	case "official_payment":
+		table = "tournament_official_payments"
+	case "expense":
+		table = "tournament_expenses"
+	default:
+		return 0, errors.New("invalid tournament finance record")
+	}
+	if recordID <= 0 {
+		return 0, errors.New("valid tournament finance record is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var tournamentID, financeTransactionID int64
+	if err := a.queryRowTxDB(tx, "SELECT tournament_id, COALESCE(finance_transaction_id, 0) FROM "+table+" WHERE id = ?", recordID).Scan(&tournamentID, &financeTransactionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, errors.New("tournament finance record was not found")
+		}
+		return 0, err
+	}
+	if financeTransactionID <= 0 {
+		return 0, errors.New("tournament finance record has no linked transaction")
+	}
+	if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, voidedByUserID); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return tournamentID, nil
 }

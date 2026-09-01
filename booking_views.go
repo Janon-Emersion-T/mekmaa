@@ -721,6 +721,7 @@ func enrichBookingFinancials(financials []BookingFinancial, collections []Bookin
 		totalCollected := 0.0
 		activeCount := 0
 		voidedCount := 0
+		var latestActive *BookingPaymentCollection
 		for _, collection := range scheduleCollections {
 			if collection.Voided {
 				voidedCount++
@@ -728,6 +729,10 @@ func enrichBookingFinancials(financials []BookingFinancial, collections []Bookin
 			}
 			activeCount++
 			totalCollected = normalizeMoney(totalCollected + collection.Amount)
+			if latestActive == nil || collection.CollectedAt.After(latestActive.CollectedAt) {
+				copy := collection
+				latestActive = &copy
+			}
 			if financials[i].LastPaymentDate.IsZero() || collection.CollectedAt.After(financials[i].LastPaymentDate) {
 				financials[i].LastPaymentDate = collection.CollectedAt
 				financials[i].LastPaymentByUserID = collection.CollectedByUserID
@@ -748,7 +753,12 @@ func enrichBookingFinancials(financials []BookingFinancial, collections []Bookin
 			financials[i].PaidAt = time.Time{}
 			financials[i].FinanceTransactionID = 0
 		} else {
-			financials[i].PaymentMethod = "cash"
+			financials[i].PaymentMethod = ""
+			financials[i].FinanceTransactionID = 0
+			if latestActive != nil {
+				financials[i].PaymentMethod = latestActive.PaymentMethod
+				financials[i].FinanceTransactionID = latestActive.FinanceTransactionID
+			}
 			financials[i].PaidAt = financials[i].LastPaymentDate
 		}
 	}

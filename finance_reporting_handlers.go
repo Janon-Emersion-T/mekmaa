@@ -642,13 +642,13 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if page == "receivables" {
-		oneToOneReceivables, err := a.financeOneToOneReceivables()
+		oneToOneReceivables, err := a.financeOneToOneReceivables(scopeDivisionIDs)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list one-to-one receivables duration=%s err=%v", page, time.Since(started), err)
 			return data, err
 		}
 		data.OneToOneReceivables = oneToOneReceivables
-		mcpReceivables, err := a.financeMCPReceivables()
+		mcpReceivables, err := a.financeMCPReceivables(scopeDivisionIDs)
 		if err != nil {
 			log.Printf("finance %s load failed: op=list mcp receivables duration=%s err=%v", page, time.Since(started), err)
 			return data, err
@@ -703,7 +703,27 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	return data, nil
 }
 
-func (a *App) financeOneToOneReceivables() ([]OneToOneReceivable, error) {
+func (a *App) financeScopeIncludesSports(divisionIDs []int64) (bool, error) {
+	if len(divisionIDs) == 0 {
+		return true, nil
+	}
+	sportsID, err := divisionIDByCode(a.db, divisionCodeSports)
+	if err != nil {
+		return false, err
+	}
+	for _, divisionID := range divisionIDs {
+		if divisionID == sportsID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (a *App) financeOneToOneReceivables(divisionIDs []int64) ([]OneToOneReceivable, error) {
+	includesSports, err := a.financeScopeIncludesSports(divisionIDs)
+	if err != nil || !includesSports {
+		return nil, err
+	}
 	bookings, err := a.listOneToOneBookings()
 	if err != nil {
 		return nil, err
@@ -733,7 +753,11 @@ func (a *App) financeOneToOneReceivables() ([]OneToOneReceivable, error) {
 	return rows, nil
 }
 
-func (a *App) financeMCPReceivables() ([]MCPReceivable, error) {
+func (a *App) financeMCPReceivables(divisionIDs []int64) ([]MCPReceivable, error) {
+	includesSports, err := a.financeScopeIncludesSports(divisionIDs)
+	if err != nil || !includesSports {
+		return nil, err
+	}
 	plans, err := a.listMCPMonthlyPlans(0)
 	if err != nil {
 		return nil, err

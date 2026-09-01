@@ -112,6 +112,19 @@ type MCPReceivable struct {
 	LastCollectedAt       time.Time
 	LastCollectedByName   string
 	ActiveCollectionCount int
+	PaymentCollections    []MCPPaymentCollection
+}
+
+type MCPPaymentCollection struct {
+	ID                   int64
+	PlanID               int64
+	FinanceTransactionID int64
+	Amount               float64
+	PaymentMethod        string
+	PaymentNote          string
+	CollectedAt          time.Time
+	Voided               bool
+	VoidReason           string
 }
 
 type MCPPlanConflict struct {
@@ -1140,6 +1153,94 @@ func (a *App) collectMCPPaymentAt(planID int64, paymentMethod string, amount flo
 	return transactionID, nil
 }
 
+func (a *App) voidMCPPayment(collectionID int64, reason string, voidedByUserID int64) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("void reason is required")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var planID, financeTransactionID int64
+	var voided bool
+	if err := a.queryRowTxDB(tx, `
+		SELECT plan_id, finance_transaction_id, voided
+		FROM mcp_payment_collections
+		WHERE id = ?
+	`, collectionID).Scan(&planID, &financeTransactionID, &voided); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("MCP payment was not found")
+		}
+		return err
+	}
+	if voided {
+		return errors.New("MCP payment has already been voided")
+	}
+	now := time.Now().UTC()
+	if _, err := a.execTxDB(tx, `
+		UPDATE mcp_payment_collections
+		SET voided = TRUE, void_reason = ?, voided_by_user_id = ?, voided_at = ?
+		WHERE id = ? AND voided = FALSE
+	`, reason, nullableExistingUserIDTx(tx, voidedByUserID), now, collectionID); err != nil {
+		return err
+	}
+	if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, voidedByUserID); err != nil {
+		return err
+	}
+	var grossAmount float64
+	if err := a.queryRowTxDB(tx, `SELECT gross_amount FROM mcp_monthly_plans WHERE id = ?`, planID).Scan(&grossAmount); err != nil {
+		return err
+	}
+	var totalCollected float64
+	if err := a.queryRowTxDB(tx, `SELECT COALESCE(SUM(amount), 0) FROM mcp_payment_collections WHERE plan_id = ? AND voided = FALSE`, planID).Scan(&totalCollected); err != nil {
+		return err
+	}
+	totalCollected = normalizeMoney(totalCollected)
+	outstanding := normalizeMoney(grossAmount - totalCollected)
+	if outstanding < 0 {
+		outstanding = 0
+	}
+	if _, err := a.execTxDB(tx, `
+		UPDATE mcp_monthly_plans
+		SET total_collected = ?, outstanding_amount = ?, payment_status = ?, updated_at = ?
+		WHERE id = ?
+	`, totalCollected, outstanding, mcpPaymentStatus(grossAmount, totalCollected), now, planID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (a *App) listMCPPaymentCollectionsForPlanIDs(planIDs []int64) ([]MCPPaymentCollection, error) {
+	if len(planIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, 0, len(planIDs))
+	args := make([]any, 0, len(planIDs))
+	for _, planID := range planIDs {
+		placeholders = append(placeholders, "?")
+		args = append(args, planID)
+	}
+	query := `SELECT id, plan_id, finance_transaction_id, amount, payment_method, payment_note, collected_at, voided, void_reason
+		FROM mcp_payment_collections WHERE plan_id IN (` + strings.Join(placeholders, ", ") + `) ORDER BY collected_at DESC, id DESC`
+	rows, err := a.queryDB(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	collections := make([]MCPPaymentCollection, 0)
+	for rows.Next() {
+		var collection MCPPaymentCollection
+		if err := rows.Scan(&collection.ID, &collection.PlanID, &collection.FinanceTransactionID, &collection.Amount, &collection.PaymentMethod, &collection.PaymentNote, &collection.CollectedAt, &collection.Voided, &collection.VoidReason); err != nil {
+			return nil, err
+		}
+		collections = append(collections, collection)
+	}
+	return collections, rows.Err()
+}
+
 func (a *App) continueMCPMonthlyPlan(planID int64, nextMonth string, requestedByUserID int64) (int64, error) {
 	plan, err := a.findMCPMonthlyPlanByID(planID)
 	if err != nil {
@@ -1433,11 +1534,25 @@ func (a *App) adminMCPReceivablesHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	planIDs := make([]int64, 0, len(plans))
 	var receivables []MCPReceivable
 	for _, plan := range plans {
-		if plan.GrossAmount > 0 && plan.OutstandingAmount > 0.004 && plan.Status != mcpPlanStatusCancelled {
+		if plan.GrossAmount > 0 && plan.Status != mcpPlanStatusCancelled {
 			receivables = append(receivables, MCPReceivable{Plan: plan})
+			planIDs = append(planIDs, plan.ID)
 		}
+	}
+	collections, err := a.listMCPPaymentCollectionsForPlanIDs(planIDs)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	byPlanID := make(map[int64][]MCPPaymentCollection, len(receivables))
+	for _, collection := range collections {
+		byPlanID[collection.PlanID] = append(byPlanID[collection.PlanID], collection)
+	}
+	for i := range receivables {
+		receivables[i].PaymentCollections = byPlanID[receivables[i].Plan.ID]
 	}
 	data := a.newTemplateData(w, r, user)
 	data.Title = "MCP Receivables"
@@ -1445,6 +1560,38 @@ func (a *App) adminMCPReceivablesHandler(w http.ResponseWriter, r *http.Request)
 	data.MCPReceivables = receivables
 	data.MCPPage = "receivables"
 	a.render(w, "mcp-receivables", data, http.StatusOK)
+}
+
+func (a *App) voidMCPPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	collectionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("collection_id")), 10, 64)
+	if err != nil || collectionID <= 0 {
+		http.Error(w, "invalid payment entry", http.StatusBadRequest)
+		return
+	}
+	user := a.requireAuthenticatedUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if err := a.voidMCPPayment(collectionID, r.FormValue("void_reason"), user.ID); err != nil {
+		a.setFlash(w, "MCP payment could not be voided: "+err.Error())
+		http.Redirect(w, r, "/admin/mcp-receivables", http.StatusSeeOther)
+		return
+	}
+	a.setFlash(w, "MCP payment was voided and the plan balance was recalculated.")
+	http.Redirect(w, r, "/admin/mcp-receivables", http.StatusSeeOther)
 }
 
 func (a *App) customerRedirectAfterLogin(user *User) string {
@@ -1477,6 +1624,10 @@ func mcpContinueAction(plan *MCPMonthlyPlan) string {
 
 func mcpPaymentCollectionAction() string {
 	return "/admin/mcp-receivables"
+}
+
+func mcpPaymentVoidAction() string {
+	return "/admin/mcp-receivables/payments/void"
 }
 
 func mcpCustomerMailto(email string) string {

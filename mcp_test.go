@@ -557,6 +557,27 @@ func TestMCPCustomerOwnershipAndFinanceIntegration(t *testing.T) {
 		if _, err := app.collectMCPPayment(planAID, "cash", 1, "Overpay", financeUser.ID); err == nil {
 			t.Fatal("expected overpayment to be rejected")
 		}
+
+		if err := app.voidMCPPayment(sourceID, "duplicate balance collection", financeUser.ID); err != nil {
+			t.Fatalf("void MCP payment: %v", err)
+		}
+		plan, err = app.findMCPMonthlyPlanByID(planAID)
+		if err != nil {
+			t.Fatalf("reload MCP plan after void: %v", err)
+		}
+		if plan.TotalCollected != 2500 || plan.OutstandingAmount != 7500 || plan.PaymentStatus != "partially_paid" {
+			t.Fatalf("unexpected MCP plan totals after void: %#v", plan)
+		}
+		var collectionVoided, transactionVoided bool
+		if err := app.db.QueryRow(`SELECT voided FROM mcp_payment_collections WHERE id = ?`, sourceID).Scan(&collectionVoided); err != nil {
+			t.Fatalf("load voided MCP collection: %v", err)
+		}
+		if err := app.db.QueryRow(`SELECT voided_at IS NOT NULL FROM finance_transactions WHERE id = ?`, secondTxnID).Scan(&transactionVoided); err != nil {
+			t.Fatalf("load voided MCP transaction: %v", err)
+		}
+		if !collectionVoided || !transactionVoided {
+			t.Fatalf("MCP void state collection=%t transaction=%t, want both true", collectionVoided, transactionVoided)
+		}
 	})
 
 	t.Run("MCP payment collection stores the requested collection date", func(t *testing.T) {

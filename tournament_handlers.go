@@ -387,3 +387,36 @@ func (a *App) createTournamentExpenseHandler(w http.ResponseWriter, r *http.Requ
 	a.setFlash(w, "Expense added.")
 	http.Redirect(w, r, "/admin/tournaments/view?id="+strconv.FormatInt(tournamentID, 10), http.StatusSeeOther)
 }
+
+func (a *App) voidTournamentFinanceRecordHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+	recordID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("record_id")), 10, 64)
+	if err != nil || recordID <= 0 {
+		http.Error(w, "invalid tournament finance record", http.StatusBadRequest)
+		return
+	}
+	tournamentID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("tournament_id")), 10, 64)
+	if err != nil || tournamentID <= 0 {
+		http.Error(w, "invalid tournament", http.StatusBadRequest)
+		return
+	}
+	voidedTournamentID, err := a.voidTournamentFinanceRecord(r.FormValue("record_type"), recordID, r.FormValue("void_reason"), currentUserID(r))
+	if err != nil {
+		a.setFlash(w, "Tournament finance record could not be voided: "+err.Error())
+	} else {
+		tournamentID = voidedTournamentID
+		a.setFlash(w, "Tournament finance record was voided.")
+	}
+	http.Redirect(w, r, "/admin/tournaments/view?id="+strconv.FormatInt(tournamentID, 10), http.StatusSeeOther)
+}

@@ -1579,6 +1579,7 @@ type TournamentSponsorship struct {
 	FinanceTransactionID int64
 	FinanceAccountID     int64
 	FinanceAccountName   string
+	Voided               bool
 	RecordedAt           time.Time
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -1594,6 +1595,7 @@ type TournamentOfficialPayment struct {
 	FinanceTransactionID int64
 	FinanceAccountID     int64
 	FinanceAccountName   string
+	Voided               bool
 	RecordedAt           time.Time
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -1609,6 +1611,7 @@ type TournamentExpense struct {
 	FinanceTransactionID int64
 	FinanceAccountID     int64
 	FinanceAccountName   string
+	Voided               bool
 	RecordedAt           time.Time
 	CreatedAt            time.Time
 	UpdatedAt            time.Time

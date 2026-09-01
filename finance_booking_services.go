@@ -6079,16 +6079,22 @@ func (a *App) syncBookingFinancialSnapshotTx(tx *sql.Tx, scheduleID int64) error
 	var financeTransactionID any
 	if financial.ActivePaymentCount > 0 {
 		paidAt = financial.LastPaymentDate.UTC()
-		paymentMethod = "cash"
 		collections, err := listBookingPaymentCollectionsForScheduleIDsQuery(tx, a.runtimeConfig.DBDriver, []int64{scheduleID})
 		if err != nil {
 			return err
 		}
+		var latestActive *BookingPaymentCollection
 		for _, collection := range collections {
 			if !collection.Voided {
-				financeTransactionID = collection.FinanceTransactionID
-				break
+				if latestActive == nil || collection.CollectedAt.After(latestActive.CollectedAt) {
+					copy := collection
+					latestActive = &copy
+				}
 			}
+		}
+		if latestActive != nil {
+			financeTransactionID = latestActive.FinanceTransactionID
+			paymentMethod = latestActive.PaymentMethod
 		}
 	}
 	paidFlag := 0
