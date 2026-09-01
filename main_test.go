@@ -12754,6 +12754,12 @@ func TestBuildTemplatesIncludesStaffAttendanceReport(
 			"staff-attendance-report template is not registered",
 		)
 	}
+
+	if templates["staff-attendance-report-print"] == nil {
+		t.Fatal(
+			"staff-attendance-report-print template is not registered",
+		)
+	}
 }
 
 func TestNormalizeStudentAttendanceMonthRejectsFuture(
@@ -13063,6 +13069,82 @@ func TestBuildTemplatesIncludesStudentAttendanceReport(
 	if templates["student-attendance-report"] == nil {
 		t.Fatal(
 			"student-attendance-report template is not registered",
+		)
+	}
+
+	if templates["student-attendance-report-print"] == nil {
+		t.Fatal(
+			"student-attendance-report-print template is not registered",
+		)
+	}
+}
+
+func TestAttendanceReportTemplatesExposePDFExportLinks(
+	t *testing.T,
+) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf(
+			"build templates: %v",
+			err,
+		)
+	}
+
+	studentHTML := renderTemplateToString(
+		t,
+		templates,
+		"student-attendance-report",
+		TemplateData{
+			User: &User{
+				Name:        "Admin",
+				Email:       "admin@example.com",
+				Roles:       []string{"superadmin"},
+				Permissions: allPermissions,
+			},
+			SelectedDivision:               &Division{ID: 2, Slug: "kec", Name: "Kids Education Center"},
+			SelectedDivisionScope:          "kec",
+			StudentAttendanceReportMonth:   "2026-08",
+			StudentAttendanceReportGroupID: 9,
+			StudentAttendanceReportQuery:   "STD-001",
+		},
+	)
+	if !strings.Contains(
+		studentHTML,
+		"/admin/attendance/report?division=kec&amp;format=pdf&amp;group_id=9&amp;month=2026-08&amp;student=STD-001",
+	) {
+		t.Fatalf(
+			"student attendance report is missing PDF export link: %s",
+			studentHTML,
+		)
+	}
+
+	staffHTML := renderTemplateToString(
+		t,
+		templates,
+		"staff-attendance-report",
+		TemplateData{
+			User: &User{
+				Name:        "Admin",
+				Email:       "admin@example.com",
+				Roles:       []string{"superadmin"},
+				Permissions: allPermissions,
+			},
+			SelectedDivision:      &Division{ID: 2, Slug: "kec", Name: "Kids Education Center"},
+			SelectedDivisionScope: "kec",
+			StaffAttendanceMonth:  "2026-08",
+			SelectedStaffAttendanceUser: &User{
+				ID:   12,
+				Name: "Report Coach",
+			},
+		},
+	)
+	if !strings.Contains(
+		staffHTML,
+		"/admin/staff/attendance/report?division=kec&amp;format=pdf&amp;month=2026-08&amp;user_id=12",
+	) {
+		t.Fatalf(
+			"staff attendance report is missing PDF export link: %s",
+			staffHTML,
 		)
 	}
 }

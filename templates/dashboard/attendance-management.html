@@ -620,6 +620,7 @@
   </div>
 </section>
 
+<script src="/static/vendor/zxing-browser.min.js"></script>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     const root = document.querySelector("[data-attendance-root]");
@@ -648,8 +649,13 @@
     const sessionSelect = root.querySelector("[data-session-select]");
     let qrCameraStream = null;
     let qrDetector = null;
+    let qrZxingReader = null;
+    let qrLastScanValue = "";
+    let qrLastScanAt = 0;
     let qrFrameRequest = 0;
     let qrScanning = false;
+    let qrScannerMode = "";
+    const qrScanCooldownMs = 1500;
     const statusMeta = {
       present: {
         label: "Present",
@@ -815,12 +821,54 @@
       return true;
     }
 
+    function shouldProcessDecodedValue(normalized) {
+      const now = Date.now();
+      if (normalized === qrLastScanValue && now - qrLastScanAt < qrScanCooldownMs) {
+        return false;
+      }
+      qrLastScanValue = normalized;
+      qrLastScanAt = now;
+      return true;
+    }
+
+    function handleDecodedQrValue(rawValue) {
+      const normalized = normalizeScanValue(rawValue);
+      if (!normalized || !shouldProcessDecodedValue(normalized)) {
+        return false;
+      }
+      return markScannedStudent(normalized);
+    }
+
+    function describeCameraError(error) {
+      if (!error || !error.name) {
+        return "Camera access was blocked or unavailable.";
+      }
+      if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+        return "Camera permission was denied. Allow camera access and try again.";
+      }
+      if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError" || error.name === "OverconstrainedError") {
+        return "No compatible camera is available on this device.";
+      }
+      if (error.name === "NotReadableError" || error.name === "TrackStartError" || error.name === "AbortError") {
+        return "The camera is unavailable or already in use by another app.";
+      }
+      if (error.name === "SecurityError") {
+        return "Camera access is blocked by the browser security settings.";
+      }
+      return "Camera access was blocked or unavailable.";
+    }
+
     function stopQrCamera() {
       qrScanning = false;
+      qrScannerMode = "";
       if (qrFrameRequest) {
         window.cancelAnimationFrame(qrFrameRequest);
         qrFrameRequest = 0;
       }
+      if (qrZxingReader && typeof qrZxingReader.reset === "function") {
+        qrZxingReader.reset();
+      }
+      qrZxingReader = null;
       if (qrCameraStream) {
         qrCameraStream.getTracks().forEach(function (track) {
           track.stop();
@@ -842,7 +890,7 @@
     }
 
     function scanQrCameraFrame() {
-      if (!qrScanning || !qrDetector || !qrCameraVideo) {
+      if (!qrScanning || qrScannerMode !== "barcode-detector" || !qrDetector || !qrCameraVideo) {
         return;
       }
       qrDetector.detect(qrCameraVideo).then(function (barcodes) {
@@ -850,12 +898,7 @@
           return;
         }
         if (Array.isArray(barcodes) && barcodes.length > 0) {
-          const rawValue = (barcodes[0].rawValue || "").trim();
-          const normalized = normalizeScanValue(rawValue);
-          if (normalized && markScannedStudent(normalized)) {
-            stopQrCamera();
-            return;
-          }
+          handleDecodedQrValue((barcodes[0].rawValue || "").trim());
         }
         qrFrameRequest = window.requestAnimationFrame(scanQrCameraFrame);
       }).catch(function () {
@@ -866,18 +909,44 @@
       });
     }
 
+    function startZxingQrScanner() {
+      if (!window.ZXingBrowser || !window.ZXingBrowser.BrowserQRCodeReader) {
+        setQrFeedback("Camera QR scanning is not available in this browser. Use a scanner that types into the field instead.", true);
+        stopQrCamera();
+        return;
+      }
+
+      qrScannerMode = "zxing";
+      qrZxingReader = new window.ZXingBrowser.BrowserQRCodeReader();
+      qrZxingReader.decodeFromVideoElementContinuously(qrCameraVideo, function (result, error) {
+        if (!qrScanning || qrScannerMode !== "zxing") {
+          return;
+        }
+        if (result && typeof result.getText === "function") {
+          handleDecodedQrValue(result.getText());
+        } else if (result && typeof result.text === "string") {
+          handleDecodedQrValue(result.text);
+        }
+      });
+    }
+
     function startQrCamera() {
       if (!qrCameraVideo || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setQrFeedback("Camera scanning is not supported in this browser.", true);
         return;
       }
-      if (!("BarcodeDetector" in window)) {
-        setQrFeedback("Camera QR scanning is not available in this browser. Use a scanner that types into the field instead.", true);
-        return;
+      stopQrCamera();
+      qrLastScanValue = "";
+      qrLastScanAt = 0;
+      qrDetector = null;
+      if ("BarcodeDetector" in window) {
+        try {
+          qrDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
+        } catch (error) {
+          qrDetector = null;
+        }
       }
 
-      const barcodeFormats = ["qr_code"];
-      qrDetector = new window.BarcodeDetector({ formats: barcodeFormats });
       navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: "environment" }
@@ -898,13 +967,18 @@
         }
         setQrFeedback("Camera scanner active. Hold the QR code in view.", false);
         qrCameraVideo.play().then(function () {
-          qrFrameRequest = window.requestAnimationFrame(scanQrCameraFrame);
+          if (qrDetector) {
+            qrScannerMode = "barcode-detector";
+            qrFrameRequest = window.requestAnimationFrame(scanQrCameraFrame);
+            return;
+          }
+          startZxingQrScanner();
         }).catch(function () {
           setQrFeedback("Unable to start camera preview.", true);
           stopQrCamera();
         });
-      }).catch(function () {
-        setQrFeedback("Camera access was blocked or unavailable.", true);
+      }).catch(function (error) {
+        setQrFeedback(describeCameraError(error), true);
         stopQrCamera();
       });
     }

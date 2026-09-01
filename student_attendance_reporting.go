@@ -567,6 +567,58 @@ func studentAttendanceGroupInScope(
 	return false
 }
 
+func studentAttendanceReportURL(
+	month string,
+	division string,
+	groupID int64,
+	studentQuery string,
+	format string,
+) string {
+	target := "/admin/attendance/report"
+
+	if strings.TrimSpace(month) != "" {
+		target = withQueryValue(
+			target,
+			"month",
+			strings.TrimSpace(month),
+		)
+	}
+
+	if strings.TrimSpace(division) != "" {
+		target = withQueryValue(
+			target,
+			"division",
+			strings.TrimSpace(division),
+		)
+	}
+
+	if groupID > 0 {
+		target = withQueryValue(
+			target,
+			"group_id",
+			strconv.FormatInt(groupID, 10),
+		)
+	}
+
+	if strings.TrimSpace(studentQuery) != "" {
+		target = withQueryValue(
+			target,
+			"student",
+			strings.TrimSpace(studentQuery),
+		)
+	}
+
+	if strings.TrimSpace(format) != "" {
+		target = withQueryValue(
+			target,
+			"format",
+			strings.TrimSpace(format),
+		)
+	}
+
+	return target
+}
+
 func writeStudentAttendanceReportCSV(
 	w http.ResponseWriter,
 	month string,
@@ -905,6 +957,24 @@ func (a *App) studentAttendanceReportHandler(
 
 	data.StudentAttendanceReportQuery =
 		studentQuery
+
+	if strings.EqualFold(
+		strings.TrimSpace(
+			r.URL.Query().Get(
+				"format",
+			),
+		),
+		"pdf",
+	) {
+		data.HideChrome = true
+		a.render(
+			w,
+			"student-attendance-report-print",
+			data,
+			http.StatusOK,
+		)
+		return
+	}
 
 	a.render(
 		w,

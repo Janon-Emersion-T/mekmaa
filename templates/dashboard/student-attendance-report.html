@@ -50,6 +50,13 @@
         Attendance Console
       </a>
 
+      <a
+        href="{{studentAttendanceReportURL .StudentAttendanceReportMonth .SelectedDivisionScope .StudentAttendanceReportGroupID .StudentAttendanceReportQuery "pdf"}}"
+        class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+      >
+        Export PDF
+      </a>
+
       <button
         type="button"
         onclick="window.print()"
@@ -179,7 +186,7 @@
     <div class="mt-4 flex justify-end">
 
       <a
-        href="{{scopedURL (printf "/admin/attendance/report?month=%s&group_id=%d&student=%s&format=csv" .StudentAttendanceReportMonth .StudentAttendanceReportGroupID .StudentAttendanceReportQuery) .SelectedDivision .SelectedDivisionScope}}"
+        href="{{studentAttendanceReportURL .StudentAttendanceReportMonth .SelectedDivisionScope .StudentAttendanceReportGroupID .StudentAttendanceReportQuery "csv"}}"
         class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
       >
         Export CSV

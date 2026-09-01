@@ -49,10 +49,17 @@
       </a>
 
       <a
-        href="{{scopedURL (printf "/admin/staff/attendance/report?month=%s&format=csv" .StaffAttendanceMonth) .SelectedDivision .SelectedDivisionScope}}"
+        href="{{staffAttendanceReportURL .StaffAttendanceMonth .SelectedDivisionScope (selectedStaffAttendanceUserID .SelectedStaffAttendanceUser) "csv"}}"
         class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
       >
         Export CSV
+      </a>
+
+      <a
+        href="{{staffAttendanceReportURL .StaffAttendanceMonth .SelectedDivisionScope (selectedStaffAttendanceUserID .SelectedStaffAttendanceUser) "pdf"}}"
+        class="inline-flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud"
+      >
+        Export PDF
       </a>
 
       <button

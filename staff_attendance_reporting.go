@@ -446,6 +446,16 @@ func staffAttendanceReportURL(
 	return target
 }
 
+func selectedStaffAttendanceUserID(
+	user *User,
+) int64 {
+	if user == nil {
+		return 0
+	}
+
+	return user.ID
+}
+
 func writeStaffAttendanceReportCSV(
 	w http.ResponseWriter,
 	month string,
@@ -768,6 +778,24 @@ func (a *App) staffAttendanceReportHandler(
 
 	data.StaffAttendanceHistory =
 		history
+
+	if strings.EqualFold(
+		strings.TrimSpace(
+			r.URL.Query().Get(
+				"format",
+			),
+		),
+		"pdf",
+	) {
+		data.HideChrome = true
+		a.render(
+			w,
+			"staff-attendance-report-print",
+			data,
+			http.StatusOK,
+		)
+		return
+	}
 
 	a.render(
 		w,

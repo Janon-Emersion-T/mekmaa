@@ -1,0 +1,179 @@
+{{define "staff-attendance-report-print"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<style>
+@page {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .print-card,
+  .print-panel {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+}
+</style>
+
+<section class="mx-auto w-full max-w-[1600px] space-y-6 pb-10">
+  <header class="print-card overflow-hidden rounded-[2rem] border border-slate/10 bg-white shadow-sm">
+    <div class="relative overflow-hidden bg-obsidian px-6 py-7 text-cloud sm:px-8">
+      <div class="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(103,232,249,0.18),transparent_60%)]"></div>
+      <div class="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl">
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-aqua">{{workspaceName .User .SelectedDivision .SelectedDivisionScope}}</p>
+          <h1 class="mt-2 text-3xl font-semibold tracking-tight text-cloud sm:text-4xl">Staff Attendance Report</h1>
+          <p class="mt-2 text-sm leading-6 text-cloud/70">{{.StaffAttendanceMonth}} monthly attendance performance for {{workspaceStaffLabel .User .SelectedDivision .SelectedDivisionScope}}.</p>
+        </div>
+
+        <div class="no-print flex flex-wrap gap-2">
+          <a href="{{staffAttendanceReportURL .StaffAttendanceMonth .SelectedDivisionScope (selectedStaffAttendanceUserID .SelectedStaffAttendanceUser) ""}}" class="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/10 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15">Back to report</a>
+          <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">Print / Save PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-3 border-t border-slate/10 bg-cloud/55 px-6 py-4 text-xs font-medium text-slate/65 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="rounded-2xl bg-white px-4 py-3">
+        <p class="uppercase tracking-[0.16em] text-slate/45">Month</p>
+        <p class="mt-1 text-sm font-semibold text-obsidian">{{.StaffAttendanceMonth}}</p>
+      </div>
+      <div class="rounded-2xl bg-white px-4 py-3">
+        <p class="uppercase tracking-[0.16em] text-slate/45">Division Scope</p>
+        <p class="mt-1 text-sm font-semibold text-obsidian">{{if .SelectedDivision}}{{.SelectedDivision.Name}}{{else if eq .SelectedDivisionScope "all"}}All divisions{{else}}Authorized divisions{{end}}</p>
+      </div>
+      <div class="rounded-2xl bg-white px-4 py-3">
+        <p class="uppercase tracking-[0.16em] text-slate/45">Staff Filter</p>
+        <p class="mt-1 text-sm font-semibold text-obsidian">{{if .SelectedStaffAttendanceUser}}{{.SelectedStaffAttendanceUser.Name}}{{else}}All staff{{end}}</p>
+      </div>
+      <div class="rounded-2xl bg-white px-4 py-3">
+        <p class="uppercase tracking-[0.16em] text-slate/45">Records</p>
+        <p class="mt-1 text-sm font-semibold text-obsidian">{{len .StaffAttendanceReportRows}} staff rows</p>
+      </div>
+    </div>
+  </header>
+
+  <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+    <article class="print-card rounded-[1.5rem] border border-slate/10 bg-white p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">Staff</p>
+      <p class="mt-2 text-3xl font-semibold text-obsidian">{{.StaffAttendanceReportSummary.StaffCount}}</p>
+    </article>
+    <article class="print-card rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700/70">Present</p>
+      <p class="mt-2 text-3xl font-semibold text-emerald-900">{{.StaffAttendanceReportSummary.PresentCount}}</p>
+    </article>
+    <article class="print-card rounded-[1.5rem] border border-rose-200 bg-rose-50 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700/70">Absent</p>
+      <p class="mt-2 text-3xl font-semibold text-rose-900">{{.StaffAttendanceReportSummary.AbsentCount}}</p>
+    </article>
+    <article class="print-card rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700/70">Late</p>
+      <p class="mt-2 text-3xl font-semibold text-amber-900">{{.StaffAttendanceReportSummary.LateCount}}</p>
+    </article>
+    <article class="print-card rounded-[1.5rem] border border-sky-200 bg-sky-50 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700/70">Excused</p>
+      <p class="mt-2 text-3xl font-semibold text-sky-900">{{.StaffAttendanceReportSummary.ExcusedCount}}</p>
+    </article>
+    <article class="print-card rounded-[1.5rem] border border-aqua/30 bg-aqua/10 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">Attendance</p>
+      <p class="mt-2 text-3xl font-semibold text-obsidian">{{printf "%.1f%%" .StaffAttendanceReportSummary.AttendancePercentage}}</p>
+    </article>
+  </section>
+
+  <section class="print-panel overflow-hidden rounded-[2rem] border border-slate/10 bg-white shadow-sm">
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-7">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Monthly breakdown</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">{{.StaffAttendanceMonth}}</h2>
+      <p class="mt-1 text-sm text-slate/60">Present and Late count as attended. Excused entries are excluded from the attendance-percentage denominator.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[900px] border-collapse text-left text-sm">
+        <thead class="bg-cloud/70">
+          <tr class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">
+            <th class="px-5 py-4 sm:px-7">Staff</th>
+            <th class="px-4 py-4 text-center">Present</th>
+            <th class="px-4 py-4 text-center">Absent</th>
+            <th class="px-4 py-4 text-center">Late</th>
+            <th class="px-4 py-4 text-center">Excused</th>
+            <th class="px-5 py-4 text-center sm:px-7">Attendance</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/8">
+          {{range .StaffAttendanceReportRows}}
+          <tr>
+            <td class="px-5 py-4 sm:px-7">
+              <p class="font-semibold text-obsidian">{{.User.Name}}</p>
+              <p class="mt-1 text-xs text-slate/55">{{.User.Email}}</p>
+            </td>
+            <td class="px-4 py-4 text-center font-semibold text-emerald-700">{{.PresentCount}}</td>
+            <td class="px-4 py-4 text-center font-semibold text-rose-700">{{.AbsentCount}}</td>
+            <td class="px-4 py-4 text-center font-semibold text-amber-700">{{.LateCount}}</td>
+            <td class="px-4 py-4 text-center font-semibold text-sky-700">{{.ExcusedCount}}</td>
+            <td class="px-5 py-4 text-center sm:px-7">{{printf "%.1f%%" .AttendancePercentage}}</td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="6" class="px-6 py-12 text-center text-sm text-slate/55">No staff are available in this workspace.</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {{if .SelectedStaffAttendanceUser}}
+  <section class="print-panel overflow-hidden rounded-[2rem] border border-slate/10 bg-white shadow-sm">
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-7">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-aqua-700">Individual history</p>
+      <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{.SelectedStaffAttendanceUser.Name}}</h2>
+      <p class="mt-1 text-sm text-slate/60">{{.SelectedStaffAttendanceUser.Email}} · {{.StaffAttendanceMonth}}</p>
+    </div>
+    <div class="divide-y divide-slate/8">
+      {{range .StaffAttendanceHistory}}
+      <article class="grid gap-4 px-5 py-5 sm:px-7 md:grid-cols-[10rem_9rem_minmax(0,1fr)] md:items-center">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate/45">Date</p>
+          <p class="mt-1 font-semibold text-obsidian">{{.AttendanceDate}}</p>
+        </div>
+        <div>
+          {{if eq .Status "present"}}
+          <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Present</span>
+          {{else if eq .Status "absent"}}
+          <span class="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">Absent</span>
+          {{else if eq .Status "late"}}
+          <span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Late</span>
+          {{else}}
+          <span class="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">Excused</span>
+          {{end}}
+        </div>
+        <div>
+          {{if .Note}}
+          <p class="text-sm leading-6 text-slate/70">{{.Note}}</p>
+          {{else}}
+          <p class="text-sm italic text-slate/40">No note</p>
+          {{end}}
+        </div>
+      </article>
+      {{else}}
+      <div class="px-6 py-12 text-center text-sm text-slate/55">No individual history is available for this staff member in the selected month.</div>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+</section>
+
+<script>
+  window.addEventListener("load", () => {
+    window.print();
+  });
+</script>
+{{end}}

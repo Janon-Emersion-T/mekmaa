@@ -96,6 +96,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	registerUploadRoutes(mux, deps.UploadStorage)
 	mux.HandleFunc("/health", app.healthHandler)
 	mux.HandleFunc("/ready", app.readyHandler)
