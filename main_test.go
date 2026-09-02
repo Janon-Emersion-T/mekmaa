@@ -2287,7 +2287,7 @@ func TestListRecentBookingPaymentCollectionsByDivisionIDsReturnsLatestActivePaym
 	}
 }
 
-func TestCollectBookingPaymentRestoresMissingBankAccount(t *testing.T) {
+func TestCollectBookingPaymentUsesRenamedBankAccount(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	scheduleID := createConfirmedFutureBooking(t, app, 6, "20:00")
 
@@ -2296,10 +2296,11 @@ func TestCollectBookingPaymentRestoresMissingBankAccount(t *testing.T) {
 		t.Fatalf("find sports division: %v", err)
 	}
 	if _, err := app.db.Exec(`
-		DELETE FROM finance_accounts
+		UPDATE finance_accounts
+		SET name = 'Sports Bank Account'
 		WHERE division_id = ? AND LOWER(name) = LOWER(?)
 	`, sportsID, financeAccountMainBank); err != nil {
-		t.Fatalf("remove sports bank account: %v", err)
+		t.Fatalf("rename sports bank account: %v", err)
 	}
 
 	transactionID, err := app.collectBookingPayment(
@@ -2311,7 +2312,7 @@ func TestCollectBookingPaymentRestoresMissingBankAccount(t *testing.T) {
 		false,
 	)
 	if err != nil {
-		t.Fatalf("collect bank transfer after restoring account: %v", err)
+		t.Fatalf("collect bank transfer with renamed bank account: %v", err)
 	}
 
 	var accountName, accountType string
@@ -2323,8 +2324,8 @@ func TestCollectBookingPaymentRestoresMissingBankAccount(t *testing.T) {
 	`, transactionID).Scan(&accountName, &accountType); err != nil {
 		t.Fatalf("load bank transfer finance account: %v", err)
 	}
-	if accountName != financeAccountMainBank || accountType != financeAccountTypeBank {
-		t.Fatalf("bank transfer account = %q (%s), want %q bank", accountName, accountType, financeAccountMainBank)
+	if accountName != "Sports Bank Account" || accountType != financeAccountTypeBank {
+		t.Fatalf("bank transfer account = %q (%s), want active bank account", accountName, accountType)
 	}
 }
 

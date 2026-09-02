@@ -1304,6 +1304,33 @@ func findFinanceAccountByNameTx(tx *sql.Tx, divisionID int64, name string) (*Fin
 	return &account, nil
 }
 
+func findActiveFinanceAccountByTypeTx(tx *sql.Tx, divisionID int64, accountType string) (*FinanceAccount, error) {
+	row := tx.QueryRow(`
+		SELECT finance_accounts.id, COALESCE(finance_accounts.division_id, 0), COALESCE(divisions.code, ''), COALESCE(divisions.name, ''),
+		       finance_accounts.account_code, finance_accounts.name, finance_accounts.account_type, finance_accounts.description, finance_accounts.opening_balance, finance_accounts.is_system, finance_accounts.is_active,
+		       COALESCE(finance_accounts.created_by_user_id, 0), COALESCE(finance_accounts.updated_by_user_id, 0), finance_accounts.created_at, finance_accounts.updated_at
+		FROM finance_accounts
+		LEFT JOIN divisions ON divisions.id = finance_accounts.division_id
+		WHERE finance_accounts.division_id = $1
+		  AND finance_accounts.account_type = $2
+		  AND COALESCE(finance_accounts.is_active, 1) = 1
+		ORDER BY finance_accounts.is_system DESC, finance_accounts.id ASC
+		LIMIT 1
+	`, divisionID, accountType)
+	var account FinanceAccount
+	var isSystem, isActive int
+	if err := row.Scan(
+		&account.ID, &account.DivisionID, &account.DivisionCode, &account.DivisionName,
+		&account.AccountCode, &account.Name, &account.AccountType, &account.Description, &account.OpeningBalance,
+		&isSystem, &isActive, &account.CreatedByUserID, &account.UpdatedByUserID, &account.CreatedAt, &account.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	account.IsSystem = isSystem == 1
+	account.IsActive = isActive == 1
+	return &account, nil
+}
+
 func findFinanceAccountForPaymentMethodTx(tx *sql.Tx, divisionID int64, paymentMethod string) (*FinanceAccount, error) {
 	if divisionID <= 0 {
 		var err error
@@ -1314,10 +1341,12 @@ func findFinanceAccountForPaymentMethodTx(tx *sql.Tx, divisionID int64, paymentM
 	}
 	accountName := financeAccountCashInHand
 	accountKind := "cash"
+	accountType := financeAccountTypeCash
 	switch normalizePaymentMethod(paymentMethod) {
 	case "bank_transfer", "qr_pay":
 		accountName = financeAccountMainBank
 		accountKind = "bank"
+		accountType = financeAccountTypeBank
 	}
 
 	account, err := findFinanceAccountByNameTx(tx, divisionID, accountName)
@@ -1328,11 +1357,7 @@ func findFinanceAccountForPaymentMethodTx(tx *sql.Tx, divisionID int64, paymentM
 		return nil, err
 	}
 
-	// Older databases may be missing a system account. Recreate it before a payment fails.
-	if err := ensureFinanceSystemAccountsTx(tx); err != nil {
-		return nil, err
-	}
-	account, err = findFinanceAccountByNameTx(tx, divisionID, accountName)
+	account, err = findActiveFinanceAccountByTypeTx(tx, divisionID, accountType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("no %s account is configured for this division", accountKind)
 	}
