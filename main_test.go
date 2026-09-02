@@ -15130,6 +15130,9 @@ func TestCreateAdmissionAutomaticallyAssignsStudentIDs(t *testing.T) {
 	if _, _, err := app.createAdmissionWithOptionalPayment(newAdmission("MEK/2026/0009", "2026-07-01"), false, "cash", 0); err != nil {
 		t.Fatalf("create existing student: %v", err)
 	}
+	if _, _, err := app.createAdmissionWithOptionalPayment(newAdmission("MEK/2026/104", "2026-07-01"), false, "cash", 0); err != nil {
+		t.Fatalf("create legacy unpadded student: %v", err)
+	}
 	firstID, _, err := app.createAdmissionWithOptionalPayment(newAdmission("", "2026-07-02"), false, "cash", 0)
 	if err != nil {
 		t.Fatalf("create first automatic student: %v", err)
@@ -15147,8 +15150,8 @@ func TestCreateAdmissionAutomaticallyAssignsStudentIDs(t *testing.T) {
 		admissionID int64
 		want        string
 	}{
-		{admissionID: firstID, want: "MEK/2026/0010"},
-		{admissionID: secondID, want: "MEK/2026/0011"},
+		{admissionID: firstID, want: "MEK/2026/0105"},
+		{admissionID: secondID, want: "MEK/2026/0106"},
 		{admissionID: nextYearID, want: "MEK/2027/0001"},
 	} {
 		admission, err := app.findAdmissionByID(test.admissionID)

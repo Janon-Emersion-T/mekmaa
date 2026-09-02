@@ -5447,11 +5447,11 @@ func (a *App) nextStudentID(admissionDate string) (string, error) {
 			return "", err
 		}
 		suffix := strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(studentID)), strings.ToUpper(prefix))
-		if len(suffix) != 4 {
+		if len(suffix) == 0 || len(suffix) > 4 {
 			continue
 		}
 		number, err := strconv.Atoi(suffix)
-		if err == nil && number > lastNumber {
+		if err == nil && number > 0 && number > lastNumber {
 			lastNumber = number
 		}
 	}
