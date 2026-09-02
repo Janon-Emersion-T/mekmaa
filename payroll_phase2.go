@@ -1316,6 +1316,9 @@ func (a *App) syncPayrollRunPayments(
 			if err := replacePayrollPaymentCalculationDetailsTx(a, tx, paymentID, snapshot.Details); err != nil {
 				return err
 			}
+			if err := applyStaffAdvanceDeductionsTx(a, tx, paymentID, profile.UserID, snapshot.BaseAmount, actorUserID); err != nil {
+				return err
+			}
 		}
 
 		seenProfileIDs[profile.ID] = struct{}{}

@@ -1,0 +1,29 @@
+{{define "staff-advances"}}
+{{template "header" .}}
+<main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+  <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
+    <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-aqua">Payroll finance</p><h1 class="mt-1 text-3xl font-black text-obsidian">Staff Advances</h1><p class="mt-2 max-w-2xl text-sm text-slate/70">Advances are recorded as finance expenses. Recover them through payroll deductions or a direct repayment.</p></div>
+    <a href="/admin/payroll" class="rounded-xl border border-slate/15 px-4 py-2 text-sm font-bold text-slate">Payroll</a>
+  </div>
+  {{if .Error}}<div class="mb-5 rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-700">{{.Error}}</div>{{end}}
+  {{if .Flash}}<div class="mb-5 rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">{{.Flash}}</div>{{end}}
+  {{if hasPermission .User "payroll.create"}}
+  <section class="mb-8 rounded-3xl bg-cloud p-6 shadow-sm ring-1 ring-slate/10">
+    <h2 class="text-lg font-black text-obsidian">Issue an advance</h2>
+    <form method="post" action="/admin/staff/advances/create" class="mt-5 grid gap-4 md:grid-cols-3">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <label class="text-sm font-bold text-slate">Staff<select required name="user_id" class="mt-1 w-full rounded-xl border-slate/20"><option value="">Select staff</option>{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+      <label class="text-sm font-bold text-slate">Division<select required name="division_id" class="mt-1 w-full rounded-xl border-slate/20"><option value="">Select division</option>{{range .Divisions}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+      <label class="text-sm font-bold text-slate">Paid from<select required name="finance_account_id" class="mt-1 w-full rounded-xl border-slate/20"><option value="">Select account</option>{{range .FinanceAccounts}}<option value="{{.ID}}">{{.DivisionName}} - {{.Name}}</option>{{end}}</select></label>
+      <label class="text-sm font-bold text-slate">Amount<input required min="0.01" step="0.01" name="amount" type="number" class="mt-1 w-full rounded-xl border-slate/20"></label>
+      <label class="text-sm font-bold text-slate">Recovery<select required name="recovery_mode" class="mt-1 w-full rounded-xl border-slate/20"><option value="salary_deduction">Salary deduction</option><option value="direct_repayment">Direct repayment</option></select></label>
+      <label class="text-sm font-bold text-slate">Salary installment<input min="0" step="0.01" name="installment_amount" type="number" class="mt-1 w-full rounded-xl border-slate/20" placeholder="Required for salary recovery"></label>
+      <label class="text-sm font-bold text-slate md:col-span-2">Notes<input name="notes" class="mt-1 w-full rounded-xl border-slate/20"></label>
+      <div class="flex items-end"><button class="w-full rounded-xl bg-obsidian px-4 py-2.5 text-sm font-bold text-cloud">Issue advance</button></div>
+    </form>
+  </section>
+  {{end}}
+  <section class="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate/10"><div class="overflow-x-auto"><table class="min-w-full text-left text-sm"><thead class="bg-cloud text-xs uppercase tracking-wider text-slate/60"><tr><th class="px-5 py-4">Staff</th><th class="px-5 py-4">Advance</th><th class="px-5 py-4">Recovery</th><th class="px-5 py-4">Outstanding</th><th class="px-5 py-4">Status</th><th class="px-5 py-4">Action</th></tr></thead><tbody class="divide-y divide-slate/10">{{range .StaffAdvances}}<tr><td class="px-5 py-4 font-bold text-obsidian">{{.UserName}}<div class="text-xs font-normal text-slate/60">{{.DivisionName}}</div></td><td class="px-5 py-4">{{money .Amount}}<div class="text-xs text-slate/60">{{.FinanceAccountName}}</div></td><td class="px-5 py-4">{{if eq .RecoveryMode "salary_deduction"}}Salary: {{money .InstallmentAmount}}{{else}}Direct repayment{{end}}</td><td class="px-5 py-4 font-bold">{{money .OutstandingAmount}}</td><td class="px-5 py-4"><span class="rounded-full bg-cloud px-2.5 py-1 text-xs font-bold">{{.Status}}</span></td><td class="px-5 py-4">{{if and (eq .Status "active") (eq .RecoveryMode "direct_repayment") (hasPermission $.User "payroll.update")}}<form method="post" action="/admin/staff/advances/repayment" class="flex min-w-[300px] gap-2"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="advance_id" value="{{.ID}}"><input required min="0.01" max="{{.OutstandingAmount}}" step="0.01" name="amount" type="number" class="w-20 rounded-lg border-slate/20" placeholder="Amount"><select name="payment_method" class="rounded-lg border-slate/20 text-xs"><option value="cash">Cash</option><option value="bank_transfer">Bank</option><option value="qr_pay">QR</option></select><button class="rounded-lg bg-aqua px-3 text-xs font-black text-obsidian">Collect</button></form>{{else}}<span class="text-xs text-slate/50">{{if eq .RecoveryMode "salary_deduction"}}Applied when payroll is generated{{end}}</span>{{end}}</td></tr>{{else}}<tr><td colspan="6" class="px-5 py-10 text-center text-slate/60">No staff advances recorded.</td></tr>{{end}}</tbody></table></div></section>
+</main>
+{{template "footer" .}}
+{{end}}

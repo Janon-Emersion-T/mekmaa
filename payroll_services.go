@@ -574,6 +574,9 @@ func (a *App) addPayrollAdjustment(
 	); err != nil {
 		return err
 	}
+	if err := finalizeStaffAdvancePayrollRepaymentsTx(a, tx, paymentID, actorUserID); err != nil {
+		return err
+	}
 
 	if err := recalculatePayrollPaymentTx(
 		a,
@@ -1929,6 +1932,9 @@ func (a *App) voidPayrollPayment(
 	}
 
 	if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, actorUserID); err != nil {
+		return err
+	}
+	if err := voidStaffAdvancePayrollRepaymentsTx(a, tx, paymentID, actorUserID, reason); err != nil {
 		return err
 	}
 

@@ -371,6 +371,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"coach-management":                "templates/dashboard/coach-management.html",
 		"staff-directory":                 "templates/dashboard/staff-directory.html",
 		"salary-profiles":                 "templates/dashboard/salary-profiles.html",
+		"staff-advances":                  "templates/dashboard/staff-advances.html",
 		"payroll":                         "templates/dashboard/payroll.html",
 		"payroll-run":                     "templates/dashboard/payroll-run.html",
 		"payroll-slip":                    "templates/dashboard/payroll-slip.html",
