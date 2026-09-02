@@ -7886,6 +7886,50 @@ func TestOneToOneBookingCreatesScheduleAndFinancial(t *testing.T) {
 	}
 }
 
+func TestFinanceSpecifiedLedgersGroupOneToOnePayments(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	coachID := createOneToOneTestCoach(t, app)
+	offeringID, err := app.createOneToOneOffering(OneToOneOffering{
+		Name:         "Private Ledger Coaching",
+		Game:         "badminton",
+		Audience:     "local",
+		Occurrence:   "per_week",
+		SessionCount: 1,
+		Price:        3500,
+		Active:       true,
+	})
+	if err != nil {
+		t.Fatalf("create 1 to 1 offering: %v", err)
+	}
+	offering, err := app.findOneToOneOfferingByID(offeringID)
+	if err != nil {
+		t.Fatalf("find 1 to 1 offering: %v", err)
+	}
+	bookingID, scheduleID, err := app.createOneToOneBooking(*offering, "Ledger Customer", time.Now().AddDate(0, 0, 3).Format("2006-01-02"), "18:00", 1, 3500, coachID, 0, "", "")
+	if err != nil || bookingID <= 0 {
+		t.Fatalf("create 1 to 1 booking: booking=%d err=%v", bookingID, err)
+	}
+	if _, err := app.collectBookingPayment(scheduleID, "cash", 3500, "1 to 1 collection", 0, false); err != nil {
+		t.Fatalf("collect 1 to 1 payment: %v", err)
+	}
+
+	today := time.Now().Format("2006-01-02")
+	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers(today, today, nil)
+	if err != nil {
+		t.Fatalf("build specified ledgers: %v", err)
+	}
+	ledger := findFinanceSpecifiedLedger(ledgers, "one_to_one")
+	if ledger == nil {
+		t.Fatal("1 to 1 ledger not found")
+	}
+	if ledger.EntryCount != 1 || ledger.CreditTotal != 3500 || ledger.NetBalance != 3500 {
+		t.Fatalf("unexpected 1 to 1 ledger: %#v", ledger)
+	}
+	if bookings := findFinanceSpecifiedLedger(ledgers, "bookings_all_games"); bookings == nil || bookings.EntryCount != 0 {
+		t.Fatalf("1 to 1 payment must not be included in the general bookings ledger: %#v", bookings)
+	}
+}
+
 func TestOneToOneBookingCreatesReferralCommissionWhenReferrerSelected(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	coachID := createOneToOneTestCoach(t, app)
@@ -11688,6 +11732,29 @@ func TestBuildStaffDirectoryRowsKeepsUnassignedDivisionStaff(t *testing.T) {
 			"assignments = %d, want 0",
 			len(rows[0].Assignments),
 		)
+	}
+}
+
+func TestStaffAdvancesTemplateRendersEmptyState(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	html := renderTemplateToString(t, templates, "staff-advances", TemplateData{
+		Title:       "Staff Advances",
+		CurrentPath: "/admin/staff/advances",
+		User: &User{
+			Name:        "Payroll Admin",
+			Roles:       []string{"superadmin"},
+			Permissions: []string{"payroll.create", "payroll.update"},
+		},
+		CSRFToken: "test-csrf-token",
+	})
+	for _, marker := range []string{"Staff Advances", "Issue an advance", "No staff advances recorded."} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("staff advances template missing %q", marker)
+		}
 	}
 }
 

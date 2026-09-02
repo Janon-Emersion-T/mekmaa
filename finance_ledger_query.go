@@ -38,8 +38,8 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		       	ELSE ''
 		       END, ''),
 		       COALESCE(ss.activity, ''),
-		       COALESCE(o2oo.id, 0),
-		       COALESCE(o2oo.name, ''),
+		       COALESCE(o2oo.id, referral_o2oo.id, 0),
+		       COALESCE(o2oo.name, referral_o2oo.name, ''),
 		       ft.person_name,
 		       ft.description,
 		       COALESCE(ft.notes, ''),
@@ -66,6 +66,10 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		LEFT JOIN space_schedules ss ON ft.reference_type = 'space_schedule' AND ss.id = ft.reference_id
 		LEFT JOIN one_to_one_bookings o2ob ON o2ob.schedule_id = ss.id
 		LEFT JOIN one_to_one_offerings o2oo ON o2oo.id = o2ob.offering_id
+		LEFT JOIN booking_referrals br ON ft.reference_type = 'booking_referral' AND br.id = ft.reference_id
+		LEFT JOIN space_schedules referral_ss ON referral_ss.id = br.schedule_id
+		LEFT JOIN one_to_one_bookings referral_o2ob ON referral_o2ob.schedule_id = referral_ss.id
+		LEFT JOIN one_to_one_offerings referral_o2oo ON referral_o2oo.id = referral_o2ob.offering_id
 		LEFT JOIN student_enrollments se ON ft.reference_type = 'student_enrollment' AND se.id = ft.reference_id
 		LEFT JOIN admissions sea ON sea.id = se.admission_id
 		LEFT JOIN training_programs tp ON tp.id = se.training_program_id
@@ -173,7 +177,7 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		}
 	}
 	if len(filter.OneToOneOfferingIDs) > 0 {
-		query += ` AND ` + financeInt64InClause("COALESCE(o2oo.id, 0)", len(filter.OneToOneOfferingIDs))
+		query += ` AND ` + financeInt64InClause("COALESCE(o2oo.id, referral_o2oo.id, 0)", len(filter.OneToOneOfferingIDs))
 		for _, value := range filter.OneToOneOfferingIDs {
 			args = append(args, value)
 		}

@@ -40,6 +40,15 @@ func financeSpecifiedLedgerPeriod(
 func financeSpecifiedLedgerDefinitions() []financeSpecifiedLedgerDefinition {
 	return []financeSpecifiedLedgerDefinition{
 		{
+			Key:         "one_to_one",
+			Title:       "1 to 1",
+			Description: "All income, refunds, adjustments, and linked finance movements for 1 to 1 packages.",
+			Nature:      "income",
+			Match: func(tx FinanceTransaction) bool {
+				return tx.OneToOneOfferingID > 0
+			},
+		},
+		{
 			Key:         "bookings_all_games",
 			Title:       "Bookings",
 			Description: "All booking collections across every game and quantity.",
