@@ -2287,6 +2287,47 @@ func TestListRecentBookingPaymentCollectionsByDivisionIDsReturnsLatestActivePaym
 	}
 }
 
+func TestCollectBookingPaymentRestoresMissingBankAccount(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 6, "20:00")
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	if _, err := app.db.Exec(`
+		DELETE FROM finance_accounts
+		WHERE division_id = ? AND LOWER(name) = LOWER(?)
+	`, sportsID, financeAccountMainBank); err != nil {
+		t.Fatalf("remove sports bank account: %v", err)
+	}
+
+	transactionID, err := app.collectBookingPayment(
+		scheduleID,
+		"bank_transfer",
+		2500,
+		"bank collection",
+		0,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("collect bank transfer after restoring account: %v", err)
+	}
+
+	var accountName, accountType string
+	if err := app.db.QueryRow(`
+		SELECT fa.name, fa.account_type
+		FROM finance_transactions ft
+		JOIN finance_accounts fa ON fa.id = ft.finance_account_id
+		WHERE ft.id = ?
+	`, transactionID).Scan(&accountName, &accountType); err != nil {
+		t.Fatalf("load bank transfer finance account: %v", err)
+	}
+	if accountName != financeAccountMainBank || accountType != financeAccountTypeBank {
+		t.Fatalf("bank transfer account = %q (%s), want %q bank", accountName, accountType, financeAccountMainBank)
+	}
+}
+
 func TestBookingFinancialSnapshotUsesLatestActivePaymentMethod(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	scheduleID := createConfirmedFutureBooking(t, app, 6, "19:00")

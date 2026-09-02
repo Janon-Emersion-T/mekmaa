@@ -1312,12 +1312,31 @@ func findFinanceAccountForPaymentMethodTx(tx *sql.Tx, divisionID int64, paymentM
 			return nil, errors.New("division is required for payment-method finance account lookup")
 		}
 	}
+	accountName := financeAccountCashInHand
+	accountKind := "cash"
 	switch normalizePaymentMethod(paymentMethod) {
 	case "bank_transfer", "qr_pay":
-		return findFinanceAccountByNameTx(tx, divisionID, financeAccountMainBank)
-	default:
-		return findFinanceAccountByNameTx(tx, divisionID, financeAccountCashInHand)
+		accountName = financeAccountMainBank
+		accountKind = "bank"
 	}
+
+	account, err := findFinanceAccountByNameTx(tx, divisionID, accountName)
+	if err == nil {
+		return account, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	// Older databases may be missing a system account. Recreate it before a payment fails.
+	if err := ensureFinanceSystemAccountsTx(tx); err != nil {
+		return nil, err
+	}
+	account, err = findFinanceAccountByNameTx(tx, divisionID, accountName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("no %s account is configured for this division", accountKind)
+	}
+	return account, err
 }
 
 func financeAccountBalanceTx(tx *sql.Tx, accountID int64) (float64, error) {
