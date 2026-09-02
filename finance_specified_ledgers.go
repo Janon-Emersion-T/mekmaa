@@ -25,6 +25,10 @@ func financeSpecifiedLedgerPeriod(
 	fromRaw,
 	toRaw string,
 ) (time.Time, time.Time, string, string, error) {
+	// A ledger is an audit view, so its initial range covers all available records.
+	if strings.TrimSpace(fromRaw) == "" && strings.TrimSpace(toRaw) == "" {
+		fromRaw = companyHistoricalEntryStartDate
+	}
 	fromDate, toDate, _, _, from, to, _, _, err :=
 		financeProfitAndLossPeriod(fromRaw, toRaw, time.Now())
 	if err != nil {
@@ -60,6 +64,15 @@ func financeSpecifiedLedgerDefinitions() []financeSpecifiedLedgerDefinition {
 			Nature:      "income",
 			Match: func(tx FinanceTransaction) bool {
 				return tx.Category == "student_monthly_payment"
+			},
+		},
+		{
+			Key:         "tournaments",
+			Title:       "Tournaments",
+			Description: "Tournament entry fees, sponsorships, official payments, and operating expenses.",
+			Nature:      "income",
+			Match: func(tx FinanceTransaction) bool {
+				return strings.EqualFold(strings.TrimSpace(tx.ReferenceType), "tournament")
 			},
 		},
 		{

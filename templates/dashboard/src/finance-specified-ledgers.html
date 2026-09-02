@@ -155,11 +155,11 @@
       <form method="get" action="{{$pageBase}}" class="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
         <label class="text-xs font-semibold text-slate/60">
           From date
-          <input name="from" type="date" value="{{.FinanceSpecifiedLedgerFrom}}" class="mt-2 h-11 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
+          <input name="from" type="date" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{.FinanceSpecifiedLedgerFrom}}" class="mt-2 h-11 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
         </label>
         <label class="text-xs font-semibold text-slate/60">
           To date
-          <input name="to" type="date" value="{{.FinanceSpecifiedLedgerTo}}" class="mt-2 h-11 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
+          <input name="to" type="date" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" value="{{.FinanceSpecifiedLedgerTo}}" class="mt-2 h-11 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm outline-none focus:border-aqua">
         </label>
         <div class="flex gap-2 lg:self-end">
           <button type="submit" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Refresh</button>

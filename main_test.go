@@ -15319,6 +15319,17 @@ func TestTournamentLineItemsRollUpIntoTotalsAndFinance(t *testing.T) {
 	if transactionCount != 4 {
 		t.Fatalf("active tournament finance transactions = %d, want 4", transactionCount)
 	}
+	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers("2026-07-01", "2026-07-31", nil)
+	if err != nil {
+		t.Fatalf("build specified ledgers: %v", err)
+	}
+	tournamentLedger := findFinanceSpecifiedLedger(ledgers, "tournaments")
+	if tournamentLedger == nil {
+		t.Fatal("tournament ledger not found")
+	}
+	if tournamentLedger.EntryCount != 4 || tournamentLedger.CreditTotal != 20000 || tournamentLedger.DebitTotal != 5000 || tournamentLedger.NetBalance != 15000 {
+		t.Fatalf("unexpected tournament ledger: %#v", tournamentLedger)
+	}
 
 	for _, record := range []struct {
 		recordType string
