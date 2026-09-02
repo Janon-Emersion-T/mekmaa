@@ -621,7 +621,11 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 	}
 
 	if needMonthlyRows {
-		paymentMonth := latestCollectiblePaymentMonth(time.Now())
+		paymentMonth := strings.TrimSpace(r.URL.Query().Get("month"))
+		currentMonth := time.Now().Format("2006-01")
+		if _, err := parsePaymentMonth(paymentMonth); err != nil || paymentMonth > currentMonth {
+			paymentMonth = latestCollectiblePaymentMonth(time.Now())
+		}
 		rowDivisionIDs := []int64(nil)
 		if selectedDivision != nil {
 			rowDivisionIDs = []int64{selectedDivision.ID}
@@ -785,7 +789,7 @@ func buildFinanceReceivableSummaryCards(data TemplateData) []FinanceReceivableSu
 		{
 			Key:               "students",
 			Label:             "Students",
-			Description:       "Monthly student fees for the latest collectible month.",
+			Description:       "Monthly student fees for the selected collection month.",
 			ActionURL:         "/admin/student-payments",
 			ActionLabel:       "Open students",
 			Count:             len(data.StudentPaymentRows),

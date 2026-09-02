@@ -3761,6 +3761,77 @@ func TestBuildFinanceSectionDataUsesAllAllowedDivisionAccountsForOverview(t *tes
 	}
 }
 
+func TestFinanceReceivablesUsesSelectedStudentPaymentMonth(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	sportsID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatalf("lookup sports division: %v", err)
+	}
+	sportsDivision, err := app.findDivisionByID(sportsID)
+	if err != nil {
+		t.Fatalf("find sports division: %v", err)
+	}
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "August Receivables Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		MonthlyFee:     3500,
+		DivisionID:     sportsID,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "REC-AUG-001",
+		FullName:              "August Receivable Student",
+		AdmissionDate:         "2026-07-15",
+		DateOfBirth:           "2011-01-20",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000012",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-07-15",
+	}, false, "cash", 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	user := &User{
+		ID:          77,
+		Name:        "Finance User",
+		Permissions: []string{"finance.view"},
+		DivisionIDs: []int64{sportsID},
+		Divisions:   []Division{*sportsDivision},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/admin/finance/receivables?division=sports&month=2026-08", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+
+	data, err := app.buildFinanceSectionData(rec, req, user, req.Context(), time.Now(), "receivables")
+	if err != nil {
+		t.Fatalf("build finance receivables: %v", err)
+	}
+	if data.PaymentMonth != "2026-08" || data.PaymentMonthLabel != "August 2026" {
+		t.Fatalf("payment month = %q (%q), want August 2026", data.PaymentMonth, data.PaymentMonthLabel)
+	}
+	if len(data.StudentPaymentRows) != 1 {
+		t.Fatalf("student receivable count = %d, want 1", len(data.StudentPaymentRows))
+	}
+	if data.StudentPaymentRows[0].OutstandingAmount != 3500 {
+		t.Fatalf("student outstanding = %.2f, want 3500.00", data.StudentPaymentRows[0].OutstandingAmount)
+	}
+}
+
 func TestCashReconciliationCalculatesStatusesAndRequiresNotes(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	if _, err := app.createManualFinanceTransaction("manual_income", "Cash Sale", "Seed cash", "cash", 1000, time.Date(2026, 8, 1, 10, 0, 0, 0, time.Local), 0); err != nil {
