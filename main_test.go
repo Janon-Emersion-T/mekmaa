@@ -5114,8 +5114,9 @@ func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
 		if row.LeaveDays != 10 {
 			t.Fatalf("leave days = %d, want 10", row.LeaveDays)
 		}
-		if row.MonthDays != 31 {
-			t.Fatalf("month days = %d, want 31", row.MonthDays)
+		monthDays := paymentMonthStart.AddDate(0, 1, -1).Day()
+		if row.MonthDays != monthDays {
+			t.Fatalf("month days = %d, want %d", row.MonthDays, monthDays)
 		}
 		expectedLeaveAmount := math.Round((6200*float64(row.LeaveDays)/float64(row.MonthDays))*100) / 100
 		expectedMonthlyFee := math.Round((6200-expectedLeaveAmount)*100) / 100

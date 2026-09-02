@@ -176,6 +176,27 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		data.AdmissionsEnd = data.AdmissionsStart + len(admissions) - 1
 	}
 	data.TrainingPrograms = trainingPrograms
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "csv") {
+		exportFilter := filter
+		exportFilter.Page = 1
+		exportFilter.Limit = totalAdmissions
+		if exportFilter.Limit < 1 {
+			exportFilter.Limit = 1
+		}
+		exportRows, _, err := a.listAdmissionsFiltered(exportFilter)
+		if err != nil {
+			log.Printf("export admissions: %v", err)
+			http.Error(w, "could not export students", http.StatusInternalServerError)
+			return
+		}
+		if err := writeAdmissionsCSV(w, exportRows, filter); err != nil {
+			log.Printf("write admissions csv: %v", err)
+		}
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "pdf") {
+		data.HideChrome = true
+	}
 	if filter.Division != "" {
 		if selectedDivision, err := a.findDivisionBySlugOrCode(filter.Division); err == nil {
 			data.SelectedDivision = selectedDivision
@@ -283,6 +304,15 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	data.Enrollments = enrollments
 	data.Admissions = admissions
 	data.TrainingPrograms = trainingPrograms
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "csv") {
+		if err := writeEnrollmentsCSV(w, enrollments, r.URL.Query().Get("division"), parseInt64Query(r.URL.Query().Get("admission_id"))); err != nil {
+			log.Printf("write enrollments csv: %v", err)
+		}
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "pdf") {
+		data.HideChrome = true
+	}
 
 	selectedAdmissionID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("admission_id")), 10, 64)
 	if selectedAdmissionID > 0 {

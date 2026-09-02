@@ -85,6 +85,15 @@ func createPayrollTestGroup(t *testing.T, app *App, name, code string, programID
 	if err := app.db.QueryRow(`SELECT id FROM student_groups WHERE code = ?`, code).Scan(&groupID); err != nil {
 		t.Fatalf("lookup group %s: %v", code, err)
 	}
+	// Payroll fixtures calculate historical periods. Make the group membership
+	// and coach assignment effective before those periods instead of inheriting
+	// the wall-clock date at test execution.
+	if _, err := app.db.Exec(`UPDATE student_group_membership_history SET effective_from = '2026-01-01' WHERE group_id = ?`, groupID); err != nil {
+		t.Fatalf("backdate group membership history: %v", err)
+	}
+	if _, err := app.db.Exec(`UPDATE student_group_staff_assignment_history SET effective_from = '2026-01-01' WHERE group_id = ?`, groupID); err != nil {
+		t.Fatalf("backdate group staff history: %v", err)
+	}
 	return groupID
 }
 
