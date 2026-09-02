@@ -177,6 +177,7 @@
 
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/45">{{if gt .CollectedAmount 0.0}}Amount collected{{else if .Enrollment.FreeMonthlyFee}}Waiver{{else}}Amount due{{end}}</p>
+            <p class="mt-1 text-sm font-bold text-obsidian">{{$.PaymentMonthLabel}}</p>
             <p class="mt-2 text-2xl font-semibold text-obsidian">{{if gt .CollectedAmount 0.0}}{{money .CollectedAmount}}{{else if .Enrollment.FreeMonthlyFee}}Free{{else}}{{money .MonthlyFee}}{{end}}</p>
             {{if gt .LeaveAmount 0.0}}
             <p class="mt-1 text-xs font-medium text-sky-700">{{money .LeaveAmount}} deducted for approved leave</p>
