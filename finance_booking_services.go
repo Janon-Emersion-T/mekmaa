@@ -5310,6 +5310,16 @@ func (a *App) createAdmissionWithOptionalPaymentAt(
 	collectedAt time.Time,
 	recordedByUserID int64,
 ) (int64, int64, error) {
+	if strings.TrimSpace(admission.StudentID) == "" {
+		studentID, err := a.nextStudentID(admission.AdmissionDate)
+		if err != nil {
+			return 0, 0, err
+		}
+		admission.StudentID = studentID
+		if strings.TrimSpace(admission.QRCodeValue) == "" {
+			admission.QRCodeValue = studentID
+		}
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -5416,6 +5426,39 @@ func (a *App) createAdmissionWithOptionalPaymentAt(
 	}
 
 	return admissionID, financeTransactionID, nil
+}
+
+func (a *App) nextStudentID(admissionDate string) (string, error) {
+	date, err := time.Parse("2006-01-02", strings.TrimSpace(admissionDate))
+	if err != nil {
+		return "", errors.New("admission date must be a valid date before assigning a student number")
+	}
+	prefix := fmt.Sprintf("MEK/%d/", date.Year())
+	rows, err := a.queryDB(`SELECT student_id FROM admissions WHERE UPPER(student_id) LIKE UPPER(?)`, prefix+"%")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	lastNumber := 0
+	for rows.Next() {
+		var studentID string
+		if err := rows.Scan(&studentID); err != nil {
+			return "", err
+		}
+		suffix := strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(studentID)), strings.ToUpper(prefix))
+		if len(suffix) != 4 {
+			continue
+		}
+		number, err := strconv.Atoi(suffix)
+		if err == nil && number > lastNumber {
+			lastNumber = number
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s%04d", prefix, lastNumber+1), nil
 }
 
 func (a *App) updateAdmissionWithOptionalPayment(

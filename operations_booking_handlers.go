@@ -5135,6 +5135,12 @@ func (a *App) createAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	admission := admissionFromRequest(r)
+	studentID, err := a.nextStudentID(admission.AdmissionDate)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	admission.StudentID = studentID
 	admission.PracticeType = "student"
 	admission.QRCodeValue = admission.StudentID
 	photoPath, err := a.uploadedStudentPhotoPath(r, "photo")
@@ -5229,10 +5235,11 @@ func (a *App) updateAdmissionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	admission := admissionFromRequest(r)
 	admission.ID = admissionID
+	admission.StudentID = existing.StudentID
 	admission.PracticeType = existing.PracticeType
 	admission.PhotoPath = existing.PhotoPath
 	admission.QRCodePath = existing.QRCodePath
-	admission.QRCodeValue = admission.StudentID
+	admission.QRCodeValue = existing.StudentID
 	photoPath, err := a.uploadedStudentPhotoPath(r, "photo")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

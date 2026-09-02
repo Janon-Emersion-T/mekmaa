@@ -15105,6 +15105,61 @@ func TestSMSGatewayTemplateDoesNotExposeCredentials(t *testing.T) {
 	}
 }
 
+func TestCreateAdmissionAutomaticallyAssignsStudentIDs(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+
+	newAdmission := func(studentID string, admissionDate string) Admission {
+		return Admission{
+			StudentID:                studentID,
+			FullName:                 "Automatic Student " + admissionDate,
+			AdmissionDate:            admissionDate,
+			DateOfBirth:              "2011-01-20",
+			Gender:                   "male",
+			PracticeType:             "student",
+			Address:                  "Jaffna",
+			PassportNumber:           "PP-" + admissionDate,
+			School:                   "Test School",
+			GuardianName:             "Guardian",
+			GuardianRelationship:     "Parent",
+			GuardianContactNumber:    "0771000012",
+			GuardianAlternativePhone: "0771000013",
+		}
+	}
+
+	if _, _, err := app.createAdmissionWithOptionalPayment(newAdmission("MEK/2026/0009", "2026-07-01"), false, "cash", 0); err != nil {
+		t.Fatalf("create existing student: %v", err)
+	}
+	firstID, _, err := app.createAdmissionWithOptionalPayment(newAdmission("", "2026-07-02"), false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create first automatic student: %v", err)
+	}
+	secondID, _, err := app.createAdmissionWithOptionalPayment(newAdmission("", "2026-07-03"), false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create second automatic student: %v", err)
+	}
+	nextYearID, _, err := app.createAdmissionWithOptionalPayment(newAdmission("", "2027-01-01"), false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create next-year automatic student: %v", err)
+	}
+
+	for _, test := range []struct {
+		admissionID int64
+		want        string
+	}{
+		{admissionID: firstID, want: "MEK/2026/0010"},
+		{admissionID: secondID, want: "MEK/2026/0011"},
+		{admissionID: nextYearID, want: "MEK/2027/0001"},
+	} {
+		admission, err := app.findAdmissionByID(test.admissionID)
+		if err != nil {
+			t.Fatalf("find automatic student: %v", err)
+		}
+		if admission.StudentID != test.want {
+			t.Fatalf("student id = %q, want %q", admission.StudentID, test.want)
+		}
+	}
+}
+
 func TestCreateTournamentCreatesLinkedEntryFeeFinanceTransaction(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 

@@ -176,20 +176,12 @@
 
         <div class="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           <div class="space-y-2">
-            <label for="new-student-id" class="block text-sm font-semibold text-obsidian">
+            <p class="block text-sm font-semibold text-obsidian">
               Student ID
-            </label>
-
-            <input
-              id="new-student-id"
-              type="text"
-              name="student_id"
-              placeholder="Example: STU-0001"
-              required
-              autocomplete="off"
-              spellcheck="false"
-              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm uppercase text-obsidian shadow-sm outline-none transition placeholder:normal-case placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
-            />
+            </p>
+            <div class="flex h-12 items-center rounded-2xl border border-aqua/30 bg-aqua/10 px-4 text-sm font-semibold text-obsidian">
+              Assigned automatically, for example: MEK/2026/0001
+            </div>
           </div>
 
           <div class="space-y-2">
@@ -1526,9 +1518,10 @@
               name="student_id"
               value="{{.SelectedAdmission.StudentID}}"
               required
+              readonly
               autocomplete="off"
               spellcheck="false"
-              class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm uppercase text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
+              class="h-12 w-full cursor-not-allowed rounded-2xl border border-slate/15 bg-cloud px-4 text-sm uppercase text-obsidian shadow-sm outline-none"
             />
           </div>
 
