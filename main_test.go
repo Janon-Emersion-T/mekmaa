@@ -11758,6 +11758,41 @@ func TestStaffAdvancesTemplateRendersEmptyState(t *testing.T) {
 	}
 }
 
+func TestStaffAdvancesTemplateAllowsRepaymentForSalaryRecovery(t *testing.T) {
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+
+	html := renderTemplateToString(t, templates, "staff-advances", TemplateData{
+		Title: "Staff Advances",
+		User: &User{
+			Name:        "Payroll Admin",
+			Roles:       []string{"superadmin"},
+			Permissions: []string{"payroll.update"},
+		},
+		CSRFToken: "test-csrf-token",
+		StaffAdvances: []StaffAdvance{{
+			ID:                1,
+			UserName:          "Assistant Coach",
+			Amount:            5000,
+			OutstandingAmount: 3000,
+			RecoveryMode:      StaffAdvanceRecoverySalary,
+			InstallmentAmount: 1000,
+			Status:            "active",
+		}},
+	})
+	for _, marker := range []string{
+		"/admin/staff/advances/repayment",
+		"Record repayment",
+		"Any remaining balance is deducted when payroll is generated.",
+	} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("staff advances repayment form missing %q", marker)
+		}
+	}
+}
+
 func TestBuildTemplatesIncludesStaffDirectory(t *testing.T) {
 	templates, err := buildTemplates()
 	if err != nil {

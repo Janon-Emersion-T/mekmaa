@@ -40,7 +40,7 @@
       </a>
     </div>
 
-    {{if or (hasPermission .User "admissions.view") (hasPermission .User "coaches.view") (hasPermission .User "payroll.view") (hasPermission .User "training_programs.view") (hasPermission .User "student_groups.view") (hasPermission .User "attendance.view")}}
+    {{if or (hasPermission .User "admissions.view") (hasPermission .User "training_programs.view") (hasPermission .User "student_groups.view") (hasPermission .User "attendance.view")}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">People & Programmes</p>
       <div class="space-y-1">
@@ -74,6 +74,14 @@
           <span>Search Attendance</span>
         </a>
         {{end}}
+      </div>
+    </div>
+    {{end}}
+
+    {{if or (hasPermission .User "coaches.view") (hasPermission .User "payroll.view")}}
+    <div>
+      <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Staff Management</p>
+      <div class="space-y-1">
         {{if hasPermission .User "coaches.view"}}
         <a href="{{scopedURL "/admin/staff" .SelectedDivision .SelectedDivisionScope}}" class="{{if or (isCurrentPath .CurrentPath "/admin/staff") (isCurrentPath .CurrentPath "/admin/coaches")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>{{workspaceStaffLabel .User .SelectedDivision .SelectedDivisionScope}}</span>
@@ -88,6 +96,9 @@
         {{end}}
 
         {{if hasPermission .User "payroll.view"}}
+        <a href="/admin/staff/salary-payments" class="{{if or (isCurrentPath .CurrentPath "/admin/staff/salary-payments") (isCurrentPath .CurrentPath "/admin/payroll") (isCurrentPath .CurrentPath "/admin/payroll/run")}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Salary Payments</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Pay</span>
+        </a>
         <a href="/admin/staff/salary-profiles" class="{{if isCurrentPath .CurrentPath "/admin/staff/salary-profiles"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Salary Profiles</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Setup</span>
         </a>

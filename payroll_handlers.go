@@ -57,9 +57,9 @@ func (a *App) payrollManagementHandler(
 		}
 		filteredRuns = append(filteredRuns, run)
 	}
-	data.Title = "Payroll"
+	data.Title = "Salary Payments"
 	data.Description =
-		"Manage salary periods, calculations, incentives, deductions and staff payments."
+		"Calculate what is due, approve salaries, and record staff payments by period."
 	data.PayrollRuns = filteredRuns
 	data.SelectedPayrollStatus = selectedStatus
 	data.SelectedPayrollYear = selectedYear
@@ -105,7 +105,7 @@ func (a *App) createPayrollRunHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/payroll",
+			"/admin/staff/salary-payments",
 			http.StatusSeeOther,
 		)
 		return
@@ -149,7 +149,7 @@ func (a *App) createPayrollRunHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/payroll",
+			"/admin/staff/salary-payments",
 			http.StatusSeeOther,
 		)
 		return

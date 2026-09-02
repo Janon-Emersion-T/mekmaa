@@ -214,9 +214,6 @@ func (a *App) collectStaffAdvanceRepayment(advanceID int64, amount float64, paym
 	if advance.Status != "active" {
 		return errors.New("only active advances can be repaid")
 	}
-	if advance.RecoveryMode != StaffAdvanceRecoveryDirect {
-		return errors.New("this advance is recovered through salary deductions")
-	}
 	var repaid float64
 	if err = a.queryRowTxDB(tx, `SELECT COALESCE(SUM(amount),0) FROM staff_advance_repayments WHERE staff_advance_id=? AND voided_at IS NULL`, advanceID).Scan(&repaid); err != nil {
 		return err

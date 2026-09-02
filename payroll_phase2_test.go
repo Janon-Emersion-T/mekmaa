@@ -627,6 +627,14 @@ func TestPayrollPhase2PerSessionCalculation(t *testing.T) {
 		EffectiveFrom:     "2026-01-01",
 		Active:            true,
 	}, actor.ID)
+	hourlyProfileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:            subCoach.ID,
+		TrainingProgramID: programID,
+		CompensationType:  SalaryTypeHourly,
+		Rate:              250,
+		EffectiveFrom:     "2026-01-01",
+		Active:            true,
+	}, actor.ID)
 
 	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", actor.ID)
 	if err != nil {
@@ -645,6 +653,23 @@ func TestPayrollPhase2PerSessionCalculation(t *testing.T) {
 	}
 	if payment.QuantityLabel != "2 sessions worked" {
 		t.Fatalf("per-session quantity label = %q", payment.QuantityLabel)
+	}
+
+	hourlyPayment := payrollPaymentForProfile(t, app, runID, hourlyProfileID)
+	if hourlyPayment.Quantity != 4 {
+		t.Fatalf("assistant coach hourly quantity = %.2f, want 4", hourlyPayment.Quantity)
+	}
+	if hourlyPayment.BaseAmount != 1000 {
+		t.Fatalf("assistant coach hourly base = %.2f, want 1000", hourlyPayment.BaseAmount)
+	}
+	hourlySessionDetails := 0
+	for _, detail := range hourlyPayment.CalculationDetails {
+		if detail.DetailType == payrollDetailTypeHourlySessionOccurrence {
+			hourlySessionDetails++
+		}
+	}
+	if hourlySessionDetails != 2 {
+		t.Fatalf("assistant coach hourly session details = %d, want 2", hourlySessionDetails)
 	}
 
 	occurrenceDetails := 0

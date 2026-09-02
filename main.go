@@ -159,6 +159,7 @@ func main() {
 	mux.Handle("/admin/enrollments/collect-admission", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectEnrollmentAdmissionPaymentHandler), "enrollments.update")))
 	mux.Handle("/admin/staff", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffDirectoryHandler), "coaches.view")))
 	mux.Handle("/admin/payroll", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollManagementHandler), "payroll.view")))
+	mux.Handle("/admin/staff/salary-payments", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollManagementHandler), "payroll.view")))
 	mux.Handle("/admin/payroll/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createPayrollRunHandler), "payroll.create")))
 	mux.Handle("/admin/payroll/run", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollRunHandler), "payroll.view")))
 	mux.Handle("/admin/payroll/generate", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.generatePayrollRunHandler), "payroll.create")))

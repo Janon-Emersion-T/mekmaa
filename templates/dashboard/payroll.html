@@ -8,12 +8,12 @@
       </p>
 
       <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-        Payroll
+        Salary Payments
       </h1>
 
       <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-        Generate staff salary periods, calculate compensation,
-        add incentives and deductions, approve payments and issue salary slips.
+        Calculate staff salary periods, including assistant-coach hours from completed group sessions,
+        then approve and pay each salary from a finance account.
       </p>
     </div>
 
@@ -114,7 +114,7 @@
             </p>
           </div>
 
-          <form method="get" action="/admin/payroll" class="grid gap-3 sm:grid-cols-[180px_160px_auto]">
+          <form method="get" action="/admin/staff/salary-payments" class="grid gap-3 sm:grid-cols-[180px_160px_auto]">
             <div>
               <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Status</label>
               <select name="status" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
@@ -138,7 +138,7 @@
 
             <div class="flex items-end gap-2">
               <button type="submit" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Filter</button>
-              <a href="/admin/payroll" class="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-500 hover:bg-slate-50">Reset</a>
+              <a href="/admin/staff/salary-payments" class="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-500 hover:bg-slate-50">Reset</a>
             </div>
           </form>
         </div>

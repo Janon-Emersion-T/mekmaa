@@ -16,6 +16,7 @@ const (
 	payrollDetailTypePerSessionOccurrence        = "per_session_occurrence"
 	payrollDetailTypeDailyAttendance             = "daily_attendance"
 	payrollDetailTypeHourlyWorkRecord            = "hourly_work_record"
+	payrollDetailTypeHourlySessionOccurrence     = "hourly_session_occurrence"
 	payrollDetailTypeSummary                     = "summary"
 	payrollDetailTypeManualNote                  = "manual_note"
 )
@@ -55,6 +56,15 @@ type payrollHourlyWorkCandidate struct {
 	ClockIn      string
 	ClockOut     string
 	BreakMinutes int
+	PayableHours float64
+}
+
+type payrollHourlySessionCandidate struct {
+	OccurrenceID int64
+	WorkDate     string
+	GroupName    string
+	StartTime    string
+	EndTime      string
 	PayableHours float64
 }
 
@@ -1004,7 +1014,12 @@ func (a *App) buildHourlyPayrollSnapshot(
 		return payrollCalculatedSnapshot{}, err
 	}
 
-	details := make([]PayrollPaymentCalculationDetail, 0, len(records)+1)
+	sessions, err := a.listPayrollAssistantCoachHourlySessions(profile, periodStart, periodEnd)
+	if err != nil {
+		return payrollCalculatedSnapshot{}, err
+	}
+
+	details := make([]PayrollPaymentCalculationDetail, 0, len(records)+len(sessions)+1)
 	totalHours := 0.0
 	for _, record := range records {
 		totalHours += record.PayableHours
@@ -1016,6 +1031,21 @@ func (a *App) buildHourlyPayrollSnapshot(
 			Label:          fmt.Sprintf("%s · %s-%s", record.WorkDate, record.ClockIn, record.ClockOut),
 			DetailNote:     fmt.Sprintf("Break %d minutes", record.BreakMinutes),
 			Quantity:       record.PayableHours,
+			RateSnapshot:   normalizeMoney(profile.Rate),
+			AmountSnapshot: amount,
+		})
+	}
+	for _, session := range sessions {
+		totalHours += session.PayableHours
+		amount := normalizeMoney(session.PayableHours * profile.Rate)
+		label := fmt.Sprintf("%s · %s · %s-%s", session.WorkDate, session.GroupName, session.StartTime, session.EndTime)
+		details = append(details, PayrollPaymentCalculationDetail{
+			DetailType:     payrollDetailTypeHourlySessionOccurrence,
+			SourceType:     "student_group_session_occurrence",
+			SourceID:       session.OccurrenceID,
+			Label:          label,
+			DetailNote:     "Assistant coach marked as worked for this completed session.",
+			Quantity:       session.PayableHours,
 			RateSnapshot:   normalizeMoney(profile.Rate),
 			AmountSnapshot: amount,
 		})
@@ -1038,10 +1068,87 @@ func (a *App) buildHourlyPayrollSnapshot(
 		Status:        PayrollPaymentStatusCalculated,
 		Notes: appendPayrollCalculationNote(
 			profile.Notes,
-			"Hourly salary uses recorded work-time intervals with break deductions.",
+			"Hourly salary uses recorded work-time intervals and completed assistant-coach session hours.",
 		),
 		Details: details,
 	}, nil
+}
+
+func (a *App) listPayrollAssistantCoachHourlySessions(
+	profile StaffSalaryProfile,
+	periodStart string,
+	periodEnd string,
+) ([]payrollHourlySessionCandidate, error) {
+	query := `
+		SELECT
+			o.id,
+			CAST(o.occurrence_date AS TEXT),
+			COALESCE(g.name, ''),
+			COALESCE(NULLIF(o.actual_start_time, ''), s.start_time, ''),
+			COALESCE(NULLIF(o.actual_end_time, ''), s.end_time, '')
+		FROM student_group_session_staff ss
+		JOIN student_group_session_occurrences o
+			ON o.id = ss.occurrence_id
+		JOIN student_groups g
+			ON g.id = o.group_id
+		JOIN training_programs tp
+			ON tp.id = g.training_program_id
+		LEFT JOIN student_group_sessions s
+			ON s.id = o.timetable_session_id
+		WHERE ss.user_id = ?
+		  AND LOWER(COALESCE(ss.assignment_role, '')) = ?
+		  AND LOWER(COALESCE(ss.work_status, '')) = 'worked'
+		  AND LOWER(COALESCE(o.status, '')) = 'completed'
+		  AND CAST(o.occurrence_date AS TEXT) >= ?
+		  AND CAST(o.occurrence_date AS TEXT) <= ?
+	`
+	args := []any{profile.UserID, groupStaffRoleAssistantCoach, periodStart, periodEnd}
+	if profile.TrainingProgramID > 0 {
+		query += ` AND g.training_program_id = ?`
+		args = append(args, profile.TrainingProgramID)
+	}
+	if profile.DivisionID > 0 {
+		query += ` AND tp.division_id = ?`
+		args = append(args, profile.DivisionID)
+	}
+	query += ` ORDER BY CAST(o.occurrence_date AS TEXT) ASC, o.id ASC`
+
+	rows, err := a.queryDB(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sessions := make([]payrollHourlySessionCandidate, 0)
+	for rows.Next() {
+		var session payrollHourlySessionCandidate
+		if err := rows.Scan(
+			&session.OccurrenceID,
+			&session.WorkDate,
+			&session.GroupName,
+			&session.StartTime,
+			&session.EndTime,
+		); err != nil {
+			return nil, err
+		}
+
+		payableHours, err := payrollDurationHours(
+			session.WorkDate,
+			session.StartTime,
+			session.EndTime,
+			0,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("assistant coach session %d: %w", session.OccurrenceID, err)
+		}
+		session.PayableHours = payableHours
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return sessions, nil
 }
 
 func (a *App) listPayrollSessionOccurrencesWorked(
