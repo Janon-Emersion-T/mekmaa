@@ -1989,6 +1989,7 @@ type TemplateData struct {
 	SalaryProfiles               []StaffSalaryProfile
 	StaffAdvances                []StaffAdvance
 	PayrollRuns                  []PayrollRun
+	PayrollPortfolioSummary      PayrollPortfolioSummary
 	PayrollRunYears              []string
 	SelectedPayrollStatus        string
 	SelectedPayrollYear          string

@@ -65,6 +65,15 @@ type PayrollRun struct {
 	OutstandingTotal float64
 }
 
+type PayrollPortfolioSummary struct {
+	RunCount         int
+	OpenRunCount     int
+	StaffCount       int
+	NetTotal         float64
+	PaidTotal        float64
+	OutstandingTotal float64
+}
+
 type PayrollPayment struct {
 	ID int64
 

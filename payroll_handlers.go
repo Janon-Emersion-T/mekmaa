@@ -40,6 +40,7 @@ func (a *App) payrollManagementHandler(
 	selectedYear := strings.TrimSpace(r.URL.Query().Get("year"))
 	yearSeen := make(map[string]struct{})
 	filteredRuns := make([]PayrollRun, 0, len(runs))
+	summary := PayrollPortfolioSummary{}
 	for _, run := range runs {
 		year := ""
 		if len(run.PeriodStart) >= 4 {
@@ -56,11 +57,23 @@ func (a *App) payrollManagementHandler(
 			continue
 		}
 		filteredRuns = append(filteredRuns, run)
+		summary.RunCount++
+		summary.StaffCount += run.StaffCount
+		summary.NetTotal += run.NetTotal
+		summary.PaidTotal += run.PaidTotal
+		summary.OutstandingTotal += run.OutstandingTotal
+		if run.Status != PayrollRunStatusClosed {
+			summary.OpenRunCount++
+		}
 	}
+	summary.NetTotal = normalizeMoney(summary.NetTotal)
+	summary.PaidTotal = normalizeMoney(summary.PaidTotal)
+	summary.OutstandingTotal = normalizeMoney(summary.OutstandingTotal)
 	data.Title = "Salary Payments"
 	data.Description =
 		"Calculate what is due, approve salaries, and record staff payments by period."
 	data.PayrollRuns = filteredRuns
+	data.PayrollPortfolioSummary = summary
 	data.SelectedPayrollStatus = selectedStatus
 	data.SelectedPayrollYear = selectedYear
 
