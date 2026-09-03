@@ -645,13 +645,13 @@ func (a *App) createStudentEnrollmentLeave(enrollmentID int64, startDate string,
 	}
 
 	var overlapCount int
-	if err := tx.QueryRow(`
+	if err := tx.QueryRow(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
 		SELECT COUNT(*)
 		FROM student_enrollment_leaves
 		WHERE enrollment_id = ?
 		  AND COALESCE(active, 1) = 1
 		  AND NOT (end_date < ? OR start_date > ?)
-	`, enrollmentID, startDate, endDate).Scan(&overlapCount); err != nil {
+	`), enrollmentID, startDate, endDate).Scan(&overlapCount); err != nil {
 		return err
 	}
 	if overlapCount > 0 {
@@ -659,11 +659,11 @@ func (a *App) createStudentEnrollmentLeave(enrollmentID int64, startDate string,
 	}
 
 	now := time.Now().UTC()
-	if _, err := tx.Exec(`
+	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
 		INSERT INTO student_enrollment_leaves (
 			enrollment_id, start_date, end_date, reason, active, created_at, updated_at
 		) VALUES (?, ?, ?, ?, 1, ?, ?)
-	`, enrollmentID, startDate, endDate, reason, now, now); err != nil {
+	`), enrollmentID, startDate, endDate, reason, now, now); err != nil {
 		return err
 	}
 

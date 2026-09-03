@@ -212,6 +212,67 @@ func runRuntimePostgresAuditWorkflow() error {
 		return fmt.Errorf("tournament id = %d", tournamentID)
 	}
 
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Runtime Audit Leave Programme",
+		Activity:       "badminton",
+		TrainingFormat: "group",
+		AdmissionFee:   1000,
+		MonthlyFee:     3000,
+		Active:         true,
+	})
+	if err != nil {
+		return fmt.Errorf("create training program: %w", err)
+	}
+	if programID <= 0 {
+		return fmt.Errorf("training program id = %d", programID)
+	}
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-RUNTIME-LEAVE-001",
+		FullName:              "Runtime Audit Leave Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000099",
+	}, false, "cash", 0)
+	if err != nil {
+		return fmt.Errorf("create admission: %w", err)
+	}
+	if admissionID <= 0 {
+		return fmt.Errorf("admission id = %d", admissionID)
+	}
+
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+	}, false, "cash", 0); err != nil {
+		return fmt.Errorf("create enrollment: %w", err)
+	}
+
+	enrollments, err := app.listStudentEnrollments()
+	if err != nil {
+		return fmt.Errorf("list enrollments: %w", err)
+	}
+
+	var leaveEnrollmentID int64
+	for _, enrollment := range enrollments {
+		if enrollment.AdmissionID == admissionID && enrollment.TrainingProgramID == programID {
+			leaveEnrollmentID = enrollment.ID
+			break
+		}
+	}
+	if leaveEnrollmentID <= 0 {
+		return fmt.Errorf("leave enrollment id = %d", leaveEnrollmentID)
+	}
+
+	if err := app.createStudentEnrollmentLeave(leaveEnrollmentID, "2026-08-05", "2026-08-10", "runtime audit leave"); err != nil {
+		return fmt.Errorf("create student leave: %w", err)
+	}
+
 	if err := app.createTournamentSponsorship(
 		tournamentID,
 		"Runtime Audit Sponsor",
