@@ -10713,6 +10713,17 @@ func TestBuildFinanceSpecifiedLedgersGroupsCoreLedgers(t *testing.T) {
 	}
 }
 
+func TestFinanceSpecifiedAdmissionLedgersSortByStudentName(t *testing.T) {
+	ledgers := financeSpecifiedAdmissionLedgers([]FinanceSpecifiedLedger{
+		{Key: "admission-10", Title: "Zara Student"},
+		{Key: "admission-2", Title: "Amal Student"},
+		{Key: "bookings_all_games", Title: "Bookings"},
+	})
+	if len(ledgers) != 2 || ledgers[0].Key != "admission-2" || ledgers[1].Key != "admission-10" {
+		t.Fatalf("admission ledger ordering = %#v", ledgers)
+	}
+}
+
 func TestBuildFinanceSpecifiedLedgersBankingUsesDebitCreditAssetView(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)

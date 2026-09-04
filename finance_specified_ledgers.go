@@ -505,6 +505,14 @@ func financeSpecifiedAdmissionLedgers(
 			filtered = append(filtered, ledger)
 		}
 	}
+	sort.Slice(filtered, func(i, j int) bool {
+		left := strings.ToLower(strings.TrimSpace(filtered[i].Title))
+		right := strings.ToLower(strings.TrimSpace(filtered[j].Title))
+		if left == right {
+			return filtered[i].Key < filtered[j].Key
+		}
+		return left < right
+	})
 	return filtered
 }
 
