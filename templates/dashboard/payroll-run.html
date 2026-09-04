@@ -602,7 +602,7 @@
           <form
             method="post"
             action="/admin/payroll/pay"
-            class="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_1fr_auto]"
+            class="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2"
           >
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <input type="hidden" name="run_id" value="{{$.PayrollRun.ID}}">
@@ -641,12 +641,12 @@
               >
             </div>
 
-            <div class="flex items-end">
+            <div class="sm:col-span-2">
               <button
                 type="submit"
-                class="w-full rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white"
+                class="w-full rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
               >
-                Pay now
+                Pay now · {{money .NetAmount}}
               </button>
             </div>
           </form>
