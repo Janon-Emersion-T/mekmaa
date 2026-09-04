@@ -126,11 +126,33 @@ func (a *App) approveFinanceTransaction(transactionID, approvedByUserID int64) e
 	if transactionID <= 0 {
 		return errors.New("finance transaction not found")
 	}
-	result, err := a.execDB(`
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var recordedAt time.Time
+	if err := a.queryRowTxDB(tx, `
+		SELECT recorded_at
+		FROM finance_transactions
+		WHERE id = ? AND approval_status = ? AND voided_at IS NULL
+	`, transactionID, financeApprovalPending).Scan(&recordedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("pending finance transaction not found")
+		}
+		return err
+	}
+	if err := ensureFinanceDateUnlockedTx(tx, recordedAt, "transaction date"); err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	result, err := a.execTxDB(tx, `
 		UPDATE finance_transactions
 		SET approval_status = ?, approved_by_user_id = ?, approved_at = ?, updated_at = ?
 		WHERE id = ? AND approval_status = ? AND voided_at IS NULL
-	`, financeApprovalApproved, nullIfZero(approvedByUserID), time.Now().UTC(), time.Now().UTC(), transactionID, financeApprovalPending)
+	`, financeApprovalApproved, nullIfZero(approvedByUserID), now, now, transactionID, financeApprovalPending)
 	if err != nil {
 		return err
 	}
@@ -141,7 +163,7 @@ func (a *App) approveFinanceTransaction(transactionID, approvedByUserID int64) e
 	if affected == 0 {
 		return errors.New("pending finance transaction not found")
 	}
-	return nil
+	return tx.Commit()
 }
 
 func nullIfZeroTime(value time.Time) any {

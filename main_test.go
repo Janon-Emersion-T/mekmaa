@@ -10724,6 +10724,59 @@ func TestFinanceSpecifiedAdmissionLedgersSortByStudentName(t *testing.T) {
 	}
 }
 
+func TestPendingFinanceTransactionCannotBeApprovedInLockedPeriod(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	accountID := financeAccountIDByName(t, app, financeAccountCashInHand)
+	recordedAt := time.Date(2026, time.August, 12, 10, 0, 0, 0, time.Local)
+	transactionID, err := app.createManualFinanceTransactionForAccountWithApproval(
+		"manual_income",
+		"Test customer",
+		"Pending locked-period transaction",
+		"",
+		accountID,
+		1200,
+		recordedAt,
+		0,
+		financeApprovalPending,
+	)
+	if err != nil {
+		t.Fatalf("create pending transaction: %v", err)
+	}
+	pending, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("find pending transaction: %v", err)
+	}
+	if pending.ApprovalStatus != financeApprovalPending || pending.ApprovedByUserID != 0 || !pending.ApprovedAt.IsZero() {
+		t.Fatalf("pending approval audit fields = %#v", pending)
+	}
+	if err := app.updateFinancePeriodLock("2026-08-31", "August closed", 0); err != nil {
+		t.Fatalf("lock finance period: %v", err)
+	}
+	if err := app.approveFinanceTransaction(transactionID, 0); err == nil {
+		t.Fatal("expected approval inside a locked period to fail")
+	}
+	pending, err = app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("reload pending transaction: %v", err)
+	}
+	if pending.ApprovalStatus != financeApprovalPending {
+		t.Fatalf("locked transaction status = %q, want pending", pending.ApprovalStatus)
+	}
+	if err := app.updateFinancePeriodLock("", "", 0); err != nil {
+		t.Fatalf("unlock finance period: %v", err)
+	}
+	if err := app.approveFinanceTransaction(transactionID, 0); err != nil {
+		t.Fatalf("approve unlocked transaction: %v", err)
+	}
+	approved, err := app.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		t.Fatalf("find approved transaction: %v", err)
+	}
+	if approved.ApprovalStatus != financeApprovalApproved || approved.ApprovedAt.IsZero() {
+		t.Fatalf("approved transaction = %#v", approved)
+	}
+}
+
 func TestBuildFinanceSpecifiedLedgersBankingUsesDebitCreditAssetView(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	cashID := financeAccountIDByName(t, app, financeAccountCashInHand)

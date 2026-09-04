@@ -341,6 +341,7 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 	`, transactionID)
 
 	var transaction FinanceTransaction
+	var approvedAt sql.NullTime
 	var voidedAt sql.NullTime
 	var updatedAtRaw string
 	if err := row.Scan(
@@ -376,7 +377,7 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 		&transaction.RecordedAt,
 		&transaction.CreatedAt,
 		&updatedAtRaw,
-		&transaction.ApprovedAt,
+		&approvedAt,
 		&voidedAt,
 		&transaction.VoidedByUserID,
 		&transaction.VoidedByUserName,
@@ -387,6 +388,9 @@ func (a *App) findFinanceTransactionByIDContext(ctx context.Context, transaction
 	if voidedAt.Valid {
 		transaction.Voided = true
 		transaction.VoidedAt = voidedAt.Time
+	}
+	if approvedAt.Valid {
+		transaction.ApprovedAt = approvedAt.Time
 	}
 	if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(updatedAtRaw)); err == nil {
 		transaction.UpdatedAt = parsed

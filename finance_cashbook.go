@@ -2462,6 +2462,12 @@ func (a *App) createManualFinanceTransactionForAccountWithApprovalInDivision(cat
 	if amount < 0 {
 		prefix = "MKM-EXP"
 	}
+	approvedByUserID := int64(0)
+	approvedAt := time.Time{}
+	if approvalStatus == financeApprovalApproved {
+		approvedByUserID = recordedByUserID
+		approvedAt = recordedAt
+	}
 	fingerprint := fmt.Sprintf("%d|%s|%d|%.2f|%s|%s|%s|%s", recordedByUserID, category, account.ID, normalizeMoney(amount), recordedAt.In(time.Local).Format("2006-01-02"), strings.TrimSpace(personName), strings.TrimSpace(description), strings.TrimSpace(notes))
 	if resultRef, duplicate, err := reserveFinanceOperationTx(tx, "manual_finance_transaction", recordedByUserID, fingerprint); err != nil {
 		return 0, err
@@ -2488,9 +2494,9 @@ func (a *App) createManualFinanceTransactionForAccountWithApprovalInDivision(cat
 		PaymentMethod:    financePaymentMethodForAccount(account.AccountType),
 		Amount:           amount,
 		RecordedByUserID: recordedByUserID,
-		ApprovedByUserID: recordedByUserID,
+		ApprovedByUserID: approvedByUserID,
 		RecordedAt:       recordedAt,
-		ApprovedAt:       recordedAt,
+		ApprovedAt:       approvedAt,
 	})
 	if err != nil {
 		return 0, err
@@ -3749,6 +3755,15 @@ func (a *App) approveFinanceTransactionHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 	transactionID := parseInt64Query(r.FormValue("transaction_id"))
+	transaction, err := a.findFinanceTransactionByID(transactionID)
+	if err != nil {
+		a.setFlash(w, "Finance transaction could not be approved: finance transaction not found")
+		http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+		return
+	}
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, transaction.DivisionID) {
+		return
+	}
 	if err := a.approveFinanceTransaction(transactionID, currentUser.ID); err != nil {
 		a.setFlash(w, "Finance transaction could not be approved: "+err.Error())
 		http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
