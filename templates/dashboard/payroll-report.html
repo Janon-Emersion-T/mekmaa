@@ -4,16 +4,88 @@
 <style>
 @page {
   size: A4 portrait;
-  margin: 12mm;
+  margin: 6mm;
 }
 
 @media print {
+  html,
   body {
     background: white !important;
+    font-size: 9px !important;
   }
 
   .no-print {
     display: none !important;
+  }
+
+  .hide-chrome-shell {
+    display: block !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+
+  .payroll-report {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .payroll-report > * + * {
+    margin-top: 3mm !important;
+  }
+
+  .payroll-report-header > div:first-child {
+    padding: 3mm 4mm !important;
+  }
+
+  .payroll-report-header > div:last-child {
+    gap: 2mm !important;
+    padding: 2mm 4mm !important;
+  }
+
+  .payroll-report-header > div:last-child > div {
+    border-radius: 1.5mm !important;
+    padding: 2mm !important;
+  }
+
+  .payroll-report-header h1,
+  .payroll-report h2 {
+    margin-top: 1mm !important;
+    font-size: 14px !important;
+    line-height: 1.15 !important;
+  }
+
+  .payroll-report-main {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.9fr) !important;
+    gap: 3mm !important;
+  }
+
+  .payroll-report-main > article > div:first-child,
+  .payroll-report-sidebar > article {
+    padding: 3mm 4mm !important;
+  }
+
+  .payroll-report-sidebar {
+    display: grid !important;
+    align-content: start !important;
+    gap: 3mm !important;
+  }
+
+  .payroll-report-sidebar > * + * {
+    margin-top: 0 !important;
+  }
+
+  .payroll-report table {
+    font-size: 8px !important;
+  }
+
+  .payroll-report th,
+  .payroll-report td {
+    padding: 2mm !important;
+  }
+
+  .payroll-report .space-y-3 > * + * {
+    margin-top: 1.5mm !important;
   }
 
   .print-panel {
@@ -23,8 +95,8 @@
 }
 </style>
 
-<section class="mx-auto w-full max-w-[960px] space-y-6 pb-10">
-  <header class="print-panel overflow-hidden rounded-[2rem] border border-slate/10 bg-white shadow-sm">
+<section class="payroll-report mx-auto w-full max-w-[960px] space-y-6 pb-10">
+  <header class="payroll-report-header print-panel overflow-hidden rounded-[2rem] border border-slate/10 bg-white shadow-sm">
     <div class="bg-obsidian px-6 py-7 text-cloud sm:px-8">
       <div class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -60,7 +132,7 @@
     </div>
   </header>
 
-  <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+  <section class="payroll-report-main grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
     <article class="print-panel overflow-hidden rounded-[2rem] border border-slate/10 bg-white shadow-sm">
       <div class="border-b border-slate/10 px-6 py-5">
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Calculation lines</p>
@@ -101,7 +173,7 @@
       </div>
     </article>
 
-    <div class="space-y-6">
+    <div class="payroll-report-sidebar space-y-6">
       <article class="print-panel rounded-[2rem] border border-slate/10 bg-white p-6 shadow-sm">
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Employee</p>
         <h2 class="mt-2 text-xl font-semibold text-obsidian">{{.PayrollPayment.UserName}}</h2>
