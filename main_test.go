@@ -9263,6 +9263,121 @@ func TestDeleteEnrollmentHandlerDeletesUnlinkedEnrollment(t *testing.T) {
 	}
 }
 
+func TestUnenrollEnrollmentHandlerArchivesEnrollment(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Unenroll Me Program",
+		Activity:       "full_indoor_cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     2500,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-UNENROLL-001",
+		FullName:              "Unenroll Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771000202",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-08-01",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+	enrollment, err := app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		t.Fatalf("reload enrollment: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":        {"token"},
+		"enrollment_id":     {strconv.FormatInt(enrollmentID, 10)},
+		"unenrollment_date": {"2026-08-20"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/enrollments/unenroll", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          106,
+		Name:        "Enrollment Admin",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"students.manage"},
+		DivisionIDs: []int64{enrollment.DivisionID},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.unenrollEnrollmentHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("unenroll enrollment status = %d, want %d body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
+	}
+	want := "/admin/enrollments?admission_id=" + strconv.FormatInt(admissionID, 10) + "&action=view&id=" + strconv.FormatInt(enrollmentID, 10)
+	if got := rec.Header().Get("Location"); got != want {
+		t.Fatalf("unenroll enrollment redirect = %q, want %q", got, want)
+	}
+
+	updated, err := app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		t.Fatalf("reload enrollment after unenroll: %v", err)
+	}
+	if updated.Active {
+		t.Fatal("expected enrollment to be archived")
+	}
+
+	rows, err := app.db.Query(`
+		SELECT active, CAST(effective_from AS TEXT), COALESCE(CAST(effective_to AS TEXT), '')
+		FROM student_enrollment_status_history
+		WHERE enrollment_id = ?
+		ORDER BY effective_from ASC, id ASC
+	`, enrollmentID)
+	if err != nil {
+		t.Fatalf("load status history: %v", err)
+	}
+	defer rows.Close()
+
+	type historyRow struct {
+		active        int
+		effectiveFrom string
+		effectiveTo   string
+	}
+	var history []historyRow
+	for rows.Next() {
+		var row historyRow
+		if err := rows.Scan(&row.active, &row.effectiveFrom, &row.effectiveTo); err != nil {
+			t.Fatalf("scan status history: %v", err)
+		}
+		history = append(history, row)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("status history rows: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("expected 2 status history rows, got %#v", history)
+	}
+	if history[0].active != 1 || history[0].effectiveFrom != "2026-08-01" || history[0].effectiveTo != "2026-08-20" {
+		t.Fatalf("unexpected active history row: %#v", history[0])
+	}
+	if history[1].active != 0 || history[1].effectiveFrom != "2026-08-20" || history[1].effectiveTo != "" {
+		t.Fatalf("unexpected archived history row: %#v", history[1])
+	}
+}
+
 func TestHealthHandlerExposesNoSecrets(t *testing.T) {
 	app := newReadinessTestApp(t)
 	app.bookingAccess.TokenSecret = "super-secret-production-token"

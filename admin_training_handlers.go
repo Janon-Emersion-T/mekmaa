@@ -819,6 +819,91 @@ func (a *App) deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
+func (a *App) unenrollEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	enrollmentID, err := parsePositiveInt64(r.FormValue("enrollment_id"))
+	if err != nil {
+		a.setFlash(w, "Select a valid enrollment.")
+		http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+		return
+	}
+
+	enrollment, err := a.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Enrollment not found.")
+			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)
+			return
+		}
+		log.Printf("find enrollment for unenroll: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	if !a.requireDivisionAccessForDivision(w, r, currentUser, enrollment.DivisionID) {
+		return
+	}
+
+	target := "/admin/enrollments?admission_id=" + strconv.FormatInt(enrollment.AdmissionID, 10)
+	if division := strings.TrimSpace(r.FormValue("division")); division != "" {
+		target = withDivisionQuery(target, division)
+	}
+	if !enrollment.Active {
+		a.setFlash(w, "Enrollment is already archived.")
+		http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		return
+	}
+
+	unenrollmentDate := strings.TrimSpace(r.FormValue("unenrollment_date"))
+	if _, err := time.Parse("2006-01-02", unenrollmentDate); err != nil {
+		a.setFlash(w, "Select a valid unenrollment date.")
+		http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		return
+	}
+	if unenrollmentDate > time.Now().Format("2006-01-02") {
+		a.setFlash(w, "Unenrollment date cannot be in the future.")
+		http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		return
+	}
+	if err := validateHistoricalEntryDateValue(unenrollmentDate, "unenrollment date"); err != nil {
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		return
+	}
+	if enrollment.EnrollmentDate != "" && unenrollmentDate < enrollment.EnrollmentDate {
+		a.setFlash(w, "Unenrollment date cannot be before the enrollment date.")
+		http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		return
+	}
+
+	if err := a.deactivateStudentEnrollment(enrollmentID, unenrollmentDate); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			a.setFlash(w, "Enrollment not found.")
+			http.Redirect(w, r, target, http.StatusSeeOther)
+			return
+		}
+		a.setFlash(w, err.Error())
+		http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+		return
+	}
+
+	a.setFlash(w, "Enrollment archived.")
+	http.Redirect(w, r, target+"&action=view&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+}
+
 func (a *App) trainingProgramManagementHandler(
 	w http.ResponseWriter,
 	r *http.Request,

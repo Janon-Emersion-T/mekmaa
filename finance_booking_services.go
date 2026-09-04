@@ -4984,6 +4984,68 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 	return tx.Commit()
 }
 
+func (a *App) deactivateStudentEnrollment(enrollmentID int64, effectiveDate string) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	enrollment, err := findStudentEnrollmentByIDTx(tx, a.runtimeConfig.DBDriver, enrollmentID)
+	if err != nil {
+		return err
+	}
+	if !enrollment.Active {
+		return nil
+	}
+
+	effectiveDate = strings.TrimSpace(effectiveDate)
+	if effectiveDate == "" {
+		effectiveDate = time.Now().Format("2006-01-02")
+	}
+	if _, err := time.Parse("2006-01-02", effectiveDate); err != nil {
+		return errors.New("invalid unenrollment date")
+	}
+	if err := validateHistoricalEntryDateValue(effectiveDate, "unenrollment date"); err != nil {
+		return err
+	}
+	if enrollment.EnrollmentDate != "" && effectiveDate < enrollment.EnrollmentDate {
+		return errors.New("unenrollment date cannot be before the enrollment date")
+	}
+	if effectiveDate > time.Now().Format("2006-01-02") {
+		return errors.New("unenrollment date cannot be in the future")
+	}
+
+	result, err := a.execTxDB(
+		tx,
+		`
+		UPDATE student_enrollments
+		SET
+			active = 0,
+			updated_at = ?
+		WHERE id = ?
+		`,
+		time.Now().UTC(),
+		enrollmentID,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	if err := syncStudentEnrollmentStatusHistoryTx(a, tx, enrollmentID, false, effectiveDate); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (a *App) deleteStudentEnrollment(enrollmentID int64) error {
 	tx, err := a.db.Begin()
 	if err != nil {

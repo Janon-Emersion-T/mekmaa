@@ -231,6 +231,26 @@
           <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .SelectedEnrollment.FinanceTransactionID) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50">View receipt</a>
           {{end}}
         </div>
+        {{if .SelectedEnrollment.Active}}
+        <div class="mt-4 rounded-[1.5rem] border border-amber-200 bg-amber-50/60 p-4">
+          <p class="text-sm font-semibold text-obsidian">Unenroll this programme</p>
+          <p class="mt-1 text-xs leading-5 text-slate/60">Archives the enrollment from active billing and payroll tracking while preserving past receipts and payment history.</p>
+          <form action="/admin/enrollments/unenroll" method="post" class="mt-4 flex flex-wrap items-end gap-2" onsubmit="return confirm('Unenroll {{.SelectedAdmission.FullName}} from {{.SelectedEnrollment.TrainingProgramName}} on the selected date?')">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="enrollment_id" value="{{.SelectedEnrollment.ID}}" />
+            {{if .SelectedDivision}}
+            <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />
+            {{else if eq .SelectedDivisionScope "all"}}
+            <input type="hidden" name="division" value="all" />
+            {{end}}
+            <label class="block">
+              <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Unenrollment date</span>
+              <input type="date" name="unenrollment_date" min="{{.SelectedEnrollment.EnrollmentDate}}" max="{{.TodayDate}}" value="{{.TodayDate}}" required class="h-11 rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua" />
+            </label>
+            <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 transition hover:bg-amber-100">Unenroll</button>
+          </form>
+        </div>
+        {{end}}
         {{end}}
       </section>
       {{end}}
@@ -395,6 +415,19 @@
                   </select>
                   <input type="date" name="payment_collected_at" min="{{historicalStartDate}}" max="{{todayDate}}" value="{{todayDate}}" class="h-11 rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua" />
                   <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-obsidian px-4 text-sm font-semibold text-cloud transition hover:bg-slate">Collect admission fee</button>
+                </form>
+                {{end}}
+                {{if .Active}}
+                <form action="/admin/enrollments/unenroll" method="post" onsubmit="return confirm('Unenroll {{$.SelectedAdmission.FullName}} from {{.TrainingProgramName}} on the selected date?')">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="enrollment_id" value="{{.ID}}" />
+                  {{if $.SelectedDivision}}
+                  <input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}" />
+                  {{else if eq $.SelectedDivisionScope "all"}}
+                  <input type="hidden" name="division" value="all" />
+                  {{end}}
+                  <input type="date" name="unenrollment_date" min="{{.EnrollmentDate}}" max="{{$.TodayDate}}" value="{{$.TodayDate}}" class="h-11 rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate outline-none focus:border-aqua" required />
+                  <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 transition hover:bg-amber-100">Unenroll</button>
                 </form>
                 {{end}}
                 {{if .Active}}
