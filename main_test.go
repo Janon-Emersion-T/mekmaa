@@ -3216,6 +3216,59 @@ func TestAdmissionPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestSpecifiedLedgersGroupEnrollmentAdmissionPaymentByStudent(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	divisionID, err := divisionIDByCode(app.db, divisionCodeKEC)
+	if err != nil {
+		t.Fatalf("find division: %v", err)
+	}
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		DivisionID:     divisionID,
+		Name:           "Individual Ledger Programme",
+		Activity:       "reading",
+		TrainingFormat: "group",
+		AdmissionFee:   2500,
+		MonthlyFee:     2000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-LEDGER-ENROLLMENT-001",
+		FullName:              "Enrollment Ledger Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2013-04-05",
+		Gender:                "female",
+		PracticeType:          "student",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771111234",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create student: %v", err)
+	}
+
+	recordedAt := time.Date(2026, time.August, 12, 10, 0, 0, 0, time.UTC)
+	if _, _, err := app.createStudentEnrollmentWithOptionalPaymentAt(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+	}, true, "cash", recordedAt, 0); err != nil {
+		t.Fatalf("create paid enrollment: %v", err)
+	}
+
+	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers("2026-08-01", "2026-08-31", nil)
+	if err != nil {
+		t.Fatalf("build specified ledgers: %v", err)
+	}
+	ledger := findFinanceSpecifiedLedger(ledgers, "admission-"+strconv.FormatInt(admissionID, 10))
+	if ledger == nil || ledger.Title != "Enrollment Ledger Student · STD-LEDGER-ENROLLMENT-001" || ledger.CreditTotal != 2500 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected enrollment admission ledger: %#v", ledger)
+	}
+}
+
 func TestStudentMonthlyPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	if _, err := app.db.Exec(`UPDATE admission_pricing SET monthly_fee = 3200 WHERE practice_type = 'group_practice'`); err != nil {
