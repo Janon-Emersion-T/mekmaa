@@ -3,50 +3,47 @@
 
   {{template "receipt-print-styles" .}}
 
+  <style>
+    .payroll-slip-shell {
+      font-family: "Courier New", Courier, monospace;
+      letter-spacing: 0.01em;
+    }
+
+    @media print {
+      .payroll-slip-shell {
+        font-size: 11px !important;
+      }
+    }
+  </style>
+
   <div class="receipt-print-shell">
 
-    <div class="receipt-printable mx-auto overflow-hidden rounded-[1.5rem] border border-slate/10 bg-white px-5 py-6 text-obsidian shadow-sm">
+    <div class="payroll-slip-shell receipt-printable mx-auto overflow-hidden rounded-[1.5rem] border border-slate/10 bg-white px-4 py-5 text-obsidian shadow-sm">
 
-      <div class="receipt-brand-row pb-2">
-        <img
-          src="/images/mekmaa-private-limited.jpeg"
-          alt="Mekmaa Private Limited"
-          class="receipt-brand-logo"
-        >
-        <img
-          src="/images/mekmaa-cricket-academy.jpeg"
-          alt="Mekmaa Cricket Academy"
-          class="receipt-brand-logo"
-        >
-        <img
-          src="/images/logos/chess.png"
-          alt="Mekmaa Chess Academy"
-          class="receipt-brand-logo"
-        >
-        <img
-          src="/images/logos/kec.png"
-          alt="Kids Education Center"
-          class="receipt-brand-logo"
-        >
+      <div class="pb-2 text-center">
+        <p class="text-[0.72rem] font-extrabold uppercase tracking-[0.22em] text-obsidian">
+          Mekmaa Private Limited
+        </p>
+        <p class="mt-1 text-[0.62rem] leading-4 text-slate/65">
+          No. 64, Temple Road, Jaffna 40000, Sri Lanka
+        </p>
       </div>
 
       <div class="text-center">
 
-        <h1 class="text-[1.05rem] font-extrabold uppercase tracking-[0.12em] text-obsidian">
+        <h1 class="text-[0.98rem] font-extrabold uppercase tracking-[0.16em] text-obsidian">
           Salary Slip
         </h1>
 
-        <p class="mt-1 text-[0.72rem] font-medium leading-5 text-slate/65">
-          Mekmaa Private Limited<br>
-          No. 64, Temple Road<br>
-          Jaffna 40000, Sri Lanka
+        <p class="mt-1 text-[0.68rem] font-medium leading-4 text-slate/65">
+          Thermal 80 mm print
         </p>
 
       </div>
 
       <div class="receipt-divider mt-4"></div>
 
-      <dl class="space-y-2.5 py-4 text-[0.78rem] leading-5">
+      <dl class="space-y-2 py-4 text-[0.74rem] leading-5">
 
         <div class="flex items-start justify-between gap-4">
           <dt class="font-medium text-slate/60">
@@ -318,7 +315,7 @@
 
       {{end}}
 
-      <div class="mt-6 grid grid-cols-2 gap-8 pt-8 text-center text-[0.7rem] text-slate/60">
+      <div class="mt-6 grid grid-cols-2 gap-6 pt-7 text-center text-[0.68rem] text-slate/60">
 
         <div>
           <div class="border-t border-slate/30 pt-2">
@@ -351,4 +348,10 @@
   </div>
 
 </section>
+
+<script>
+  window.addEventListener("load", () => {
+    window.print();
+  });
+</script>
 {{end}}

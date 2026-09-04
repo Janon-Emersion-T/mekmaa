@@ -1,0 +1,214 @@
+{{define "payroll-report"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<style>
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  body {
+    background: white !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-panel {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+}
+</style>
+
+<section class="mx-auto w-full max-w-[960px] space-y-6 pb-10">
+  <header class="print-panel overflow-hidden rounded-[2rem] border border-slate/10 bg-white shadow-sm">
+    <div class="bg-obsidian px-6 py-7 text-cloud sm:px-8">
+      <div class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-aqua">Payroll Calculation</p>
+          <h1 class="mt-2 text-3xl font-semibold tracking-tight text-cloud">Salary Calculation Report</h1>
+          <p class="mt-2 text-sm leading-6 text-cloud/70">{{.PayrollPayment.UserName}} · {{.PayrollRun.Label}}</p>
+        </div>
+        <div class="no-print">
+          <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-white">
+            Print / Save PDF
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-3 border-t border-slate/10 bg-cloud/55 px-6 py-4 text-xs font-medium text-slate/65 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="rounded-2xl bg-white px-4 py-3">
+        <p class="uppercase tracking-[0.16em] text-slate/45">Reference</p>
+        <p class="mt-1 text-sm font-semibold text-obsidian">{{payrollPaymentReferenceCode .PayrollPayment}}</p>
+      </div>
+      <div class="rounded-2xl bg-white px-4 py-3">
+        <p class="uppercase tracking-[0.16em] text-slate/45">Period</p>
+        <p class="mt-1 text-sm font-semibold text-obsidian">{{.PayrollRun.PeriodStart}} to {{.PayrollRun.PeriodEnd}}</p>
+      </div>
+      <div class="rounded-2xl bg-white px-4 py-3">
+        <p class="uppercase tracking-[0.16em] text-slate/45">Type</p>
+        <p class="mt-1 text-sm font-semibold text-obsidian">{{salaryTypeLabel .PayrollPayment.CompensationType}}</p>
+      </div>
+      <div class="rounded-2xl bg-white px-4 py-3">
+        <p class="uppercase tracking-[0.16em] text-slate/45">Status</p>
+        <p class="mt-1 text-sm font-semibold text-obsidian">{{.PayrollPayment.Status}}</p>
+      </div>
+    </div>
+  </header>
+
+  <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <article class="print-panel overflow-hidden rounded-[2rem] border border-slate/10 bg-white shadow-sm">
+      <div class="border-b border-slate/10 px-6 py-5">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Calculation lines</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">How the salary was calculated</h2>
+        <p class="mt-1 text-sm text-slate/60">Each row below shows the captured payroll inputs used for this staff payment.</p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[620px] border-collapse text-left text-sm">
+          <thead class="bg-cloud/70">
+            <tr class="text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">
+              <th class="px-6 py-4">Line</th>
+              <th class="px-4 py-4 text-right">Qty</th>
+              <th class="px-4 py-4 text-right">Rate</th>
+              <th class="px-6 py-4 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate/8">
+            {{range .PayrollPayment.CalculationDetails}}
+            <tr>
+              <td class="px-6 py-4 align-top">
+                <p class="font-semibold text-obsidian">{{.Label}}</p>
+                {{if .DetailNote}}
+                <p class="mt-1 text-xs leading-5 text-slate/55">{{.DetailNote}}</p>
+                {{end}}
+              </td>
+              <td class="px-4 py-4 text-right text-slate-700">{{if ne .Quantity 0.0}}{{printf "%.2f" .Quantity}}{{else}}-{{end}}</td>
+              <td class="px-4 py-4 text-right text-slate-700">{{if ne .RateSnapshot 0.0}}{{money .RateSnapshot}}{{else}}-{{end}}</td>
+              <td class="px-6 py-4 text-right font-semibold text-obsidian">{{if ne .AmountSnapshot 0.0}}{{money .AmountSnapshot}}{{else}}-{{end}}</td>
+            </tr>
+            {{else}}
+            <tr>
+              <td colspan="4" class="px-6 py-10 text-center text-sm text-slate/55">No calculation detail rows were recorded for this payment.</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <div class="space-y-6">
+      <article class="print-panel rounded-[2rem] border border-slate/10 bg-white p-6 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Employee</p>
+        <h2 class="mt-2 text-xl font-semibold text-obsidian">{{.PayrollPayment.UserName}}</h2>
+        <dl class="mt-4 space-y-3 text-sm">
+          {{if .PayrollPayment.UserEmail}}
+          <div class="flex items-start justify-between gap-4">
+            <dt class="text-slate/55">Email</dt>
+            <dd class="text-right font-medium text-obsidian">{{.PayrollPayment.UserEmail}}</dd>
+          </div>
+          {{end}}
+          {{if .PayrollPayment.DivisionName}}
+          <div class="flex items-start justify-between gap-4">
+            <dt class="text-slate/55">Division</dt>
+            <dd class="text-right font-medium text-obsidian">{{.PayrollPayment.DivisionName}}</dd>
+          </div>
+          {{end}}
+          {{if .PayrollPayment.TrainingProgramName}}
+          <div class="flex items-start justify-between gap-4">
+            <dt class="text-slate/55">Programme</dt>
+            <dd class="text-right font-medium text-obsidian">{{.PayrollPayment.TrainingProgramName}}</dd>
+          </div>
+          {{end}}
+          <div class="flex items-start justify-between gap-4">
+            <dt class="text-slate/55">Approved quantity</dt>
+            <dd class="text-right font-medium text-obsidian">{{printf "%.2f" .PayrollPayment.Quantity}} {{.PayrollPayment.QuantityLabel}}</dd>
+          </div>
+          <div class="flex items-start justify-between gap-4">
+            <dt class="text-slate/55">Rate</dt>
+            <dd class="text-right font-medium text-obsidian">{{money .PayrollPayment.RateSnapshot}}</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="print-panel rounded-[2rem] border border-slate/10 bg-white p-6 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Adjustments</p>
+        <div class="mt-4 space-y-3">
+          {{range .PayrollPayment.Adjustments}}
+          <div class="rounded-2xl border border-slate/10 bg-cloud/40 px-4 py-3">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="font-semibold text-obsidian">{{.Description}}</p>
+                <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate/45">{{payrollAdjustmentTypeLabel .AdjustmentType}}</p>
+              </div>
+              {{if eq .Direction "addition"}}
+              <p class="font-semibold text-emerald-700">+ {{money .Amount}}</p>
+              {{else}}
+              <p class="font-semibold text-rose-700">- {{money .Amount}}</p>
+              {{end}}
+            </div>
+          </div>
+          {{else}}
+          <p class="text-sm text-slate/55">No manual additions or deductions were applied.</p>
+          {{end}}
+        </div>
+      </article>
+
+      <article class="print-panel rounded-[2rem] border border-slate/10 bg-white p-6 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Totals</p>
+        <div class="mt-4 space-y-3 text-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-slate/55">Base salary</span>
+            <span class="font-semibold text-obsidian">{{money .PayrollPayment.BaseAmount}}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate/55">Additions</span>
+            <span class="font-semibold text-emerald-700">{{money .PayrollPayment.AdditionsTotal}}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate/55">Deductions</span>
+            <span class="font-semibold text-rose-700">{{money .PayrollPayment.DeductionsTotal}}</span>
+          </div>
+          <div class="flex items-center justify-between border-t border-slate/10 pt-3">
+            <span class="font-semibold uppercase tracking-[0.14em] text-obsidian">Net salary</span>
+            <span class="text-lg font-semibold text-obsidian">{{money .PayrollPayment.NetAmount}}</span>
+          </div>
+        </div>
+
+        <dl class="mt-5 space-y-3 border-t border-slate/10 pt-5 text-sm">
+          <div class="flex items-start justify-between gap-4">
+            <dt class="text-slate/55">Payment method</dt>
+            <dd class="text-right font-medium text-obsidian">{{if .PayrollPayment.PaymentMethod}}{{.PayrollPayment.PaymentMethod}}{{else}}Pending{{end}}</dd>
+          </div>
+          <div class="flex items-start justify-between gap-4">
+            <dt class="text-slate/55">Paid at</dt>
+            <dd class="text-right font-medium text-obsidian">{{if not .PayrollPayment.PaidAt.IsZero}}{{formatDateTime .PayrollPayment.PaidAt}}{{else}}Not yet paid{{end}}</dd>
+          </div>
+          {{if .PayrollPayment.PaymentReference}}
+          <div class="flex items-start justify-between gap-4">
+            <dt class="text-slate/55">Reference</dt>
+            <dd class="break-all text-right font-medium text-obsidian">{{.PayrollPayment.PaymentReference}}</dd>
+          </div>
+          {{end}}
+          {{if .PayrollFinanceTransaction}}
+          <div class="flex items-start justify-between gap-4">
+            <dt class="text-slate/55">Finance receipt</dt>
+            <dd class="text-right font-medium text-obsidian">{{.PayrollFinanceTransaction.ReceiptNumber}}</dd>
+          </div>
+          {{end}}
+        </dl>
+      </article>
+    </div>
+  </section>
+</section>
+
+<script>
+  window.addEventListener("load", () => {
+    window.print();
+  });
+</script>
+{{end}}

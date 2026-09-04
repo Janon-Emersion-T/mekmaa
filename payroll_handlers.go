@@ -1084,6 +1084,95 @@ func (a *App) payrollSalarySlipHandler(
 	)
 }
 
+func (a *App) payrollCalculationReportHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	paymentID, err := strconv.ParseInt(
+		strings.TrimSpace(
+			r.URL.Query().Get("id"),
+		),
+		10,
+		64,
+	)
+
+	if err != nil || paymentID <= 0 {
+		http.Error(
+			w,
+			"invalid salary payment",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	payment, run, err := a.findPayrollPaymentByID(paymentID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+
+		log.Printf(
+			"find payroll payment for report %d: %v",
+			paymentID,
+			err,
+		)
+
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+
+	data := a.newTemplateData(
+		w,
+		r,
+		user,
+	)
+
+	data.Title = "Salary Calculation Report"
+	data.Description =
+		"A4 payroll calculation breakdown for one employee."
+	data.HideChrome = true
+	data.PayrollRun = run
+	data.PayrollPayment = payment
+
+	if payment.FinanceTransactionID > 0 {
+		transaction, txErr := a.findFinanceTransactionByID(
+			payment.FinanceTransactionID,
+		)
+		if txErr != nil {
+			log.Printf(
+				"find payroll finance transaction for report %d: %v",
+				payment.FinanceTransactionID,
+				txErr,
+			)
+		} else {
+			data.PayrollFinanceTransaction = transaction
+		}
+	}
+
+	a.render(
+		w,
+		"payroll-report",
+		data,
+		http.StatusOK,
+	)
+}
+
 func (a *App) voidPayrollPaymentHandler(
 	w http.ResponseWriter,
 	r *http.Request,

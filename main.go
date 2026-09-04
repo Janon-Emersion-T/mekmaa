@@ -172,6 +172,7 @@ func main() {
 	mux.Handle("/admin/payroll/close", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.closePayrollRunHandler), "payroll.update")))
 	mux.Handle("/admin/payroll/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidPayrollPaymentHandler), "payroll.delete")))
 	mux.Handle("/admin/payroll/slip", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollSalarySlipHandler), "payroll.view")))
+	mux.Handle("/admin/payroll/report", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.payrollCalculationReportHandler), "payroll.view")))
 	mux.Handle("/admin/staff/salary-profiles", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.salaryProfileManagementHandler), "payroll.view")))
 	mux.Handle("/admin/staff/salary-profiles/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createSalaryProfileHandler), "payroll.create")))
 	mux.Handle("/admin/staff/salary-profiles/toggle", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.toggleSalaryProfileHandler), "payroll.update")))

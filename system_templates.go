@@ -375,6 +375,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"payroll":                         "templates/dashboard/payroll.html",
 		"payroll-run":                     "templates/dashboard/payroll-run.html",
 		"payroll-slip":                    "templates/dashboard/payroll-slip.html",
+		"payroll-report":                  "templates/dashboard/payroll-report.html",
 		"staff-attendance":                "templates/dashboard/staff-attendance.html",
 		"staff-attendance-report":         "templates/dashboard/staff-attendance-report.html",
 		"staff-attendance-report-print":   "templates/dashboard/staff-attendance-report-print.html",
