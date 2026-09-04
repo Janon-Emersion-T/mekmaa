@@ -276,7 +276,7 @@
 
             <td class="px-5 py-4">
               <div class="flex flex-wrap justify-end gap-2">
-                {{if and (gt .NetAmount 0) (or (eq .Status "calculated") (eq .Status "approved"))}}
+                {{if or (eq .Status "calculated") (eq .Status "approved")}}
                 <a href="#payment-{{.ID}}" class="rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800">Pay now</a>
                 {{end}}
                 {{if or (eq .Status "approved") (eq .Status "paid") (eq .Status "void")}}
@@ -597,7 +597,7 @@
 
         </div>
 
-        {{if and (gt .NetAmount 0) (or (eq .Status "calculated") (eq .Status "approved"))}}
+        {{if or (eq .Status "calculated") (eq .Status "approved")}}
         <div class="border-t border-slate-200 pt-5">
 
           {{if $.FinanceAccounts}}
