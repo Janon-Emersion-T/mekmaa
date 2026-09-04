@@ -204,6 +204,7 @@
         <tbody class="divide-y divide-slate-100">
 
           {{range .PayrollPayments}}
+          {{$eligibleFinanceAccounts := payrollPaymentEligibleFinanceAccounts $.FinanceAccounts .}}
           <tr>
             <td class="px-5 py-4">
               <div class="font-medium text-slate-950">
@@ -276,7 +277,13 @@
 
             <td class="px-5 py-4">
               <div class="flex flex-wrap justify-end gap-2">
+                {{if payrollPaymentAllowsPayment .}}
+                {{if $eligibleFinanceAccounts}}
                 <a href="#payment-{{.ID}}" class="rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800">Pay now</a>
+                {{else}}
+                <span class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Finance account required</span>
+                {{end}}
+                {{end}}
                 {{if or (eq .Status "approved") (eq .Status "paid") (eq .Status "void")}}
                 <a href="/admin/payroll/slip?id={{.ID}}" target="_blank" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Slip</a>
                 <a href="/admin/payroll/report?id={{.ID}}" target="_blank" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">A4 report</a>
@@ -321,6 +328,7 @@
     </div>
 
     {{range .PayrollPayments}}
+    {{$eligibleFinanceAccounts := payrollPaymentEligibleFinanceAccounts $.FinanceAccounts .}}
     <section id="payment-{{.ID}}" class="rounded-2xl border border-slate-200 bg-white shadow-sm">
 
       <div class="border-b border-slate-200 px-5 py-4">
@@ -595,10 +603,10 @@
 
         </div>
 
-        {{if or (eq .Status "calculated") (eq .Status "approved")}}
+        {{if payrollPaymentAllowsPayment .}}
         <div class="border-t border-slate-200 pt-5">
 
-          {{if $.FinanceAccounts}}
+          {{if $eligibleFinanceAccounts}}
           <form
             method="post"
             action="/admin/payroll/pay"
@@ -620,7 +628,7 @@
               >
                 <option value="">Select finance account</option>
 
-                {{range $.FinanceAccounts}}
+                {{range $eligibleFinanceAccounts}}
                 <option value="{{.ID}}">
                   {{.DivisionName}} — {{.Name}} ({{.AccountType}})
                 </option>

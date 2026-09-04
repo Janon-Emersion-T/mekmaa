@@ -274,11 +274,29 @@ func payrollPaymentAllowsAdjustments(payment PayrollPayment) bool {
 	}
 }
 
-func payrollPaymentAllowsPay(payment PayrollPayment) bool {
-	return (payment.Status == PayrollPaymentStatusCalculated ||
-		payment.Status == PayrollPaymentStatusApproved) &&
+func payrollPaymentAllowsPayment(payment PayrollPayment) bool {
+	return payment.Status == PayrollPaymentStatusApproved &&
 		payment.NetAmount > 0 &&
 		payment.FinanceTransactionID <= 0
+}
+
+func payrollPaymentEligibleFinanceAccounts(
+	accounts []FinanceAccount,
+	payment PayrollPayment,
+) []FinanceAccount {
+	eligible := make([]FinanceAccount, 0, len(accounts))
+	for _, account := range accounts {
+		if !account.IsActive ||
+			(account.AccountType != financeAccountTypeCash &&
+				account.AccountType != financeAccountTypeBank) {
+			continue
+		}
+		if payment.DivisionID > 0 && account.DivisionID != payment.DivisionID {
+			continue
+		}
+		eligible = append(eligible, account)
+	}
+	return eligible
 }
 
 func payrollPaymentAllowsVoid(payment PayrollPayment) bool {
@@ -1555,7 +1573,7 @@ func (a *App) approvePayrollRun(
 			COUNT(*),
 			COUNT(*) FILTER (WHERE status = 'draft'),
 			COUNT(*) FILTER (
-			WHERE status NOT IN ('calculated', 'paid', 'void')
+				WHERE status NOT IN ('calculated', 'void')
 			)
 		FROM payroll_payments
 		WHERE payroll_run_id = ?
@@ -1698,10 +1716,9 @@ func (a *App) payPayrollPayment(
 		return errors.New("salary has already been paid")
 	}
 
-	if status != PayrollPaymentStatusCalculated &&
-		status != PayrollPaymentStatusApproved {
+	if status != PayrollPaymentStatusApproved {
 		return errors.New(
-			"salary must be calculated before payment",
+			"salary must be approved before payment",
 		)
 	}
 
@@ -1733,6 +1750,10 @@ func (a *App) payPayrollPayment(
 		return errors.New(
 			"selected finance account is inactive",
 		)
+	}
+	if account.AccountType != financeAccountTypeCash &&
+		account.AccountType != financeAccountTypeBank {
+		return errors.New("selected finance account must be Cash or Bank")
 	}
 
 	if divisionID > 0 &&

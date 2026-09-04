@@ -745,7 +745,7 @@ func TestPayrollPhase2MonthlyCalculationAndRecalculationSnapshot(t *testing.T) {
 	}
 }
 
-func TestPayrollPhase2CalculatedSalaryCanBePaidIndividually(t *testing.T) {
+func TestPayrollPhase2PaymentRequiresApprovedSalary(t *testing.T) {
 	app := newAuthorizationTestApp(t)
 
 	manager, err := app.createManagedUser("Paid Manager", "paid-manager@example.com", "password-123", []string{"admin"}, true)
@@ -781,8 +781,24 @@ func TestPayrollPhase2CalculatedSalaryCanBePaidIndividually(t *testing.T) {
 	}
 
 	payment := payrollPaymentForProfile(t, app, runID, profileID)
+	if payrollPaymentAllowsPayment(payment) {
+		t.Fatal("calculated salary must not be eligible for payment")
+	}
+	if err := app.payPayrollPayment(payment.ID, accountID, "BANK-REF-2026-08-29", manager.ID); err == nil {
+		t.Fatal("expected calculated salary payment to be rejected")
+	}
+
+	if err := app.approvePayrollRun(runID, manager.ID); err != nil {
+		t.Fatalf("approve payroll run: %v", err)
+	}
+
+	approvedPayment := payrollPaymentForProfile(t, app, runID, profileID)
+	if approvedPayment.Status != PayrollPaymentStatusApproved || !payrollPaymentAllowsPayment(approvedPayment) {
+		t.Fatalf("approved payment eligibility = %#v", approvedPayment)
+	}
+
 	if err := app.payPayrollPayment(payment.ID, accountID, "BANK-REF-2026-08-29", manager.ID); err != nil {
-		t.Fatalf("pay calculated payroll payment: %v", err)
+		t.Fatalf("pay approved payroll payment: %v", err)
 	}
 
 	paidPayment, _, err := app.findPayrollPaymentByID(payment.ID)
@@ -792,12 +808,58 @@ func TestPayrollPhase2CalculatedSalaryCanBePaidIndividually(t *testing.T) {
 	if paidPayment.Status != PayrollPaymentStatusPaid {
 		t.Fatalf("payment status = %q, want paid", paidPayment.Status)
 	}
-
-	if err := app.approvePayrollRun(runID, manager.ID); err != nil {
-		t.Fatalf("approve payroll run after individual payment: %v", err)
+	if payrollPaymentAllowsPayment(*paidPayment) {
+		t.Fatal("paid salary must not be eligible for payment")
 	}
 	if err := app.recalculatePayrollRun(runID, manager.ID); err == nil {
 		t.Fatal("expected paid payroll recalculation to fail")
+	}
+}
+
+func TestPayrollPaymentEligibilityByStatus(t *testing.T) {
+	base := PayrollPayment{NetAmount: 1000}
+	cases := []struct {
+		name              string
+		payment           PayrollPayment
+		allowsAdjustments bool
+		allowsPayment     bool
+		allowsVoid        bool
+	}{
+		{name: "draft", payment: PayrollPayment{Status: PayrollPaymentStatusDraft, NetAmount: base.NetAmount}, allowsAdjustments: true},
+		{name: "calculated", payment: PayrollPayment{Status: PayrollPaymentStatusCalculated, NetAmount: base.NetAmount}, allowsAdjustments: true},
+		{name: "approved", payment: PayrollPayment{Status: PayrollPaymentStatusApproved, NetAmount: base.NetAmount}, allowsPayment: true},
+		{name: "paid", payment: PayrollPayment{Status: PayrollPaymentStatusPaid, NetAmount: base.NetAmount, FinanceTransactionID: 1}, allowsVoid: true},
+		{name: "void", payment: PayrollPayment{Status: PayrollPaymentStatusVoid, NetAmount: base.NetAmount, FinanceTransactionID: 1}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := payrollPaymentAllowsAdjustments(tc.payment); got != tc.allowsAdjustments {
+				t.Fatalf("adjustments allowed = %t, want %t", got, tc.allowsAdjustments)
+			}
+			if got := payrollPaymentAllowsPayment(tc.payment); got != tc.allowsPayment {
+				t.Fatalf("payment allowed = %t, want %t", got, tc.allowsPayment)
+			}
+			if got := payrollPaymentAllowsVoid(tc.payment); got != tc.allowsVoid {
+				t.Fatalf("void allowed = %t, want %t", got, tc.allowsVoid)
+			}
+		})
+	}
+}
+
+func TestPayrollPaymentEligibleFinanceAccounts(t *testing.T) {
+	payment := PayrollPayment{DivisionID: 10}
+	accounts := []FinanceAccount{
+		{ID: 1, DivisionID: 10, AccountType: financeAccountTypeCash, IsActive: true},
+		{ID: 2, DivisionID: 10, AccountType: financeAccountTypeBank, IsActive: true},
+		{ID: 3, DivisionID: 11, AccountType: financeAccountTypeBank, IsActive: true},
+		{ID: 4, DivisionID: 10, AccountType: financeAccountTypeCash, IsActive: false},
+		{ID: 5, DivisionID: 10, AccountType: "other", IsActive: true},
+	}
+
+	eligible := payrollPaymentEligibleFinanceAccounts(accounts, payment)
+	if len(eligible) != 2 || eligible[0].ID != 1 || eligible[1].ID != 2 {
+		t.Fatalf("eligible finance accounts = %#v", eligible)
 	}
 }
 
