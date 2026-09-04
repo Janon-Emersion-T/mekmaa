@@ -1,12 +1,20 @@
 package main
 
 import (
+	"embed"
 	"errors"
 	"html/template"
 	"os"
 	"strings"
 	"time"
 )
+
+// templateFiles ships every server-rendered view with the application binary.
+// Production deployments cannot accidentally start a new binary with templates
+// from an older working directory.
+//
+//go:embed templates
+var templateFiles embed.FS
 
 func normalizeRoleName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
@@ -316,7 +324,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		},
 	}
 
-	base, err := template.New("base.html").Funcs(funcs).ParseFiles("templates/base.html")
+	base, err := template.New("base.html").Funcs(funcs).ParseFS(templateFiles, "templates/base.html")
 	if err != nil {
 		return nil, err
 	}
@@ -438,13 +446,13 @@ func buildTemplates() (map[string]*template.Template, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := tmpl.ParseFiles(publicPartials...); err != nil {
+		if _, err := tmpl.ParseFS(templateFiles, publicPartials...); err != nil {
 			return nil, err
 		}
-		if _, err := tmpl.ParseFiles(dashboardPartials...); err != nil {
+		if _, err := tmpl.ParseFS(templateFiles, dashboardPartials...); err != nil {
 			return nil, err
 		}
-		if _, err := tmpl.ParseFiles(path); err != nil {
+		if _, err := tmpl.ParseFS(templateFiles, path); err != nil {
 			return nil, err
 		}
 		templates[page] = tmpl
