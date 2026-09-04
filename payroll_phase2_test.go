@@ -788,8 +788,29 @@ func TestPayrollPhase2PaymentRequiresApprovedSalary(t *testing.T) {
 		t.Fatal("expected calculated salary payment to be rejected")
 	}
 
+	if err := app.approvePayrollPayment(payment.ID, manager.ID); err != nil {
+		t.Fatalf("approve salary individually: %v", err)
+	}
+	individuallyApproved := payrollPaymentForProfile(t, app, runID, profileID)
+	if individuallyApproved.Status != PayrollPaymentStatusApproved || !payrollPaymentAllowsPayment(individuallyApproved) {
+		t.Fatalf("individually approved payment eligibility = %#v", individuallyApproved)
+	}
+	if err := app.rollbackPayrollPaymentApproval(payment.ID, manager.ID); err != nil {
+		t.Fatalf("rollback individual salary approval: %v", err)
+	}
+	rolledBack := payrollPaymentForProfile(t, app, runID, profileID)
+	if rolledBack.Status != PayrollPaymentStatusCalculated || !payrollPaymentAllowsAdjustments(rolledBack) {
+		t.Fatalf("rolled back payment eligibility = %#v", rolledBack)
+	}
+
+	if err := app.approvePayrollPayment(payment.ID, manager.ID); err != nil {
+		t.Fatalf("approve salary individually again: %v", err)
+	}
 	if err := app.approvePayrollRun(runID, manager.ID); err != nil {
-		t.Fatalf("approve payroll run: %v", err)
+		t.Fatalf("approve payroll run with individually approved salary: %v", err)
+	}
+	if err := app.rollbackPayrollPaymentApproval(payment.ID, manager.ID); err == nil {
+		t.Fatal("expected individual approval rollback after payroll approval to fail")
 	}
 
 	approvedPayment := payrollPaymentForProfile(t, app, runID, profileID)
@@ -844,6 +865,20 @@ func TestPayrollPaymentEligibilityByStatus(t *testing.T) {
 				t.Fatalf("void allowed = %t, want %t", got, tc.allowsVoid)
 			}
 		})
+	}
+
+	calculatedRun := &PayrollRun{Status: PayrollRunStatusCalculated}
+	calculatedPayment := PayrollPayment{Status: PayrollPaymentStatusCalculated, NetAmount: base.NetAmount}
+	if !payrollPaymentAllowsIndividualApproval(calculatedRun, calculatedPayment) {
+		t.Fatal("calculated salary in a calculated run must allow individual approval")
+	}
+	approvedPayment := PayrollPayment{Status: PayrollPaymentStatusApproved, NetAmount: base.NetAmount}
+	if !payrollPaymentAllowsApprovalRollback(calculatedRun, approvedPayment) {
+		t.Fatal("individually approved salary in a calculated run must allow rollback")
+	}
+	approvedRun := &PayrollRun{Status: PayrollRunStatusApproved}
+	if payrollPaymentAllowsIndividualApproval(approvedRun, calculatedPayment) || payrollPaymentAllowsApprovalRollback(approvedRun, approvedPayment) {
+		t.Fatal("payroll-level approval must lock individual approval actions")
 	}
 }
 

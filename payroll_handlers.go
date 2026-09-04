@@ -833,6 +833,84 @@ func (a *App) approvePayrollRunHandler(
 	)
 }
 
+func (a *App) approvePayrollPaymentHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	paymentID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("payment_id")), 10, 64)
+	runID, runErr := strconv.ParseInt(strings.TrimSpace(r.FormValue("run_id")), 10, 64)
+	if err != nil || paymentID <= 0 || runErr != nil || runID <= 0 {
+		http.Error(w, "invalid salary approval request", http.StatusBadRequest)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+	actorUserID := int64(0)
+	if user != nil {
+		actorUserID = user.ID
+	}
+	if err := a.approvePayrollPayment(paymentID, actorUserID); err != nil {
+		log.Printf("approve payroll payment %d: %v", paymentID, err)
+		a.setFlash(w, err.Error())
+	} else {
+		a.setFlash(w, "Salary approved individually. You can now record payment.")
+	}
+
+	http.Redirect(w, r, "/admin/payroll/run?id="+strconv.FormatInt(runID, 10), http.StatusSeeOther)
+}
+
+func (a *App) rollbackPayrollPaymentApprovalHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	paymentID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("payment_id")), 10, 64)
+	runID, runErr := strconv.ParseInt(strings.TrimSpace(r.FormValue("run_id")), 10, 64)
+	if err != nil || paymentID <= 0 || runErr != nil || runID <= 0 {
+		http.Error(w, "invalid salary approval rollback request", http.StatusBadRequest)
+		return
+	}
+
+	user, _ := a.currentUser(r.Context())
+	actorUserID := int64(0)
+	if user != nil {
+		actorUserID = user.ID
+	}
+	if err := a.rollbackPayrollPaymentApproval(paymentID, actorUserID); err != nil {
+		log.Printf("rollback payroll payment approval %d: %v", paymentID, err)
+		a.setFlash(w, err.Error())
+	} else {
+		a.setFlash(w, "Individual salary approval rolled back. Adjustments are available again.")
+	}
+
+	http.Redirect(w, r, "/admin/payroll/run?id="+strconv.FormatInt(runID, 10), http.StatusSeeOther)
+}
+
 func (a *App) payPayrollPaymentHandler(
 	w http.ResponseWriter,
 	r *http.Request,

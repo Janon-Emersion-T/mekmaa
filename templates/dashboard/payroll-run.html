@@ -277,6 +277,12 @@
 
             <td class="px-5 py-4">
               <div class="flex flex-wrap justify-end gap-2">
+                {{if payrollPaymentAllowsIndividualApproval $.PayrollRun .}}
+                <a href="#payment-{{.ID}}" class="rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800">Approve salary</a>
+                {{end}}
+                {{if payrollPaymentAllowsApprovalRollback $.PayrollRun .}}
+                <a href="#payment-{{.ID}}" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 hover:bg-amber-100">Review approval</a>
+                {{end}}
                 {{if payrollPaymentAllowsPayment .}}
                 {{if $eligibleFinanceAccounts}}
                 <a href="#payment-{{.ID}}" class="rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800">Pay now</a>
@@ -602,6 +608,38 @@
           </div>
 
         </div>
+
+        {{if payrollPaymentAllowsIndividualApproval $.PayrollRun .}}
+        <div class="border-t border-slate-200 pt-5">
+          <form method="post" action="/admin/payroll/payment/approve" class="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="run_id" value="{{$.PayrollRun.ID}}">
+            <input type="hidden" name="payment_id" value="{{.ID}}">
+            <div>
+              <div class="text-sm font-semibold text-slate-950">Ready for individual approval</div>
+              <p class="mt-1 text-sm text-slate-600">Confirm this salary before recording its payment.</p>
+            </div>
+            <button type="submit" class="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">Approve salary</button>
+          </form>
+        </div>
+        {{end}}
+
+        {{if payrollPaymentAllowsApprovalRollback $.PayrollRun .}}
+        <div class="border-t border-slate-200 pt-5">
+          <div class="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div class="text-sm font-semibold text-amber-900">Salary approved individually</div>
+              <p class="mt-1 text-sm text-amber-800">Roll back approval to correct quantity or salary adjustments before payment.</p>
+            </div>
+            <form method="post" action="/admin/payroll/payment/rollback">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="run_id" value="{{$.PayrollRun.ID}}">
+              <input type="hidden" name="payment_id" value="{{.ID}}">
+              <button type="submit" class="rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 hover:bg-amber-100">Roll back approval</button>
+            </form>
+          </div>
+        </div>
+        {{end}}
 
         {{if payrollPaymentAllowsPayment .}}
         <div class="border-t border-slate-200 pt-5">

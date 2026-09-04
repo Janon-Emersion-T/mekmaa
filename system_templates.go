@@ -265,6 +265,8 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"payrollPaymentAllowsAdjustments":           payrollPaymentAllowsAdjustments,
 		"payrollPaymentAllowsManualQuantity":        payrollPaymentAllowsManualQuantity,
 		"payrollPaymentAllowsPayment":               payrollPaymentAllowsPayment,
+		"payrollPaymentAllowsIndividualApproval":    payrollPaymentAllowsIndividualApproval,
+		"payrollPaymentAllowsApprovalRollback":      payrollPaymentAllowsApprovalRollback,
 		"payrollPaymentEligibleFinanceAccounts":     payrollPaymentEligibleFinanceAccounts,
 		"payrollPaymentAllowsVoid":                  payrollPaymentAllowsVoid,
 		"payrollPaymentReferenceCode":               payrollPaymentReferenceCode,

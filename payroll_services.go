@@ -235,9 +235,10 @@ func payrollRunAllowsRecalculate(run *PayrollRun) bool {
 		return false
 	}
 
-	// Recalculation would change a salary already recorded as paid.
+	// Recalculation would change a salary that has already been approved or paid.
 	for _, payment := range run.Payments {
-		if payment.Status == PayrollPaymentStatusPaid {
+		if payment.Status == PayrollPaymentStatusApproved ||
+			payment.Status == PayrollPaymentStatusPaid {
 			return false
 		}
 	}
@@ -277,6 +278,19 @@ func payrollPaymentAllowsAdjustments(payment PayrollPayment) bool {
 func payrollPaymentAllowsPayment(payment PayrollPayment) bool {
 	return payment.Status == PayrollPaymentStatusApproved &&
 		payment.NetAmount > 0 &&
+		payment.FinanceTransactionID <= 0
+}
+
+func payrollPaymentAllowsIndividualApproval(run *PayrollRun, payment PayrollPayment) bool {
+	return run != nil &&
+		run.Status == PayrollRunStatusCalculated &&
+		payment.Status == PayrollPaymentStatusCalculated
+}
+
+func payrollPaymentAllowsApprovalRollback(run *PayrollRun, payment PayrollPayment) bool {
+	return run != nil &&
+		run.Status == PayrollRunStatusCalculated &&
+		payment.Status == PayrollPaymentStatusApproved &&
 		payment.FinanceTransactionID <= 0
 }
 
@@ -1573,7 +1587,7 @@ func (a *App) approvePayrollRun(
 			COUNT(*),
 			COUNT(*) FILTER (WHERE status = 'draft'),
 			COUNT(*) FILTER (
-				WHERE status NOT IN ('calculated', 'void')
+				WHERE status NOT IN ('calculated', 'approved', 'void')
 			)
 		FROM payroll_payments
 		WHERE payroll_run_id = ?
@@ -1642,6 +1656,92 @@ func (a *App) approvePayrollRun(
 		now,
 		runID,
 	); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) approvePayrollPayment(paymentID, actorUserID int64) error {
+	if paymentID <= 0 {
+		return errors.New("invalid salary payment")
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var paymentStatus, runStatus, notes string
+	if err := a.queryRowTxDB(tx, `
+		SELECT pp.status, pr.status, COALESCE(pp.notes, '')
+		FROM payroll_payments pp
+		JOIN payroll_runs pr ON pr.id = pp.payroll_run_id
+		WHERE pp.id = ?
+	`, paymentID).Scan(&paymentStatus, &runStatus, &notes); err != nil {
+		return err
+	}
+	if runStatus != PayrollRunStatusCalculated {
+		return errors.New("individual salary approval is available only while payroll is calculated")
+	}
+	if paymentStatus != PayrollPaymentStatusCalculated {
+		return errors.New("only calculated salary payments can be approved individually")
+	}
+
+	now := time.Now().UTC()
+	if _, err := a.execTxDB(tx, `
+		UPDATE payroll_payments
+		SET status = ?, notes = ?, updated_at = ?
+		WHERE id = ?
+	`, PayrollPaymentStatusApproved,
+		appendPayrollCalculationNote(notes, fmt.Sprintf("Individually approved by user #%d.", actorUserID)),
+		now, paymentID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (a *App) rollbackPayrollPaymentApproval(paymentID, actorUserID int64) error {
+	if paymentID <= 0 {
+		return errors.New("invalid salary payment")
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var paymentStatus, runStatus, notes string
+	var financeTransactionID int64
+	if err := a.queryRowTxDB(tx, `
+		SELECT pp.status, pr.status, COALESCE(pp.finance_transaction_id, 0), COALESCE(pp.notes, '')
+		FROM payroll_payments pp
+		JOIN payroll_runs pr ON pr.id = pp.payroll_run_id
+		WHERE pp.id = ?
+	`, paymentID).Scan(&paymentStatus, &runStatus, &financeTransactionID, &notes); err != nil {
+		return err
+	}
+	if runStatus != PayrollRunStatusCalculated {
+		return errors.New("individual approval cannot be rolled back after payroll approval")
+	}
+	if paymentStatus != PayrollPaymentStatusApproved {
+		return errors.New("only individually approved salary payments can be rolled back")
+	}
+	if financeTransactionID > 0 {
+		return errors.New("paid salary approval cannot be rolled back; void the payment instead")
+	}
+
+	now := time.Now().UTC()
+	if _, err := a.execTxDB(tx, `
+		UPDATE payroll_payments
+		SET status = ?, notes = ?, updated_at = ?
+		WHERE id = ?
+	`, PayrollPaymentStatusCalculated,
+		appendPayrollCalculationNote(notes, fmt.Sprintf("Individual approval rolled back by user #%d.", actorUserID)),
+		now, paymentID); err != nil {
 		return err
 	}
 
