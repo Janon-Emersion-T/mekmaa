@@ -90,6 +90,8 @@ func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter Fin
 			&transaction.FinanceAccountType,
 			&transaction.TransferGroupID,
 			&transaction.StudentName,
+			&transaction.StudentID,
+			&transaction.AdmissionID,
 			&transaction.TrainingProgramName,
 			&transaction.BookingActivity,
 			&transaction.OneToOneOfferingID,

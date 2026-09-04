@@ -32,6 +32,18 @@ func financeTransactionsBaseQuery(filter FinanceFilter) (string, []any) {
 		       	ELSE ''
 		       END, ''),
 		       COALESCE(CASE
+		              WHEN ft.reference_type = 'admission' THEN adm.student_id
+		              WHEN ft.reference_type = 'student_enrollment' THEN sea.student_id
+		              WHEN ft.source_type = 'student_monthly_payment' THEN COALESCE(smp_adm.student_id, sea.student_id, adm.student_id)
+		              ELSE ''
+		       END, ''),
+		       COALESCE(CASE
+		              WHEN ft.reference_type = 'admission' THEN adm.id
+		              WHEN ft.reference_type = 'student_enrollment' THEN se.admission_id
+		              WHEN ft.source_type = 'student_monthly_payment' THEN COALESCE(smp_adm.id, sea.id, adm.id)
+		              ELSE 0
+		       END, 0),
+		       COALESCE(CASE
 		       	WHEN ft.reference_type = 'student_enrollment' THEN tp.name
 		       	WHEN ft.reference_type = 'admission' THEN adm_tp.name
 		       	WHEN ft.source_type = 'student_monthly_payment' THEN COALESCE(smp_tp.name, tp.name, adm_tp.name)

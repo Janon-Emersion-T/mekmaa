@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -58,15 +59,6 @@ func financeSpecifiedLedgerDefinitions() []financeSpecifiedLedgerDefinition {
 			},
 		},
 		{
-			Key:         "admissions",
-			Title:       "Admissions",
-			Description: "Student admission collections.",
-			Nature:      "income",
-			Match: func(tx FinanceTransaction) bool {
-				return tx.Category == "admission_payment"
-			},
-		},
-		{
 			Key:         "class_monthly_fees",
 			Title:       "Class Monthly Fees",
 			Description: "Monthly class and programme fee collections.",
@@ -104,6 +96,32 @@ func financeSpecifiedLedgerDefinitions() []financeSpecifiedLedgerDefinition {
 				}
 			},
 		},
+	}
+}
+
+func financeSpecifiedAdmissionLedgerSeed(tx FinanceTransaction) financeSpecifiedLedgerSeed {
+	studentName := strings.TrimSpace(tx.StudentName)
+	studentID := strings.TrimSpace(tx.StudentID)
+	if studentName == "" {
+		studentName = "Admission #" + strconv.FormatInt(tx.AdmissionID, 10)
+	}
+	if studentID != "" {
+		studentName += " · " + studentID
+	}
+	return financeSpecifiedLedgerSeed{
+		Key:         "admission-" + strconv.FormatInt(tx.AdmissionID, 10),
+		Title:       studentName,
+		Description: "Admission payment history for this student.",
+		Nature:      "income",
+	}
+}
+
+func financeSpecifiedAdmissionFallbackLedgerSeed(tx FinanceTransaction) financeSpecifiedLedgerSeed {
+	return financeSpecifiedLedgerSeed{
+		Key:         "admission-transaction-" + strconv.FormatInt(tx.ID, 10),
+		Title:       "Admission payment · " + strings.TrimSpace(tx.ReferenceNumber),
+		Description: "Admission payment with no linked student record.",
+		Nature:      "income",
 	}
 }
 
@@ -368,6 +386,25 @@ func (a *App) buildFinanceSpecifiedLedgers(
 			continue
 		}
 
+		if tx.Category == "admission_payment" {
+			seed := financeSpecifiedAdmissionFallbackLedgerSeed(tx)
+			if tx.AdmissionID > 0 {
+				seed = financeSpecifiedAdmissionLedgerSeed(tx)
+			}
+			ledger, exists := dynamic[seed.Key]
+			if !exists {
+				ledger = &FinanceSpecifiedLedger{
+					Key:         seed.Key,
+					Title:       seed.Title,
+					Description: seed.Description,
+					Nature:      seed.Nature,
+				}
+				dynamic[seed.Key] = ledger
+			}
+			appendFinanceSpecifiedLedgerEntry(ledger, tx)
+			continue
+		}
+
 		matched := false
 		for _, definition := range definitions {
 			if !definition.Match(tx) {
@@ -447,13 +484,28 @@ func findFinanceSpecifiedLedger(
 func isFinanceSpecifiedSystemLedgerKey(key string) bool {
 	switch strings.TrimSpace(key) {
 	case "bookings_all_games",
-		"admissions",
 		"class_monthly_fees",
 		"banking":
 		return true
 	default:
 		return false
 	}
+}
+
+func isFinanceSpecifiedAdmissionLedgerKey(key string) bool {
+	return strings.HasPrefix(strings.TrimSpace(key), "admission-")
+}
+
+func financeSpecifiedAdmissionLedgers(
+	ledgers []FinanceSpecifiedLedger,
+) []FinanceSpecifiedLedger {
+	filtered := make([]FinanceSpecifiedLedger, 0, len(ledgers))
+	for _, ledger := range ledgers {
+		if isFinanceSpecifiedAdmissionLedgerKey(ledger.Key) {
+			filtered = append(filtered, ledger)
+		}
+	}
+	return filtered
 }
 
 func financeSpecifiedSystemLedgers(
@@ -474,6 +526,9 @@ func financeSpecifiedIncomeLedgers(
 	filtered := make([]FinanceSpecifiedLedger, 0, len(ledgers))
 	for _, ledger := range ledgers {
 		if isFinanceSpecifiedSystemLedgerKey(ledger.Key) {
+			continue
+		}
+		if isFinanceSpecifiedAdmissionLedgerKey(ledger.Key) {
 			continue
 		}
 		if ledger.Nature == "income" {

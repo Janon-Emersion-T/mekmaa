@@ -193,6 +193,7 @@
 
   <div class="space-y-6">
     {{$systemLedgers := financeSpecifiedSystemLedgers .FinanceSpecifiedLedgers}}
+    {{$admissionLedgers := financeSpecifiedAdmissionLedgers .FinanceSpecifiedLedgers}}
     {{$incomeLedgers := financeSpecifiedIncomeLedgers .FinanceSpecifiedLedgers}}
     {{$expenseLedgers := financeSpecifiedExpenseLedgers .FinanceSpecifiedLedgers}}
     {{$otherLedgers := financeSpecifiedOtherLedgers .FinanceSpecifiedLedgers}}
@@ -232,6 +233,42 @@
         {{end}}
       </div>
     </section>
+
+    {{if $admissionLedgers}}
+    <section class="space-y-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-aqua/80">Student records</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Admission ledgers</h3>
+        </div>
+        <span class="rounded-full bg-aqua/10 px-3 py-1 text-xs font-semibold text-aqua">{{len $admissionLedgers}} students</span>
+      </div>
+      <div class="grid gap-4 xl:grid-cols-2">
+        {{range $admissionLedgers}}
+        {{$ledgerURL := scopedURL (printf "/admin/finance/specified-ledgers/%s?from=%s&to=%s" .Key (urlquery $.FinanceSpecifiedLedgerFrom) (urlquery $.FinanceSpecifiedLedgerTo)) $.SelectedDivision $.SelectedDivisionScope}}
+        <article class="overflow-hidden rounded-[2rem] border border-aqua/20 bg-white/90 shadow-sm">
+          <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-aqua/80">{{.BalanceLabel}}</p>
+                <h3 class="mt-2 text-xl font-semibold text-obsidian"><a href="{{$ledgerURL}}" class="transition hover:text-slate">{{.Title}}</a></h3>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-slate/60">{{.Description}}</p>
+              </div>
+              <div class="grid grid-cols-2 gap-3 text-center">
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Entries</p><p class="mt-1 text-base font-semibold text-obsidian">{{.EntryCount}}</p></div>
+                <div class="rounded-2xl bg-cloud px-4 py-3"><p class="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-slate/45">Balance</p><p class="mt-1 text-base font-semibold text-obsidian">{{money .NetBalance}}</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
+            <p class="text-sm text-slate/55">{{.EntryCount}} payment entries</p>
+            <a href="{{$ledgerURL}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-aqua/20 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-aqua/10">Open student ledger</a>
+          </div>
+        </article>
+        {{end}}
+      </div>
+    </section>
+    {{end}}
 
     <section class="space-y-4">
       <div class="flex items-center justify-between gap-3">

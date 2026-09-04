@@ -3188,9 +3188,11 @@ func TestAdmissionPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000000",
 	}
-	if _, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", 0); err != nil {
+	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", 0)
+	if err != nil {
 		t.Fatalf("create admission with payment: %v", err)
-	} else if transactionID <= 0 {
+	}
+	if transactionID <= 0 {
 		t.Fatal("expected admission payment ledger transaction")
 	}
 	if balance := financeAccountBalanceByName(t, app, financeAccountCashInHand); balance != 1500 {
@@ -3202,6 +3204,15 @@ func TestAdmissionPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected one admission ledger row, got %d", count)
+	}
+	day := time.Now().Format("2006-01-02")
+	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers(day, day, nil)
+	if err != nil {
+		t.Fatalf("build specified admission ledgers: %v", err)
+	}
+	ledger := findFinanceSpecifiedLedger(ledgers, "admission-"+strconv.FormatInt(admissionID, 10))
+	if ledger == nil || ledger.Title != "Admission Student · STD-TEST-001" || ledger.CreditTotal != 1500 || ledger.EntryCount != 1 {
+		t.Fatalf("unexpected individual admission ledger: %#v", ledger)
 	}
 }
 
@@ -10622,8 +10633,12 @@ func TestBuildFinanceSpecifiedLedgersGroupsCoreLedgers(t *testing.T) {
 	if ledger := found["bookings_all_games"]; ledger.CreditTotal != 2500 || ledger.EntryCount != 1 {
 		t.Fatalf("unexpected bookings ledger: %#v", ledger)
 	}
-	if ledger := found["admissions"]; ledger.CreditTotal != 1500 || ledger.EntryCount != 1 {
-		t.Fatalf("unexpected admissions ledger: %#v", ledger)
+	admissionLedgers := financeSpecifiedAdmissionLedgers(ledgers)
+	if len(admissionLedgers) != 1 || admissionLedgers[0].CreditTotal != 1500 || admissionLedgers[0].EntryCount != 1 {
+		t.Fatalf("unexpected individual admission ledgers: %#v", admissionLedgers)
+	}
+	if _, exists := found["admissions"]; exists {
+		t.Fatal("admission payments must not be grouped in a shared admissions ledger")
 	}
 	if ledger := found["class_monthly_fees"]; ledger.CreditTotal != 3200 || ledger.EntryCount != 1 {
 		t.Fatalf("unexpected monthly fees ledger: %#v", ledger)

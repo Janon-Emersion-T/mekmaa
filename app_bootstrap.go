@@ -665,6 +665,8 @@ type FinanceTransaction struct {
 	FinanceAccountType   string
 	TransferGroupID      string
 	StudentName          string
+	StudentID            string
+	AdmissionID          int64
 	TrainingProgramName  string
 	BookingActivity      string
 	OneToOneOfferingID   int64

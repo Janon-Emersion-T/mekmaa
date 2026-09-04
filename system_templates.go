@@ -254,6 +254,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"financeActiveCategoriesForDirection":       financeActiveCategoriesForDirection,
 		"financeCategoriesForDirection":             financeCategoriesForDirection,
 		"financeSpecifiedSystemLedgers":             financeSpecifiedSystemLedgers,
+		"financeSpecifiedAdmissionLedgers":          financeSpecifiedAdmissionLedgers,
 		"financeSpecifiedIncomeLedgers":             financeSpecifiedIncomeLedgers,
 		"financeSpecifiedExpenseLedgers":            financeSpecifiedExpenseLedgers,
 		"financeSpecifiedOtherLedgers":              financeSpecifiedOtherLedgers,
