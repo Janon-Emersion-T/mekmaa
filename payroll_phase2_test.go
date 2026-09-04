@@ -745,7 +745,7 @@ func TestPayrollPhase2MonthlyCalculationAndRecalculationSnapshot(t *testing.T) {
 	}
 }
 
-func TestPayrollPhase2PaidPayrollCannotRecalculate(t *testing.T) {
+func TestPayrollPhase2CalculatedSalaryCanBePaidIndividually(t *testing.T) {
 	app := newAuthorizationTestApp(t)
 
 	manager, err := app.createManagedUser("Paid Manager", "paid-manager@example.com", "password-123", []string{"admin"}, true)
@@ -781,11 +781,20 @@ func TestPayrollPhase2PaidPayrollCannotRecalculate(t *testing.T) {
 	}
 
 	payment := payrollPaymentForProfile(t, app, runID, profileID)
-	if err := app.approvePayrollRun(runID, manager.ID); err != nil {
-		t.Fatalf("approve payroll run: %v", err)
-	}
 	if err := app.payPayrollPayment(payment.ID, accountID, "BANK-REF-2026-08-29", manager.ID); err != nil {
-		t.Fatalf("pay payroll payment: %v", err)
+		t.Fatalf("pay calculated payroll payment: %v", err)
+	}
+
+	paidPayment, _, err := app.findPayrollPaymentByID(payment.ID)
+	if err != nil {
+		t.Fatalf("find paid payroll payment: %v", err)
+	}
+	if paidPayment.Status != PayrollPaymentStatusPaid {
+		t.Fatalf("payment status = %q, want paid", paidPayment.Status)
+	}
+
+	if err := app.approvePayrollRun(runID, manager.ID); err != nil {
+		t.Fatalf("approve payroll run after individual payment: %v", err)
 	}
 	if err := app.recalculatePayrollRun(runID, manager.ID); err == nil {
 		t.Fatal("expected paid payroll recalculation to fail")

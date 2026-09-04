@@ -229,10 +229,20 @@ func payrollRunAllowsGenerate(run *PayrollRun) bool {
 }
 
 func payrollRunAllowsRecalculate(run *PayrollRun) bool {
-	return run != nil &&
-		len(run.Payments) > 0 &&
-		(run.Status == PayrollRunStatusDraft ||
-			run.Status == PayrollRunStatusCalculated)
+	if run == nil || len(run.Payments) == 0 ||
+		(run.Status != PayrollRunStatusDraft &&
+			run.Status != PayrollRunStatusCalculated) {
+		return false
+	}
+
+	// Recalculation would change a salary already recorded as paid.
+	for _, payment := range run.Payments {
+		if payment.Status == PayrollPaymentStatusPaid {
+			return false
+		}
+	}
+
+	return true
 }
 
 func payrollRunAllowsApprove(run *PayrollRun) bool {
@@ -265,7 +275,8 @@ func payrollPaymentAllowsAdjustments(payment PayrollPayment) bool {
 }
 
 func payrollPaymentAllowsPay(payment PayrollPayment) bool {
-	return payment.Status == PayrollPaymentStatusApproved &&
+	return (payment.Status == PayrollPaymentStatusCalculated ||
+		payment.Status == PayrollPaymentStatusApproved) &&
 		payment.NetAmount > 0 &&
 		payment.FinanceTransactionID <= 0
 }
@@ -1544,7 +1555,7 @@ func (a *App) approvePayrollRun(
 			COUNT(*),
 			COUNT(*) FILTER (WHERE status = 'draft'),
 			COUNT(*) FILTER (
-				WHERE status NOT IN ('calculated', 'void')
+			WHERE status NOT IN ('calculated', 'paid', 'void')
 			)
 		FROM payroll_payments
 		WHERE payroll_run_id = ?
@@ -1687,9 +1698,10 @@ func (a *App) payPayrollPayment(
 		return errors.New("salary has already been paid")
 	}
 
-	if status != PayrollPaymentStatusApproved {
+	if status != PayrollPaymentStatusCalculated &&
+		status != PayrollPaymentStatusApproved {
 		return errors.New(
-			"salary must be approved before payment",
+			"salary must be calculated before payment",
 		)
 	}
 
