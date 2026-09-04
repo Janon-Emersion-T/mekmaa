@@ -276,9 +276,7 @@
 
             <td class="px-5 py-4">
               <div class="flex flex-wrap justify-end gap-2">
-                {{if or (eq .Status "calculated") (eq .Status "approved")}}
                 <a href="#payment-{{.ID}}" class="rounded-lg bg-slate-950 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800">Pay now</a>
-                {{end}}
                 {{if or (eq .Status "approved") (eq .Status "paid") (eq .Status "void")}}
                 <a href="/admin/payroll/slip?id={{.ID}}" target="_blank" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Slip</a>
                 <a href="/admin/payroll/report?id={{.ID}}" target="_blank" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">A4 report</a>
