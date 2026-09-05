@@ -238,10 +238,10 @@
     <section class="space-y-4">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-aqua/80">Student records</p>
-          <h3 class="mt-1 text-lg font-semibold text-obsidian">Admission ledgers</h3>
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-aqua/80">Programme performance</p>
+          <h3 class="mt-1 text-lg font-semibold text-obsidian">Course admission ledgers</h3>
         </div>
-        <span class="rounded-full bg-aqua/10 px-3 py-1 text-xs font-semibold text-aqua">{{len $admissionLedgers}} students</span>
+        <span class="rounded-full bg-aqua/10 px-3 py-1 text-xs font-semibold text-aqua">{{len $admissionLedgers}} courses</span>
       </div>
       <div class="grid gap-4 xl:grid-cols-2">
         {{range $admissionLedgers}}
@@ -261,8 +261,8 @@
             </div>
           </div>
           <div class="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
-            <p class="text-sm text-slate/55">{{.EntryCount}} payment entries</p>
-            <a href="{{$ledgerURL}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-aqua/20 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-aqua/10">Open student ledger</a>
+            <p class="text-sm text-slate/55">{{.EntryCount}} admission payments</p>
+            <a href="{{$ledgerURL}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-aqua/20 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-aqua/10">Open course ledger</a>
           </div>
         </article>
         {{end}}

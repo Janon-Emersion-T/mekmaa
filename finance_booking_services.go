@@ -93,6 +93,7 @@ func (a *App) listFinanceTransactionsWithOptions(ctx context.Context, filter Fin
 			&transaction.StudentName,
 			&transaction.StudentID,
 			&transaction.AdmissionID,
+			&transaction.TrainingProgramID,
 			&transaction.TrainingProgramName,
 			&transaction.BookingActivity,
 			&transaction.OneToOneOfferingID,

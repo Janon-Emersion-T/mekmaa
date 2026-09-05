@@ -3188,7 +3188,7 @@ func TestAdmissionPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 		GuardianRelationship:  "Parent",
 		GuardianContactNumber: "0770000000",
 	}
-	admissionID, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", 0)
+	_, transactionID, err := app.createAdmissionWithOptionalPayment(admission, true, "cash", 0)
 	if err != nil {
 		t.Fatalf("create admission with payment: %v", err)
 	}
@@ -3205,18 +3205,9 @@ func TestAdmissionPaymentPostsCashToCashInHandExactlyOnce(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("expected one admission ledger row, got %d", count)
 	}
-	day := time.Now().Format("2006-01-02")
-	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers(day, day, nil)
-	if err != nil {
-		t.Fatalf("build specified admission ledgers: %v", err)
-	}
-	ledger := findFinanceSpecifiedLedger(ledgers, "admission-"+strconv.FormatInt(admissionID, 10))
-	if ledger == nil || ledger.Title != "Admission Student · STD-TEST-001" || ledger.CreditTotal != 1500 || ledger.EntryCount != 1 {
-		t.Fatalf("unexpected individual admission ledger: %#v", ledger)
-	}
 }
 
-func TestSpecifiedLedgersGroupEnrollmentAdmissionPaymentByStudent(t *testing.T) {
+func TestSpecifiedLedgersGroupEnrollmentAdmissionPaymentsByCourse(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	divisionID, err := divisionIDByCode(app.db, divisionCodeKEC)
 	if err != nil {
@@ -3258,14 +3249,35 @@ func TestSpecifiedLedgersGroupEnrollmentAdmissionPaymentByStudent(t *testing.T) 
 	}, true, "cash", recordedAt, 0); err != nil {
 		t.Fatalf("create paid enrollment: %v", err)
 	}
+	secondAdmissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-LEDGER-ENROLLMENT-002",
+		FullName:              "Second Course Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2014-02-10",
+		Gender:                "male",
+		PracticeType:          "student",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771111235",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create second student: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPaymentAt(StudentEnrollment{
+		AdmissionID:       secondAdmissionID,
+		TrainingProgramID: programID,
+	}, true, "cash", recordedAt, 0); err != nil {
+		t.Fatalf("create second paid enrollment: %v", err)
+	}
 
 	ledgers, _, _, err := app.buildFinanceSpecifiedLedgers("2026-08-01", "2026-08-31", nil)
 	if err != nil {
 		t.Fatalf("build specified ledgers: %v", err)
 	}
-	ledger := findFinanceSpecifiedLedger(ledgers, "admission-"+strconv.FormatInt(admissionID, 10))
-	if ledger == nil || ledger.Title != "Enrollment Ledger Student · STD-LEDGER-ENROLLMENT-001" || ledger.CreditTotal != 2500 || ledger.EntryCount != 1 {
-		t.Fatalf("unexpected enrollment admission ledger: %#v", ledger)
+	ledger := findFinanceSpecifiedLedger(ledgers, "admission-course-"+strconv.FormatInt(programID, 10))
+	if ledger == nil || ledger.Title != "Individual Ledger Programme" || ledger.CreditTotal != 5000 || ledger.EntryCount != 2 {
+		t.Fatalf("unexpected course admission ledger: %#v", ledger)
 	}
 }
 
@@ -10687,8 +10699,8 @@ func TestBuildFinanceSpecifiedLedgersGroupsCoreLedgers(t *testing.T) {
 		t.Fatalf("unexpected bookings ledger: %#v", ledger)
 	}
 	admissionLedgers := financeSpecifiedAdmissionLedgers(ledgers)
-	if len(admissionLedgers) != 1 || admissionLedgers[0].CreditTotal != 1500 || admissionLedgers[0].EntryCount != 1 {
-		t.Fatalf("unexpected individual admission ledgers: %#v", admissionLedgers)
+	if len(admissionLedgers) != 0 {
+		t.Fatalf("unlinked admission payment must not appear in a course ledger: %#v", admissionLedgers)
 	}
 	if _, exists := found["admissions"]; exists {
 		t.Fatal("admission payments must not be grouped in a shared admissions ledger")
@@ -10713,13 +10725,13 @@ func TestBuildFinanceSpecifiedLedgersGroupsCoreLedgers(t *testing.T) {
 	}
 }
 
-func TestFinanceSpecifiedAdmissionLedgersSortByStudentName(t *testing.T) {
+func TestFinanceSpecifiedAdmissionLedgersSortByCourseName(t *testing.T) {
 	ledgers := financeSpecifiedAdmissionLedgers([]FinanceSpecifiedLedger{
-		{Key: "admission-10", Title: "Zara Student"},
-		{Key: "admission-2", Title: "Amal Student"},
+		{Key: "admission-course-10", Title: "Zara Course"},
+		{Key: "admission-course-2", Title: "Amal Course"},
 		{Key: "bookings_all_games", Title: "Bookings"},
 	})
-	if len(ledgers) != 2 || ledgers[0].Key != "admission-2" || ledgers[1].Key != "admission-10" {
+	if len(ledgers) != 2 || ledgers[0].Key != "admission-course-2" || ledgers[1].Key != "admission-course-10" {
 		t.Fatalf("admission ledger ordering = %#v", ledgers)
 	}
 }

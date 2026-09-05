@@ -100,27 +100,23 @@ func financeSpecifiedLedgerDefinitions() []financeSpecifiedLedgerDefinition {
 }
 
 func financeSpecifiedAdmissionLedgerSeed(tx FinanceTransaction) financeSpecifiedLedgerSeed {
-	studentName := strings.TrimSpace(tx.StudentName)
-	studentID := strings.TrimSpace(tx.StudentID)
-	if studentName == "" {
-		studentName = "Admission #" + strconv.FormatInt(tx.AdmissionID, 10)
-	}
-	if studentID != "" {
-		studentName += " · " + studentID
+	programmeName := strings.TrimSpace(tx.TrainingProgramName)
+	if programmeName == "" {
+		programmeName = "Course #" + strconv.FormatInt(tx.TrainingProgramID, 10)
 	}
 	return financeSpecifiedLedgerSeed{
-		Key:         "admission-" + strconv.FormatInt(tx.AdmissionID, 10),
-		Title:       studentName,
-		Description: "Admission payment history for this student.",
+		Key:         "admission-course-" + strconv.FormatInt(tx.TrainingProgramID, 10),
+		Title:       programmeName,
+		Description: "Admission collections for this course.",
 		Nature:      "income",
 	}
 }
 
 func financeSpecifiedAdmissionFallbackLedgerSeed(tx FinanceTransaction) financeSpecifiedLedgerSeed {
 	return financeSpecifiedLedgerSeed{
-		Key:         "admission-transaction-" + strconv.FormatInt(tx.ID, 10),
-		Title:       "Admission payment · " + strings.TrimSpace(tx.ReferenceNumber),
-		Description: "Admission payment with no linked student record.",
+		Key:         "admission-unclassified-" + strconv.FormatInt(tx.ID, 10),
+		Title:       "Unclassified admission · " + strings.TrimSpace(tx.ReferenceNumber),
+		Description: "Admission payment with no linked course record.",
 		Nature:      "income",
 	}
 }
@@ -388,7 +384,7 @@ func (a *App) buildFinanceSpecifiedLedgers(
 
 		if tx.Category == "admission_payment" {
 			seed := financeSpecifiedAdmissionFallbackLedgerSeed(tx)
-			if tx.AdmissionID > 0 {
+			if tx.TrainingProgramID > 0 {
 				seed = financeSpecifiedAdmissionLedgerSeed(tx)
 			}
 			ledger, exists := dynamic[seed.Key]
@@ -493,7 +489,7 @@ func isFinanceSpecifiedSystemLedgerKey(key string) bool {
 }
 
 func isFinanceSpecifiedAdmissionLedgerKey(key string) bool {
-	return strings.HasPrefix(strings.TrimSpace(key), "admission-")
+	return strings.HasPrefix(strings.TrimSpace(key), "admission-course-")
 }
 
 func financeSpecifiedAdmissionLedgers(
