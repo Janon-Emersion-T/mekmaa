@@ -35,7 +35,13 @@ func (a *App) payrollManagementHandler(
 		return
 	}
 
+	staff, err := a.listPayrollEligibleUsersVisibleTo(user)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	data := a.newTemplateData(w, r, user)
+	data.Users = staff
 	selectedStatus := strings.TrimSpace(r.URL.Query().Get("status"))
 	selectedYear := strings.TrimSpace(r.URL.Query().Get("year"))
 	yearSeen := make(map[string]struct{})

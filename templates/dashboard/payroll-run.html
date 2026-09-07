@@ -125,29 +125,7 @@
 
         <div class="flex flex-wrap gap-2">
         {{if payrollRunAllowsGenerate .PayrollRun}}
-        <form
-          method="post"
-          action="/admin/payroll/generate"
-        >
-          <input
-            type="hidden"
-            name="csrf_token"
-            value="{{.CSRFToken}}"
-          >
-
-          <input
-            type="hidden"
-            name="id"
-            value="{{.PayrollRun.ID}}"
-          >
-
-          <button
-            type="submit"
-            class="inline-flex items-center justify-center rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            Generate payroll
-          </button>
-        </form>
+        <a href="/admin/staff/salary-payments" class="inline-flex rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Generate staff salary</a>
         {{end}}
         {{if payrollRunAllowsRecalculate .PayrollRun}}
         <form method="post" action="/admin/payroll/recalculate">

@@ -1278,15 +1278,40 @@ func (a *App) syncPayrollRunPayments(
 	run PayrollRun,
 	actorUserID int64,
 	allowExisting bool,
+	selectedUserIDs ...int64,
 ) error {
+	selectedUserID := int64(0)
+	if len(selectedUserIDs) > 0 {
+		selectedUserID = selectedUserIDs[0]
+	}
 	profiles, err := a.listStaffSalaryProfiles()
 	if err != nil {
 		return err
 	}
 
+	generatedUsers := make(map[int64]bool)
+	if allowExisting {
+		rows, err := a.queryDB("SELECT DISTINCT user_id FROM payroll_payments WHERE payroll_run_id = ?", run.ID)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			generatedUsers[id] = true
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		rows.Close()
+	}
 	applicable := make([]StaffSalaryProfile, 0, len(profiles))
 	for _, profile := range profiles {
-		if salaryProfileAppliesToPayrollPeriod(profile, run.PeriodStart, run.PeriodEnd) {
+		if (!allowExisting || generatedUsers[profile.UserID]) && (selectedUserID == 0 || profile.UserID == selectedUserID) && salaryProfileAppliesToPayrollPeriod(profile, run.PeriodStart, run.PeriodEnd) {
 			applicable = append(applicable, profile)
 		}
 	}
@@ -1333,9 +1358,9 @@ func (a *App) syncPayrollRunPayments(
 			status,
 			COALESCE(notes, '')
 		FROM payroll_payments
-		WHERE payroll_run_id = ?
+		WHERE payroll_run_id = ? AND (? = 0 OR user_id = ?)
 		ORDER BY id ASC
-	`, run.ID)
+	`, run.ID, selectedUserID, selectedUserID)
 	if err != nil {
 		return err
 	}
