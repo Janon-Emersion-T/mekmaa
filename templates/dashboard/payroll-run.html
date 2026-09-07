@@ -293,6 +293,7 @@
                 {{if or (eq .Status "approved") (eq .Status "paid") (eq .Status "void")}}
                 <a href="/admin/payroll/slip?id={{.ID}}" target="_blank" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Slip</a>
                 <a href="/admin/payroll/report?id={{.ID}}" target="_blank" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">A4 report</a>
+ <a href="/admin/payroll/student-report?id={{.ID}}" target="_blank" rel="noopener" class="mt-2 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700">Student names</a>
                 {{end}}
               </div>
             </td>
@@ -742,6 +743,7 @@
             >
               Print A4 report
             </a>
+ <a href="/admin/payroll/student-report?id={{.ID}}" target="_blank" rel="noopener" class="mt-2 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700">Student names</a>
 
             {{if payrollPaymentAllowsVoid .}}
             <form method="post" action="/admin/payroll/void" class="mt-4 space-y-2">
@@ -772,6 +774,7 @@
             <a href="/admin/payroll/report?id={{.ID}}" target="_blank" class="mt-3 inline-flex rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-800 shadow-sm">
               View A4 report
             </a>
+ <a href="/admin/payroll/student-report?id={{.ID}}" target="_blank" rel="noopener" class="mt-2 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700">Student names</a>
           </div>
         </div>
         {{end}}

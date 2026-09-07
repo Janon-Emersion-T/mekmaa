@@ -1,0 +1,23 @@
+{{define "payroll-student-report"}}{{template "base" .}}{{end}}
+{{define "content"}}
+<style>
+@page { size: A4 portrait; margin: 18mm; }
+@media print {
+  html, body { background: white !important; }
+  .no-print { display: none !important; }
+  .hide-chrome-shell { display: block !important; padding: 0 !important; min-height: 0 !important; }
+  .student-name-report { max-width: none !important; margin: 0 !important; padding: 0 !important; }
+}
+.student-name-report li { break-inside: avoid; }
+</style>
+<main class="student-name-report mx-auto w-full max-w-3xl bg-white p-8 text-obsidian">
+  <div class="no-print mb-6 flex gap-3 text-sm">
+    <a href="/admin/payroll/run?id={{.PayrollRun.ID}}" class="rounded-lg border border-slate/20 px-4 py-2">Back to payroll</a>
+    <button type="button" onclick="window.print()" class="rounded-lg bg-obsidian px-4 py-2 text-white">Print / Save PDF</button>
+  </div>
+  <h1 class="mb-8 text-center text-xl font-semibold">Student Names — {{.PayrollPayment.UserName}} · {{.PayrollRun.Label}}</h1>
+  <ul class="list-none space-y-2 text-base">
+    {{range .PayrollStudentNames}}<li>{{.}}</li>{{else}}<li>No student names were recorded in this payroll calculation.</li>{{end}}
+  </ul>
+</main>
+{{end}}

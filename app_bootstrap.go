@@ -2001,6 +2001,7 @@ type TemplateData struct {
 	PayrollRun                   *PayrollRun
 	PayrollPayments              []PayrollPayment
 	PayrollPayment               *PayrollPayment
+	PayrollStudentNames          []string
 	PayrollFinanceTransaction    *FinanceTransaction
 	Coaches                      []User
 	CoachAttendanceRecords       []CoachAttendanceRecord
