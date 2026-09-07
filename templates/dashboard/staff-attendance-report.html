@@ -239,7 +239,7 @@
       </h2>
 
       <p class="mt-1 text-sm text-slate/60">
-        Present and Late count as attended. Excused entries are excluded from the attendance-percentage denominator.
+        Recorded hours include timed work sessions only; older daily entries have no recorded hours. Present and Late count as attended. Excused entries are excluded from the attendance-percentage denominator.
       </p>
 
     </div>
@@ -272,6 +272,8 @@
               Excused
             </th>
 
+            <th class="px-4 py-4 text-center">Work sessions</th>
+            <th class="px-4 py-4 text-center">Recorded hours</th>
             <th class="px-4 py-4 text-center">
               Attendance
             </th>
@@ -323,6 +325,8 @@
             </td>
 
 
+            <td class="px-4 py-4 text-center">{{.SessionCount}}</td>
+            <td class="px-4 py-4 text-center">{{printf "%.2f" .WorkedHours}}</td>
             <td class="px-4 py-4 text-center">
               <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-3 py-1 text-sm font-semibold text-obsidian">
                 {{printf "%.1f%%" .AttendancePercentage}}
@@ -347,7 +351,7 @@
 
           <tr>
             <td
-              colspan="7"
+              colspan="9"
               class="px-6 py-12 text-center text-sm text-slate/55"
             >
               No staff are available in this workspace.
@@ -429,6 +433,12 @@
 
 
         <div>
+          {{if .Sessions}}
+          <div class="my-3 text-sm text-slate/70">
+            <p class="font-semibold">{{len .Sessions}} work sessions · {{printf "%.2f" .WorkedHours}} hours</p>
+            {{range .Sessions}}<p class="mt-1">{{.StartTime}}–{{.EndTime}}</p>{{end}}
+          </div>
+          {{else}}<p class="my-3 text-xs text-slate/55">Work hours not recorded.</p>{{end}}
           {{if .Note}}
           <p class="text-sm leading-6 text-slate/70">
             {{.Note}}

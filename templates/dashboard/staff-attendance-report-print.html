@@ -93,7 +93,7 @@
     <div class="border-b border-slate/10 px-5 py-5 sm:px-7">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Monthly breakdown</p>
       <h2 class="mt-2 text-xl font-semibold text-obsidian">{{.StaffAttendanceMonth}}</h2>
-      <p class="mt-1 text-sm text-slate/60">Present and Late count as attended. Excused entries are excluded from the attendance-percentage denominator.</p>
+      <p class="mt-1 text-sm text-slate/60">Recorded hours include timed work sessions only; older daily entries have no recorded hours. Present and Late count as attended. Excused entries are excluded from the attendance-percentage denominator.</p>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full min-w-[900px] border-collapse text-left text-sm">
@@ -104,6 +104,8 @@
             <th class="px-4 py-4 text-center">Absent</th>
             <th class="px-4 py-4 text-center">Late</th>
             <th class="px-4 py-4 text-center">Excused</th>
+            <th class="px-4 py-4 text-center">Work sessions</th>
+            <th class="px-4 py-4 text-center">Recorded hours</th>
             <th class="px-5 py-4 text-center sm:px-7">Attendance</th>
           </tr>
         </thead>
@@ -118,11 +120,13 @@
             <td class="px-4 py-4 text-center font-semibold text-rose-700">{{.AbsentCount}}</td>
             <td class="px-4 py-4 text-center font-semibold text-amber-700">{{.LateCount}}</td>
             <td class="px-4 py-4 text-center font-semibold text-sky-700">{{.ExcusedCount}}</td>
+            <td class="px-4 py-4 text-center">{{.SessionCount}}</td>
+            <td class="px-4 py-4 text-center">{{printf "%.2f" .WorkedHours}}</td>
             <td class="px-5 py-4 text-center sm:px-7">{{printf "%.1f%%" .AttendancePercentage}}</td>
           </tr>
           {{else}}
           <tr>
-            <td colspan="6" class="px-6 py-12 text-center text-sm text-slate/55">No staff are available in this workspace.</td>
+            <td colspan="8" class="px-6 py-12 text-center text-sm text-slate/55">No staff are available in this workspace.</td>
           </tr>
           {{end}}
         </tbody>
@@ -156,6 +160,12 @@
           {{end}}
         </div>
         <div>
+          {{if .Sessions}}
+          <div class="my-3 text-sm text-slate/70">
+            <p class="font-semibold">{{len .Sessions}} work sessions · {{printf "%.2f" .WorkedHours}} hours</p>
+            {{range .Sessions}}<p class="mt-1">{{.StartTime}}–{{.EndTime}}</p>{{end}}
+          </div>
+          {{else}}<p class="my-3 text-xs text-slate/55">Work hours not recorded.</p>{{end}}
           {{if .Note}}
           <p class="text-sm leading-6 text-slate/70">{{.Note}}</p>
           {{else}}

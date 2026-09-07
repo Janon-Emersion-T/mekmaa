@@ -6490,7 +6490,7 @@ func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if durationHours > 1 {
-		a.setFlash(w, fmt.Sprintf("%d consecutive schedules created.", durationHours))
+		a.setFlash(w, fmt.Sprintf("%g-hour booking created.", durationHours))
 	} else {
 		a.setFlash(w, "Schedule created.")
 	}
@@ -6519,6 +6519,12 @@ func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
 
 	schedule := scheduleFromRequest(r)
 	schedule.ID = scheduleID
+	current, err := a.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		a.writeBookingError(w, r, "edit", &schedule, "Booking could not be loaded.", http.StatusBadRequest)
+		return
+	}
+	schedule.DurationMinutes = current.DurationMinutes
 	if err := validateSpaceScheduleInput(schedule); err != nil {
 		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)
 		return

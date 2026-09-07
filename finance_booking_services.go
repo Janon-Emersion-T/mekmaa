@@ -1339,7 +1339,7 @@ func (a *App) listBookingRequestChangesForScheduleIDs(scheduleIDs []int64) ([]Bo
 
 func (a *App) listActiveSpaceSchedules() ([]SpaceSchedule, error) {
 	rows, err := a.queryDB(`
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		SELECT id, slot_date, slot_hour, duration_minutes, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       created_at, updated_at
 		FROM space_schedules
@@ -1358,6 +1358,7 @@ func (a *App) listActiveSpaceSchedules() ([]SpaceSchedule, error) {
 			&schedule.ID,
 			&schedule.SlotDate,
 			&schedule.SlotHour,
+			&schedule.DurationMinutes,
 			&schedule.EntryType,
 			&schedule.Activity,
 			&schedule.Quantity,
@@ -1392,7 +1393,7 @@ func (a *App) listPendingSpaceSchedulesByDivisionIDs(divisionIDs []int64) ([]Spa
 		return nil, nil
 	}
 	rows, err := a.queryDB(`
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		SELECT id, slot_date, slot_hour, duration_minutes, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
 		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
@@ -1415,6 +1416,7 @@ func (a *App) listPendingSpaceSchedulesByDivisionIDs(divisionIDs []int64) ([]Spa
 			&schedule.ID,
 			&schedule.SlotDate,
 			&schedule.SlotHour,
+			&schedule.DurationMinutes,
 			&schedule.EntryType,
 			&schedule.Activity,
 			&schedule.Quantity,
@@ -3365,7 +3367,7 @@ func querySchedulesForSlot(
 	excludeID int64,
 ) ([]SpaceSchedule, error) {
 	query := `
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		SELECT id, slot_date, slot_hour, duration_minutes, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
 		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
@@ -3394,6 +3396,7 @@ func querySchedulesForSlot(
 			&schedule.ID,
 			&schedule.SlotDate,
 			&schedule.SlotHour,
+			&schedule.DurationMinutes,
 			&schedule.EntryType,
 			&schedule.Activity,
 			&schedule.Quantity,
@@ -4167,7 +4170,7 @@ func (a *App) createSpaceSchedule(
 
 func (a *App) createSpaceSchedules(
 	schedule SpaceSchedule,
-	durationHours int,
+	durationHours float64,
 ) error {
 	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
@@ -4194,7 +4197,7 @@ func (a *App) createSpaceSchedules(
 			continue
 		}
 		if candidates[i].QuotedPrice > 0 {
-			candidates[i].QuotedPrice = normalizeMoney(candidates[i].QuotedPrice)
+			candidates[i].QuotedPrice = normalizeMoney(candidates[i].QuotedPrice * candidates[i].Duration().Hours())
 			continue
 		}
 		quotedPrice, err := a.bookingQuote(candidates[i])
@@ -4260,6 +4263,7 @@ func (a *App) createSpaceSchedules(
 			INSERT INTO space_schedules (
 				slot_date,
 				slot_hour,
+				duration_minutes,
 				entry_type,
 				activity,
 				quantity,
@@ -4280,10 +4284,11 @@ func (a *App) createSpaceSchedules(
 				created_at,
 				updated_at
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			candidate.SlotDate,
 			candidate.SlotHour,
+			candidate.DurationMinutes,
 			candidate.EntryType,
 			candidate.Activity,
 			candidate.Quantity,
@@ -5720,6 +5725,12 @@ func (a *App) updateStudentGroup(
 func (a *App) updateSpaceSchedule(
 	schedule SpaceSchedule,
 ) error {
+	current, err := a.findSpaceScheduleByID(schedule.ID)
+	if err != nil {
+		return err
+	}
+	schedule.DurationMinutes = current.DurationMinutes
+
 	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
 	if err != nil {
@@ -6777,7 +6788,7 @@ func (a *App) rescheduleBookingRequest(
 	if rule == nil {
 		return nil, errors.New("pricing is not configured for this booking")
 	}
-	updated.QuotedPrice = priceForRuleSlot(*rule, settings, updated.SlotDate, updated.SlotHour)
+	updated.QuotedPrice = normalizeMoney(priceForRuleSlot(*rule, settings, updated.SlotDate, updated.SlotHour) * updated.Duration().Hours())
 	if updated.QuotedPrice <= 0 {
 		return nil, errors.New("a positive price is required before confirming this booking")
 	}

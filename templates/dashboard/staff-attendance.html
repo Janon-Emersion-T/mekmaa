@@ -14,9 +14,9 @@
       </h1>
 
       <p class="mt-2 text-sm leading-6 text-slate/65 sm:text-base">
-        Record daily attendance for
+        Record work sessions for
         {{workspaceStaffLabel .User .SelectedDivision .SelectedDivisionScope}}
-        and other operational staff in this workspace.
+        and other operational staff. Add arrival and leaving times for each visit, including short shifts.
       </p>
     </div>
 
@@ -44,7 +44,7 @@
 
       <div>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">
-          Daily register
+          Daily sessions & attendance
         </p>
 
         <h2 class="mt-2 text-xl font-semibold text-obsidian">
@@ -188,7 +188,7 @@
 
         {{$record := coachAttendanceRecordFor $.StaffAttendanceRecords .ID}}
 
-        <article class="rounded-[1.5rem] border border-slate/10 bg-cloud/45 p-4 sm:p-5">
+        <article data-staff-sessions data-staff-id="{{.ID}}" class="rounded-[1.5rem] border border-slate/10 bg-cloud/45 p-4 sm:p-5">
 
           <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_14rem_minmax(0,1fr)] lg:items-center">
 
@@ -224,11 +224,12 @@
                 name="status_{{.ID}}"
                 class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua"
               >
+                {{if not $record.ID}}<option value="" selected>Not recorded</option>{{end}}
                 <option value="present" {{if eq $record.Status "present"}}selected{{end}}>
                   Present
                 </option>
 
-                <option value="absent" {{if eq $record.Status "absent"}}selected{{end}}>
+                <option value="absent" {{if and $record.ID (eq $record.Status "absent")}}selected{{end}}>
                   Absent
                 </option>
 
@@ -263,6 +264,31 @@
 
           </div>
 
+          <div class="mt-4 border-t border-slate/10 pt-4">
+            <input type="hidden" name="sessions_submitted_{{.ID}}" value="1" />
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-obsidian">Work sessions · <span data-session-total>{{printf "%g" $record.SessionHours}}</span> hours</p>
+                <p class="mt-1 text-xs text-slate/60">Add each arrival and leaving time separately. Times must be on this date and cannot overlap.</p>
+                {{if and $record.ID (not $record.Sessions)}}<p class="mt-1 text-xs text-slate/60">Daily attendance recorded; work hours were not recorded.</p>{{end}}
+              </div>
+              <button type="button" data-add-session class="rounded-xl border border-slate/10 bg-white px-4 py-2 text-sm font-semibold text-obsidian">+ Add session</button>
+            </div>
+            <div data-session-list class="mt-3 space-y-2">
+              {{$staffID := .ID}}
+              {{range $record.Sessions}}
+              <div data-session-row class="flex flex-wrap items-end gap-3 rounded-xl bg-white p-3">
+                <label class="text-xs font-medium text-slate/65">Arrival
+                  <input type="time" name="session_start_{{$staffID}}" value="{{.StartTime}}" required class="mt-1 block h-11 rounded-xl border border-slate/10 px-3 text-sm text-obsidian" />
+                </label>
+                <label class="text-xs font-medium text-slate/65">Leaving
+                  <input type="time" name="session_end_{{$staffID}}" value="{{.EndTime}}" required class="mt-1 block h-11 rounded-xl border border-slate/10 px-3 text-sm text-obsidian" />
+                </label>
+                <button type="button" data-remove-session class="h-11 px-3 text-sm font-medium text-rose-700">Remove session</button>
+              </div>
+              {{end}}
+            </div>
+          </div>
         </article>
 
         {{end}}
@@ -299,4 +325,66 @@
   </section>
 
 </section>
+<template id="staff-session-row-template">
+  <div data-session-row class="flex flex-wrap items-end gap-3 rounded-xl bg-white p-3">
+    <label class="text-xs font-medium text-slate/65">Arrival
+      <input type="time" data-session-start required class="mt-1 block h-11 rounded-xl border border-slate/10 px-3 text-sm text-obsidian" />
+    </label>
+    <label class="text-xs font-medium text-slate/65">Leaving
+      <input type="time" data-session-end required class="mt-1 block h-11 rounded-xl border border-slate/10 px-3 text-sm text-obsidian" />
+    </label>
+    <button type="button" data-remove-session class="h-11 px-3 text-sm font-medium text-rose-700">Remove session</button>
+  </div>
+</template>
+<script>
+(() => {
+  const template = document.getElementById("staff-session-row-template");
+  const minutes = value => {
+    if (!value) return null;
+    const [hours, mins] = value.split(":").map(Number);
+    return hours * 60 + mins;
+  };
+  document.querySelectorAll("[data-staff-sessions]").forEach(card => {
+    const list = card.querySelector("[data-session-list]");
+    const status = card.querySelector("select");
+    const update = () => {
+      let total = 0;
+      const ranges = [];
+      list.querySelectorAll("[data-session-row]").forEach(row => {
+        const [start, end] = row.querySelectorAll('input[type="time"]');
+        start.setCustomValidity("");
+        end.setCustomValidity("");
+        const from = minutes(start.value), to = minutes(end.value);
+        if (from === null || to === null) return;
+        if (to <= from) { end.setCustomValidity("Leaving time must be after arrival on the same day."); return; }
+        if (ranges.some(range => from < range.to && range.from < to)) {
+          start.setCustomValidity("This session overlaps another session.");
+        }
+        ranges.push({from, to});
+        total += to - from;
+      });
+      status.setCustomValidity(ranges.length && !["present", "late"].includes(status.value) ? "Select Present or Late for staff with work sessions." : "");
+      card.querySelector("[data-session-total]").textContent = String(Math.round(total / 60 * 100) / 100);
+    };
+    card.querySelector("[data-add-session]").addEventListener("click", () => {
+      const fragment = template.content.cloneNode(true);
+      fragment.querySelector("[data-session-start]").name = "session_start_" + card.dataset.staffId;
+      fragment.querySelector("[data-session-end]").name = "session_end_" + card.dataset.staffId;
+      list.appendChild(fragment);
+      if (!["present", "late"].includes(status.value)) status.value = "present";
+      list.lastElementChild.querySelector("input").focus();
+      update();
+    });
+    list.addEventListener("click", event => {
+      const remove = event.target.closest("[data-remove-session]");
+      if (!remove) return;
+      remove.closest("[data-session-row]").remove();
+      update();
+    });
+    card.addEventListener("input", update);
+    card.addEventListener("change", update);
+    update();
+  });
+})();
+</script>
 {{end}}

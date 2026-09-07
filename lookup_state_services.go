@@ -1134,7 +1134,7 @@ func findSpaceScheduleByIDQuery(
 	scheduleID int64,
 ) (*SpaceSchedule, error) {
 	query := `
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		SELECT id, slot_date, slot_hour, duration_minutes, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
 		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
@@ -1163,6 +1163,7 @@ func scanSpaceSchedule(row rowScanner) (*SpaceSchedule, error) {
 		&schedule.ID,
 		&schedule.SlotDate,
 		&schedule.SlotHour,
+		&schedule.DurationMinutes,
 		&schedule.EntryType,
 		&schedule.Activity,
 		&schedule.Quantity,

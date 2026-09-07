@@ -33,7 +33,7 @@ func (a *App) bookingQuote(schedule SpaceSchedule) (float64, error) {
 	if amount <= 0 {
 		return 0, errors.New("a positive price is required before creating this booking")
 	}
-	return amount, nil
+	return normalizeMoney(amount * schedule.Duration().Hours()), nil
 }
 
 func money(value float64) string {

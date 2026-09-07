@@ -1308,6 +1308,7 @@ type StudentGroupSessionStaffAssignment struct {
 }
 
 type CoachAttendanceRecord struct {
+	Sessions         []StaffAttendanceSession
 	ID               int64
 	UserID           int64
 	AttendanceDate   string
@@ -1399,6 +1400,7 @@ type CourtClosure struct {
 }
 
 type SpaceSchedule struct {
+	DurationMinutes         int
 	ID                      int64
 	SlotDate                string
 	SlotHour                string
@@ -2174,7 +2176,7 @@ type TemplateData struct {
 	BookingOptions                   []BookingOption
 	Activities                       []string
 	Hours                            []string
-	BookingDurationHours             int
+	BookingDurationHours             float64
 	CalendarDate                     string
 	PreviousDate                     string
 	NextDate                         string

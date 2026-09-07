@@ -12,9 +12,10 @@ import (
 )
 
 type StaffAttendanceInput struct {
-	UserID int64
-	Status string
-	Note   string
+	Sessions []StaffAttendanceSession
+	UserID   int64
+	Status   string
+	Note     string
 }
 
 func normalizeStaffAttendanceStatus(value string) string {
@@ -126,7 +127,16 @@ func (a *App) listStaffAttendanceRecordsByUserIDs(
 		records = append(records, record)
 	}
 
-	return records, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := a.hydrateStaffAttendanceSessions(records); err != nil {
+		return nil, err
+	}
+	return records, nil
 }
 
 func (a *App) saveStaffAttendanceRecords(
@@ -185,11 +195,28 @@ func (a *App) saveStaffAttendanceRecords(
 			)
 		}
 
+		sessions, err := normalizeStaffAttendanceSessions(input.Sessions, status)
+		if err != nil {
+			return fmt.Errorf("staff member %d: %w", input.UserID, err)
+		}
+		if sessions != nil || status == "absent" || status == "excused" {
+			if _, err := a.execTxDB(tx, "DELETE FROM staff_attendance_sessions WHERE user_id = ? AND attendance_date = ?", input.UserID, attendanceDate); err != nil {
+				return err
+			}
+			for _, session := range sessions {
+				if _, err := a.execTxDB(tx, `INSERT INTO staff_attendance_sessions
+					(user_id, attendance_date, start_time, end_time, recorded_by_user_id, updated_at)
+					VALUES (?, ?, ?, ?, ?, ?)`, input.UserID, attendanceDate, session.StartTime, session.EndTime, recordedByUserID, now); err != nil {
+					return err
+				}
+			}
+		}
+
 		note := strings.TrimSpace(input.Note)
 
 		// The legacy table does not rely on a unique(user,date)
 		// constraint, so replacement is explicit and deterministic.
-		if _, err := tx.Exec(`
+		if _, err := a.execTxDB(tx, `
 			DELETE FROM coach_attendance_records
 			WHERE user_id = ?
 			  AND attendance_date = ?
@@ -200,7 +227,7 @@ func (a *App) saveStaffAttendanceRecords(
 			return err
 		}
 
-		if _, err := tx.Exec(`
+		if _, err := a.execTxDB(tx, `
 			INSERT INTO coach_attendance_records (
 				user_id,
 				attendance_date,
@@ -265,6 +292,25 @@ func staffAttendanceInputsFromRequest(
 				r.FormValue("status_" + id),
 			)
 
+		starts, ends := r.Form["session_start_"+id], r.Form["session_end_"+id]
+		if len(starts) != len(ends) {
+			return nil, fmt.Errorf("incomplete sessions for %s", user.Name)
+		}
+		var sessions []StaffAttendanceSession
+		if r.FormValue("sessions_submitted_"+id) == "1" || len(starts) > 0 {
+			sessions = make([]StaffAttendanceSession, 0, len(starts))
+			for i := range starts {
+				sessions = append(sessions, StaffAttendanceSession{StartTime: starts[i], EndTime: ends[i]})
+			}
+		}
+		if status == "" && len(sessions) == 0 {
+			continue
+		}
+		sessions, err := normalizeStaffAttendanceSessions(sessions, status)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", user.Name, err)
+		}
+
 		if !validStaffAttendanceStatus(status) {
 			return nil, fmt.Errorf(
 				"select a valid attendance status for %s",
@@ -275,8 +321,9 @@ func staffAttendanceInputsFromRequest(
 		inputs = append(
 			inputs,
 			StaffAttendanceInput{
-				UserID: user.ID,
-				Status: status,
+				UserID:   user.ID,
+				Sessions: sessions,
+				Status:   status,
 				Note: strings.TrimSpace(
 					r.FormValue("note_" + id),
 				),
@@ -409,7 +456,7 @@ func (a *App) staffAttendanceManagementHandler(
 
 	data.Title = "Staff Attendance"
 	data.Description =
-		"Record daily attendance for operational staff."
+		"Record work sessions and daily attendance for operational staff."
 	data.StaffAttendanceUsers = staff
 	data.StaffAttendanceRecords = records
 	data.AttendanceDate = attendanceDate

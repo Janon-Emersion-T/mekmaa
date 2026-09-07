@@ -689,7 +689,7 @@ func buildAdminCalendarItem(
 	item := AdminCalendarItem{
 		ID:             schedule.ID,
 		Title:          schedule.Title,
-		Summary:        scheduleSummary(schedule),
+		Summary:        fmt.Sprintf("%s · %g hours", scheduleSummary(schedule), schedule.Duration().Hours()),
 		Status:         schedule.Status,
 		EntryType:      schedule.EntryType,
 		RequesterName:  schedule.RequesterName,

@@ -329,6 +329,16 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (parent_coach_id) REFERENCES users(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS staff_attendance_sessions (
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			attendance_date TEXT NOT NULL,
+			start_time TEXT NOT NULL,
+			end_time TEXT NOT NULL,
+			recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY (user_id, attendance_date, start_time),
+			CHECK (end_time > start_time)
+		)`,
 		`CREATE TABLE IF NOT EXISTS coach_attendance_records (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,
@@ -1888,6 +1898,7 @@ ON court_closures(activity, active, closure_date)`,
 		name       string
 		definition string
 	}{
+		{name: "duration_minutes", definition: "INTEGER NOT NULL DEFAULT 60 CHECK (duration_minutes IN (30, 60))"},
 		{name: "status", definition: "TEXT NOT NULL DEFAULT 'confirmed'"},
 		{name: "requester_name", definition: "TEXT NOT NULL DEFAULT ''"},
 		{name: "requester_email", definition: "TEXT NOT NULL DEFAULT ''"},

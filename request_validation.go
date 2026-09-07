@@ -53,22 +53,25 @@ func bookingSlotEndTime(slotDate string, slotHour string) (time.Time, error) {
 	return start.Add(bookingSlotDuration), nil
 }
 
-func parseBookingDurationHours(value string) (int, error) {
+func parseBookingDurationHours(value string) (float64, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return 1, nil
 	}
-	hours, err := strconv.Atoi(value)
-	if err != nil || hours <= 0 {
+	hours, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(hours) || math.IsInf(hours, 0) || hours < 1 {
 		return 0, errors.New("booking hours must be at least 1")
 	}
 	if hours > 12 {
 		return 0, errors.New("booking hours cannot exceed 12")
 	}
+	if math.Mod(hours, 0.5) != 0 {
+		return 0, errors.New("booking hours must use half-hour increments")
+	}
 	return hours, nil
 }
 
-func bookingDurationHoursFromRequest(r *http.Request) int {
+func bookingDurationHoursFromRequest(r *http.Request) float64 {
 	if r == nil {
 		return 1
 	}
@@ -81,8 +84,8 @@ func bookingDurationHoursFromRequest(r *http.Request) int {
 	return 1
 }
 
-func consecutiveBookingSchedules(schedule SpaceSchedule, durationHours int) ([]SpaceSchedule, error) {
-	durationHours, err := parseBookingDurationHours(strconv.Itoa(durationHours))
+func consecutiveBookingSchedules(schedule SpaceSchedule, durationHours float64) ([]SpaceSchedule, error) {
+	durationHours, err := parseBookingDurationHours(strconv.FormatFloat(durationHours, 'f', -1, 64))
 	if err != nil {
 		return nil, err
 	}
@@ -90,8 +93,8 @@ func consecutiveBookingSchedules(schedule SpaceSchedule, durationHours int) ([]S
 	if err != nil {
 		return nil, errors.New("valid booking date and time are required")
 	}
-	schedules := make([]SpaceSchedule, 0, durationHours)
-	for i := 0; i < durationHours; i++ {
+	schedules := make([]SpaceSchedule, 0, int(math.Ceil(durationHours)))
+	for i := 0; float64(i) < durationHours; i++ {
 		slotTime := start.Add(time.Duration(i) * bookingSlotDuration)
 		slotDate := slotTime.Format("2006-01-02")
 		slotHour := slotTime.Format("15:04")
@@ -104,6 +107,7 @@ func consecutiveBookingSchedules(schedule SpaceSchedule, durationHours int) ([]S
 		candidate := schedule
 		candidate.SlotDate = slotDate
 		candidate.SlotHour = slotHour
+		candidate.DurationMinutes = int(math.Min(1, durationHours-float64(i)) * 60)
 		schedules = append(schedules, candidate)
 	}
 	return schedules, nil
@@ -124,7 +128,27 @@ func bookingSlotsOverlap(leftDate, leftHour, rightDate, rightHour string) bool {
 }
 
 func scheduleOverlapsSlot(schedule SpaceSchedule, slotDate string, slotHour string) bool {
-	return bookingSlotsOverlap(schedule.SlotDate, schedule.SlotHour, slotDate, slotHour)
+	return schedulesOverlap(schedule, SpaceSchedule{SlotDate: slotDate, SlotHour: slotHour})
+}
+
+// Legacy schedules without an explicit duration remain one hour.
+func (schedule SpaceSchedule) Duration() time.Duration {
+	if schedule.DurationMinutes > 0 {
+		return time.Duration(schedule.DurationMinutes) * time.Minute
+	}
+	return bookingSlotDuration
+}
+
+func schedulesOverlap(left, right SpaceSchedule) bool {
+	leftStart, err := bookingSlotStartTime(left.SlotDate, left.SlotHour)
+	if err != nil {
+		return false
+	}
+	rightStart, err := bookingSlotStartTime(right.SlotDate, right.SlotHour)
+	if err != nil {
+		return false
+	}
+	return leftStart.Before(rightStart.Add(right.Duration())) && rightStart.Before(leftStart.Add(left.Duration()))
 }
 
 func admissionFromRequest(r *http.Request) Admission {
@@ -1033,6 +1057,11 @@ func courtClosureCoversSlot(
 	slotDate string,
 	slotHour string,
 ) bool {
+	return courtClosureCoversSchedule(closure, SpaceSchedule{SlotDate: slotDate, SlotHour: slotHour})
+}
+
+func courtClosureCoversSchedule(closure CourtClosure, schedule SpaceSchedule) bool {
+	slotDate, slotHour := schedule.SlotDate, schedule.SlotHour
 	if !closure.Active {
 		return false
 	}
@@ -1045,7 +1074,7 @@ func courtClosureCoversSlot(
 	if err != nil {
 		return false
 	}
-	slotEnd := slotStart.Add(bookingSlotDuration)
+	slotEnd := slotStart.Add(schedule.Duration())
 	closureStart, err := bookingSlotStartTime(closure.ClosureDate, closure.StartHour)
 	if err != nil {
 		slotHour = strings.TrimSpace(slotHour)
@@ -1076,11 +1105,7 @@ func validateScheduleAgainstClosures(
 	closures []CourtClosure,
 ) error {
 	for _, closure := range closures {
-		if !courtClosureCoversSlot(
-			closure,
-			schedule.SlotDate,
-			schedule.SlotHour,
-		) {
+		if !courtClosureCoversSchedule(closure, schedule) {
 			continue
 		}
 
@@ -1456,7 +1481,7 @@ func validateSpaceScheduleSlotAgainstLayouts(
 	usage := make(map[string]int)
 
 	for _, schedule := range existing {
-		if !scheduleConsumesCourtCapacity(schedule) {
+		if !scheduleConsumesCourtCapacity(schedule) || (schedule.SlotDate != "" && candidate.SlotDate != "" && !schedulesOverlap(schedule, candidate)) {
 			continue
 		}
 

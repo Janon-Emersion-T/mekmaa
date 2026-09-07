@@ -2953,7 +2953,7 @@ func (a *App) listActiveCourtLayouts() ([]CourtLayout, error) {
 
 func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 	rows, err := a.queryDB(`
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		SELECT id, slot_date, slot_hour, duration_minutes, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
 		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
@@ -2975,6 +2975,7 @@ func (a *App) listSpaceSchedules() ([]SpaceSchedule, error) {
 			&schedule.ID,
 			&schedule.SlotDate,
 			&schedule.SlotHour,
+			&schedule.DurationMinutes,
 			&schedule.EntryType,
 			&schedule.Activity,
 			&schedule.Quantity,
@@ -3010,7 +3011,7 @@ func (a *App) listActiveSpaceSchedulesBetween(
 	endDate string,
 ) ([]SpaceSchedule, error) {
 	rows, err := a.queryDB(`
-		SELECT id, slot_date, slot_hour, entry_type, activity, quantity, title, notes, status,
+		SELECT id, slot_date, slot_hour, duration_minutes, entry_type, activity, quantity, title, notes, status,
 		       requester_name, requester_email, requester_phone, COALESCE(requested_by_user_id, 0), review_note,
 		       COALESCE(customer_message, ''),
 		       status_changed_at, COALESCE(status_changed_by_user_id, 0), COALESCE(status_change_source, ''),
@@ -3034,6 +3035,7 @@ func (a *App) listActiveSpaceSchedulesBetween(
 			&schedule.ID,
 			&schedule.SlotDate,
 			&schedule.SlotHour,
+			&schedule.DurationMinutes,
 			&schedule.EntryType,
 			&schedule.Activity,
 			&schedule.Quantity,

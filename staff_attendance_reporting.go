@@ -11,6 +11,8 @@ import (
 )
 
 type StaffAttendanceReportRow struct {
+	SessionCount         int
+	WorkedHours          float64
 	User                 User
 	PresentCount         int
 	AbsentCount          int
@@ -35,6 +37,8 @@ type StaffAttendanceReportSummary struct {
 }
 
 type StaffAttendanceHistoryRow struct {
+	Sessions         []StaffAttendanceSession
+	WorkedHours      float64
 	ID               int64
 	UserID           int64
 	AttendanceDate   string
@@ -211,7 +215,16 @@ func (a *App) listStaffAttendanceRecordsForMonthByUserIDs(
 		)
 	}
 
-	return records, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := a.hydrateStaffAttendanceSessions(records); err != nil {
+		return nil, err
+	}
+	return records, nil
 }
 
 func buildStaffAttendanceReportRows(
@@ -256,6 +269,8 @@ func buildStaffAttendanceReportRows(
 		}
 
 		row := &rows[index]
+		row.SessionCount += len(record.Sessions)
+		row.WorkedHours += record.SessionHours()
 
 		switch normalizeStaffAttendanceStatus(
 			record.Status,
@@ -360,6 +375,8 @@ func staffAttendanceHistoryForUser(
 			history,
 			StaffAttendanceHistoryRow{
 				ID:             record.ID,
+				Sessions:       record.Sessions,
+				WorkedHours:    record.SessionHours(),
 				UserID:         record.UserID,
 				AttendanceDate: record.AttendanceDate,
 				Status: normalizeStaffAttendanceStatus(
@@ -507,6 +524,8 @@ func writeStaffAttendanceReportCSV(
 			"Counted Days",
 			"Attended Days",
 			"Attendance Percentage",
+			"Work Sessions",
+			"Recorded Hours",
 		},
 	); err != nil {
 		return err
@@ -542,6 +561,8 @@ func writeStaffAttendanceReportCSV(
 					"%.2f",
 					row.AttendancePercentage,
 				),
+				strconv.Itoa(row.SessionCount),
+				fmt.Sprintf("%.2f", row.WorkedHours),
 			},
 		); err != nil {
 			return err
