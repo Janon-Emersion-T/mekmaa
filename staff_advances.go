@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -136,6 +137,9 @@ func (a *App) createStaffAdvance(advance StaffAdvance, actorUserID int64) error 
 	if advance.UserID <= 0 || advance.DivisionID <= 0 || advance.FinanceAccountID <= 0 {
 		return errors.New("staff member, division, and payment account are required")
 	}
+	if math.IsNaN(advance.Amount) || math.IsInf(advance.Amount, 0) || math.IsNaN(advance.InstallmentAmount) || math.IsInf(advance.InstallmentAmount, 0) || advance.InstallmentAmount < 0 {
+		return errors.New("advance and installment amounts must be valid non-negative numbers")
+	}
 	advance.Amount = normalizeMoney(advance.Amount)
 	advance.InstallmentAmount = normalizeMoney(advance.InstallmentAmount)
 	if advance.Amount <= 0 || !validStaffAdvanceRecoveryMode(advance.RecoveryMode) {
@@ -197,6 +201,9 @@ func (a *App) listStaffAdvances() ([]StaffAdvance, error) {
 }
 
 func (a *App) collectStaffAdvanceRepayment(advanceID int64, amount float64, paymentMethod, note string, actorUserID int64) error {
+	if math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return errors.New("repayment amount must be a finite number")
+	}
 	amount = normalizeMoney(amount)
 	if advanceID <= 0 || amount <= 0 {
 		return errors.New("a valid advance and positive repayment amount are required")

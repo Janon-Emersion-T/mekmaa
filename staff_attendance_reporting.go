@@ -70,8 +70,7 @@ func normalizeStaffAttendanceMonth(
 		)
 	}
 
-	currentMonth := time.Now().
-		Format("2006-01")
+	currentMonth := currentBusinessDate()[:7]
 
 	normalized := parsed.Format(
 		"2006-01",
@@ -645,8 +644,7 @@ func (a *App) staffAttendanceReportHandler(
 
 	if month == "" {
 		month =
-			time.Now().
-				Format("2006-01")
+			currentBusinessDate()[:7]
 	}
 
 	month, err =
@@ -655,8 +653,7 @@ func (a *App) staffAttendanceReportHandler(
 		)
 	if err != nil {
 		month =
-			time.Now().
-				Format("2006-01")
+			currentBusinessDate()[:7]
 	}
 
 	records, err :=

@@ -422,7 +422,7 @@ func (a *App) staffAttendanceManagementHandler(
 
 	if attendanceDate == "" {
 		attendanceDate =
-			time.Now().Format("2006-01-02")
+			currentBusinessDate()
 	}
 
 	attendanceDate, err =
@@ -431,7 +431,7 @@ func (a *App) staffAttendanceManagementHandler(
 		)
 	if err != nil {
 		attendanceDate =
-			time.Now().Format("2006-01-02")
+			currentBusinessDate()
 	}
 
 	records, err :=
@@ -461,7 +461,7 @@ func (a *App) staffAttendanceManagementHandler(
 	data.StaffAttendanceRecords = records
 	data.AttendanceDate = attendanceDate
 	data.TodayDate =
-		time.Now().Format("2006-01-02")
+		currentBusinessDate()
 
 	a.render(
 		w,

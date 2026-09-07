@@ -51,6 +51,7 @@ type payrollDailyAttendanceCandidate struct {
 }
 
 type payrollHourlyWorkCandidate struct {
+	SourceType   string
 	RecordID     int64
 	WorkDate     string
 	ClockIn      string
@@ -1014,6 +1015,29 @@ func (a *App) buildHourlyPayrollSnapshot(
 		return payrollCalculatedSnapshot{}, err
 	}
 
+	attendanceRecords, err := a.listPayrollStaffAttendanceIntervals(profile.UserID, periodStart, periodEnd)
+	if err != nil {
+		return payrollCalculatedSnapshot{}, err
+	}
+	for _, attendance := range attendanceRecords {
+		duplicate := false
+		for _, existing := range records {
+			if attendance.WorkDate != existing.WorkDate {
+				continue
+			}
+			if attendance.ClockIn == existing.ClockIn && attendance.ClockOut == existing.ClockOut && existing.BreakMinutes == 0 {
+				duplicate = true
+				break
+			}
+			if attendance.ClockIn < existing.ClockOut && existing.ClockIn < attendance.ClockOut {
+				return payrollCalculatedSnapshot{}, fmt.Errorf("overlapping attendance and work-time records on %s; reconcile the intervals before calculating payroll", attendance.WorkDate)
+			}
+		}
+		if !duplicate {
+			records = append(records, attendance)
+		}
+	}
+
 	sessions, err := a.listPayrollAssistantCoachHourlySessions(profile, periodStart, periodEnd)
 	if err != nil {
 		return payrollCalculatedSnapshot{}, err
@@ -1022,11 +1046,15 @@ func (a *App) buildHourlyPayrollSnapshot(
 	details := make([]PayrollPaymentCalculationDetail, 0, len(records)+len(sessions)+1)
 	totalHours := 0.0
 	for _, record := range records {
+		sourceType := record.SourceType
+		if sourceType == "" {
+			sourceType = "staff_work_time_record"
+		}
 		totalHours += record.PayableHours
 		amount := normalizeMoney(record.PayableHours * profile.Rate)
 		details = append(details, PayrollPaymentCalculationDetail{
 			DetailType:     payrollDetailTypeHourlyWorkRecord,
-			SourceType:     "staff_work_time_record",
+			SourceType:     sourceType,
 			SourceID:       record.RecordID,
 			Label:          fmt.Sprintf("%s · %s-%s", record.WorkDate, record.ClockIn, record.ClockOut),
 			DetailNote:     fmt.Sprintf("Break %d minutes", record.BreakMinutes),
@@ -1036,6 +1064,22 @@ func (a *App) buildHourlyPayrollSnapshot(
 		})
 	}
 	for _, session := range sessions {
+		duplicate := false
+		for _, attendance := range attendanceRecords {
+			if attendance.WorkDate != session.WorkDate {
+				continue
+			}
+			if attendance.ClockIn == session.StartTime && attendance.ClockOut == session.EndTime {
+				duplicate = true
+				break
+			}
+			if attendance.ClockIn < session.EndTime && session.StartTime < attendance.ClockOut {
+				return payrollCalculatedSnapshot{}, fmt.Errorf("overlapping staff attendance and coaching session on %s; reconcile the intervals before calculating payroll", session.WorkDate)
+			}
+		}
+		if duplicate {
+			continue
+		}
 		totalHours += session.PayableHours
 		amount := normalizeMoney(session.PayableHours * profile.Rate)
 		label := fmt.Sprintf("%s · %s · %s-%s", session.WorkDate, session.GroupName, session.StartTime, session.EndTime)
@@ -1068,7 +1112,7 @@ func (a *App) buildHourlyPayrollSnapshot(
 		Status:        PayrollPaymentStatusCalculated,
 		Notes: appendPayrollCalculationNote(
 			profile.Notes,
-			"Hourly salary uses recorded work-time intervals and completed assistant-coach session hours.",
+			"Hourly salary uses staff attendance intervals, recorded work-time intervals and completed assistant-coach sessions. Duplicate attendance intervals are counted once.",
 		),
 		Details: details,
 	}, nil

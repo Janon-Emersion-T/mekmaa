@@ -109,3 +109,33 @@ func (a *App) hydrateStaffAttendanceSessions(records []CoachAttendanceRecord) er
 	}
 	return rows.Err()
 }
+
+// Payroll snapshots reference the daily attendance record used at calculation time.
+func (a *App) listPayrollStaffAttendanceIntervals(userID int64, startDate, endDate string) ([]payrollHourlyWorkCandidate, error) {
+	rows, err := a.queryDB(`
+ SELECT r.id, s.attendance_date, s.start_time, s.end_time
+ FROM staff_attendance_sessions s
+ JOIN coach_attendance_records r ON r.user_id = s.user_id AND r.attendance_date = s.attendance_date
+ WHERE s.user_id = ? AND s.attendance_date >= ? AND s.attendance_date <= ?
+ AND LOWER(r.status) IN ('present', 'late')
+ ORDER BY s.attendance_date, s.start_time
+ `, userID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var records []payrollHourlyWorkCandidate
+	for rows.Next() {
+		record := payrollHourlyWorkCandidate{SourceType: "staff_attendance_record"}
+		if err := rows.Scan(&record.RecordID, &record.WorkDate, &record.ClockIn, &record.ClockOut); err != nil {
+			return nil, err
+		}
+		hours, err := payrollDurationHours(record.WorkDate, record.ClockIn, record.ClockOut, 0)
+		if err != nil {
+			return nil, err
+		}
+		record.PayableHours = hours
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}

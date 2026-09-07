@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"math"
 	"strings"
 	"time"
 )
@@ -150,6 +151,9 @@ func validateStaffSalaryProfile(profile StaffSalaryProfile) error {
 		return errors.New("invalid salary type")
 	}
 
+	if math.IsNaN(profile.Rate) || math.IsInf(profile.Rate, 0) {
+		return errors.New("salary rate must be a finite number")
+	}
 	if profile.Rate < 0 {
 		return errors.New("salary rate cannot be negative")
 	}

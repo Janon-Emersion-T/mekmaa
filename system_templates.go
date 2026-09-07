@@ -333,6 +333,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		return nil, err
 	}
 	publicPartials := []string{
+		"templates/partials/staff-navigation.html",
 		"templates/partials/header.html",
 		"templates/partials/footer.html",
 		"templates/partials/home-style.html",
