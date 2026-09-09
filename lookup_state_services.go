@@ -54,7 +54,8 @@ func (a *App) findAdmissionByID(
 			COALESCE(a.payment_voided_by_user_id, 0),
 			COALESCE(vu.name, ''),
 			a.payment_voided_at,
-			a.created_at
+			a.created_at,
+			a.status
 		FROM admissions a
 		LEFT JOIN users vu ON vu.id = a.payment_voided_by_user_id
 		LEFT JOIN training_programs tp
@@ -101,6 +102,7 @@ func (a *App) findAdmissionByID(
 		&admission.PaymentVoidedByUserName,
 		&paymentVoidedAt,
 		&admission.CreatedAt,
+		&admission.Status,
 	); err != nil {
 		return nil, err
 	}
@@ -179,7 +181,8 @@ func (a *App) findAdmissionByIDTx(
 			COALESCE(a.payment_voided_by_user_id, 0),
 			COALESCE(vu.name, ''),
 			a.payment_voided_at,
-			a.created_at
+			a.created_at,
+			a.status
 		FROM admissions a
 		LEFT JOIN users vu ON vu.id = a.payment_voided_by_user_id
 		LEFT JOIN training_programs tp
@@ -226,6 +229,7 @@ func (a *App) findAdmissionByIDTx(
 		&admission.PaymentVoidedByUserName,
 		&paymentVoidedAt,
 		&admission.CreatedAt,
+		&admission.Status,
 	); err != nil {
 		return nil, err
 	}

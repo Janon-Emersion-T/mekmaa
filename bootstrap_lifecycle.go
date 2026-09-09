@@ -1110,6 +1110,11 @@ ON court_closures(activity, active, closure_date)`,
 	}{
 		{
 			table:  "admissions",
+			column: "status",
+			stmt:   `ALTER TABLE admissions ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive'))`,
+		},
+		{
+			table:  "admissions",
 			column: "free_admission",
 			stmt:   `ALTER TABLE admissions ADD COLUMN free_admission INTEGER NOT NULL DEFAULT 0`,
 		},

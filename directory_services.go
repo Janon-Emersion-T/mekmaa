@@ -74,6 +74,7 @@ func scanAdmissionIdentity(scanner interface {
 		&admission.AdmissionPaymentAmount,
 		&admission.FinanceTransactionID,
 		&admission.CreatedAt,
+		&admission.Status,
 	)
 }
 
@@ -129,7 +130,8 @@ func (a *App) listAdmissionIdentities() ([]Admission, error) {
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
 			COALESCE(a.finance_transaction_id, 0),
-			a.created_at
+			a.created_at,
+			a.status
 		FROM admissions a
 		ORDER BY
 			a.admission_date DESC,
@@ -174,6 +176,7 @@ func (a *App) listAdmissionIdentities() ([]Admission, error) {
 			&admission.AdmissionPaymentAmount,
 			&admission.FinanceTransactionID,
 			&admission.CreatedAt,
+			&admission.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -211,7 +214,8 @@ func (a *App) findAdmissionIdentityByID(admissionID int64) (*Admission, error) {
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
 			COALESCE(a.finance_transaction_id, 0),
-			a.created_at
+			a.created_at,
+			a.status
 		FROM admissions a
 		WHERE a.id = ?
 	`, admissionID)
@@ -247,6 +251,7 @@ func (a *App) findAdmissionIdentityByID(admissionID int64) (*Admission, error) {
 		&admission.AdmissionPaymentAmount,
 		&admission.FinanceTransactionID,
 		&admission.CreatedAt,
+		&admission.Status,
 	); err != nil {
 		return nil, err
 	}
@@ -297,7 +302,8 @@ func (a *App) listAdmissionIdentitiesByIDs(admissionIDs []int64) ([]Admission, e
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
 			COALESCE(a.finance_transaction_id, 0),
-			a.created_at
+			a.created_at,
+			a.status
 		FROM admissions a
 		WHERE a.id IN (`+strings.Join(placeholders, ", ")+`)
 		ORDER BY LOWER(COALESCE(a.student_id, '')) ASC, a.created_at ASC, a.id ASC
@@ -340,6 +346,7 @@ func (a *App) listAdmissionIdentitiesByIDs(admissionIDs []int64) ([]Admission, e
 			&admission.AdmissionPaymentAmount,
 			&admission.FinanceTransactionID,
 			&admission.CreatedAt,
+			&admission.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -385,7 +392,8 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
 			COALESCE(a.finance_transaction_id, 0),
-			a.created_at
+			a.created_at,
+			a.status
 		FROM admissions a
 		LEFT JOIN training_programs tp
 			ON tp.id = a.training_program_id
@@ -436,6 +444,7 @@ func (a *App) listAdmissions() ([]Admission, error) {
 			&admission.AdmissionPaymentAmount,
 			&admission.FinanceTransactionID,
 			&admission.CreatedAt,
+			&admission.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -470,6 +479,10 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 		searchLike := "%" + strings.ToLower(filter.Search) + "%"
 		whereParts = append(whereParts, `(LOWER(COALESCE(a.student_id, '')) LIKE ? OR LOWER(COALESCE(a.full_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_name, '')) LIKE ? OR LOWER(COALESCE(a.guardian_contact_number, '')) LIKE ?)`)
 		args = append(args, searchLike, searchLike, searchLike, searchLike)
+	}
+	if filter.Status == "active" || filter.Status == "inactive" {
+		whereParts = append(whereParts, "a.status = ?")
+		args = append(args, filter.Status)
 	}
 	divisionFilter := strings.TrimSpace(filter.Division)
 
@@ -562,7 +575,8 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 			a.payment_collected_at,
 			COALESCE(a.admission_payment_amount, 0),
 			COALESCE(a.finance_transaction_id, 0),
-			a.created_at
+			a.created_at,
+			a.status
 		FROM admissions a
 		LEFT JOIN training_programs tp
 			ON tp.id = a.training_program_id
@@ -614,6 +628,7 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 			&admission.AdmissionPaymentAmount,
 			&admission.FinanceTransactionID,
 			&admission.CreatedAt,
+			&admission.Status,
 		); err != nil {
 			return nil, 0, err
 		}

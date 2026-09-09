@@ -578,6 +578,7 @@ type PermissionGroup struct {
 }
 
 type Admission struct {
+	Status                   string
 	ID                       int64
 	StudentID                string
 	FullName                 string
@@ -837,6 +838,7 @@ type FinanceFilter struct {
 }
 
 type AdmissionsFilter struct {
+	Status      string
 	Search      string
 	Division    string
 	DivisionIDs []int64

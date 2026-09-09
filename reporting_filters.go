@@ -305,11 +305,15 @@ func admissionsFilterFromRequest(r *http.Request) AdmissionsFilter {
 		parseIntQuery(r.URL.Query().Get("limit")),
 	)
 	filter := AdmissionsFilter{
+		Status:    strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status"))),
 		Search:    strings.TrimSpace(r.URL.Query().Get("search")),
 		Division:  strings.TrimSpace(r.URL.Query().Get("division")),
 		Direction: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction"))),
 		Page:      page,
 		Limit:     limit,
+	}
+	if filter.Status != "active" && filter.Status != "inactive" {
+		filter.Status = ""
 	}
 	if filter.Direction != "desc" {
 		filter.Direction = "asc"
@@ -351,6 +355,11 @@ func admissionsFilterPageURL(r *http.Request, filter AdmissionsFilter, page int)
 	query.Set("page", strconv.Itoa(page))
 	query.Set("limit", strconv.Itoa(filter.Limit))
 	query.Set("direction", filter.Direction)
+	if filter.Status == "" {
+		query.Del("status")
+	} else {
+		query.Set("status", filter.Status)
+	}
 	if strings.TrimSpace(filter.Search) == "" {
 		query.Del("search")
 	} else {
@@ -369,6 +378,11 @@ func admissionsFilterBaseURL(r *http.Request, filter AdmissionsFilter) string {
 	query.Del("page")
 	query.Set("limit", strconv.Itoa(filter.Limit))
 	query.Set("direction", filter.Direction)
+	if filter.Status == "" {
+		query.Del("status")
+	} else {
+		query.Set("status", filter.Status)
+	}
 	if strings.TrimSpace(filter.Search) == "" {
 		query.Del("search")
 	} else {

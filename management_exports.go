@@ -11,15 +11,16 @@ func writeAdmissionsCSV(w http.ResponseWriter, rows []Admission, filter Admissio
 	if err := writeCSVReportPreamble(writer, "Mekmaa Students Report",
 		CSVReportMetaRow{Section: "filter", Field: "Division", Value: fallbackReportValue(filter.Division, "All divisions")},
 		CSVReportMetaRow{Section: "filter", Field: "Search", Value: fallbackReportValue(filter.Search, "All students")},
+		CSVReportMetaRow{Section: "filter", Field: "Status", Value: fallbackReportValue(filter.Status, "All statuses")},
 		CSVReportMetaRow{Section: "report", Field: "Rows", Value: strconv.Itoa(len(rows))},
 	); err != nil {
 		return err
 	}
-	if err := writer.Write([]string{"Student ID", "Name", "Admission Date", "Date of Birth", "Gender", "School", "Guardian", "Guardian Phone", "Programmes", "Admission Payment", "Monthly Fee Waived"}); err != nil {
+	if err := writer.Write([]string{"Student ID", "Name", "Status", "Admission Date", "Date of Birth", "Gender", "School", "Guardian", "Guardian Phone", "Programmes", "Admission Payment", "Monthly Fee Waived"}); err != nil {
 		return err
 	}
 	for _, row := range rows {
-		if err := writer.Write([]string{row.StudentID, row.FullName, row.AdmissionDate, row.DateOfBirth, row.Gender, row.School, row.GuardianName, row.GuardianContactNumber, row.TrainingProgramNames, strconv.FormatBool(row.PaymentCollected), strconv.FormatBool(row.FreeMonthlyFee)}); err != nil {
+		if err := writer.Write([]string{row.StudentID, row.FullName, row.StatusLabel(), row.AdmissionDate, row.DateOfBirth, row.Gender, row.School, row.GuardianName, row.GuardianContactNumber, row.TrainingProgramNames, strconv.FormatBool(row.PaymentCollected), strconv.FormatBool(row.FreeMonthlyFee)}); err != nil {
 			return err
 		}
 	}

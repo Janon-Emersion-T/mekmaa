@@ -41,6 +41,7 @@
 	      <form method="get" class="flex gap-2">
 	        <input type="hidden" name="division" value="{{.AdmissionsFilter.Division}}" />
 	        <input type="hidden" name="search" value="{{.AdmissionsFilter.Search}}" />
+            <input type="hidden" name="status" value="{{.AdmissionsFilter.Status}}" />
 	        <input type="hidden" name="direction" value="{{.AdmissionsFilter.Direction}}" />
 	        <button name="format" value="csv" class="inline-flex h-10 items-center rounded-xl border border-slate/15 bg-white px-3 text-xs font-semibold text-slate">CSV</button>
 	        <button name="format" value="pdf" class="inline-flex h-10 items-center rounded-xl border border-slate/15 bg-white px-3 text-xs font-semibold text-slate">Print / PDF</button>
@@ -526,7 +527,7 @@
         </h2>
 
         <p class="mt-1 text-sm leading-6 text-slate/60">
-          Review student master records and open, edit, or remove a student profile.
+          Manage student profiles and mark students active or inactive. Student status applies across all divisions; programme enrollment status is managed separately.
         </p>
       </div>
 
@@ -557,14 +558,16 @@
         </label>
 
         <label class="block">
-          <span class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">Sort by</span>
-          <div class="flex h-12 items-center rounded-2xl border border-slate/15 bg-cloud px-4 text-sm font-semibold text-obsidian shadow-sm">
-            Student ID
-          </div>
+          <span class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">Status</span>
+          <select name="status" class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none focus:border-aqua focus:ring-4 focus:ring-aqua/15">
+            <option value="" {{if eq .AdmissionsFilter.Status ""}}selected{{end}}>All statuses</option>
+            <option value="active" {{if eq .AdmissionsFilter.Status "active"}}selected{{end}}>Active</option>
+            <option value="inactive" {{if eq .AdmissionsFilter.Status "inactive"}}selected{{end}}>Inactive</option>
+          </select>
         </label>
 
         <label class="block">
-          <span class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">Direction</span>
+          <span class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">Student ID order</span>
           <select
             name="direction"
             class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
@@ -637,6 +640,7 @@
             <th scope="col" class="px-5 py-4">Admission</th>
             <th scope="col" class="px-5 py-4">DOB / Gender</th>
             <th scope="col" class="px-5 py-4">Programmes</th>
+            <th scope="col" class="px-5 py-4">Status</th>
             <th scope="col" class="px-5 py-4">Identity / QR</th>
             <th scope="col" class="px-6 py-4 text-right">Actions</th>
           </tr>
@@ -701,6 +705,18 @@
               </span>
             </td>
 
+
+            <td class="px-5 py-5">
+              <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{if eq .Status "inactive"}}bg-slate/10 text-slate/70{{else}}bg-emerald-100 text-emerald-800{{end}}">{{.StatusLabel}}</span>
+              {{if hasPermission $.User "admissions.update"}}
+              <form action="/admin/students/status?division={{$.AdmissionsFilter.Division}}&amp;search={{$.AdmissionsFilter.Search}}&amp;status={{$.AdmissionsFilter.Status}}&amp;direction={{$.AdmissionsFilter.Direction}}&amp;limit={{$.AdmissionsFilter.Limit}}&amp;page={{$.AdmissionsFilter.Page}}" method="post" class="mt-2">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                <input type="hidden" name="admission_id" value="{{.ID}}" />
+                <input type="hidden" name="status" value="{{if eq .Status "inactive"}}active{{else}}inactive{{end}}" />
+                <button type="submit" aria-label="{{if eq .Status "inactive"}}Activate{{else}}Deactivate{{end}} {{.FullName}}" class="inline-flex h-9 items-center rounded-xl border border-slate/15 bg-white px-3 text-xs font-semibold text-slate hover:bg-cloud">{{if eq .Status "inactive"}}Activate{{else}}Deactivate{{end}}</button>
+              </form>
+              {{end}}
+            </td>
 
             <td class="px-5 py-5">
               <div class="space-y-1">
@@ -1063,7 +1079,7 @@
           </h2>
 
           <p class="mt-1 font-mono text-xs font-medium text-slate/50">
-            {{.SelectedAdmission.StudentID}}
+            {{.SelectedAdmission.StudentID}} · {{.SelectedAdmission.StatusLabel}}
           </p>
         </div>
       </div>
