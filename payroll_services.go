@@ -40,7 +40,8 @@ const (
 )
 
 type PayrollRun struct {
-	ID int64
+	GenerationLabel string
+	ID              int64
 
 	PeriodStart string
 	PeriodEnd   string
@@ -75,7 +76,8 @@ type PayrollPortfolioSummary struct {
 }
 
 type PayrollPayment struct {
-	ID int64
+	PeriodLabel string
+	ID          int64
 
 	PayrollRunID int64
 	UserID       int64
@@ -816,7 +818,8 @@ func (a *App) listPayrollPaymentsForRun(
 			COALESCE(pp.finance_transaction_id, 0),
 			COALESCE(pp.notes, ''),
 			pp.created_at,
-			pp.updated_at
+			pp.updated_at,
+			COALESCE(pp.period_label, '')
 		FROM payroll_payments pp
 		JOIN users u
 			ON u.id = pp.user_id
@@ -870,6 +873,7 @@ func (a *App) listPayrollPaymentsForRun(
 			&payment.Notes,
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
+			&payment.PeriodLabel,
 		); err != nil {
 			return nil, err
 		}
@@ -2143,7 +2147,8 @@ func (a *App) findPayrollPaymentByID(
 			COALESCE(pp.finance_transaction_id, 0),
 			pp.notes,
 			pp.created_at,
-			pp.updated_at
+			pp.updated_at,
+			COALESCE(pp.period_label, '')
 		FROM payroll_payments pp
 		JOIN users u
 			ON u.id = pp.user_id
@@ -2182,6 +2187,7 @@ func (a *App) findPayrollPaymentByID(
 		&payment.Notes,
 		&payment.CreatedAt,
 		&payment.UpdatedAt,
+		&payment.PeriodLabel,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -2210,5 +2216,8 @@ func (a *App) findPayrollPaymentByID(
 		return nil, nil, err
 	}
 
+	if payment.PeriodLabel != "" {
+		run.Label = payment.PeriodLabel
+	}
 	return &payment, run, nil
 }

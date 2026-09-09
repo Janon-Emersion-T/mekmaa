@@ -42,46 +42,12 @@ func (a *App) payrollManagementHandler(
 	}
 	data := a.newTemplateData(w, r, user)
 	data.Users = staff
-	selectedStatus := strings.TrimSpace(r.URL.Query().Get("status"))
-	selectedYear := strings.TrimSpace(r.URL.Query().Get("year"))
-	yearSeen := make(map[string]struct{})
-	filteredRuns := make([]PayrollRun, 0, len(runs))
-	summary := PayrollPortfolioSummary{}
-	for _, run := range runs {
-		year := ""
-		if len(run.PeriodStart) >= 4 {
-			year = run.PeriodStart[:4]
-			if _, ok := yearSeen[year]; !ok {
-				yearSeen[year] = struct{}{}
-				data.PayrollRunYears = append(data.PayrollRunYears, year)
-			}
-		}
-		if selectedStatus != "" && run.Status != selectedStatus {
-			continue
-		}
-		if selectedYear != "" && year != selectedYear {
-			continue
-		}
-		filteredRuns = append(filteredRuns, run)
-		summary.RunCount++
-		summary.StaffCount += run.StaffCount
-		summary.NetTotal += run.NetTotal
-		summary.PaidTotal += run.PaidTotal
-		summary.OutstandingTotal += run.OutstandingTotal
-		if run.Status != PayrollRunStatusClosed {
-			summary.OpenRunCount++
-		}
+	if !a.loadSalaryWorkspace(w, r, &data, staff) {
+		return
 	}
-	summary.NetTotal = normalizeMoney(summary.NetTotal)
-	summary.PaidTotal = normalizeMoney(summary.PaidTotal)
-	summary.OutstandingTotal = normalizeMoney(summary.OutstandingTotal)
 	data.Title = "Salary Payments"
-	data.Description =
-		"Calculate what is due, approve salaries, and record staff payments by period."
-	data.PayrollRuns = filteredRuns
-	data.PayrollPortfolioSummary = summary
-	data.SelectedPayrollStatus = selectedStatus
-	data.SelectedPayrollYear = selectedYear
+	data.Description = "Generate, review, approve and pay each staff salary."
+	data.PayrollRuns = runs
 
 	a.render(
 		w,
@@ -182,7 +148,7 @@ func (a *App) createPayrollRunHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/payroll/run?id="+strconv.FormatInt(runID, 10),
+		payrollActionReturnURL(r, runID),
 		http.StatusSeeOther,
 	)
 }
@@ -344,8 +310,7 @@ func (a *App) generatePayrollRunHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/payroll/run?id="+
-				strconv.FormatInt(runID, 10),
+			payrollActionReturnURL(r, runID),
 			http.StatusSeeOther,
 		)
 		return
@@ -359,8 +324,7 @@ func (a *App) generatePayrollRunHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/payroll/run?id="+
-			strconv.FormatInt(runID, 10),
+		payrollActionReturnURL(r, runID),
 		http.StatusSeeOther,
 	)
 }
@@ -445,8 +409,7 @@ func (a *App) recalculatePayrollRunHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/payroll/run?id="+
-				strconv.FormatInt(runID, 10),
+			payrollActionReturnURL(r, runID),
 			http.StatusSeeOther,
 		)
 		return
@@ -460,8 +423,7 @@ func (a *App) recalculatePayrollRunHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/payroll/run?id="+
-			strconv.FormatInt(runID, 10),
+		payrollActionReturnURL(r, runID),
 		http.StatusSeeOther,
 	)
 }
@@ -529,8 +491,7 @@ func (a *App) updatePayrollQuantityHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/payroll/run?id="+
-				strconv.FormatInt(runID, 10),
+			payrollActionReturnURL(r, runID),
 			http.StatusSeeOther,
 		)
 		return
@@ -556,8 +517,7 @@ func (a *App) updatePayrollQuantityHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/payroll/run?id="+
-			strconv.FormatInt(runID, 10),
+		payrollActionReturnURL(r, runID),
 		http.StatusSeeOther,
 	)
 }
@@ -634,8 +594,7 @@ func (a *App) addPayrollAdjustmentHandler(
 		http.Redirect(
 			w,
 			r,
-			"/admin/payroll/run?id="+
-				strconv.FormatInt(runID, 10),
+			payrollActionReturnURL(r, runID),
 			http.StatusSeeOther,
 		)
 		return
@@ -674,8 +633,7 @@ func (a *App) addPayrollAdjustmentHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/payroll/run?id="+
-			strconv.FormatInt(runID, 10),
+		payrollActionReturnURL(r, runID),
 		http.StatusSeeOther,
 	)
 }
@@ -754,8 +712,7 @@ func (a *App) deletePayrollAdjustmentHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/payroll/run?id="+
-			strconv.FormatInt(runID, 10),
+		payrollActionReturnURL(r, runID),
 		http.StatusSeeOther,
 	)
 }
@@ -833,8 +790,7 @@ func (a *App) approvePayrollRunHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/payroll/run?id="+
-			strconv.FormatInt(runID, 10),
+		payrollActionReturnURL(r, runID),
 		http.StatusSeeOther,
 	)
 }
@@ -875,7 +831,7 @@ func (a *App) approvePayrollPaymentHandler(
 		a.setFlash(w, "Salary approved individually. You can now record payment.")
 	}
 
-	http.Redirect(w, r, "/admin/payroll/run?id="+strconv.FormatInt(runID, 10), http.StatusSeeOther)
+	http.Redirect(w, r, payrollActionReturnURL(r, runID), http.StatusSeeOther)
 }
 
 func (a *App) rollbackPayrollPaymentApprovalHandler(
@@ -914,7 +870,7 @@ func (a *App) rollbackPayrollPaymentApprovalHandler(
 		a.setFlash(w, "Individual salary approval rolled back. Adjustments are available again.")
 	}
 
-	http.Redirect(w, r, "/admin/payroll/run?id="+strconv.FormatInt(runID, 10), http.StatusSeeOther)
+	http.Redirect(w, r, payrollActionReturnURL(r, runID), http.StatusSeeOther)
 }
 
 func (a *App) payPayrollPaymentHandler(
@@ -1016,8 +972,7 @@ func (a *App) payPayrollPaymentHandler(
 	http.Redirect(
 		w,
 		r,
-		"/admin/payroll/run?id="+
-			strconv.FormatInt(runID, 10),
+		payrollActionReturnURL(r, runID),
 		http.StatusSeeOther,
 	)
 }
@@ -1058,7 +1013,7 @@ func (a *App) closePayrollRunHandler(
 		a.setFlash(w, "Payroll closed.")
 	}
 
-	http.Redirect(w, r, "/admin/payroll/run?id="+strconv.FormatInt(runID, 10), http.StatusSeeOther)
+	http.Redirect(w, r, payrollActionReturnURL(r, runID), http.StatusSeeOther)
 }
 
 func (a *App) payrollSalarySlipHandler(
@@ -1295,5 +1250,5 @@ func (a *App) voidPayrollPaymentHandler(
 		a.setFlash(w, "Salary payment voided. Re-payment is not reopened automatically; the original finance audit trail is preserved.")
 	}
 
-	http.Redirect(w, r, "/admin/payroll/run?id="+strconv.FormatInt(runID, 10), http.StatusSeeOther)
+	http.Redirect(w, r, payrollActionReturnURL(r, runID), http.StatusSeeOther)
 }

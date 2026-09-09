@@ -1109,6 +1109,11 @@ ON court_closures(activity, active, closure_date)`,
 		stmt   string
 	}{
 		{
+			table:  "payroll_payments",
+			column: "period_label",
+			stmt:   `ALTER TABLE payroll_payments ADD COLUMN period_label TEXT NOT NULL DEFAULT ''`,
+		},
+		{
 			table:  "admissions",
 			column: "status",
 			stmt:   `ALTER TABLE admissions ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive'))`,

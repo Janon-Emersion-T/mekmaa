@@ -427,6 +427,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"mcp-receivables":                 "templates/dashboard/mcp-receivables.html",
 	}
 	dashboardPartials := []string{
+		"templates/dashboard/src/payroll-salary-review.html",
 		"templates/dashboard/src/sidebar.html",
 		"templates/dashboard/src/header.html",
 		"templates/dashboard/src/footer.html",

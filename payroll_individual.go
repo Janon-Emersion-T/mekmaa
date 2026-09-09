@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -11,6 +12,12 @@ import (
 func (a *App) generateStaffPayroll(periodStart, periodEnd, label string, userID, actorID int64) (int64, error) {
 	if userID <= 0 {
 		return 0, errors.New("select a staff member")
+	}
+	if err := validateStaffPayrollDates(periodStart, periodEnd); err != nil {
+		return 0, err
+	}
+	if err := a.checkStaffPayrollOverlap(userID, periodStart, periodEnd); err != nil {
+		return 0, err
 	}
 	profiles, err := a.listStaffSalaryProfiles()
 	if err != nil {
@@ -41,6 +48,7 @@ func (a *App) generateStaffPayroll(periodStart, periodEnd, label string, userID,
 	if run.Status == PayrollRunStatusApproved || run.Status == PayrollRunStatusClosed {
 		return runID, errors.New("this payroll period is approved or closed")
 	}
+	run.GenerationLabel = strings.TrimSpace(label)
 	return runID, a.syncPayrollRunPayments(*run, actorID, false, userID)
 }
 
@@ -83,9 +91,10 @@ func (a *App) generateStaffPayrollHandler(w http.ResponseWriter, r *http.Request
 	runID, err := a.generateStaffPayroll(strings.TrimSpace(r.FormValue("period_start")), strings.TrimSpace(r.FormValue("period_end")), strings.TrimSpace(r.FormValue("label")), id, user.ID)
 	if err != nil {
 		a.setFlash(w, err.Error())
-		http.Redirect(w, r, "/admin/staff/salary-payments", 303)
+		query := url.Values{"user_id": {strconv.FormatInt(id, 10)}, "label": {r.FormValue("label")}}
+		http.Redirect(w, r, "/admin/staff/salary-payments?"+query.Encode()+"#salary-review", 303)
 		return
 	}
-	a.setFlash(w, "Selected staff salary generated. Generate the next staff member from Salary Payments.")
-	http.Redirect(w, r, "/admin/payroll/run?id="+strconv.FormatInt(runID, 10), 303)
+	a.setFlash(w, "Salary generated. Review the calculation below, make any changes, then approve and pay.")
+	http.Redirect(w, r, salaryWorkspaceURL(runID, id), 303)
 }

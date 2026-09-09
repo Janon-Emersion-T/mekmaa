@@ -1,40 +1,97 @@
 {{define "content"}}
 {{template "staff-navigation" .}}
 <div class="mx-auto max-w-[96rem] space-y-7 pb-10">
-  <section class="relative overflow-hidden rounded-[2rem] bg-obsidian px-6 py-7 text-cloud shadow-[0_24px_70px_rgba(11,18,21,0.22)] sm:px-8 lg:px-10">
-    <div class="absolute -right-24 -top-32 h-80 w-80 rounded-full bg-aqua/20 blur-3xl"></div>
-    <div class="absolute bottom-0 left-[38%] h-36 w-72 rounded-full bg-amber/15 blur-3xl"></div>
-    <div class="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-      <div class="max-w-3xl">
-        <div class="flex items-center gap-3"><span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-aqua text-obsidian shadow-lg shadow-aqua/10"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 16V8m5 8V4m5 12v-6m4 6H2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><p class="text-[0.66rem] font-bold uppercase tracking-[0.24em] text-aqua">Finance control centre</p></div>
-        <h1 class="mt-5 text-3xl font-black tracking-tight sm:text-4xl">Salary Payments</h1>
-        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/65">A controlled payroll workspace for salary calculations, assistant-coach hours, approvals, payment records, and audit-ready salary slips.</p>
+  <header class="rounded-[2rem] bg-obsidian px-6 py-7 text-cloud sm:px-8">
+    <p class="text-xs font-bold uppercase tracking-[0.2em] text-aqua">Staff payroll</p>
+    <h1 class="mt-3 text-3xl font-black tracking-tight">Salary Payments</h1>
+    <p class="mt-3 text-sm text-cloud/70">Generate a salary for one staff member, review the details, then approve and pay.</p>
+    <div class="mt-5 flex flex-wrap gap-3">
+      <a href="/admin/staff/salary-profiles" class="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold">Salary profiles</a>
+      <a href="/admin/staff/advances" class="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold">Staff advances</a>
+    </div>
+  </header>
+  {{if .Flash}}<div role="status" class="rounded-2xl border border-aqua/30 bg-aqua/10 px-5 py-4 text-sm text-obsidian">{{.Flash}}</div>{{end}}
+
+  {{if hasPermission .User "payroll.create"}}
+  <section id="salary-generate" class="rounded-3xl border border-slate/10 bg-white p-5 shadow-sm sm:p-8">
+    <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/50">Step 1</p>
+    <h2 class="mt-2 text-xl font-bold text-obsidian">Generate selected staff salary</h2>
+    <form id="staff-salary-form" method="post" action="/admin/payroll/generate-staff" class="mt-6 space-y-5">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="grid gap-5 lg:grid-cols-3">
+        <label class="block text-sm font-semibold text-slate">Select staff
+          <select id="salary-staff" name="user_id" required class="mt-2 w-full rounded-xl border border-slate/20 bg-white px-3 py-3">
+            <option value="">Select a staff member</option>
+            {{range .Users}}{{if .Active}}<option value="{{.ID}}" {{if eq $.SelectedSalaryStaffID .ID}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}
+          </select>
+        </label>
+        <label class="block text-sm font-semibold text-slate">Period label
+          <input name="label" required maxlength="200" value="{{.SalaryPeriodLabel}}" placeholder="e.g. September salary" class="mt-2 w-full rounded-xl border border-slate/20 bg-white px-3 py-3">
+        </label>
+        <label class="block text-sm font-semibold text-slate">Select period
+          <select id="salary-period" required disabled class="mt-2 w-full rounded-xl border border-slate/20 bg-white px-3 py-3 disabled:bg-cloud" aria-describedby="salary-period-help">
+            <option value="">Select staff first</option>
+          </select>
+        </label>
       </div>
-      <div class="flex flex-wrap gap-3"><a href="/admin/staff/salary-profiles" class="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-bold text-cloud transition hover:bg-white/10">Salary profiles <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></a><a href="/admin/staff/advances" class="inline-flex items-center gap-2 rounded-xl bg-aqua px-4 py-2.5 text-sm font-black text-obsidian transition hover:bg-aqua/85">Staff advances <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div>
+      <p id="salary-period-help" class="text-sm text-slate/60">Paid periods are unavailable for the selected staff member. Salaries already generated can be continued in Step 2.</p>
+      <input type="hidden" id="salary-period-start" name="period_start">
+      <input type="hidden" id="salary-period-end" name="period_end">
+      <div id="salary-calendar" hidden class="max-w-lg rounded-2xl border border-slate/15 bg-cloud/40 p-4">
+        <div class="flex items-center justify-between gap-3">
+          <button type="button" id="salary-month-previous" aria-label="Previous month" class="rounded-lg border border-slate/20 bg-white px-3 py-2">←</button>
+          <h3 id="salary-calendar-month" class="font-semibold" aria-live="polite"></h3>
+          <button type="button" id="salary-month-next" aria-label="Next month" class="rounded-lg border border-slate/20 bg-white px-3 py-2">→</button>
+        </div>
+        <p id="salary-calendar-instruction" class="my-3 text-sm text-slate/70" aria-live="polite">Select a start date, then an end date.</p>
+        <div class="grid grid-cols-7 text-center text-xs font-semibold text-slate/50" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+        <div id="salary-calendar-days" class="mt-2 grid grid-cols-7 gap-1"></div>
+        <p class="mt-3 text-xs text-slate/60">Unavailable dates are disabled. A period cannot cross dates already included in a generated salary.</p>
+        <button type="button" id="salary-calendar-reset" class="mt-3 text-sm font-semibold underline">Clear dates</button>
+      </div>
+      <p id="salary-selection" class="text-sm font-semibold text-slate" role="status"></p>
+      <button id="salary-generate-button" type="submit" disabled class="rounded-xl bg-obsidian px-6 py-3 text-sm font-bold text-cloud disabled:cursor-not-allowed disabled:opacity-40">Generate selected staff salary</button>
+      <noscript><p>Enable JavaScript to select an available salary period.</p></noscript>
+    </form>
+    <div id="salary-existing-periods" hidden>
+      {{range .PayrollRuns}}<span data-start="{{.PeriodStart}}" data-end="{{.PeriodEnd}}" data-status="{{.Status}}" data-label="{{.Label}}"></span>{{end}}
+    </div>
+    <div id="salary-staff-periods" hidden>
+      {{range .StaffSalaryPeriods}}<span data-user="{{.UserID}}" data-start="{{.Start}}" data-end="{{.End}}" data-status="{{.Status}}"></span>{{end}}
     </div>
   </section>
+  {{end}}
 
-  {{if .Flash}}<div class="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-900 shadow-sm"><svg class="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10l4 4 8-8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="font-medium">{{.Flash}}</span></div>{{end}}
-
-  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    <div class="rounded-2xl border border-slate/10 bg-white p-5 shadow-sm"><p class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-slate/50">Net payroll</p><p class="mt-3 text-2xl font-black tracking-tight text-obsidian">{{money .PayrollPortfolioSummary.NetTotal}}</p><p class="mt-2 text-xs text-slate/55">Across {{.PayrollPortfolioSummary.RunCount}} selected payroll periods</p></div>
-    <div class="rounded-2xl border border-amber/25 bg-amber/5 p-5 shadow-sm"><p class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-amber-700">Awaiting payment</p><p class="mt-3 text-2xl font-black tracking-tight text-obsidian">{{money .PayrollPortfolioSummary.OutstandingTotal}}</p><p class="mt-2 text-xs text-slate/55">Approved and calculated salary liability</p></div>
-    <div class="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm"><p class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-emerald-700">Paid to staff</p><p class="mt-3 text-2xl font-black tracking-tight text-obsidian">{{money .PayrollPortfolioSummary.PaidTotal}}</p><p class="mt-2 text-xs text-slate/55">Recorded through Cash, Bank, or QR accounts</p></div>
-    <div class="rounded-2xl border border-slate/10 bg-cloud p-5 shadow-sm"><p class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-slate/50">Active cycles</p><div class="mt-3 flex items-end justify-between gap-4"><p class="text-2xl font-black tracking-tight text-obsidian">{{.PayrollPortfolioSummary.OpenRunCount}}</p><span class="rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-slate">{{.PayrollPortfolioSummary.StaffCount}} staff rows</span></div><p class="mt-2 text-xs text-slate/55">Draft, calculated, or approved periods still in progress</p></div>
-  </section>
-
-  <section class="grid gap-7 {{if hasPermission .User "payroll.create"}}xl:grid-cols-[22rem_minmax(0,1fr)]{{end}}">
-    {{if hasPermission .User "payroll.create"}}<aside class="h-fit rounded-[1.7rem] border border-slate/10 bg-white p-5 shadow-sm sm:p-6">
-      <div class="flex items-start justify-between gap-4"><div><p class="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-aqua">Individual payroll</p><h2 class="mt-2 text-xl font-black tracking-tight text-obsidian">Generate staff salary</h2></div><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-cloud text-slate/70"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 4v12m6-6H4" stroke-linecap="round"/></svg></span></div>
-      <p class="mt-3 text-sm leading-6 text-slate/65">Select a staff member and period. Generate their salary, review it, then approve and pay. Repeat for the next staff member.</p>
-      <form method="post" action="/admin/payroll/generate-staff" class="mt-6 space-y-4"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><label class="block text-sm font-bold text-slate">Staff member<select name="user_id" required class="mt-1.5 w-full rounded-xl border border-slate/15 bg-white px-3.5 py-3 text-sm"><option value="">Select staff member</option>{{range .Users}}{{if .Active}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}</select></label><label class="block text-sm font-bold text-slate">Period label<input type="text" name="label" placeholder="August 2026 Payroll" class="mt-1.5 w-full rounded-xl border border-slate/15 bg-white px-3.5 py-3 text-sm text-obsidian outline-none transition placeholder:text-slate/35 focus:border-aqua focus:ring-2 focus:ring-aqua/15"></label><div class="grid grid-cols-2 gap-3"><label class="block text-sm font-bold text-slate">Start date<input type="date" name="period_start" required class="mt-1.5 w-full rounded-xl border border-slate/15 bg-white px-3 py-3 text-sm text-obsidian outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/15"></label><label class="block text-sm font-bold text-slate">End date<input type="date" name="period_end" required class="mt-1.5 w-full rounded-xl border border-slate/15 bg-white px-3 py-3 text-sm text-obsidian outline-none transition focus:border-aqua focus:ring-2 focus:ring-aqua/15"></label></div><button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-obsidian px-4 py-3 text-sm font-black text-cloud shadow-lg shadow-obsidian/10 transition hover:bg-slate">Generate staff salary <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form>
-      <div class="mt-6 border-t border-slate/10 pt-5"><p class="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-slate/45">Processing standard</p><ol class="mt-3 space-y-2 text-xs leading-5 text-slate/65"><li><span class="mr-2 font-black text-obsidian">01</span>Calculate salary profiles and worked hours.</li><li><span class="mr-2 font-black text-obsidian">02</span>Review adjustments and approve the cycle.</li><li><span class="mr-2 font-black text-obsidian">03</span>Pay from an approved finance account.</li></ol></div>
-    </aside>{{end}}
-
-    <section class="overflow-hidden rounded-[1.7rem] border border-slate/10 bg-white shadow-sm">
-      <div class="border-b border-slate/10 px-5 py-5 sm:px-6"><div class="flex flex-col gap-5 2xl:flex-row 2xl:items-end 2xl:justify-between"><div><p class="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-aqua">Payroll register</p><h2 class="mt-2 text-xl font-black tracking-tight text-obsidian">Period history</h2><p class="mt-1 text-sm text-slate/60">Review status, financial exposure, and next actions for each cycle.</p></div><form method="get" action="/admin/staff/salary-payments" class="grid gap-2 sm:grid-cols-[10rem_8rem_auto]"><label class="text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/50">Status<select name="status" class="mt-1 block w-full rounded-xl border border-slate/15 bg-white px-3 py-2.5 text-sm font-medium text-slate outline-none focus:border-aqua"><option value="">All statuses</option><option value="draft" {{if eq .SelectedPayrollStatus "draft"}}selected{{end}}>Draft</option><option value="calculated" {{if eq .SelectedPayrollStatus "calculated"}}selected{{end}}>Calculated</option><option value="approved" {{if eq .SelectedPayrollStatus "approved"}}selected{{end}}>Approved</option><option value="closed" {{if eq .SelectedPayrollStatus "closed"}}selected{{end}}>Closed</option></select></label><label class="text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/50">Year<select name="year" class="mt-1 block w-full rounded-xl border border-slate/15 bg-white px-3 py-2.5 text-sm font-medium text-slate outline-none focus:border-aqua"><option value="">All years</option>{{range .PayrollRunYears}}<option value="{{.}}" {{if eq $.SelectedPayrollYear .}}selected{{end}}>{{.}}</option>{{end}}</select></label><div class="flex items-end gap-2"><button type="submit" class="rounded-xl bg-cloud px-3.5 py-2.5 text-sm font-bold text-slate transition hover:bg-slate/10">Apply</button><a href="/admin/staff/salary-payments" class="rounded-xl px-3 py-2.5 text-sm font-bold text-slate/55 transition hover:bg-cloud hover:text-slate">Reset</a></div></form></div></div>
-      {{if .PayrollRuns}}<div class="overflow-x-auto"><table class="min-w-[940px] w-full text-left text-sm"><thead class="border-b border-slate/10 bg-cloud/70 text-[0.63rem] font-bold uppercase tracking-[0.16em] text-slate/50"><tr><th class="px-6 py-3.5">Payroll period</th><th class="px-4 py-3.5">Status</th><th class="px-4 py-3.5 text-right">Staff</th><th class="px-4 py-3.5 text-right">Net salary</th><th class="px-4 py-3.5 text-right">Paid</th><th class="px-4 py-3.5 text-right">Outstanding</th><th class="px-6 py-3.5 text-right">Next action</th></tr></thead><tbody class="divide-y divide-slate/10">{{range .PayrollRuns}}<tr class="group transition hover:bg-cloud/45"><td class="px-6 py-5"><a href="/admin/payroll/run?id={{.ID}}" class="font-black text-obsidian transition group-hover:text-slate">{{.Label}}</a><p class="mt-1 text-xs text-slate/55">{{.PeriodStart}} to {{.PeriodEnd}}</p></td><td class="px-4 py-5">{{if eq .Status "approved"}}<span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">Approved</span>{{else if eq .Status "calculated"}}<span class="rounded-full bg-aqua/15 px-2.5 py-1 text-xs font-bold text-slate">Calculated</span>{{else if eq .Status "closed"}}<span class="rounded-full bg-slate/10 px-2.5 py-1 text-xs font-bold text-slate/65">Closed</span>{{else}}<span class="rounded-full bg-amber/15 px-2.5 py-1 text-xs font-bold text-amber-800">Draft</span>{{end}}</td><td class="px-4 py-5 text-right font-bold text-obsidian">{{.StaffCount}}</td><td class="px-4 py-5 text-right font-bold text-obsidian">{{money .NetTotal}}</td><td class="px-4 py-5 text-right font-bold text-emerald-700">{{money .PaidTotal}}</td><td class="px-4 py-5 text-right font-bold {{if gt .OutstandingTotal 0.0}}text-amber-700{{else}}text-slate/45{{end}}">{{money .OutstandingTotal}}</td><td class="px-6 py-5"><div class="flex flex-wrap justify-end gap-2"><a href="/admin/payroll/run?id={{.ID}}" class="rounded-lg border border-slate/15 bg-white px-3 py-2 text-xs font-bold text-slate transition hover:border-slate/30 hover:bg-cloud">Review</a>{{if and (payrollRunAllowsGenerate .) (hasPermission $.User "payroll.create")}}<a href="/admin/staff/salary-payments" class="rounded-lg bg-obsidian px-3 py-2 text-xs font-bold text-cloud">Generate staff salary</a>{{end}}{{if and (payrollRunAllowsRecalculate .) (hasPermission $.User "payroll.update")}}<form method="post" action="/admin/payroll/recalculate"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="id" value="{{.ID}}"><button type="submit" class="rounded-lg border border-slate/15 bg-white px-3 py-2 text-xs font-bold text-slate transition hover:bg-cloud">Recalculate</button></form>{{end}}{{if and (payrollRunAllowsApprove .) (hasPermission $.User "payroll.update")}}<form method="post" action="/admin/payroll/approve"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="id" value="{{.ID}}"><button type="submit" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-800">Approve</button></form>{{end}}{{if and (payrollRunAllowsClose .) (hasPermission $.User "payroll.update")}}<form method="post" action="/admin/payroll/close"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="id" value="{{.ID}}"><button type="submit" class="rounded-lg bg-slate px-3 py-2 text-xs font-bold text-cloud transition hover:bg-obsidian">Close</button></form>{{end}}</div></td></tr>{{end}}</tbody></table></div>{{else}}<div class="px-6 py-20 text-center"><div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-cloud text-slate/55"><svg class="h-6 w-6" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 16V8m5 8V4m5 12v-6m4 6H2" stroke-linecap="round"/></svg></div><h3 class="mt-5 text-lg font-black text-obsidian">No payroll periods found</h3><p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate/60">Create a salary period to calculate staff compensation, or reset the filters to view earlier cycles.</p></div>{{end}}
-    </section>
+  <section id="salary-review" class="space-y-5 rounded-3xl border border-slate/10 bg-white p-5 shadow-sm sm:p-8">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/50">Step 2</p>
+      <h2 class="mt-2 text-xl font-bold text-obsidian">Review, approve and pay</h2>
+      <p class="mt-2 text-sm text-slate/60">Open a generated salary, make any needed changes, approve the amount, then record payment.</p>
+    </div>
+    {{if .PayrollRun}}
+    <div class="rounded-2xl border border-aqua/30 bg-aqua/10 p-4">
+      <h3 class="font-bold text-obsidian">{{.PayrollRun.Label}}</h3>
+      <p class="mt-1 text-sm text-slate/70">{{.PayrollRun.PeriodStart}} to {{.PayrollRun.PeriodEnd}}</p>
+    </div>
+    {{template "payroll-salary-review" .}}
+    {{end}}
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud text-xs uppercase text-slate/60"><tr><th class="px-4 py-3">Staff</th><th class="px-4 py-3">Period</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Net salary</th><th class="px-4 py-3 text-right">Next step</th></tr></thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .StaffSalaryPeriods}}
+          <tr data-salary-history-user="{{.UserID}}">
+            <td class="px-4 py-4 font-semibold">{{.UserName}}</td>
+            <td class="px-4 py-4">{{.Label}}<p class="mt-1 whitespace-nowrap text-xs text-slate/60">{{.Start}} to {{.End}}</p></td>
+            <td class="px-4 py-4"><span class="rounded-full bg-cloud px-3 py-1 text-xs font-semibold">{{if eq .Status "paid"}}Paid{{else if eq .Status "approved"}}Ready to pay{{else if eq .Status "void"}}Voided{{else}}Needs review{{end}}</span></td>
+            <td class="px-4 py-4 text-right font-semibold">{{money .NetAmount}}</td>
+            <td class="px-4 py-4 text-right"><a href="/admin/staff/salary-payments?user_id={{.UserID}}&amp;run_id={{.RunID}}#salary-review" class="inline-flex whitespace-nowrap rounded-lg border border-slate/20 px-3 py-2 font-semibold">{{if eq .Status "paid"}}View payment{{else if eq .Status "approved"}}Review and pay{{else}}Review salary{{end}}</a></td>
+          </tr>
+          {{else}}<tr><td colspan="5" class="px-4 py-10 text-center text-slate/60">No salaries generated yet. Select staff and a period in Step 1 to get started.</td></tr>{{end}}
+        </tbody>
+      </table>
+    </div>
   </section>
 </div>
+<script src="/static/js/payroll-workspace.js" defer></script>
 {{end}}

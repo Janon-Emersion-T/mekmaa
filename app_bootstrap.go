@@ -1995,6 +1995,10 @@ type TemplateData struct {
 	StaffDirectoryRows           []StaffDirectoryRow
 	SalaryProfiles               []StaffSalaryProfile
 	StaffAdvances                []StaffAdvance
+	StaffSalaryPeriods           []StaffSalaryPeriod
+	SelectedSalaryStaffID        int64
+	SalaryPeriodLabel            string
+	SalaryWorkspace              bool
 	PayrollRuns                  []PayrollRun
 	PayrollPortfolioSummary      PayrollPortfolioSummary
 	PayrollRunYears              []string

@@ -1351,6 +1351,16 @@ func (a *App) syncPayrollRunPayments(
 	}
 	defer tx.Rollback()
 
+	if selectedUserID > 0 {
+		exceptRunID := int64(0)
+		if allowExisting {
+			exceptRunID = run.ID
+		}
+		if err := a.checkStaffPayrollOverlapTx(tx, selectedUserID, run.PeriodStart, run.PeriodEnd, exceptRunID); err != nil {
+			return err
+		}
+	}
+
 	rows, err := a.queryTxDB(tx, `
 		SELECT
 			id,
@@ -1449,6 +1459,7 @@ func (a *App) syncPayrollRunPayments(
 		} else {
 			paymentID, err := a.insertAndReturnIDTx(tx, `
 				INSERT INTO payroll_payments (
+					period_label,
 					payroll_run_id,
 					user_id,
 					salary_profile_id,
@@ -1467,8 +1478,9 @@ func (a *App) syncPayrollRunPayments(
 					created_at,
 					updated_at
 				)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
 			`,
+				run.GenerationLabel,
 				run.ID,
 				profile.UserID,
 				profile.ID,
