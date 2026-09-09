@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -138,6 +139,77 @@ func TestStaffSalaryWorkspaceTemplate(t *testing.T) {
 		}
 		if canEdit && !strings.Contains(html, "name=\"workspace_staff_id\" value=\""+strconv.Itoa(5)+"\"") {
 			t.Fatal("review forms lose selected staff")
+		}
+	}
+}
+
+func TestSalaryStaffDropdownLoadsDatabaseStaff(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+	var err error
+	app.templates, err = buildTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := &User{ID: 999, Roles: []string{"superadmin"}, Permissions: allPermissions}
+	var activeStaffID, inactiveStaffID int64
+	for _, fixture := range []struct {
+		name       string
+		role       string
+		hasProfile bool
+		active     bool
+		visible    bool
+	}{
+		{"Active coach", "coach", true, true, true},
+		{"Inactive coach", "coach", true, false, false},
+		{"Office staff", "admin", false, false, true},
+		{"Customer only", "customer", false, false, false},
+	} {
+		member, err := app.createManagedUser(fixture.name, strings.ReplaceAll(fixture.name, " ", "-")+"@example.com", "password-123", []string{fixture.role}, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fixture.hasProfile {
+			if err := app.upsertCoachProfile(member.ID, User{Active: fixture.active}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if fixture.name == "Active coach" {
+			activeStaffID = member.ID
+		}
+		if fixture.name == "Inactive coach" {
+			inactiveStaffID = member.ID
+		}
+		req := httptest.NewRequest(http.MethodGet, "/admin/staff/salary-payments", nil)
+		req = req.WithContext(context.WithValue(req.Context(), userContextKey, actor))
+		rec := httptest.NewRecorder()
+		app.payrollManagementHandler(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("page response: %d %s", rec.Code, rec.Body.String())
+		}
+		option := ">" + fixture.name + "</option>"
+		if strings.Contains(rec.Body.String(), option) != fixture.visible {
+			t.Fatalf("dropdown visibility for %s: want %v", fixture.name, fixture.visible)
+		}
+	}
+	createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID: activeStaffID, CompensationType: SalaryTypeMonthly, Rate: 1000, EffectiveFrom: "2026-01-01", Active: true,
+	}, activeStaffID)
+	for _, test := range []struct {
+		id   int64
+		want int
+	}{{activeStaffID, http.StatusSeeOther}, {inactiveStaffID, http.StatusForbidden}} {
+		form := url.Values{"csrf_token": {"token"}, "user_id": {strconv.FormatInt(test.id, 10)}, "label": {"August salary"}, "period_start": {"2026-08-01"}, "period_end": {"2026-08-31"}}
+		req := httptest.NewRequest(http.MethodPost, "/admin/payroll/generate-staff", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+		req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{ID: activeStaffID, Roles: actor.Roles, Permissions: actor.Permissions}))
+		rec := httptest.NewRecorder()
+		app.generateStaffPayrollHandler(rec, req)
+		if rec.Code != test.want {
+			t.Fatalf("generation for staff %d: %d %s", test.id, rec.Code, rec.Body.String())
+		}
+		if test.want == http.StatusSeeOther && !strings.Contains(rec.Header().Get("Location"), "run_id=") {
+			t.Fatalf("salary generation failed: %s", rec.Header().Get("Location"))
 		}
 	}
 }

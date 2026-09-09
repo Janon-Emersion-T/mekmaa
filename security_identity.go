@@ -870,9 +870,10 @@ func (a *App) findUserByID(userID int64) (*User, error) {
 
 func (a *App) listUsers() ([]User, error) {
 	rows, err := a.queryDB(`
-		SELECT id, email, name, email_verified_at, created_at
-		FROM users
-		ORDER BY created_at ASC
+		SELECT u.id, u.email, u.name, u.email_verified_at, u.created_at, COALESCE(cp.active, 1)
+		FROM users u
+		LEFT JOIN coach_profiles cp ON cp.user_id = u.id
+		ORDER BY u.created_at ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -883,10 +884,12 @@ func (a *App) listUsers() ([]User, error) {
 	for rows.Next() {
 		var user User
 		var verifiedAt sql.NullTime
-		if err := rows.Scan(&user.ID, &user.Email, &user.Name, &verifiedAt, &user.CreatedAt); err != nil {
+		var active int
+		if err := rows.Scan(&user.ID, &user.Email, &user.Name, &verifiedAt, &user.CreatedAt, &active); err != nil {
 			return nil, err
 		}
 		user.Verified = verifiedAt.Valid
+		user.Active = active == 1
 		users = append(users, user)
 	}
 	if err := rows.Err(); err != nil {
