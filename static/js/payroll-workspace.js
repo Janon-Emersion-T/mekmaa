@@ -3,7 +3,6 @@
   const form = document.getElementById("staff-salary-form");
   if (!form) return;
   const staff = document.getElementById("salary-staff");
-  const period = document.getElementById("salary-period");
   const start = document.getElementById("salary-period-start");
   const end = document.getElementById("salary-period-end");
   const generate = document.getElementById("salary-generate-button");
@@ -20,7 +19,7 @@
   const lockedRun = (a, b) => runs.find(row => ["approved", "closed"].includes(row.status) && overlaps(a, b, row));
   const unavailable = (a, b) => existingSalary(a, b) || lockedRun(a, b);
   const updateSelection = () => {
-    const ready = staff.value && start.value && end.value && !unavailable(start.value, end.value);
+    const ready = staff.value && start.value && end.value && end.value >= start.value && !unavailable(start.value, end.value);
     generate.disabled = !ready;
     selection.textContent = ready ? "Selected period: " + start.value + " to " + end.value : "";
   };
@@ -30,35 +29,30 @@
     choosingEnd = false;
     updateSelection();
   };
-  function refreshPeriods() {
-    clearDates();
+  function closeCalendar() {
     calendar.hidden = true;
-    period.replaceChildren(new Option(staff.value ? "Select a period" : "Select staff first", ""));
-    period.disabled = !staff.value;
-    if (!staff.value) return;
-    const options = new Map();
-    for (const run of runs) options.set(run.start + "|" + run.end, {start: run.start, end: run.end, label: run.label + " · " + run.start + " to " + run.end});
-    const now = new Date();
-    for (let offset = 3; offset >= -24; offset--) {
-      const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-      const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
-      const a = iso(first), b = iso(last);
-      if (runs.some(run => overlaps(a, b, run) && (run.start !== a || run.end !== b))) continue;
-      const key = a + "|" + b;
-      if (!options.has(key)) options.set(key, {start: a, end: b, label: first.toLocaleDateString(undefined, {month: "long", year: "numeric"})});
-    }
-    for (const item of [...options.values()].sort((a, b) => b.start.localeCompare(a.start))) {
-      const blocked = unavailable(item.start, item.end);
-      const suffix = blocked ? (blocked.status === "paid" ? " — Already paid" : ["approved", "closed"].includes(blocked.status) && !existingSalary(item.start, item.end) ? " — Period locked" : " — Already generated; review below") : "";
-      const option = new Option(item.label + suffix, item.start + "|" + item.end);
-      option.disabled = Boolean(blocked);
-      period.add(option);
-    }
-    period.add(new Option("Choose a custom date range…", "custom"));
+    start.setAttribute("aria-expanded", "false");
+    end.setAttribute("aria-expanded", "false");
+  }
+  function refreshStaff() {
+    clearDates();
+    closeCalendar();
+    start.disabled = !staff.value;
+    end.disabled = true;
+  }
+  function openCalendar(forEnd) {
+    if (!staff.value || (forEnd && !start.value)) return;
+    choosingEnd = forEnd;
+    const date = forEnd ? (end.value || start.value) : start.value;
+    month = date ? new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, 1) : new Date();
+    calendar.hidden = false;
+    start.setAttribute("aria-expanded", String(!forEnd));
+    end.setAttribute("aria-expanded", String(forEnd));
+    renderCalendar();
   }
   function renderCalendar() {
     document.getElementById("salary-calendar-month").textContent = month.toLocaleDateString(undefined, {month: "long", year: "numeric"});
-    document.getElementById("salary-calendar-instruction").textContent = choosingEnd ? "Start: " + start.value + ". Select an end date." : "Select a start date, then an end date.";
+    document.getElementById("salary-calendar-instruction").textContent = choosingEnd ? "From: " + start.value + ". Choose the to date." : "Choose the from date.";
     days.replaceChildren();
     const year = month.getFullYear(), m = month.getMonth();
     for (let i = 0; i < new Date(year, m, 1).getDay(); i++) days.append(document.createElement("span"));
@@ -78,9 +72,14 @@
           start.value = date;
           end.value = "";
           choosingEnd = true;
+          end.disabled = false;
+          start.setAttribute("aria-expanded", "false");
+          end.setAttribute("aria-expanded", "true");
         } else {
           end.value = date;
           choosingEnd = false;
+          closeCalendar();
+          end.focus();
         }
         updateSelection();
         renderCalendar();
@@ -88,16 +87,21 @@
       days.append(button);
     }
   }
-  staff.addEventListener("change", refreshPeriods);
-  period.addEventListener("change", () => {
-    clearDates();
-    calendar.hidden = period.value !== "custom";
-    if (period.value === "custom") {
-      month = new Date();
-      renderCalendar();
-    } else if (period.value) {
-      [start.value, end.value] = period.value.split("|");
-      updateSelection();
+  staff.addEventListener("change", refreshStaff);
+  for (const input of [start, end]) {
+    input.addEventListener("click", () => openCalendar(input === end));
+    input.addEventListener("keydown", event => {
+      if (["Enter", " ", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        openCalendar(input === end);
+        days.querySelector("button:not(:disabled)")?.focus();
+      }
+    });
+  }
+  calendar.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+      closeCalendar();
+      (choosingEnd ? end : start).focus();
     }
   });
   document.getElementById("salary-month-previous").addEventListener("click", () => {
@@ -106,12 +110,12 @@
   document.getElementById("salary-month-next").addEventListener("click", () => {
     month = new Date(month.getFullYear(), month.getMonth() + 1, 1); renderCalendar();
   });
-  document.getElementById("salary-calendar-reset").addEventListener("click", () => { clearDates(); renderCalendar(); });
+  document.getElementById("salary-calendar-reset").addEventListener("click", () => { clearDates(); end.disabled = true; openCalendar(false); });
   form.addEventListener("submit", event => {
-    if (!start.value || !end.value || unavailable(start.value, end.value)) {
+    if (!staff.value || !start.value || !end.value || end.value < start.value || unavailable(start.value, end.value)) {
       event.preventDefault();
       selection.textContent = "Select an available period before generating salary.";
     }
   });
-  refreshPeriods();
+  refreshStaff();
 })();

@@ -18,7 +18,7 @@
     <h2 class="mt-2 text-xl font-bold text-obsidian">Generate selected staff salary</h2>
     <form id="staff-salary-form" method="post" action="/admin/payroll/generate-staff" class="mt-6 space-y-5">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <div class="grid gap-5 lg:grid-cols-3">
+      <div class="grid gap-5 lg:grid-cols-2">
         <label class="block text-sm font-semibold text-slate">Select staff
           <select id="salary-staff" name="user_id" required class="mt-2 w-full rounded-xl border border-slate/20 bg-white px-3 py-3">
             <option value="">Select a staff member</option>
@@ -28,22 +28,24 @@
         <label class="block text-sm font-semibold text-slate">Period label
           <input name="label" required maxlength="200" value="{{.SalaryPeriodLabel}}" placeholder="e.g. September salary" class="mt-2 w-full rounded-xl border border-slate/20 bg-white px-3 py-3">
         </label>
-        <label class="block text-sm font-semibold text-slate">Select period
-          <select id="salary-period" required disabled class="mt-2 w-full rounded-xl border border-slate/20 bg-white px-3 py-3 disabled:bg-cloud" aria-describedby="salary-period-help">
-            <option value="">Select staff first</option>
-          </select>
-        </label>
       </div>
-      <p id="salary-period-help" class="text-sm text-slate/60">Paid periods are unavailable for the selected staff member. Salaries already generated can be continued in Step 2.</p>
-      <input type="hidden" id="salary-period-start" name="period_start">
-      <input type="hidden" id="salary-period-end" name="period_end">
+      <fieldset class="grid gap-5 sm:grid-cols-2" aria-describedby="salary-period-help">
+        <legend class="mb-3 text-sm font-semibold text-slate">Salary period</legend>
+        <label class="block text-sm font-semibold text-slate">From date
+          <input type="text" id="salary-period-start" name="period_start" readonly disabled placeholder="Choose from date" aria-controls="salary-calendar" aria-expanded="false" class="mt-2 w-full cursor-pointer rounded-xl border border-slate/20 bg-white px-3 py-3 disabled:cursor-not-allowed disabled:bg-cloud">
+        </label>
+        <label class="block text-sm font-semibold text-slate">To date
+          <input type="text" id="salary-period-end" name="period_end" readonly disabled placeholder="Choose to date" aria-controls="salary-calendar" aria-expanded="false" class="mt-2 w-full cursor-pointer rounded-xl border border-slate/20 bg-white px-3 py-3 disabled:cursor-not-allowed disabled:bg-cloud">
+        </label>
+      </fieldset>
+      <p id="salary-period-help" class="text-sm text-slate/60">Select staff, then choose the from and to dates. Paid periods are unavailable. Salaries already generated can be continued in Step 2.</p>
       <div id="salary-calendar" hidden class="max-w-lg rounded-2xl border border-slate/15 bg-cloud/40 p-4">
         <div class="flex items-center justify-between gap-3">
           <button type="button" id="salary-month-previous" aria-label="Previous month" class="rounded-lg border border-slate/20 bg-white px-3 py-2">←</button>
           <h3 id="salary-calendar-month" class="font-semibold" aria-live="polite"></h3>
           <button type="button" id="salary-month-next" aria-label="Next month" class="rounded-lg border border-slate/20 bg-white px-3 py-2">→</button>
         </div>
-        <p id="salary-calendar-instruction" class="my-3 text-sm text-slate/70" aria-live="polite">Select a start date, then an end date.</p>
+        <p id="salary-calendar-instruction" class="my-3 text-sm text-slate/70" aria-live="polite">Choose the from date, then the to date.</p>
         <div class="grid grid-cols-7 text-center text-xs font-semibold text-slate/50" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
         <div id="salary-calendar-days" class="mt-2 grid grid-cols-7 gap-1"></div>
         <p class="mt-3 text-xs text-slate/60">Unavailable dates are disabled. A period cannot cross dates already included in a generated salary.</p>
