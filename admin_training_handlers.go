@@ -347,6 +347,12 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 				if data.SelectedAdmission != nil && data.SelectedAdmission.ID != selectedEnrollment.AdmissionID {
 					data.SelectedAdmission = nil
 				}
+				selectedEnrollment.ProgrammeLockReason, err = a.enrollmentProgrammeLockReason(nil, selectedEnrollment)
+				if err != nil {
+					log.Printf("check enrollment programme lock: %v", err)
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
 				data.SelectedEnrollment = selectedEnrollment
 				if data.SelectedAdmission == nil {
 					selectedAdmission, admissionErr := a.findAdmissionIdentityByID(selectedEnrollment.AdmissionID)
@@ -750,6 +756,12 @@ func (a *App) updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.updateStudentEnrollment(enrollment); err != nil {
+		var locked *enrollmentProgrammeLockedError
+		if errors.As(err, &locked) {
+			a.setFlash(w, locked.Error())
+			http.Redirect(w, r, target+"&action=edit&id="+strconv.FormatInt(enrollmentID, 10), http.StatusSeeOther)
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			a.setFlash(w, "Enrollment not found.")
 			http.Redirect(w, r, "/admin/enrollments", http.StatusSeeOther)

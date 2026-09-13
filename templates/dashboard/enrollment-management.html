@@ -103,7 +103,7 @@
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">{{if eq .EnrollmentMode "edit"}}Edit enrollment{{else}}Enrollment details{{end}}</p>
             <h3 class="mt-2 text-xl font-semibold text-obsidian">{{.SelectedEnrollment.TrainingProgramName}}</h3>
-            <p class="mt-2 text-sm text-slate/60">Finance-sensitive fields are locked once admission payment has been collected.</p>
+            <p class="mt-2 text-sm text-slate/60">Programme changes are limited to enrollments without activity. Admission fee settings lock once payment is collected.</p>
           </div>
           <a href="{{scopedURL (printf "/admin/enrollments?admission_id=%d" .SelectedAdmission.ID) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:bg-cloud">Close</a>
         </div>
@@ -124,14 +124,14 @@
             </div>
             <div class="space-y-2">
               <label for="edit-enrollment-programme" class="block text-sm font-semibold text-obsidian">Programme</label>
-              <select id="edit-enrollment-programme" name="training_program_id" required {{if .SelectedEnrollment.AdmissionPaymentPaid}}disabled{{end}} class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15 disabled:cursor-not-allowed disabled:bg-cloud/60 disabled:text-slate/55">
+              <select id="edit-enrollment-programme" name="training_program_id" required {{if .SelectedEnrollment.ProgrammeLockReason}}disabled{{end}} class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15 disabled:cursor-not-allowed disabled:bg-cloud/60 disabled:text-slate/55">
                 {{range .TrainingPrograms}}
                 <option value="{{.ID}}" {{if eq $.SelectedEnrollment.TrainingProgramID .ID}}selected{{end}}>{{.Name}} · Admission {{money .AdmissionFee}} · Monthly {{money .MonthlyFee}}</option>
                 {{end}}
               </select>
-              {{if .SelectedEnrollment.AdmissionPaymentPaid}}
+              {{if .SelectedEnrollment.ProgrammeLockReason}}
               <input type="hidden" name="training_program_id" value="{{.SelectedEnrollment.TrainingProgramID}}" />
-              <p class="text-xs text-slate/55">Programme cannot be changed after the admission fee has been collected.</p>
+              <p class="text-xs text-slate/55">{{.SelectedEnrollment.ProgrammeLockReason}}</p>
               {{end}}
             </div>
           </div>
@@ -251,6 +251,38 @@
           </form>
         </div>
         {{end}}
+        {{end}}
+        {{if .SelectedEnrollment.Active}}
+        <details id="transfer-programme" class="mt-6 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+          <summary class="cursor-pointer text-sm font-semibold text-obsidian">Transfer programme</summary>
+          <p class="mt-3 text-sm text-slate/70">Transfer from <strong>{{.SelectedEnrollment.TrainingProgramName}}</strong> to another programme in the same division. The old enrollment will be archived from the transfer date and its current group assignments will end. Past payments and attendance remain with the old programme.</p>
+          <form action="/admin/enrollments/transfer" method="post" class="mt-4 space-y-4">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="enrollment_id" value="{{.SelectedEnrollment.ID}}" />
+            <label class="block">
+              <span class="mb-2 block text-sm font-semibold">New programme and standard fees</span>
+              <select name="training_program_id" required class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm">
+                <option value="">Select a new programme</option>
+                {{range .TrainingPrograms}}{{if and .Active (eq .DivisionID $.SelectedEnrollment.DivisionID) (ne .ID $.SelectedEnrollment.TrainingProgramID)}}
+                <option value="{{.ID}}">{{.Name}} · Admission {{money .AdmissionFee}} · Monthly {{money .MonthlyFee}}</option>
+                {{end}}{{end}}
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-2 block text-sm font-semibold">Transfer date (first day in the new programme)</span>
+              <input type="date" name="transfer_date" min="{{.SelectedEnrollment.EnrollmentDate}}" max="{{.TodayDate}}" value="{{.TodayDate}}" required class="h-11 rounded-2xl border border-slate/15 bg-white px-4 text-sm" />
+            </label>
+            <label class="block text-sm"><input type="checkbox" name="free_admission" value="true" /> Waive the new programme's admission fee</label>
+            <label class="block text-sm"><input type="checkbox" name="free_monthly_fee" value="true" /> Waive the new programme's monthly fee</label>
+            <label class="block">
+              <span class="mb-2 block text-sm font-semibold">New discounted monthly fee (0 uses the standard rate)</span>
+              <input type="number" name="discounted_monthly_fee" min="0" step="0.01" value="0" required class="h-11 rounded-2xl border border-slate/15 bg-white px-4 text-sm" />
+            </label>
+            <p class="text-xs leading-5 text-slate/70">The new enrollment starts without a group. Assign its group after the transfer. Existing payments and credits are not moved or refunded; review outstanding fees and the transfer month's charges separately. No payment is collected by this action.</p>
+            <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="reviewed" value="true" required class="mt-1" /> I have reviewed the destination programme, transfer date and fees, and will assign the new group.</label>
+            <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900">Transfer programme</button>
+          </form>
+        </details>
         {{end}}
       </section>
       {{end}}

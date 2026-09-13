@@ -619,6 +619,7 @@ type Admission struct {
 }
 
 type StudentEnrollment struct {
+	ProgrammeLockReason     string
 	ID                      int64
 	AdmissionID             int64
 	EnrollmentDate          string

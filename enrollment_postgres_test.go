@@ -220,5 +220,55 @@ func runEnrollmentUpdatePostgresWorkflow() error {
 		return fmt.Errorf("handler update history effective_from = %q, want 2026-08-06", handlerHistoryFrom)
 	}
 
+	// Exercise the same activity checks and atomic transfer on PostgreSQL.
+	var groupID int64
+	if err := app.queryRowDB(`INSERT INTO student_groups (name,code,description,training_program_id,created_at,updated_at) VALUES ('Transfer group','PG-TRANSFER','',?,?,?) RETURNING id`, secondProgramID, time.Now().UTC(), time.Now().UTC()).Scan(&groupID); err != nil {
+		return err
+	}
+	if _, err := app.execDB(`INSERT INTO student_group_members (group_id,admission_id) VALUES (?,?)`, groupID, admissionID); err != nil {
+		return err
+	}
+	if _, err := app.execDB(`INSERT INTO student_group_membership_history (group_id,admission_id,effective_from,created_at,updated_at) VALUES (?,?,'2026-08-06',?,?)`, groupID, admissionID, time.Now().UTC(), time.Now().UTC()); err != nil {
+		return err
+	}
+	reason, err := app.enrollmentProgrammeLockReason(nil, updated)
+	if err != nil || !strings.Contains(reason, "group assignments") {
+		return fmt.Errorf("Postgres programme lock = %q, %v", reason, err)
+	}
+	correction := *updated
+	correction.TrainingProgramID = programID
+	if err := app.updateStudentEnrollment(correction); err == nil {
+		return fmt.Errorf("Postgres allowed programme change with group activity")
+	}
+	newID, err := app.transferStudentEnrollment(enrollmentID, StudentEnrollment{TrainingProgramID: programID, EnrollmentDate: "2026-08-20", FreeAdmission: true, DiscountedMonthlyFee: 2000})
+	if err != nil {
+		return fmt.Errorf("Postgres transfer: %w", err)
+	}
+	old, err := app.findStudentEnrollmentByID(enrollmentID)
+	if err != nil {
+		return err
+	}
+	created, err := app.findStudentEnrollmentByID(newID)
+	if err != nil {
+		return err
+	}
+	if old.Active || old.TrainingProgramID != secondProgramID || !created.Active || created.TrainingProgramID != programID || !created.FreeAdmission {
+		return fmt.Errorf("Postgres transfer did not preserve programme identities")
+	}
+	var memberships int
+	if err := app.queryRowDB(`SELECT COUNT(*) FROM student_group_members WHERE group_id = ? AND admission_id = ?`, groupID, admissionID).Scan(&memberships); err != nil {
+		return err
+	}
+	if memberships != 0 {
+		return fmt.Errorf("Postgres transfer retained old group membership")
+	}
+	var membershipEnd string
+	if err := app.queryRowDB(`SELECT CAST(effective_to AS TEXT) FROM student_group_membership_history WHERE group_id = ? AND admission_id = ?`, groupID, admissionID).Scan(&membershipEnd); err != nil {
+		return err
+	}
+	if membershipEnd != "2026-08-20" {
+		return fmt.Errorf("Postgres membership end = %q", membershipEnd)
+	}
+
 	return nil
 }

@@ -4768,6 +4768,19 @@ func (a *App) createStudentEnrollmentWithOptionalPaymentAt(enrollment StudentEnr
 	}
 	defer tx.Rollback()
 
+	enrollmentID, financeTransactionID, err := a.createStudentEnrollmentTx(tx, enrollment, collectPayment, paymentMethod, collectedAt, recordedByUserID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	return enrollmentID, financeTransactionID, nil
+}
+
+func (a *App) createStudentEnrollmentTx(tx *sql.Tx, enrollment StudentEnrollment, collectPayment bool, paymentMethod string, collectedAt time.Time, recordedByUserID int64) (int64, int64, error) {
+	var err error
+
 	now := time.Now().UTC()
 
 	if strings.TrimSpace(enrollment.EnrollmentDate) == "" {
@@ -4866,9 +4879,6 @@ func (a *App) createStudentEnrollmentWithOptionalPaymentAt(enrollment StudentEnr
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return 0, 0, err
-	}
 	return enrollmentID, financeTransactionID, nil
 }
 
@@ -4884,17 +4894,17 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 		return err
 	}
 
-	var monthlyPaymentCount int
-	if err := a.queryRowTxDB(
-		tx,
-		`
-		SELECT COUNT(*)
-		FROM student_monthly_payments
-		WHERE enrollment_id = ?
-		`,
-		enrollment.ID,
-	).Scan(&monthlyPaymentCount); err != nil {
-		return err
+	if !existing.Active {
+		return programmeLockError("Archived enrollments cannot be edited.")
+	}
+	if enrollment.TrainingProgramID != existing.TrainingProgramID {
+		reason, err := a.enrollmentProgrammeLockReason(tx, existing)
+		if err != nil {
+			return err
+		}
+		if err := programmeLockError(reason); err != nil {
+			return err
+		}
 	}
 
 	if strings.TrimSpace(enrollment.EnrollmentDate) == "" {
@@ -4905,10 +4915,6 @@ func (a *App) updateStudentEnrollment(enrollment StudentEnrollment) error {
 		enrollment.TrainingProgramID = existing.TrainingProgramID
 		enrollment.TrainingProgramName = existing.TrainingProgramName
 		enrollment.FreeAdmission = existing.FreeAdmission
-	}
-	if monthlyPaymentCount > 0 {
-		enrollment.TrainingProgramID = existing.TrainingProgramID
-		enrollment.TrainingProgramName = existing.TrainingProgramName
 	}
 
 	result, err := a.execTxDB(
