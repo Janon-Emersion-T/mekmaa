@@ -15,7 +15,7 @@
           </h1>
 
           <p class="mt-3 max-w-xl text-sm leading-7 text-cloud/75 sm:text-base">
-            Enter the student's Mekmaa Student ID or name to review their complete saved attendance history across the {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in this workspace.
+            Enter the student's Mekmaa Student ID or name to review and filter their saved attendance history across the {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in this workspace.
           </p>
         </div>
 
@@ -52,6 +52,36 @@
               Search
             </button>
           </div>
+          <div class="mt-4 grid gap-3 sm:grid-cols-2">
+            <label class="text-sm text-cloud/75">From date
+              <input type="date" name="from" value="{{.AttendanceSearchFilter.From}}" class="mt-1 h-12 w-full rounded-2xl bg-white px-4 text-sm text-obsidian">
+            </label>
+            <label class="text-sm text-cloud/75">To date
+              <input type="date" name="to" value="{{.AttendanceSearchFilter.To}}" class="mt-1 h-12 w-full rounded-2xl bg-white px-4 text-sm text-obsidian">
+            </label>
+            <label class="text-sm text-cloud/75">Class / programme
+              <select name="programme_id" class="mt-1 h-12 w-full rounded-2xl bg-white px-4 text-sm text-obsidian">
+                <option value="">All classes / programmes</option>
+                {{range .TrainingPrograms}}<option value="{{.ID}}" {{if eq $.AttendanceSearchFilter.ProgrammeID .ID}}selected{{end}}>{{.Name}}</option>{{end}}
+              </select>
+            </label>
+            <label class="text-sm text-cloud/75">Group
+              <select name="group_id" class="mt-1 h-12 w-full rounded-2xl bg-white px-4 text-sm text-obsidian">
+                <option value="">All groups</option>
+                {{range .StudentGroups}}<option value="{{.ID}}" {{if eq $.AttendanceSearchFilter.GroupID .ID}}selected{{end}}>{{.Name}} — {{.TrainingProgramName}}</option>{{end}}
+              </select>
+            </label>
+            <label class="text-sm text-cloud/75">Attendance status
+              <select name="status" class="mt-1 h-12 w-full rounded-2xl bg-white px-4 text-sm text-obsidian">
+                <option value="">All statuses</option>
+                <option value="present" {{if eq .AttendanceSearchFilter.Status "present"}}selected{{end}}>Present</option>
+                <option value="absent" {{if eq .AttendanceSearchFilter.Status "absent"}}selected{{end}}>Absent</option>
+                <option value="late" {{if eq .AttendanceSearchFilter.Status "late"}}selected{{end}}>Late</option>
+                <option value="excused" {{if eq .AttendanceSearchFilter.Status "excused"}}selected{{end}}>Excused</option>
+              </select>
+            </label>
+          </div>
+          <a href="{{scopedURL (printf "/admin/attendance/search?student_id=%s" (urlquery .AttendanceSearchStudentID)) .SelectedDivision .SelectedDivisionScope}}" class="mt-4 inline-block text-sm font-semibold text-aqua">Clear filters</a>
         </form>
       </div>
     </div>
@@ -94,7 +124,7 @@
         <div class="divide-y divide-slate/10">
           {{range .AttendanceSearchMatches}}
           <a
-            href="{{scopedURL (printf "/admin/attendance/search?student_id=%s" .StudentID) $.SelectedDivision $.SelectedDivisionScope}}"
+            href="{{scopedURL (printf "/admin/attendance/search?student_id=%s&from=%s&to=%s&group_id=%d&status=%s&programme_id=%d" (urlquery .StudentID) $.AttendanceSearchFilter.From $.AttendanceSearchFilter.To $.AttendanceSearchFilter.GroupID $.AttendanceSearchFilter.Status $.AttendanceSearchFilter.ProgrammeID) $.SelectedDivision $.SelectedDivisionScope}}"
             class="flex flex-col gap-2 px-5 py-4 transition hover:bg-white/70 sm:px-6"
           >
             <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -206,7 +236,7 @@
           </p>
 
           <h3 class="mt-2 text-xl font-semibold text-obsidian">
-            Saved attendance record
+            Saved attendance records matching your filters
           </h3>
         </div>
 
@@ -269,11 +299,11 @@
         {{else}}
         <div class="px-5 py-14 text-center">
           <p class="font-semibold text-obsidian">
-            No attendance records yet.
+            No attendance records match your filters.
           </p>
 
           <p class="mt-2 text-sm text-slate/55">
-            This student has not appeared in a saved attendance sheet yet.
+            Try a wider date range, another group, or all attendance statuses.
           </p>
         </div>
         {{end}}

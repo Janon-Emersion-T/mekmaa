@@ -5,7 +5,9 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type StudentAttendanceHistoryRow struct {
@@ -466,6 +468,69 @@ func (a *App) listAttendanceSheets(
 	return sheets, rows.Err()
 }
 
+type AttendanceSearchFilter struct {
+	ProgrammeID int64
+	From        string
+	To          string
+	GroupID     int64
+	Status      string
+}
+
+func parseAttendanceSearchFilter(r *http.Request) (AttendanceSearchFilter, error) {
+	q := r.URL.Query()
+	f := AttendanceSearchFilter{From: strings.TrimSpace(q.Get("from")), To: strings.TrimSpace(q.Get("to")), Status: strings.TrimSpace(q.Get("status"))}
+	for _, date := range []string{f.From, f.To} {
+		if date != "" {
+			if _, err := time.Parse("2006-01-02", date); err != nil {
+				return f, errors.New("Enter a valid attendance date.")
+			}
+		}
+	}
+	if f.From != "" && f.To != "" && f.From > f.To {
+		return f, errors.New("From date must be on or before To date.")
+	}
+	if raw := strings.TrimSpace(q.Get("group_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 0 {
+			return f, errors.New("Select a valid group.")
+		}
+		f.GroupID = id
+	}
+	if raw := strings.TrimSpace(q.Get("programme_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 0 {
+			return f, errors.New("Select a valid class/programme.")
+		}
+		f.ProgrammeID = id
+	}
+	switch f.Status {
+	case "", "present", "absent", "late", "excused":
+	default:
+		return f, errors.New("Select a valid attendance status.")
+	}
+	return f, nil
+}
+
+func filterAttendanceSearchHistory(history []StudentAttendanceHistoryRow, f AttendanceSearchFilter, groups []StudentGroup) []StudentAttendanceHistoryRow {
+	programmeGroups := make(map[int64]bool)
+	for _, group := range groups {
+		if group.TrainingProgramID == f.ProgrammeID {
+			programmeGroups[group.ID] = true
+		}
+	}
+	rows := make([]StudentAttendanceHistoryRow, 0, len(history))
+	for _, row := range history {
+		if f.ProgrammeID != 0 && !programmeGroups[row.GroupID] {
+			continue
+		}
+		if f.From != "" && row.AttendanceDate < f.From || f.To != "" && row.AttendanceDate > f.To || f.GroupID != 0 && row.GroupID != f.GroupID || f.Status != "" && row.Status != f.Status {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
 func (a *App) attendanceSearchHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -494,6 +559,36 @@ func (a *App) attendanceSearchHandler(
 	data.Title = "Search Attendance"
 	data.Description = "Search student attendance by Student ID or name."
 	data.StudentGroups = groups
+	filter, err := parseAttendanceSearchFilter(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	data.AttendanceSearchFilter = filter
+	seenProgrammes := make(map[int64]bool)
+	for _, group := range groups {
+		if group.TrainingProgramID > 0 && !seenProgrammes[group.TrainingProgramID] {
+			seenProgrammes[group.TrainingProgramID] = true
+			data.TrainingPrograms = append(data.TrainingPrograms, TrainingProgram{ID: group.TrainingProgramID, Name: group.TrainingProgramName})
+		}
+	}
+	if filter.ProgrammeID != 0 && !seenProgrammes[filter.ProgrammeID] {
+		http.Error(w, "Class/programme unavailable in this workspace.", http.StatusBadRequest)
+		return
+	}
+	if filter.GroupID != 0 {
+		allowed := false
+		for _, group := range groups {
+			if group.ID == filter.GroupID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			http.Error(w, "Group unavailable in this workspace.", http.StatusBadRequest)
+			return
+		}
+	}
 
 	query := strings.TrimSpace(
 		r.URL.Query().Get("student_id"),
@@ -512,7 +607,7 @@ func (a *App) attendanceSearchHandler(
 			student := matches[0]
 			selectedStudent,
 				history,
-				summary,
+				_,
 				err := a.loadStudentAttendanceView(
 				groups,
 				student.ID,
@@ -534,12 +629,13 @@ func (a *App) attendanceSearchHandler(
 					return
 				}
 			} else {
+				history = filterAttendanceSearchHistory(history, filter, groups)
 				data.SelectedAttendanceStudent =
 					selectedStudent
 				data.StudentAttendanceHistory =
 					history
 				data.StudentAttendanceSummary =
-					summary
+					summarizeStudentAttendanceHistory(history)
 			}
 		} else {
 			data.AttendanceSearchMatches = matches
