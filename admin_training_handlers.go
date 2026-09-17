@@ -283,6 +283,7 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 	}
 	// Keep archived records for historical finance and attendance lookups, but
 	// only show current enrollments in this workspace and its exports.
+	allEnrollments := enrollments
 	activeEnrollments := make([]StudentEnrollment, 0, len(enrollments))
 	for _, enrollment := range enrollments {
 		if enrollment.Active {
@@ -370,6 +371,14 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 					}
 				}
 			}
+		}
+	}
+	if data.SelectedAdmission != nil {
+		data.PreviousEnrollments, err = a.previousEnrollmentDetails(allEnrollments, data.SelectedAdmission.ID)
+		if err != nil {
+			log.Printf("load previous enrollment details: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
 		}
 	}
 	a.render(w, "enrollment-management", data, http.StatusOK)

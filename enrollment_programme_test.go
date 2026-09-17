@@ -192,6 +192,14 @@ func TestEnrollmentManagementHidesArchivedAfterTransfer(t *testing.T) {
 					t.Fatalf("unexpected enrollment export: %s", body)
 				}
 			} else {
+				historyStart := strings.Index(body, `id="previous-enrollments"`)
+				if historyStart < 0 {
+					t.Fatal("missing previous enrollment details")
+				}
+				history := body[historyStart:]
+				if !strings.Contains(history, "Original") || !strings.Contains(history, formatCalendarDate("2026-08-20")) {
+					t.Fatal("missing previous course or transfer end date")
+				}
 				if strings.Contains(body, fmt.Sprintf("&amp;id=%d\"", enrollment.ID)) ||
 					!strings.Contains(body, fmt.Sprintf("&amp;id=%d\"", newID)) ||
 					!strings.Contains(body, "1 enrollments") {

@@ -2072,6 +2072,7 @@ type TemplateData struct {
 	SelectedTrainingProgram          *TrainingProgram
 	TrainingProgramMode              string
 	Enrollments                      []StudentEnrollment
+	PreviousEnrollments              []PreviousEnrollmentDetail
 	SelectedEnrollment               *StudentEnrollment
 	EnrollmentMode                   string
 	EnrollmentDeleteBlock            *EnrollmentDeleteBlock
