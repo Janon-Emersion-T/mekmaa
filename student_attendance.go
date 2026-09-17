@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -531,6 +532,32 @@ func filterAttendanceSearchHistory(history []StudentAttendanceHistoryRow, f Atte
 	return rows
 }
 
+type AttendanceStudentSuggestion struct {
+	StudentID string
+	FullName  string
+}
+
+func attendanceStudentSuggestions(groups []StudentGroup) []AttendanceStudentSuggestion {
+	seen := make(map[int64]bool)
+	var students []AttendanceStudentSuggestion
+	for _, group := range groups {
+		for _, student := range group.Students {
+			if student.ID <= 0 || student.StudentID == "" || seen[student.ID] {
+				continue
+			}
+			seen[student.ID] = true
+			students = append(students, AttendanceStudentSuggestion{StudentID: student.StudentID, FullName: student.FullName})
+		}
+	}
+	sort.Slice(students, func(i, j int) bool {
+		if students[i].FullName == students[j].FullName {
+			return students[i].StudentID < students[j].StudentID
+		}
+		return students[i].FullName < students[j].FullName
+	})
+	return students
+}
+
 func (a *App) attendanceSearchHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -556,9 +583,13 @@ func (a *App) attendanceSearchHandler(
 	}
 
 	data := a.newTemplateData(w, r, user)
+	data.HideChrome = strings.EqualFold(r.URL.Query().Get("format"), "pdf")
 	data.Title = "Search Attendance"
 	data.Description = "Search student attendance by Student ID or name."
 	data.StudentGroups = groups
+	if !data.HideChrome {
+		data.AttendanceSearchSuggestions = attendanceStudentSuggestions(groups)
+	}
 	filter, err := parseAttendanceSearchFilter(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

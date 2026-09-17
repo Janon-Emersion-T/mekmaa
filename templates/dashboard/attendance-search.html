@@ -1,9 +1,20 @@
 {{define "attendance-search"}}{{template "base" .}}{{end}}
 
 {{define "content"}}
-<section class="space-y-6">
+<style>
+@media print {
+  @page { margin: 12mm; }
+  [data-sidebar], [data-sidebar-overlay], body header, body footer, .attendance-no-print { display: none !important; }
+  body, main { background: white !important; padding: 0 !important; }
+  .hide-chrome-shell { display: block !important; min-height: auto !important; }
+  .attendance-report, .attendance-report > div { overflow: visible !important; box-shadow: none !important; border: 0 !important; }
+  .attendance-history-row { break-inside: avoid; }
+}
+</style>
+<section class="attendance-report w-full space-y-6">
   <div class="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/90 shadow-sm sm:rounded-[2rem]">
-    <div class="bg-[linear-gradient(135deg,rgba(11,18,21,0.97)_0%,rgba(35,50,56,0.94)_52%,rgba(98,242,193,0.32)_100%)] px-5 py-6 text-cloud sm:px-8 sm:py-8">
+    {{if not .HideChrome}}
+    <div class="attendance-no-print bg-[linear-gradient(135deg,rgba(11,18,21,0.97)_0%,rgba(35,50,56,0.94)_52%,rgba(98,242,193,0.32)_100%)] px-5 py-6 text-cloud sm:px-8 sm:py-8">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(32rem,1.1fr)] xl:items-end">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.26em] text-aqua/80">
@@ -30,7 +41,7 @@
           <input type="hidden" name="division" value="all">
           {{end}}
 
-          <label class="text-xs font-semibold uppercase tracking-[0.18em] text-cloud/60">
+          <label for="attendance-student-query" class="text-xs font-semibold uppercase tracking-[0.18em] text-cloud/60">
             Student ID or name
           </label>
 
@@ -38,12 +49,18 @@
             <input
               type="text"
               name="student_id"
+              id="attendance-student-query"
+              list="attendance-student-suggestions"
               value="{{.AttendanceSearchStudentID}}"
               placeholder="Example: MKM-0001 or Ayesha Perera"
               autocomplete="off"
               required
               class="h-12 min-w-0 flex-1 rounded-2xl border border-white/12 bg-white/95 px-4 text-sm font-medium text-obsidian outline-none placeholder:text-slate/35 focus:border-aqua"
             >
+
+            <datalist id="attendance-student-suggestions">
+              {{range .AttendanceSearchSuggestions}}<option value="{{.StudentID}}" label="{{.FullName}} · {{.StudentID}}"></option>{{end}}
+            </datalist>
 
             <button
               type="submit"
@@ -85,6 +102,8 @@
         </form>
       </div>
     </div>
+
+    {{end}}
 
     {{if .AttendanceSearchNotFound}}
     <div class="p-5 sm:p-8">
@@ -151,6 +170,23 @@
 
     {{if .SelectedAttendanceStudent}}
     <div class="space-y-6 p-5 sm:p-8">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-semibold text-obsidian">Student attendance report</h1>
+        <div class="attendance-no-print flex gap-2">
+          {{if .HideChrome}}
+          <button type="button" onclick="window.print()" class="rounded-xl bg-obsidian px-4 py-3 text-sm font-semibold text-white">Print / Save as PDF</button>
+          {{else}}
+          <a target="_blank" rel="noopener" href="{{scopedURL (printf "/admin/attendance/search?student_id=%s&from=%s&to=%s&group_id=%d&status=%s&programme_id=%d&format=pdf" (urlquery .SelectedAttendanceStudent.StudentID) .AttendanceSearchFilter.From .AttendanceSearchFilter.To .AttendanceSearchFilter.GroupID .AttendanceSearchFilter.Status .AttendanceSearchFilter.ProgrammeID) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-obsidian px-4 py-3 text-sm font-semibold text-white">Print / PDF</a>
+          {{end}}
+        </div>
+      </div>
+      <p class="text-sm text-slate/65">
+        Period: {{if .AttendanceSearchFilter.From}}{{formatCalendarDate .AttendanceSearchFilter.From}}{{else}}Beginning{{end}} – {{if .AttendanceSearchFilter.To}}{{formatCalendarDate .AttendanceSearchFilter.To}}{{else}}Today{{end}}
+        · Status: {{if .AttendanceSearchFilter.Status}}{{.AttendanceSearchFilter.Status}}{{else}}All{{end}}
+        · Course: {{if .AttendanceSearchFilter.ProgrammeID}}{{range .TrainingPrograms}}{{if eq .ID $.AttendanceSearchFilter.ProgrammeID}}{{.Name}}{{end}}{{end}}{{else}}All{{end}}
+        · Group: {{if .AttendanceSearchFilter.GroupID}}{{range .StudentGroups}}{{if eq .ID $.AttendanceSearchFilter.GroupID}}{{.Name}}{{end}}{{end}}{{else}}All{{end}}
+        · Division: {{if .SelectedDivision}}{{.SelectedDivision.Name}}{{else}}{{.SelectedDivisionScope}}{{end}}
+      </p>
       <div class="rounded-[1.75rem] border border-slate/10 bg-cloud/70 p-5 sm:p-6">
         <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">
           Student
@@ -175,7 +211,7 @@
 
           <a
             href="{{scopedURL "/admin/attendance" .SelectedDivision .SelectedDivisionScope}}"
-            class="inline-flex items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:text-obsidian"
+            class="attendance-no-print inline-flex items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm font-semibold text-slate transition hover:border-aqua/40 hover:text-obsidian"
           >
             Open daily attendance
           </a>
@@ -243,7 +279,7 @@
         {{if .StudentAttendanceHistory}}
         <div class="divide-y divide-slate/10">
           {{range .StudentAttendanceHistory}}
-          <div class="grid gap-4 px-5 py-5 sm:px-6 lg:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_9rem] lg:items-center">
+          <div class="attendance-history-row grid gap-4 px-5 py-5 sm:px-6 lg:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_9rem] lg:items-center">
             <div>
               <p class="text-sm font-semibold text-obsidian">
                 {{formatCalendarDate .AttendanceDate}}

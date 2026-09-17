@@ -2040,6 +2040,7 @@ type TemplateData struct {
 	SharedAttendanceCourseID         int64
 	AttendanceSearchFilter           AttendanceSearchFilter
 	AttendanceSearchStudentID        string
+	AttendanceSearchSuggestions      []AttendanceStudentSuggestion
 	AttendanceSearchMatches          []Admission
 	AttendanceSearchNotFound         bool
 	PublicStudentSearchStudentID     string
