@@ -13,6 +13,17 @@
       </p>
     </div>
 
+    {{if and .SalaryWorkspace (payrollRunAllowsRecalculate .PayrollRun) (hasPermission .User "payroll.update")}}
+    <form method="post" action="/admin/payroll/recalculate" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="id" value="{{.PayrollRun.ID}}">
+      <input type="hidden" name="return_to" value="salary-workspace">
+      <input type="hidden" name="workspace_staff_id" value="{{.SelectedSalaryStaffID}}">
+      <p class="mb-3 text-sm text-slate-600">Refresh this staff member’s calculation to include newly completed sessions before approval. Your adjustments are retained.</p>
+      <button type="submit" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900">Refresh salary calculation</button>
+    </form>
+    {{end}}
+
     {{range .PayrollPayments}}
     {{$eligibleFinanceAccounts := payrollPaymentEligibleFinanceAccounts $.FinanceAccounts .}}
     <section id="payment-{{.ID}}" class="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -26,8 +37,8 @@
             </h3>
 
             <p class="mt-1 text-sm text-slate-500">
-              {{salaryTypeLabel .CompensationType}}
-              · Rate {{money .RateSnapshot}}
+              {{if eq .EarningSource "one_to_one"}}1-to-1 coaching · Assigned session fees{{else}}{{salaryTypeLabel .CompensationType}}
+              · Rate {{money .RateSnapshot}}{{end}}
             </p>
           </div>
 
@@ -87,7 +98,7 @@
         <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <h4 class="text-sm font-semibold text-slate-900">Calculation details</h4>
           <p class="mt-1 text-sm text-slate-500">
-            {{.QuantityLabel}} at {{money .RateSnapshot}}
+            {{.QuantityLabel}}{{if ne .EarningSource "one_to_one"}} at {{money .RateSnapshot}}{{end}}
           </p>
           <div class="mt-3 space-y-2">
             {{range .CalculationDetails}}

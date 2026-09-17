@@ -165,6 +165,7 @@ func (a *App) loadSalaryWorkspace(w http.ResponseWriter, r *http.Request, data *
 			break
 		}
 	}
+	run.Payments = data.PayrollPayments
 	data.PayrollRun = run
 	data.FinanceAccounts, err = a.listFinanceAccounts(true)
 	if err != nil {

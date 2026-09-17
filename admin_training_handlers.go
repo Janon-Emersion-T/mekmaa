@@ -281,6 +281,15 @@ func (a *App) enrollmentManagementHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	// Keep archived records for historical finance and attendance lookups, but
+	// only show current enrollments in this workspace and its exports.
+	activeEnrollments := make([]StudentEnrollment, 0, len(enrollments))
+	for _, enrollment := range enrollments {
+		if enrollment.Active {
+			activeEnrollments = append(activeEnrollments, enrollment)
+		}
+	}
+	enrollments = activeEnrollments
 	admissions, err := a.listAdmissionIdentities()
 	if err != nil {
 		log.Printf("list admissions for enrollments: %v", err)

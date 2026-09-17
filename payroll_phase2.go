@@ -1258,6 +1258,7 @@ func (a *App) listPayrollSessionOccurrencesWorked(
 func (a *App) recalculatePayrollRun(
 	runID int64,
 	actorUserID int64,
+	selectedUserIDs ...int64,
 ) error {
 	run, err := a.findPayrollRunByID(runID)
 	if err != nil {
@@ -1271,7 +1272,19 @@ func (a *App) recalculatePayrollRun(
 		return errors.New("closed payroll cannot be recalculated")
 	}
 
-	return a.syncPayrollRunPayments(*run, actorUserID, true)
+	if len(selectedUserIDs) > 0 {
+		found := false
+		for _, payment := range run.Payments {
+			if payment.UserID == selectedUserIDs[0] {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New("staff salary not found in this period")
+		}
+	}
+	return a.syncPayrollRunPayments(*run, actorUserID, true, selectedUserIDs...)
 }
 
 func (a *App) syncPayrollRunPayments(
@@ -1315,8 +1328,21 @@ func (a *App) syncPayrollRunPayments(
 			applicable = append(applicable, profile)
 		}
 	}
-	if len(applicable) == 0 {
-		return errors.New("no active salary profiles apply to this payroll period")
+	oneToOneEarnings, err := a.listOneToOnePayrollEarnings(run.PeriodStart, run.PeriodEnd, selectedUserID, run.ID)
+	if err != nil {
+		return err
+	}
+	if allowExisting {
+		filtered := oneToOneEarnings[:0]
+		for _, earning := range oneToOneEarnings {
+			if generatedUsers[earning.UserID] {
+				filtered = append(filtered, earning)
+			}
+		}
+		oneToOneEarnings = filtered
+	}
+	if len(applicable) == 0 && len(oneToOneEarnings) == 0 && !allowExisting {
+		return errors.New("no active salary profiles or completed 1-to-1 coaching fees apply to this payroll period")
 	}
 
 	type applicableSnapshot struct {
@@ -1536,6 +1562,10 @@ func (a *App) syncPayrollRunPayments(
 				return err
 			}
 		}
+	}
+
+	if err := a.syncOneToOnePayrollEarningsTx(tx, run, oneToOneEarnings, selectedUserID, actorUserID, allowExisting); err != nil {
+		return err
 	}
 
 	if _, err := a.execTxDB(tx, `

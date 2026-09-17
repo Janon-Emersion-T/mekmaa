@@ -391,9 +391,35 @@ func (a *App) recalculatePayrollRunHandler(
 		actorUserID = user.ID
 	}
 
+	var selectedUserIDs []int64
+	if r.PostFormValue("return_to") == "salary-workspace" {
+		selectedID, err := strconv.ParseInt(r.PostFormValue("workspace_staff_id"), 10, 64)
+		if err != nil || selectedID <= 0 {
+			http.Error(w, "invalid staff member", http.StatusBadRequest)
+			return
+		}
+		staff, err := a.listPayrollEligibleUsersVisibleTo(user)
+		if err != nil {
+			http.Error(w, "could not load staff", http.StatusInternalServerError)
+			return
+		}
+		allowed := false
+		for _, member := range staff {
+			if member.ID == selectedID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			http.Error(w, "staff member not available", http.StatusForbidden)
+			return
+		}
+		selectedUserIDs = []int64{selectedID}
+	}
 	if err := a.recalculatePayrollRun(
 		runID,
 		actorUserID,
+		selectedUserIDs...,
 	); err != nil {
 		log.Printf(
 			"recalculate payroll run %d: %v",

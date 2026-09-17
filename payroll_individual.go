@@ -31,7 +31,13 @@ func (a *App) generateStaffPayroll(periodStart, periodEnd, label string, userID,
 		}
 	}
 	if !applicable {
-		return 0, errors.New("no active salary profiles apply to this staff member and period")
+		earnings, err := a.listOneToOnePayrollEarnings(periodStart, periodEnd, userID, 0)
+		if err != nil {
+			return 0, err
+		}
+		if len(earnings) == 0 {
+			return 0, errors.New("no active salary profiles or completed 1-to-1 coaching fees apply to this staff member and period")
+		}
 	}
 	var runID int64
 	err = a.queryRowDB("SELECT id FROM payroll_runs WHERE period_start = ? AND period_end = ?", periodStart, periodEnd).Scan(&runID)

@@ -1110,6 +1110,11 @@ ON court_closures(activity, active, closure_date)`,
 	}{
 		{
 			table:  "payroll_payments",
+			column: "earning_source",
+			stmt:   `ALTER TABLE payroll_payments ADD COLUMN earning_source TEXT NOT NULL DEFAULT 'salary_profile'`,
+		},
+		{
+			table:  "payroll_payments",
 			column: "period_label",
 			stmt:   `ALTER TABLE payroll_payments ADD COLUMN period_label TEXT NOT NULL DEFAULT ''`,
 		},
@@ -1499,11 +1504,17 @@ ON court_closures(activity, active, closure_date)`,
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_payments_run_profile ON payroll_payments(payroll_run_id, user_id, salary_profile_id) WHERE salary_profile_id IS NOT NULL`); err != nil {
 		return fmt.Errorf("create payroll payments profile index: %w", err)
 	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_one_to_one_run_user ON payroll_payments(payroll_run_id, user_id) WHERE earning_source = 'one_to_one'`); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_adjustments_payment ON payroll_adjustments(payroll_payment_id)`); err != nil {
 		return fmt.Errorf("create payroll adjustments payment index: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_payment_calculation_details_payment ON payroll_payment_calculation_details(payroll_payment_id, sort_order, id)`); err != nil {
 		return fmt.Errorf("create payroll payment calculation details payment index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_calculation_source ON payroll_payment_calculation_details(source_type, source_id, payroll_payment_id)`); err != nil {
+		return err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_payroll_payment_calculation_details_type ON payroll_payment_calculation_details(detail_type, payroll_payment_id)`); err != nil {
 		return fmt.Errorf("create payroll payment calculation details type index: %w", err)

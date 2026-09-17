@@ -386,7 +386,7 @@
         <div class="flex items-center justify-between gap-4">
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Student enrollments</p>
-            <h3 class="mt-2 text-xl font-semibold text-obsidian">All programme enrollments</h3>
+            <h3 class="mt-2 text-xl font-semibold text-obsidian">Active programme enrollments</h3>
             <p class="mt-2 text-sm text-slate/60">Delete removes safe records fully. Finance-linked records are archived instead so receipts and monthly payments remain consistent.</p>
           </div>
           <p class="text-sm text-slate/55">{{enrollmentCountForAdmission .Enrollments .SelectedAdmission.ID}} enrollments</p>
@@ -479,7 +479,7 @@
           </article>
           {{else}}
           <div class="rounded-[1.5rem] border border-dashed border-slate/20 bg-cloud/50 px-6 py-14 text-center">
-            <p class="text-base font-semibold text-obsidian">No enrollments for this student yet.</p>
+            <p class="text-base font-semibold text-obsidian">No active enrollments for this student.</p>
             <p class="mt-2 text-sm text-slate/55">Use the create form above to assign the first training programme.</p>
           </div>
           {{end}}

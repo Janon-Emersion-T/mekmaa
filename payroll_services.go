@@ -76,8 +76,9 @@ type PayrollPortfolioSummary struct {
 }
 
 type PayrollPayment struct {
-	PeriodLabel string
-	ID          int64
+	EarningSource string
+	PeriodLabel   string
+	ID            int64
 
 	PayrollRunID int64
 	UserID       int64
@@ -819,7 +820,8 @@ func (a *App) listPayrollPaymentsForRun(
 			COALESCE(pp.notes, ''),
 			pp.created_at,
 			pp.updated_at,
-			COALESCE(pp.period_label, '')
+			COALESCE(pp.period_label, ''),
+			pp.earning_source
 		FROM payroll_payments pp
 		JOIN users u
 			ON u.id = pp.user_id
@@ -874,6 +876,7 @@ func (a *App) listPayrollPaymentsForRun(
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
 			&payment.PeriodLabel,
+			&payment.EarningSource,
 		); err != nil {
 			return nil, err
 		}
@@ -2148,7 +2151,8 @@ func (a *App) findPayrollPaymentByID(
 			pp.notes,
 			pp.created_at,
 			pp.updated_at,
-			COALESCE(pp.period_label, '')
+			COALESCE(pp.period_label, ''),
+			pp.earning_source
 		FROM payroll_payments pp
 		JOIN users u
 			ON u.id = pp.user_id
@@ -2188,6 +2192,7 @@ func (a *App) findPayrollPaymentByID(
 		&payment.CreatedAt,
 		&payment.UpdatedAt,
 		&payment.PeriodLabel,
+		&payment.EarningSource,
 	)
 	if err != nil {
 		return nil, nil, err

@@ -206,11 +206,11 @@
             </td>
 
             <td class="px-5 py-4">
-              {{salaryTypeLabel .CompensationType}}
+              {{if eq .EarningSource "one_to_one"}}1-to-1 coaching{{else}}{{salaryTypeLabel .CompensationType}}{{end}}
             </td>
 
             <td class="px-5 py-4 text-right">
-              {{money .RateSnapshot}}
+              {{if eq .EarningSource "one_to_one"}}Session fees{{else}}{{money .RateSnapshot}}{{end}}
             </td>
 
             <td class="px-5 py-4 text-right">

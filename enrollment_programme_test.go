@@ -164,6 +164,44 @@ func TestEnrollmentTransferPreservesHistory(t *testing.T) {
 	}
 }
 
+func TestEnrollmentManagementHidesArchivedAfterTransfer(t *testing.T) {
+	a, enrollment, destination := programmeTestFixture(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.templates = templates
+	newID, err := a.transferStudentEnrollment(enrollment.ID, StudentEnrollment{
+		TrainingProgramID: destination, EnrollmentDate: "2026-08-20", FreeAdmission: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, format := range []string{"", "pdf", "csv"} {
+		t.Run(format, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/enrollments?admission_id=%d&division=all&format=%s", enrollment.AdmissionID, format), nil)
+			req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{Roles: []string{"superadmin"}}))
+			rec := httptest.NewRecorder()
+			a.enrollmentManagementHandler(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+			}
+			body := rec.Body.String()
+			if format == "csv" {
+				if strings.Contains(body, ",Original,") || !strings.Contains(body, ",Destination,") {
+					t.Fatalf("unexpected enrollment export: %s", body)
+				}
+			} else {
+				if strings.Contains(body, fmt.Sprintf("&amp;id=%d\"", enrollment.ID)) ||
+					!strings.Contains(body, fmt.Sprintf("&amp;id=%d\"", newID)) ||
+					!strings.Contains(body, "1 enrollments") {
+					t.Fatal("expected only the destination enrollment and an active count of one")
+				}
+			}
+		})
+	}
+}
+
 func TestEnrollmentTransferRejectsInvalidDestinationAndRollsBack(t *testing.T) {
 	for _, problem := range []string{"same programme", "duplicate", "inactive", "date", "fee", "attendance", "write failure"} {
 		t.Run(problem, func(t *testing.T) {
