@@ -98,6 +98,8 @@ func main() {
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	registerUploadRoutes(mux, deps.UploadStorage)
+	mux.HandleFunc("/attendance", app.sharedAttendanceHandler)
+	mux.HandleFunc("/attendance/save", app.sharedAttendanceHandler)
 	mux.HandleFunc("/health", app.healthHandler)
 	mux.HandleFunc("/ready", app.readyHandler)
 	mux.HandleFunc("/", app.homeHandler)

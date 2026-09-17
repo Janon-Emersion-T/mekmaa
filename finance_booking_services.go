@@ -3733,12 +3733,32 @@ func (a *App) createStudentGroup(
 	return tx.Commit()
 }
 
+var errAttendanceAlreadySaved = errors.New("Attendance has already been saved for this session and date. Contact an administrator for corrections.")
+
 func (a *App) replaceAttendanceRecords(groupID int64, sessionID int64, attendanceDate string, records []AttendanceRecord) error {
+	return a.writeAttendanceRecords(groupID, sessionID, attendanceDate, records, false)
+}
+
+func (a *App) writeAttendanceRecords(groupID int64, sessionID int64, attendanceDate string, records []AttendanceRecord, createOnly bool) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	// Serialize all writers for this group before checking for an existing sheet.
+	// The write lock works with both PostgreSQL and SQLite.
+	if _, err := a.execTxDB(tx, `UPDATE student_groups SET name = name WHERE id = ?`, groupID); err != nil {
+		return err
+	}
+	if createOnly {
+		var exists bool
+		if err := a.queryRowTxDB(tx, `SELECT EXISTS(SELECT 1 FROM attendance_records WHERE group_id = ? AND COALESCE(session_id, 0) = ? AND attendance_date = ?)`, groupID, sessionID, attendanceDate).Scan(&exists); err != nil {
+			return err
+		}
+		if exists {
+			return errAttendanceAlreadySaved
+		}
+	}
 
 	if _, err := tx.Exec(
 		rebindDatabaseQuery(

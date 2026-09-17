@@ -2036,6 +2036,8 @@ type TemplateData struct {
 	StudentAttendanceReportGroupID   int64
 	StudentAttendanceReportQuery     string
 	AttendanceSheets                 []AttendanceSheetSummary
+	SharedAttendanceSaved            bool
+	SharedAttendanceCourseID         int64
 	AttendanceSearchFilter           AttendanceSearchFilter
 	AttendanceSearchStudentID        string
 	AttendanceSearchMatches          []Admission
