@@ -210,9 +210,46 @@
   </div>
 
   {{if and (eq .GroupMode "view") .SelectedGroup}}
+  <style>
+    #group-student-print { display: none; }
+    @media print {
+      @page { size: A4 portrait; margin: 15mm; }
+      html, body { margin: 0 !important; padding: 0 !important; min-height: 0 !important; background: white !important; }
+      body > :not(#group-student-print) { display: none !important; }
+      #group-student-print { display: block !important; color: black; font: 10pt/1.4 Arial, sans-serif; }
+      #group-student-print h1 { margin: 0 0 4mm; font-size: 18pt; font-weight: bold; }
+      #group-student-print p { margin: 0 0 2mm; overflow-wrap: anywhere; }
+      #group-student-print header { break-inside: avoid; break-after: avoid; margin-bottom: 6mm; }
+      #group-student-print table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      #group-student-print thead { display: table-header-group; }
+      #group-student-print tr { break-inside: avoid; page-break-inside: avoid; }
+      #group-student-print th, #group-student-print td { border: 1px solid #777; padding: 2.5mm; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+      #group-student-print th { font-weight: bold; }
+    }
+  </style>
+  <section id="group-student-print" aria-label="Printable student list">
+    <header>
+      <h1>MEKMAA — Student list</h1>
+      <p><strong>{{.SelectedGroup.Name}}</strong> · {{.SelectedGroup.Code}}</p>
+      {{if .SelectedGroup.TrainingProgramName}}<p>Programme: {{.SelectedGroup.TrainingProgramName}}</p>{{end}}
+      <p>Total students: {{len .SelectedGroup.Students}}</p>
+    </header>
+    <table>
+      <colgroup><col style="width: 8%"><col style="width: 22%"><col style="width: 35%"><col style="width: 35%"></colgroup>
+      <thead><tr><th scope="col">No.</th><th scope="col">Student ID</th><th scope="col">Student name</th><th scope="col">School</th></tr></thead>
+      <tbody>
+        {{range $index, $student := .SelectedGroup.Students}}
+        <tr><td>{{sub $index -1}}</td><td>{{$student.StudentID}}</td><td>{{$student.FullName}}</td><td>{{if $student.School}}{{$student.School}}{{else}}—{{end}}</td></tr>
+        {{else}}
+        <tr><td colspan="4">No students assigned.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </section>
   <div id="group-view" class="rounded-[1.5rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <h2 class="text-xl font-semibold sm:text-2xl">{{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}} details</h2>
+      <button type="button" data-print-group-students class="rounded-2xl bg-obsidian px-5 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Print student list (A4)</button>
       <a href="/admin/student-groups?division={{.SelectedDivisionScope}}" class="text-sm font-medium text-slate/70 transition hover:text-obsidian">Close</a>
     </div>
     <div class="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
@@ -640,6 +677,13 @@
 </template>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
+    const printList = document.getElementById("group-student-print");
+    const printButton = document.querySelector("[data-print-group-students]");
+    if (printList && printButton) {
+      // Keep the print document outside the dashboard shell so it can paginate naturally.
+      document.body.appendChild(printList);
+      printButton.addEventListener("click", function () { window.print(); });
+    }
     const template = document.getElementById("student-group-session-template");
 
     document.querySelectorAll("[data-student-search-root]").forEach(function (root) {
