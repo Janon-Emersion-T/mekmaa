@@ -10,7 +10,10 @@
   .student-report table { width: 100%; border-collapse: collapse; margin-top: 18px; table-layout: fixed; }
   .student-report th, .student-report td { border: 1px solid #aaa; padding: 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
   .student-report th { background: #eee; font-weight: bold; }
-  .student-report button { border: 1px solid #555; border-radius: 6px; padding: 10px 16px; margin-bottom: 20px; cursor: pointer; }
+  .student-report-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .student-report-actions button, .student-report-actions a { display: inline-block; border: 1px solid #555; border-radius: 6px; padding: 10px 16px; cursor: pointer; color: inherit; text-decoration: none; }
+  .student-report-actions a:hover, .student-report-actions button:hover { background: #eee; }
+  .student-report-actions [hidden] { display: none; }
   @media print {
     .no-print { display: none !important; }
     body { background: white !important; }
@@ -21,7 +24,12 @@
   }
 </style>
 <section class="student-report">
-  <button type="button" class="no-print" onclick="window.print()">Print / Save PDF</button>
+  <div class="student-report-actions no-print">
+    <button type="button" onclick="window.print()">Print / Save PDF</button>
+    <a id="students-share-whatsapp" target="_blank" rel="noopener noreferrer" hidden>Share via WhatsApp</a>
+    <a id="students-share-email" hidden>Share via Email</a>
+  </div>
+  <p id="students-share-note" class="no-print" hidden>Shares a link to this report. Recipients need an authorized Mekmaa account to view it. To share a PDF file, save it first and attach it to your message.</p>
   <h1>Mekmaa — Students list</h1>
   <p><strong>Division:</strong> {{if .SelectedDivision}}{{.SelectedDivision.Name}}{{else}}All authorized divisions{{end}}</p>
   <p><strong>Status:</strong> {{if eq .AdmissionsFilter.Status "active"}}Active{{else if eq .AdmissionsFilter.Status "inactive"}}Inactive{{else}}All statuses (Active and Inactive){{end}}</p>
@@ -50,5 +58,6 @@
     </tbody>
   </table>
 </section>
+<script src="/static/js/students-print-share.js"></script>
 <script>window.addEventListener("load", function () { window.print(); });</script>
 {{end}}
