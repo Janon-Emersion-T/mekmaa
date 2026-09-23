@@ -417,6 +417,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"finance-receipt":                 "templates/dashboard/finance-receipt.html",
 		"student-payments":                "templates/dashboard/student-payments.html",
 		"student-payments-print":          "templates/dashboard/student-payments-print.html",
+		"students-print":                  "templates/dashboard/students-print.html",
 		"referral-commissions":            "templates/dashboard/referral-commissions.html",
 		"reports":                         "templates/dashboard/reports.html",
 		"forbidden":                       "templates/dashboard/forbidden.html",

@@ -176,7 +176,8 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		data.AdmissionsEnd = data.AdmissionsStart + len(admissions) - 1
 	}
 	data.TrainingPrograms = trainingPrograms
-	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "csv") {
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if format == "csv" || format == "pdf" {
 		exportFilter := filter
 		exportFilter.Page = 1
 		exportFilter.Limit = totalAdmissions
@@ -189,12 +190,14 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 			http.Error(w, "could not export students", http.StatusInternalServerError)
 			return
 		}
-		if err := writeAdmissionsCSV(w, exportRows, filter); err != nil {
-			log.Printf("write admissions csv: %v", err)
+		if format == "csv" {
+			if err := writeAdmissionsCSV(w, exportRows, filter); err != nil {
+				log.Printf("write admissions csv: %v", err)
+			}
+			return
 		}
-		return
-	}
-	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "pdf") {
+		data.Admissions = exportRows
+		data.AdmissionsTotal = len(exportRows)
 		data.HideChrome = true
 	}
 	if filter.Division != "" {
@@ -202,6 +205,10 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 			data.SelectedDivision = selectedDivision
 			data.SelectedDivisionScope = selectedDivision.Slug
 		}
+	}
+	if format == "pdf" {
+		a.render(w, "students-print", data, http.StatusOK)
+		return
 	}
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
 	switch mode {
