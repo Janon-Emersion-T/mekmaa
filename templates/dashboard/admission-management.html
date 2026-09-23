@@ -38,7 +38,7 @@
     </div>
 
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-	      <form method="get" class="flex gap-2">
+	      <form method="get" class="flex gap-2" id="student-export-form">
 	        <input type="hidden" name="division" value="{{.AdmissionsFilter.Division}}" />
 	        <input type="hidden" name="search" value="{{.AdmissionsFilter.Search}}" />
             <input type="hidden" name="status" value="{{.AdmissionsFilter.Status}}" />
@@ -51,7 +51,7 @@
           Students
         </p>
 
-        <p class="mt-1 text-2xl font-semibold text-obsidian">
+        <p id="student-total" class="mt-1 text-2xl font-semibold text-obsidian">
           {{.AdmissionsTotal}}
         </p>
       </div>
@@ -533,12 +533,12 @@
 
       <div class="inline-flex w-fit items-center gap-2 rounded-full border border-slate/10 bg-cloud px-3 py-2 text-xs font-semibold text-slate/60">
         <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-        {{.AdmissionsTotal}} registered
+        <span id="student-registered-total">{{.AdmissionsTotal}} registered</span>
       </div>
     </div>
 
     <div class="border-b border-slate/10 px-5 py-5 sm:px-8">
-      <form method="get" action="/admin/students" class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,0.5fr))]">
+      <form id="student-search-form" method="get" action="/admin/students" class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,0.5fr))]">
         {{if .AdmissionMode}}
         <input type="hidden" name="action" value="{{.AdmissionMode}}" />
         {{end}}
@@ -551,6 +551,8 @@
           <input
             type="search"
             name="search"
+            aria-controls="student-search-results"
+            aria-describedby="student-search-status"
             value="{{.AdmissionsFilter.Search}}"
             placeholder="Student ID, name, guardian, or phone"
             class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none transition placeholder:text-slate/35 hover:border-slate/25 focus:border-aqua focus:ring-4 focus:ring-aqua/15"
@@ -603,7 +605,7 @@
         </label>
 
         <div class="flex flex-wrap items-end gap-3 xl:col-span-5 xl:justify-between">
-          <div class="rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-3 text-sm text-slate/65">
+          <div id="student-result-summary" class="rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-3 text-sm text-slate/65">
             {{if gt .AdmissionsTotal 0}}
             Showing <span class="font-semibold text-obsidian">{{.AdmissionsStart}}-{{.AdmissionsEnd}}</span> of <span class="font-semibold text-obsidian">{{.AdmissionsTotal}}</span> students
             {{else}}
@@ -628,8 +630,10 @@
           </div>
         </div>
       </form>
+      <p id="student-search-status" role="status" aria-live="polite" class="mt-2 text-sm text-slate/65"></p>
     </div>
 
+    <div id="student-search-results">
     <!-- Desktop table -->
     <div class="hidden overflow-x-auto lg:block">
       <table class="min-w-full text-left text-sm">
@@ -1058,6 +1062,7 @@
         </a>
       </div>
       {{end}}
+    </div>
     </div>
   </section>
 
@@ -1864,6 +1869,7 @@
   {{end}}
 </section>
 
+<script src="/static/js/student-search.js" defer></script>
 <script>
   (() => {
     const calculateAge = (value) => {
