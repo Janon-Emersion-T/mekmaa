@@ -28,10 +28,24 @@
   <p><strong>Search:</strong> {{if .AdmissionsFilter.Search}}{{.AdmissionsFilter.Search}}{{else}}All students{{end}} · <strong>Total students:</strong> {{.AdmissionsTotal}}</p>
   <p>Student status applies across all divisions; programme enrollment status is managed separately.</p>
   <table>
-    <thead><tr><th style="width: 12%">Student ID</th><th style="width: 20%">Student name</th><th style="width: 8%">Status</th><th style="width: 11%">Admission date</th><th>Programmes</th><th>Guardian</th><th style="width: 13%">Guardian phone</th></tr></thead>
+    <thead>
+      <tr>
+        <th style="width: 12%">Student ID</th>
+        <th style="width: 20%">Student name</th>
+        <th style="width: 8%">Status</th>
+        <th style="width: 11%">Admission date</th>
+        <th>Programmes</th>
+      </tr>
+    </thead>
     <tbody>
       {{range .Admissions}}
-      <tr><td>{{.StudentID}}</td><td>{{.FullName}}</td><td><strong>{{.StatusLabel}}</strong></td><td>{{.AdmissionDate}}</td><td>{{.TrainingProgramNames}}</td><td>{{.GuardianName}}</td><td>{{.GuardianContactNumber}}</td></tr>
+      <tr>
+        <td>{{.StudentID}}</td>
+        <td>{{.FullName}}</td>
+        <td><strong>{{.StatusLabel}}</strong></td>
+        <td>{{.AdmissionDate}}</td>
+        <td>{{.TrainingProgramNames}}</td>
+      </tr>
       {{else}}
       <tr><td colspan="7">No students match the selected filters.</td></tr>
       {{end}}
