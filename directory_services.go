@@ -471,7 +471,7 @@ func (a *App) listAdmissions() ([]Admission, error) {
 	return admissions, nil
 }
 
-func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int, error) {
+func admissionsFilterWhere(filter AdmissionsFilter) (string, []any) {
 	whereParts := make([]string, 0, 1)
 	args := make([]any, 0, 8)
 
@@ -523,6 +523,22 @@ func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int,
 	if len(whereParts) > 0 {
 		whereSQL = " WHERE " + strings.Join(whereParts, " AND ")
 	}
+
+	return whereSQL, args
+}
+
+func (a *App) countAdmissionsByStatus(filter AdmissionsFilter) (active, inactive int, err error) {
+	whereSQL, args := admissionsFilterWhere(filter)
+	err = a.queryRowDB(`
+		SELECT COUNT(CASE WHEN a.status = 'active' THEN 1 END),
+		       COUNT(CASE WHEN a.status = 'inactive' THEN 1 END)
+		FROM admissions a
+	`+whereSQL, args...).Scan(&active, &inactive)
+	return
+}
+
+func (a *App) listAdmissionsFiltered(filter AdmissionsFilter) ([]Admission, int, error) {
+	whereSQL, args := admissionsFilterWhere(filter)
 
 	var total int
 	countQuery := `

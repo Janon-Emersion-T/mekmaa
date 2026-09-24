@@ -49,9 +49,31 @@ func TestStudentStatusLifecycleAndFilters(t *testing.T) {
 			if err != nil || total != want || len(rows) != want {
 				t.Fatalf("status %s filter %s: rows=%d total=%d err=%v", status, filterStatus, len(rows), total, err)
 			}
+			active, inactive, err := app.countAdmissionsByStatus(AdmissionsFilter{
+				Status: filterStatus, Division: "all", Search: "STATUS-001", Page: 2, Limit: 1,
+			})
+			wantActive, wantInactive := 0, 0
+			if status == "active" {
+				wantActive = want
+			} else {
+				wantInactive = want
+			}
+			if err != nil || active != wantActive || inactive != wantInactive {
+				t.Fatalf("status %s filter %s: active=%d inactive=%d err=%v", status, filterStatus, active, inactive, err)
+			}
 			if want == 1 && rows[0].Status != status {
 				t.Fatalf("wrong row status: %q", rows[0].Status)
 			}
+		}
+	}
+	for _, filter := range []AdmissionsFilter{
+		{Search: "missing-student"},
+		{Division: "missing-division"},
+		{DivisionIDs: []int64{999999}},
+	} {
+		active, inactive, err := app.countAdmissionsByStatus(filter)
+		if err != nil || active != 0 || inactive != 0 {
+			t.Fatalf("counts outside search/division scope: active=%d inactive=%d err=%v", active, inactive, err)
 		}
 	}
 	if err := app.setStudentStatus(id, "deleted"); err == nil {
@@ -139,6 +161,12 @@ func TestStudentStatusFilterLinksAndTemplate(t *testing.T) {
 		})
 		if !strings.Contains(html, "Inactive") || !strings.Contains(html, "All statuses") {
 			t.Fatal("missing status UI")
+		}
+		if !strings.Contains(html, `type="radio" name="status" value="inactive" checked`) || strings.Contains(html, `<select name="status"`) {
+			t.Fatal("missing selected status radio filter")
+		}
+		if !strings.Contains(html, `id="student-status-totals"`) {
+			t.Fatal("missing status counts")
 		}
 		if strings.Contains(html, "/admin/students/status?") != editable {
 			t.Fatal("status control permission mismatch")

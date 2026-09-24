@@ -151,6 +151,12 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	activeAdmissions, inactiveAdmissions, err := a.countAdmissionsByStatus(filter)
+	if err != nil {
+		log.Printf("count admissions by status: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	trainingPrograms, err := a.listTrainingProgramsByDivisionIDs(filter.DivisionIDs, true, false)
 	if err != nil {
 		log.Printf("list training programmes for admissions: %v", err)
@@ -163,6 +169,8 @@ func (a *App) admissionManagementHandler(w http.ResponseWriter, r *http.Request)
 	data.Description = "Manage the shared student master and division enrollments."
 	data.Admissions = admissions
 	data.AdmissionsTotal = totalAdmissions
+	data.AdmissionsActiveTotal = activeAdmissions
+	data.AdmissionsInactiveTotal = inactiveAdmissions
 	data.AdmissionsFilter = filter
 	data.AdmissionsTotalPages = admissionsTotalPages(totalAdmissions, filter.Limit)
 	data.AdmissionsPageNumbers = admissionsPageWindow(filter.Page, data.AdmissionsTotalPages)

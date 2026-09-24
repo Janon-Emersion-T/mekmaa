@@ -1969,6 +1969,8 @@ type TemplateData struct {
 	PermissionGroups             []PermissionGroup
 	Admissions                   []Admission
 	AdmissionsTotal              int
+	AdmissionsActiveTotal        int
+	AdmissionsInactiveTotal      int
 	AdmissionsStart              int
 	AdmissionsEnd                int
 	AdmissionsTotalPages         int

@@ -54,6 +54,10 @@
         <p id="student-total" class="mt-1 text-2xl font-semibold text-obsidian">
           {{.AdmissionsTotal}}
         </p>
+        <div id="student-status-totals" class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <span class="text-emerald-700">Active <strong>{{.AdmissionsActiveTotal}}</strong></span>
+          <span class="text-slate/60">Inactive <strong>{{.AdmissionsInactiveTotal}}</strong></span>
+        </div>
       </div>
 
       {{if ne .AdmissionMode "new"}}
@@ -538,7 +542,7 @@
     </div>
 
     <div class="border-b border-slate/10 px-5 py-5 sm:px-8">
-      <form id="student-search-form" method="get" action="/admin/students" class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,0.5fr))]">
+      <form id="student-search-form" method="get" action="/admin/students" class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(240px,0.8fr)_repeat(3,minmax(0,0.5fr))]">
         {{if .AdmissionMode}}
         <input type="hidden" name="action" value="{{.AdmissionMode}}" />
         {{end}}
@@ -559,14 +563,20 @@
           />
         </label>
 
-        <label class="block">
-          <span class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">Status</span>
-          <select name="status" class="h-12 w-full rounded-2xl border border-slate/15 bg-white px-4 text-sm text-obsidian shadow-sm outline-none focus:border-aqua focus:ring-4 focus:ring-aqua/15">
-            <option value="" {{if eq .AdmissionsFilter.Status ""}}selected{{end}}>All statuses</option>
-            <option value="active" {{if eq .AdmissionsFilter.Status "active"}}selected{{end}}>Active</option>
-            <option value="inactive" {{if eq .AdmissionsFilter.Status "inactive"}}selected{{end}}>Inactive</option>
-          </select>
-        </label>
+        <fieldset class="min-w-0">
+          <legend class="mb-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">Status</legend>
+          <div class="flex min-h-12 flex-wrap items-center gap-3 rounded-2xl border border-slate/15 bg-white px-3 py-3 text-sm text-obsidian shadow-sm">
+            <label class="inline-flex cursor-pointer items-center gap-1.5">
+              <input type="radio" name="status" value="" {{if eq .AdmissionsFilter.Status ""}}checked{{end}} aria-label="All statuses" class="h-4 w-4 accent-emerald-700" /> All
+            </label>
+            <label class="inline-flex cursor-pointer items-center gap-1.5">
+              <input type="radio" name="status" value="active" {{if eq .AdmissionsFilter.Status "active"}}checked{{end}} class="h-4 w-4 accent-emerald-700" /> Active
+            </label>
+            <label class="inline-flex cursor-pointer items-center gap-1.5">
+              <input type="radio" name="status" value="inactive" {{if eq .AdmissionsFilter.Status "inactive"}}checked{{end}} class="h-4 w-4 accent-emerald-700" /> Inactive
+            </label>
+          </div>
+        </fieldset>
 
         <label class="block">
           <span class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate/50">Student ID order</span>

@@ -42,7 +42,7 @@
       const html = await response.text();
       if (requestRevision !== revision) return;
       const page = new DOMParser().parseFromString(html, "text/html");
-      const ids = ["student-search-results", "student-result-summary", "student-total", "student-registered-total", "student-export-form"];
+      const ids = ["student-search-results", "student-result-summary", "student-total", "student-status-totals", "student-registered-total", "student-export-form"];
       const replacements = ids.map((id) => ({
         current: document.getElementById(id), next: page.getElementById(id),
       }));
@@ -75,7 +75,7 @@
     event.preventDefault();
     updateResults();
   });
-  form.querySelectorAll("select").forEach((select) => {
-    select.addEventListener("change", updateResults);
+  form.querySelectorAll('select, input[type="radio"][name="status"]').forEach((control) => {
+    control.addEventListener("change", updateResults);
   });
 })();
