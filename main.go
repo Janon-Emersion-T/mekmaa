@@ -485,6 +485,7 @@ func main() {
 	mux.Handle("/admin/finance/reconciliations/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidCashReconciliationHandler), "finance_reconciliations.delete")))
 	mux.Handle("/admin/finance/bookings/collect", app.sessionMiddleware(app.requireAnyPermission(http.HandlerFunc(app.collectBookingPaymentHandler), "finance_transactions.create", "space_bookings.update", "booking_requests.update")))
 	mux.Handle("/admin/finance/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.financeExportHandler), "finance.view")))
+	mux.Handle("/admin/business-insights", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.businessInsightsHandler), "reports.view")))
 	mux.Handle("/admin/reports", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsHandler), "reports.view")))
 	mux.Handle("/admin/reports/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsExportHandler), "reports.export")))
 	mux.Handle("/admin/referrals", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.referralCommissionsHandler), "referrals.view"))))

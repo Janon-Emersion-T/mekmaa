@@ -420,6 +420,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"students-print":                  "templates/dashboard/students-print.html",
 		"referral-commissions":            "templates/dashboard/referral-commissions.html",
 		"reports":                         "templates/dashboard/reports.html",
+		"business-insights":               "templates/dashboard/business-insights.html",
 		"forbidden":                       "templates/dashboard/forbidden.html",
 		"customer-mcp":                    "templates/customer/mcp.html",
 		"customer-mcp-new":                "templates/customer/mcp-new.html",

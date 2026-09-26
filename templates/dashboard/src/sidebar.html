@@ -297,6 +297,9 @@
         </a>
         {{end}}
         {{if hasPermission .User "reports.view"}}
+        <a href="{{scopedURL "/admin/business-insights" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/business-insights"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Business Insights</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Forecast</span>
+        </a>
         <a href="/admin/reports" class="{{if isCurrentPath .CurrentPath "/admin/reports"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Reports</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Insights</span>
         </a>

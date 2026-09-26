@@ -1160,6 +1160,86 @@ type ReportCenter struct {
 	Students   *StudentDomainReport
 }
 
+type BusinessInsightKPI struct {
+	Label string
+	Value string
+	Note  string
+	Tone  string
+}
+
+type BusinessInsightForecast struct {
+	Label         string
+	Value         string
+	Confidence    string
+	Direction     string
+	Driver        string
+	CurrentValue  float64
+	ForecastValue float64
+	ChangePercent float64
+	ProgressWidth string
+}
+
+type BusinessInsightTrend struct {
+	Label         string
+	CurrentValue  string
+	PreviousValue string
+	ChangeLabel   string
+	Tone          string
+}
+
+type BusinessInsightRisk struct {
+	Severity string
+	Title    string
+	Body     string
+	Action   string
+	Href     string
+}
+
+type BusinessInsightAction struct {
+	Title string
+	Body  string
+	Label string
+	Href  string
+	Tone  string
+}
+
+type BusinessInsightMonth struct {
+	Label       string
+	Income      float64
+	Expenses    float64
+	NetCash     float64
+	Bookings    int
+	Admissions  int
+	Attendance  float64
+	IncomeWidth string
+	NetWidth    string
+}
+
+type BusinessInsightSegment struct {
+	Label string
+	Value string
+	Note  string
+	Tone  string
+}
+
+type BusinessInsights struct {
+	PeriodLabel       string
+	GeneratedAt       string
+	ScopeLabel        string
+	Current           *OperationalReport
+	Previous          *OperationalReport
+	KPIs              []BusinessInsightKPI
+	Forecasts         []BusinessInsightForecast
+	Trends            []BusinessInsightTrend
+	Risks             []BusinessInsightRisk
+	Actions           []BusinessInsightAction
+	Months            []BusinessInsightMonth
+	RevenueMix        []BusinessInsightSegment
+	OperationalMix    []BusinessInsightSegment
+	ExecutiveSummary  string
+	ForecastNarrative string
+}
+
 type StudentMonthlyPayment struct {
 	ID                   int64
 	AdmissionID          int64
@@ -2143,6 +2223,7 @@ type TemplateData struct {
 	BookingStatusUnavailableMessage  string
 	Report                           *OperationalReport
 	ReportCenter                     *ReportCenter
+	BusinessInsights                 *BusinessInsights
 	ReceiptAdmission                 *Admission
 	ReceiptEnrollment                *StudentEnrollment
 	ReceiptBookingPayment            *BookingPaymentCollection
