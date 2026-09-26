@@ -11,6 +11,11 @@
       section, article { break-inside: avoid; }
     }
   </style>
+  {{if .HideChrome}}
+  <script>
+    window.addEventListener('load', function () { window.print(); });
+  </script>
+  {{end}}
 
   <header class="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/90 shadow-sm sm:rounded-[2rem]">
     <div class="bg-[radial-gradient(circle_at_14%_18%,rgba(136,255,236,0.20),transparent_24%),linear-gradient(135deg,#0d1318_0%,#18232c_54%,#0f171d_100%)] p-5 text-cloud sm:p-8">
@@ -26,7 +31,10 @@
           </div>
         </div>
         <div data-insight-actions class="flex flex-col gap-2 sm:flex-row xl:flex-col">
-          <button type="button" onclick="window.print()" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-bold text-cloud transition hover:bg-white/15">Print / PDF</button>
+          <a href="{{scopedURL "/admin/business-insights?format=pdf" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-bold text-cloud transition hover:bg-white/15">Print / PDF</a>
+          {{if hasPermission .User "reports.export"}}
+          <a href="{{scopedURL "/admin/business-insights/export" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-bold text-cloud transition hover:bg-white/15">Export CSV</a>
+          {{end}}
           <a href="{{scopedURL "/admin/reports?period=month" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl bg-aqua px-4 text-sm font-bold text-obsidian transition hover:bg-white">Open reports</a>
         </div>
       </div>
@@ -140,6 +148,19 @@
       <h2 class="mt-2 text-xl font-semibold text-obsidian">Activity mix</h2>
       <div class="mt-5 grid gap-3">
         {{range $insights.OperationalMix}}
+        <div class="{{if eq .Tone "negative"}}bg-rose-50 border-rose-100{{else if eq .Tone "positive"}}bg-emerald-50 border-emerald-100{{else}}bg-cloud/45 border-slate/10{{end}} rounded-[1.15rem] border p-4">
+          <div class="flex items-center justify-between gap-4"><p class="text-sm font-semibold text-obsidian">{{.Label}}</p><p class="text-lg font-semibold">{{.Value}}</p></div>
+          <p class="mt-2 text-xs leading-5 text-slate/55">{{.Note}}</p>
+        </div>
+        {{end}}
+      </div>
+    </section>
+
+    <section class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:rounded-[2rem] sm:p-6">
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Forward inputs</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Cash conversion signals</h2>
+      <div class="mt-5 grid gap-3">
+        {{range $insights.StrategicInputs}}
         <div class="{{if eq .Tone "negative"}}bg-rose-50 border-rose-100{{else if eq .Tone "positive"}}bg-emerald-50 border-emerald-100{{else}}bg-cloud/45 border-slate/10{{end}} rounded-[1.15rem] border p-4">
           <div class="flex items-center justify-between gap-4"><p class="text-sm font-semibold text-obsidian">{{.Label}}</p><p class="text-lg font-semibold">{{.Value}}</p></div>
           <p class="mt-2 text-xs leading-5 text-slate/55">{{.Note}}</p>

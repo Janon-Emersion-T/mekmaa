@@ -1223,21 +1223,25 @@ type BusinessInsightSegment struct {
 }
 
 type BusinessInsights struct {
-	PeriodLabel       string
-	GeneratedAt       string
-	ScopeLabel        string
-	Current           *OperationalReport
-	Previous          *OperationalReport
-	KPIs              []BusinessInsightKPI
-	Forecasts         []BusinessInsightForecast
-	Trends            []BusinessInsightTrend
-	Risks             []BusinessInsightRisk
-	Actions           []BusinessInsightAction
-	Months            []BusinessInsightMonth
-	RevenueMix        []BusinessInsightSegment
-	OperationalMix    []BusinessInsightSegment
-	ExecutiveSummary  string
-	ForecastNarrative string
+	PeriodLabel        string
+	GeneratedAt        string
+	ScopeLabel         string
+	Current            *OperationalReport
+	Previous           *OperationalReport
+	StudentOutstanding float64
+	PayrollCommitments float64
+	BookingPipeline    float64
+	KPIs               []BusinessInsightKPI
+	Forecasts          []BusinessInsightForecast
+	Trends             []BusinessInsightTrend
+	Risks              []BusinessInsightRisk
+	Actions            []BusinessInsightAction
+	Months             []BusinessInsightMonth
+	RevenueMix         []BusinessInsightSegment
+	OperationalMix     []BusinessInsightSegment
+	StrategicInputs    []BusinessInsightSegment
+	ExecutiveSummary   string
+	ForecastNarrative  string
 }
 
 type StudentMonthlyPayment struct {
