@@ -9859,9 +9859,21 @@ func TestBookingEditPreservesQuotedPriceSnapshot(t *testing.T) {
 
 	schedule.Title = "Retitled Booking"
 	schedule.Notes = "Updated notes"
+	schedule.RequesterName = "Updated Customer"
+	schedule.RequesterEmail = "updated@example.com"
+	schedule.RequesterPhone = "0771234567"
 	schedule.QuotedPrice = originalQuoted + 1234
 	if err := app.updateSpaceSchedule(*schedule); err != nil {
 		t.Fatalf("update booking: %v", err)
+	}
+	updated, err := app.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		t.Fatalf("reload updated booking: %v", err)
+	}
+	if updated.RequesterName != schedule.RequesterName ||
+		updated.RequesterEmail != schedule.RequesterEmail ||
+		updated.RequesterPhone != schedule.RequesterPhone {
+		t.Fatalf("customer details not persisted: %+v", updated)
 	}
 
 	var preservedQuoted float64

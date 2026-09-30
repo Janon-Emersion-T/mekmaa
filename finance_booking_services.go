@@ -5838,6 +5838,9 @@ func (a *App) updateSpaceSchedule(
 			quantity = ?,
 			title = ?,
 			notes = ?,
+			requester_name = ?,
+			requester_email = ?,
+			requester_phone = ?,
 			updated_at = ?
 		WHERE id = ?
 	`,
@@ -5848,6 +5851,9 @@ func (a *App) updateSpaceSchedule(
 		schedule.Quantity,
 		schedule.Title,
 		schedule.Notes,
+		schedule.RequesterName,
+		schedule.RequesterEmail,
+		schedule.RequesterPhone,
 		time.Now().UTC(),
 		schedule.ID,
 	)
