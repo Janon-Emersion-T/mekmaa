@@ -6524,6 +6524,12 @@ func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
 		a.writeBookingError(w, r, "edit", &schedule, "Booking could not be loaded.", http.StatusBadRequest)
 		return
 	}
+	// The valid-options panel can be unavailable for a saved booking. Keep its
+	// existing inventory selection when the edit changes only its details.
+	if strings.TrimSpace(r.FormValue("booking_option")) == "" {
+		schedule.Activity = current.Activity
+		schedule.Quantity = current.Quantity
+	}
 	schedule.DurationMinutes = current.DurationMinutes
 	if err := validateSpaceScheduleInput(schedule); err != nil {
 		a.writeBookingError(w, r, "edit", &schedule, err.Error(), http.StatusBadRequest)

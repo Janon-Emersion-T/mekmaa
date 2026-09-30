@@ -9885,6 +9885,49 @@ func TestBookingEditPreservesQuotedPriceSnapshot(t *testing.T) {
 	}
 }
 
+func TestUpdateBookingHandlerPreservesInventoryWithoutOptionInput(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 6, "18:00")
+	current, err := app.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		t.Fatalf("load booking: %v", err)
+	}
+
+	form := url.Values{
+		"csrf_token":      {"token"},
+		"schedule_id":     {strconv.FormatInt(scheduleID, 10)},
+		"entry_type":      {current.EntryType},
+		"slot_date":       {current.SlotDate},
+		"slot_hour":       {current.SlotHour},
+		"title":           {"Updated booking title"},
+		"requester_name":  {"Updated Customer"},
+		"requester_email": {"updated@example.com"},
+		"requester_phone": {"0771234567"},
+		"notes":           {"Updated booking notes"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/bookings/update", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req.PostForm = form
+	rec := httptest.NewRecorder()
+
+	app.updateBookingHandler(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("update response = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	updated, err := app.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		t.Fatalf("reload booking: %v", err)
+	}
+	if updated.Activity != current.Activity || updated.Quantity != current.Quantity {
+		t.Fatalf("inventory changed: got %s:%d want %s:%d", updated.Activity, updated.Quantity, current.Activity, current.Quantity)
+	}
+	if updated.Title != "Updated booking title" || updated.RequesterName != "Updated Customer" || updated.Notes != "Updated booking notes" {
+		t.Fatalf("booking details not updated: %+v", updated)
+	}
+}
+
 func TestCompletedAndNoShowStatusValidation(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:booking-complete-no-show-test?mode=memory&cache=shared")
 	if err != nil {
