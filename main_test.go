@@ -9928,6 +9928,31 @@ func TestUpdateBookingHandlerPreservesInventoryWithoutOptionInput(t *testing.T) 
 	}
 }
 
+func TestBookingDetailEditAllowsLegacyInventory(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	scheduleID := createConfirmedFutureBooking(t, app, 6, "18:00")
+	if _, err := app.execDB(`UPDATE space_schedules SET activity = 'retired_activity' WHERE id = ?`, scheduleID); err != nil {
+		t.Fatalf("make legacy booking: %v", err)
+	}
+	schedule, err := app.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		t.Fatalf("load legacy booking: %v", err)
+	}
+	schedule.Title = "Updated legacy booking"
+	schedule.RequesterName = "Updated Customer"
+
+	if err := app.updateSpaceSchedule(*schedule); err != nil {
+		t.Fatalf("update legacy booking details: %v", err)
+	}
+	updated, err := app.findSpaceScheduleByID(scheduleID)
+	if err != nil {
+		t.Fatalf("reload legacy booking: %v", err)
+	}
+	if updated.Title != schedule.Title || updated.RequesterName != schedule.RequesterName {
+		t.Fatalf("legacy booking details not updated: %+v", updated)
+	}
+}
+
 func TestCompletedAndNoShowStatusValidation(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:booking-complete-no-show-test?mode=memory&cache=shared")
 	if err != nil {

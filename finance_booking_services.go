@@ -5756,6 +5756,44 @@ func (a *App) updateSpaceSchedule(
 		return err
 	}
 	schedule.DurationMinutes = current.DurationMinutes
+	inventoryChanged := current.SlotDate != schedule.SlotDate ||
+		current.SlotHour != schedule.SlotHour ||
+		current.EntryType != schedule.EntryType ||
+		current.Activity != schedule.Activity ||
+		current.Quantity != schedule.Quantity
+
+	if !inventoryChanged {
+		result, err := a.execDB(`
+			UPDATE space_schedules
+			SET
+				title = ?,
+				notes = ?,
+				requester_name = ?,
+				requester_email = ?,
+				requester_phone = ?,
+				updated_at = ?
+			WHERE id = ?
+		`,
+			schedule.Title,
+			schedule.Notes,
+			schedule.RequesterName,
+			schedule.RequesterEmail,
+			schedule.RequesterPhone,
+			time.Now().UTC(),
+			schedule.ID,
+		)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	}
 
 	courtActivities, courtLayouts, err :=
 		a.activeBookingConfiguration()
