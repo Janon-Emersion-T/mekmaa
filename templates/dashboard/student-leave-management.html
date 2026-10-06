@@ -14,13 +14,19 @@
   </div>
 
   <div class="rounded-[2rem] border border-white/80 bg-white/85 p-5 shadow-sm sm:p-6">
-    <form action="/admin/student-leaves" method="get" class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_12rem_auto]">
+    <form action="{{scopedURL "/admin/student-leaves" .SelectedDivision .SelectedDivisionScope}}" method="get" class="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_12rem_auto]">
+      <label class="space-y-2">
+        <span class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">Search</span>
+        <input type="search" name="q" value="{{.StudentLeaveSearch}}" placeholder="Search name, student ID, school, guardian, phone" data-leave-student-search class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      </label>
       <label class="space-y-2">
         <span class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">Student</span>
-        <select name="admission_id" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+        <select name="admission_id" data-leave-student-select class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
           <option value="">Select student</option>
           {{range .Admissions}}
-          <option value="{{.ID}}" {{if and $.SelectedAdmission (eq $.SelectedAdmission.ID .ID)}}selected{{end}}>{{.StudentID}} · {{.FullName}}</option>
+          <option value="{{.ID}}" data-search="{{.StudentID}} {{.FullName}} {{.School}} {{.GuardianName}} {{.GuardianContactNumber}}" {{if and $.SelectedAdmission (eq $.SelectedAdmission.ID .ID)}}selected{{end}}>{{.StudentID}} · {{.FullName}}</option>
+          {{else}}
+          <option value="" disabled>No matching students</option>
           {{end}}
         </select>
       </label>
@@ -37,6 +43,12 @@
         <button type="submit" class="h-12 w-full rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Open leave page</button>
       </div>
     </form>
+    {{if .StudentLeaveSearch}}
+    <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate/55">
+      <span>{{len .Admissions}} students matching “{{.StudentLeaveSearch}}”</span>
+      <a href="{{scopedURL "/admin/student-leaves" .SelectedDivision .SelectedDivisionScope}}" class="font-semibold text-obsidian underline decoration-slate/25 underline-offset-4">Clear search</a>
+    </div>
+    {{end}}
   </div>
 
   {{if .SelectedAdmission}}
@@ -54,8 +66,8 @@
             <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{.SelectedAdmission.FullName}}</h2>
             <p class="mt-2 text-sm text-slate/62">Admitted {{formatCalendarDate .SelectedAdmission.AdmissionDate}} · {{.SelectedAdmission.School}}</p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <a href="/admin/students?action=view&id={{.SelectedAdmission.ID}}#admission-view" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-cloud px-4 text-sm font-semibold text-slate transition hover:bg-white">View student</a>
-              <a href="/admin/enrollments" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-cloud px-4 text-sm font-semibold text-slate transition hover:bg-white">Open enrollments</a>
+              <a href="{{scopedURL (printf "/admin/students?action=view&id=%d#admission-view" .SelectedAdmission.ID) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-cloud px-4 text-sm font-semibold text-slate transition hover:bg-white">View student</a>
+              <a href="{{scopedURL "/admin/enrollments" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-cloud px-4 text-sm font-semibold text-slate transition hover:bg-white">Open enrollments</a>
             </div>
           </div>
         </div>
@@ -71,7 +83,7 @@
         </div>
         <div class="mt-4 space-y-3">
           {{range .Enrollments}}
-          <a href="/admin/student-leaves?admission_id={{$.SelectedAdmission.ID}}&enrollment_id={{.ID}}" class="block rounded-2xl border {{if and $.SelectedEnrollment (eq $.SelectedEnrollment.ID .ID)}}border-aqua/60 bg-mint/45{{else}}border-slate/10 bg-cloud/45 hover:bg-white{{end}} px-4 py-4 transition">
+          <a href="{{scopedURL (printf "/admin/student-leaves?admission_id=%d&enrollment_id=%d" $.SelectedAdmission.ID .ID) $.SelectedDivision $.SelectedDivisionScope}}" class="block rounded-2xl border {{if and $.SelectedEnrollment (eq $.SelectedEnrollment.ID .ID)}}border-aqua/60 bg-mint/45{{else}}border-slate/10 bg-cloud/45 hover:bg-white{{end}} px-4 py-4 transition">
             <div class="flex items-center justify-between gap-3">
               <div>
                 <p class="font-semibold text-obsidian">{{.TrainingProgramName}}</p>
@@ -169,4 +181,30 @@
   </div>
   {{end}}
 </section>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const search = document.querySelector("[data-leave-student-search]");
+    const select = document.querySelector("[data-leave-student-select]");
+    if (!search || !select) return;
+
+    const options = Array.from(select.options).filter((option) => option.value);
+    const applyFilter = () => {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+      options.forEach((option) => {
+        const haystack = (option.dataset.search || option.textContent || "").toLowerCase();
+        const matches = !query || haystack.includes(query);
+        option.hidden = !matches;
+        option.disabled = !matches;
+        if (matches) visible += 1;
+      });
+      if (select.selectedOptions.length && select.selectedOptions[0].disabled) {
+        select.value = "";
+      }
+    };
+
+    search.addEventListener("input", applyFilter);
+    applyFilter();
+  });
+</script>
 {{end}}

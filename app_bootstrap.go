@@ -2288,6 +2288,7 @@ type TemplateData struct {
 	ReceiptBookingFinancial          *BookingFinancial
 	StudentPaymentRows               []StudentPaymentRow
 	EnrollmentLeaves                 []StudentEnrollmentLeave
+	StudentLeaveSearch               string
 	PaymentMonth                     string
 	PaymentMonthLabel                string
 	PaymentCollectionOpen            bool

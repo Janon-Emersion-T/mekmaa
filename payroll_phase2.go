@@ -456,8 +456,14 @@ func (a *App) buildPerStudentGroupMembershipSnapshot(
 		return payrollCalculatedSnapshot{}, err
 	}
 
-	details := make([]PayrollPaymentCalculationDetail, 0, len(candidates)+1)
-	for _, candidate := range candidates {
+	includedCandidates, excludedDetails, err := a.excludeFullLeavePayrollStudentCandidates(candidates, periodStart, periodEnd, profile.Rate)
+	if err != nil {
+		return payrollCalculatedSnapshot{}, err
+	}
+
+	details := make([]PayrollPaymentCalculationDetail, 0, len(includedCandidates)+len(excludedDetails)+1)
+	details = append(details, excludedDetails...)
+	for _, candidate := range includedCandidates {
 		details = append(details, PayrollPaymentCalculationDetail{
 			DetailType:     payrollDetailTypePerStudentIncluded,
 			SourceType:     "admission",
@@ -469,24 +475,24 @@ func (a *App) buildPerStudentGroupMembershipSnapshot(
 		})
 	}
 
-	baseAmount := normalizeMoney(profile.Rate * float64(len(candidates)))
+	baseAmount := normalizeMoney(profile.Rate * float64(len(includedCandidates)))
 	details = append([]PayrollPaymentCalculationDetail{
 		payrollSummaryDetail(
-			fmt.Sprintf("%d group students", len(candidates)),
-			float64(len(candidates)),
+			fmt.Sprintf("%d group students", len(includedCandidates)),
+			float64(len(includedCandidates)),
 			profile.Rate,
 			baseAmount,
 		),
 	}, details...)
 
 	return payrollCalculatedSnapshot{
-		Quantity:      float64(len(candidates)),
-		QuantityLabel: fmt.Sprintf("%d group students", len(candidates)),
+		Quantity:      float64(len(includedCandidates)),
+		QuantityLabel: fmt.Sprintf("%d group students", len(includedCandidates)),
 		BaseAmount:    baseAmount,
 		Status:        PayrollPaymentStatusCalculated,
 		Notes: appendPayrollCalculationNote(
 			profile.Notes,
-			"Group-membership basis counts deduplicated students from assigned groups in the scoped training programme.",
+			"Group-membership basis counts deduplicated students from assigned groups in the scoped training programme and excludes full-period active leave.",
 		),
 		Details: details,
 	}, nil
@@ -502,8 +508,14 @@ func (a *App) buildPerStudentAttendanceSnapshot(
 		return payrollCalculatedSnapshot{}, err
 	}
 
-	details := make([]PayrollPaymentCalculationDetail, 0, len(candidates)+1)
-	for _, candidate := range candidates {
+	includedCandidates, excludedDetails, err := a.excludeFullLeavePayrollStudentCandidates(candidates, periodStart, periodEnd, profile.Rate)
+	if err != nil {
+		return payrollCalculatedSnapshot{}, err
+	}
+
+	details := make([]PayrollPaymentCalculationDetail, 0, len(includedCandidates)+len(excludedDetails)+1)
+	details = append(details, excludedDetails...)
+	for _, candidate := range includedCandidates {
 		details = append(details, PayrollPaymentCalculationDetail{
 			DetailType:     payrollDetailTypePerStudentAttendance,
 			SourceType:     "admission",
@@ -516,24 +528,24 @@ func (a *App) buildPerStudentAttendanceSnapshot(
 		})
 	}
 
-	baseAmount := normalizeMoney(profile.Rate * float64(len(candidates)))
+	baseAmount := normalizeMoney(profile.Rate * float64(len(includedCandidates)))
 	details = append([]PayrollPaymentCalculationDetail{
 		payrollSummaryDetail(
-			fmt.Sprintf("%d attended students", len(candidates)),
-			float64(len(candidates)),
+			fmt.Sprintf("%d attended students", len(includedCandidates)),
+			float64(len(includedCandidates)),
 			profile.Rate,
 			baseAmount,
 		),
 	}, details...)
 
 	return payrollCalculatedSnapshot{
-		Quantity:      float64(len(candidates)),
-		QuantityLabel: fmt.Sprintf("%d attended students", len(candidates)),
+		Quantity:      float64(len(includedCandidates)),
+		QuantityLabel: fmt.Sprintf("%d attended students", len(includedCandidates)),
 		BaseAmount:    baseAmount,
 		Status:        PayrollPaymentStatusCalculated,
 		Notes: appendPayrollCalculationNote(
 			profile.Notes,
-			"Attendance basis counts unique students with present or late attendance during the payroll period.",
+			"Attendance basis counts unique students with present or late attendance during the payroll period and excludes full-period active leave.",
 		),
 		Details: details,
 	}, nil
@@ -605,6 +617,62 @@ func payrollStudentLabel(studentID string, fullName string) string {
 	default:
 		return studentID
 	}
+}
+
+func (a *App) excludeFullLeavePayrollStudentCandidates(
+	candidates []payrollStudentCandidate,
+	periodStart string,
+	periodEnd string,
+	rate float64,
+) ([]payrollStudentCandidate, []PayrollPaymentCalculationDetail, error) {
+	enrollmentIDs := make([]int64, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.EnrollmentID > 0 {
+			enrollmentIDs = append(enrollmentIDs, candidate.EnrollmentID)
+		}
+	}
+
+	leavesByEnrollmentID, err := a.listStudentEnrollmentLeavesByEnrollmentIDs(enrollmentIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	start, err := time.Parse("2006-01-02", periodStart)
+	if err != nil {
+		return nil, nil, errors.New("invalid payroll period start")
+	}
+	end, err := time.Parse("2006-01-02", periodEnd)
+	if err != nil {
+		return nil, nil, errors.New("invalid payroll period end")
+	}
+
+	included := make([]payrollStudentCandidate, 0, len(candidates))
+	excludedDetails := make([]PayrollPaymentCalculationDetail, 0)
+	for _, candidate := range candidates {
+		fullPeriodLeave := false
+		leaveNote := ""
+		if candidate.EnrollmentID > 0 {
+			fullPeriodLeave, leaveNote, err = payrollEnrollmentHasFullPeriodLeave(leavesByEnrollmentID[candidate.EnrollmentID], start, end)
+			if err != nil {
+				return nil, nil, fmt.Errorf("student %s has invalid leave data: %w", payrollStudentLabel(candidate.StudentID, candidate.FullName), err)
+			}
+		}
+		if fullPeriodLeave {
+			excludedDetails = append(excludedDetails, PayrollPaymentCalculationDetail{
+				DetailType:     payrollDetailTypePerStudentExcludedFullLeave,
+				SourceType:     "admission",
+				SourceID:       candidate.AdmissionID,
+				Label:          payrollStudentLabel(candidate.StudentID, candidate.FullName),
+				DetailNote:     leaveNote,
+				Quantity:       0,
+				RateSnapshot:   normalizeMoney(rate),
+				AmountSnapshot: 0,
+			})
+			continue
+		}
+		included = append(included, candidate)
+	}
+	return included, excludedDetails, nil
 }
 
 func payrollEnrollmentHasFullPeriodLeave(
@@ -719,8 +787,8 @@ func (a *App) listPayrollAssignedGroupMembershipCandidates(
 			a.id,
 			COALESCE(a.student_id, ''),
 			COALESCE(a.full_name, ''),
-			0,
-			''
+			se.id,
+			CAST(se.enrollment_date AS TEXT)
 		FROM student_group_staff_assignment_history sgsh
 		JOIN student_groups sg
 			ON sg.id = sgsh.group_id
@@ -728,6 +796,11 @@ func (a *App) listPayrollAssignedGroupMembershipCandidates(
 			ON sgmh.group_id = sg.id
 		JOIN admissions a
 			ON a.id = sgmh.admission_id
+		JOIN student_enrollments se
+			ON se.admission_id = sgmh.admission_id
+		   AND se.training_program_id = sg.training_program_id
+		   AND COALESCE(se.active, 1) = 1
+		   AND se.enrollment_date <= ?
 		JOIN training_programs tp
 			ON tp.id = sg.training_program_id
 		WHERE sgsh.user_id = ?
@@ -736,6 +809,7 @@ func (a *App) listPayrollAssignedGroupMembershipCandidates(
 		  AND ` + payrollHistoryOverlapsWhereClause("sgmh") + `
 	`
 	args := []any{
+		periodEnd,
 		profile.UserID,
 		profile.TrainingProgramID,
 		periodEnd, periodStart,
@@ -781,13 +855,18 @@ func (a *App) listPayrollAttendanceStudentCandidates(
 			a.id,
 			COALESCE(a.student_id, ''),
 			COALESCE(a.full_name, ''),
-			0,
-			''
+			se.id,
+			CAST(se.enrollment_date AS TEXT)
 		FROM attendance_records ar
 		JOIN admissions a
 			ON a.id = ar.admission_id
 		JOIN student_groups sg
 			ON sg.id = ar.group_id
+		JOIN student_enrollments se
+			ON se.admission_id = ar.admission_id
+		   AND se.training_program_id = sg.training_program_id
+		   AND COALESCE(se.active, 1) = 1
+		   AND se.enrollment_date <= ?
 		JOIN training_programs tp
 			ON tp.id = sg.training_program_id
 		JOIN student_group_staff_assignment_history sgsh
@@ -800,7 +879,7 @@ func (a *App) listPayrollAttendanceStudentCandidates(
 		  AND sgsh.effective_from <= ar.attendance_date
 		  AND (sgsh.effective_to IS NULL OR sgsh.effective_to > ar.attendance_date)
 	`
-	args := []any{profile.UserID, profile.TrainingProgramID, periodStart, periodEnd}
+	args := []any{periodEnd, profile.UserID, profile.TrainingProgramID, periodStart, periodEnd}
 	if profile.DivisionID > 0 {
 		query += ` AND tp.division_id = ?`
 		args = append(args, profile.DivisionID)

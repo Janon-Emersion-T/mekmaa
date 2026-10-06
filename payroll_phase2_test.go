@@ -221,6 +221,88 @@ func TestPayrollPhase2PerStudentActiveEnrollmentCalculation(t *testing.T) {
 	}
 }
 
+func TestPayrollPhase2PerStudentGroupAndAttendanceExcludeFullLeave(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+
+	coach, err := app.createManagedUser("Leave Coach", "leave-coach@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatalf("create coach: %v", err)
+	}
+
+	programID := createPayrollTestProgram(t, app, "Leave Payroll Program", "cricket")
+	activeID := createPayrollTestAdmission(t, app, "STD-LEAVE-PAY-001", "Active Payroll Student")
+	createPayrollTestEnrollment(t, app, activeID, programID, "2026-07-01")
+	leaveID := createPayrollTestAdmission(t, app, "STD-LEAVE-PAY-002", "Leave Payroll Student")
+	leaveEnrollmentID := createPayrollTestEnrollment(t, app, leaveID, programID, "2026-07-01")
+	if err := app.createStudentEnrollmentLeave(leaveEnrollmentID, "2026-08-01", "2026-08-31", "Full month leave"); err != nil {
+		t.Fatalf("create leave: %v", err)
+	}
+
+	groupID := createPayrollTestGroup(t, app, "Leave Payroll Group", "LEAVE-PAY", programID, []int64{activeID, leaveID}, []int64{coach.ID}, nil)
+	now := time.Now().UTC()
+	for _, admissionID := range []int64{activeID, leaveID} {
+		if _, err := app.db.Exec(`
+			INSERT INTO attendance_records (group_id, admission_id, attendance_date, status, note, recorded_at, updated_at)
+			VALUES (?, ?, '2026-08-10', 'present', '', ?, ?)
+		`, groupID, admissionID, now, now); err != nil {
+			t.Fatalf("create attendance record: %v", err)
+		}
+	}
+
+	groupProfileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:            coach.ID,
+		TrainingProgramID: programID,
+		CompensationType:  SalaryTypePerStudent,
+		Rate:              900,
+		StudentBasis:      SalaryStudentBasisGroupMembership,
+		EffectiveFrom:     "2026-01-01",
+		Active:            true,
+	}, coach.ID)
+	attendanceProfileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID:            coach.ID,
+		TrainingProgramID: programID,
+		CompensationType:  SalaryTypePerStudent,
+		Rate:              700,
+		StudentBasis:      SalaryStudentBasisAttendance,
+		EffectiveFrom:     "2026-01-01",
+		Active:            true,
+	}, coach.ID)
+
+	runID, err := app.createPayrollRun("2026-08-01", "2026-08-31", "August 2026", coach.ID)
+	if err != nil {
+		t.Fatalf("create payroll run: %v", err)
+	}
+	if err := app.generatePayrollRunPayments(runID, coach.ID); err != nil {
+		t.Fatalf("generate payroll: %v", err)
+	}
+
+	for _, fixture := range []struct {
+		name      string
+		profileID int64
+		rate      float64
+	}{
+		{name: "group", profileID: groupProfileID, rate: 900},
+		{name: "attendance", profileID: attendanceProfileID, rate: 700},
+	} {
+		payment := payrollPaymentForProfile(t, app, runID, fixture.profileID)
+		if payment.Quantity != 1 {
+			t.Fatalf("%s quantity = %.2f, want 1", fixture.name, payment.Quantity)
+		}
+		if payment.BaseAmount != fixture.rate {
+			t.Fatalf("%s base amount = %.2f, want %.2f", fixture.name, payment.BaseAmount, fixture.rate)
+		}
+		excluded := 0
+		for _, detail := range payment.CalculationDetails {
+			if detail.DetailType == payrollDetailTypePerStudentExcludedFullLeave {
+				excluded++
+			}
+		}
+		if excluded != 1 {
+			t.Fatalf("%s excluded leave details = %d, want 1", fixture.name, excluded)
+		}
+	}
+}
+
 func TestPayrollPhase2PerStudentManualFallbacks(t *testing.T) {
 	app := newAuthorizationTestApp(t)
 

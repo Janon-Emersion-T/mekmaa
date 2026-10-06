@@ -8708,6 +8708,21 @@ func TestStudentLeaveManagementHandlerScopesOperationalDataByDivision(t *testing
 	if strings.Contains(body, "Chess Leave Programme") {
 		t.Fatalf("did not expect chess programme in KEC-scoped leave view, got %s", body)
 	}
+
+	searchReq := httptest.NewRequest(http.MethodGet, "/admin/student-leaves?q=STD-KEC-LEAVE", nil)
+	searchReq = searchReq.WithContext(req.Context())
+	searchRec := httptest.NewRecorder()
+	app.studentLeaveManagementHandler(searchRec, searchReq)
+	if searchRec.Code != http.StatusOK {
+		t.Fatalf("student leave search status = %d body=%s", searchRec.Code, searchRec.Body.String())
+	}
+	searchBody := searchRec.Body.String()
+	if !strings.Contains(searchBody, "STD-KEC-LEAVE-001") {
+		t.Fatalf("expected search to include KEC student, got %s", searchBody)
+	}
+	if strings.Contains(searchBody, "STD-CHESS-LEAVE-001") {
+		t.Fatalf("search leaked cross-division student, got %s", searchBody)
+	}
 }
 
 func TestStudentIDCardHandlerForbidsCrossDivisionStudentAccess(t *testing.T) {

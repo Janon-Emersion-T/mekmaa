@@ -5468,7 +5468,8 @@ func (a *App) studentLeaveManagementHandler(w http.ResponseWriter, r *http.Reque
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Student Leave"
 	data.Description = "Manage temporary leave periods for student enrollments."
-	data.Admissions = admissions
+	data.StudentLeaveSearch = strings.TrimSpace(r.URL.Query().Get("q"))
+	data.Admissions = filterAdmissionIdentitiesForLeaveSearch(admissions, data.StudentLeaveSearch)
 
 	admissionID := parseInt64Query(r.URL.Query().Get("admission_id"))
 	selectedEnrollmentID := parseInt64Query(r.URL.Query().Get("enrollment_id"))
@@ -5477,6 +5478,9 @@ func (a *App) studentLeaveManagementHandler(w http.ResponseWriter, r *http.Reque
 		selectedAdmission, err := a.findAdmissionIdentityByIDForDivisionIDs(admissionID, divisionIDs)
 		if err == nil {
 			data.SelectedAdmission = selectedAdmission
+			if !admissionSliceContainsID(data.Admissions, selectedAdmission.ID) {
+				data.Admissions = append([]Admission{*selectedAdmission}, data.Admissions...)
+			}
 		} else if errors.Is(err, sql.ErrNoRows) && !canViewAllDivisions(user) {
 			a.writeDivisionForbidden(w, r, user)
 			return
@@ -5514,6 +5518,30 @@ func (a *App) studentLeaveManagementHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	a.render(w, "student-leave-management", data, http.StatusOK)
+}
+
+func filterAdmissionIdentitiesForLeaveSearch(admissions []Admission, query string) []Admission {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return admissions
+	}
+	filtered := make([]Admission, 0, len(admissions))
+	for _, admission := range admissions {
+		haystack := strings.ToLower(strings.TrimSpace(admission.StudentID + " " + admission.FullName + " " + admission.School + " " + admission.GuardianName + " " + admission.GuardianContactNumber))
+		if strings.Contains(haystack, query) {
+			filtered = append(filtered, admission)
+		}
+	}
+	return filtered
+}
+
+func admissionSliceContainsID(admissions []Admission, id int64) bool {
+	for _, admission := range admissions {
+		if admission.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) createStudentEnrollmentLeaveHandler(w http.ResponseWriter, r *http.Request) {
