@@ -172,3 +172,91 @@ func TestBusinessInsightsHandlersRenderPDFAndCSV(t *testing.T) {
 		t.Fatalf("business insights export missing title: %s", rec.Body.String())
 	}
 }
+
+func TestBusinessBreakdownBuilderHandlerAndTemplate(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	anchor := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.Local)
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Breakdown Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   6000,
+		MonthlyFee:     4000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	if _, _, err := app.createAdmissionWithOptionalPaymentAt(Admission{
+		StudentID:             "BREAK-001",
+		FullName:              "Breakdown Student",
+		AdmissionDate:         "2026-08-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		TrainingProgramID:     programID,
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771234500",
+	}, true, "cash", anchor, 0); err != nil {
+		t.Fatalf("create paid admission: %v", err)
+	}
+	if _, err := app.createManualFinanceTransaction("staff_salary_expense", "Coach", "August salary", "cash", -2500, anchor, 0); err != nil {
+		t.Fatalf("create salary expense: %v", err)
+	}
+	if _, err := app.createManualFinanceTransaction("manual_income", "Sponsor", "July sponsorship", "cash", 2000, anchor.AddDate(0, -1, 0), 0); err != nil {
+		t.Fatalf("create previous income: %v", err)
+	}
+
+	user := &User{ID: 501, Name: "Superadmin", Email: "admin@example.com", Roles: []string{"superadmin"}, Permissions: allPermissions}
+	breakdown, err := app.buildBusinessBreakdown(user, nil, nil, "2026-08-01", "2026-08-31")
+	if err != nil {
+		t.Fatalf("build business breakdown: %v", err)
+	}
+	if !moneyEquals(breakdown.TotalRevenue, 6000) {
+		t.Fatalf("breakdown revenue = %.2f, want 6000.00", breakdown.TotalRevenue)
+	}
+	if !moneyEquals(breakdown.TotalExpenses, 2500) {
+		t.Fatalf("breakdown expenses = %.2f, want 2500.00", breakdown.TotalExpenses)
+	}
+	if !strings.Contains(breakdown.ExecutiveSummary, "largest income line") {
+		t.Fatalf("summary missing management signal: %s", breakdown.ExecutiveSummary)
+	}
+	if len(breakdown.RevenueLines) == 0 || breakdown.RevenueLines[0].Label != "Admission payment" {
+		t.Fatalf("unexpected revenue lines: %#v", breakdown.RevenueLines)
+	}
+	if len(breakdown.ExpenseLines) == 0 || breakdown.ExpenseLines[0].Label != "Staff salary" {
+		t.Fatalf("unexpected expense lines: %#v", breakdown.ExpenseLines)
+	}
+	if len(breakdown.SourceLines) == 0 || breakdown.SourceLines[0].Label != "Admissions" {
+		t.Fatalf("unexpected source lines: %#v", breakdown.SourceLines)
+	}
+
+	data := TemplateData{
+		User:              user,
+		BusinessBreakdown: breakdown,
+	}
+	if err := templates["business-breakdown"].ExecuteTemplate(io.Discard, "base", data); err != nil {
+		t.Fatalf("render business breakdown template: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/business-insights/breakdown?from=2026-08-01&to=2026-08-31", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.businessBreakdownHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("business breakdown status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"Business Breakdown", "Where money is earned", "Staff salary", "Admissions"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("business breakdown body missing %q in %s", want, body)
+		}
+	}
+}

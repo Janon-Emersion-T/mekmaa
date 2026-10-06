@@ -1244,6 +1244,58 @@ type BusinessInsights struct {
 	ForecastNarrative  string
 }
 
+type BusinessBreakdownLine struct {
+	Code           string
+	Label          string
+	Amount         float64
+	PreviousAmount float64
+	Delta          float64
+	SharePercent   float64
+	Width          string
+	Count          int
+	Average        float64
+	Note           string
+	Tone           string
+	Href           string
+}
+
+type BusinessBreakdownRecommendation struct {
+	Title string
+	Body  string
+	Href  string
+	Tone  string
+}
+
+type BusinessBreakdown struct {
+	From                string
+	To                  string
+	PreviousFrom        string
+	PreviousTo          string
+	PeriodLabel         string
+	ComparisonLabel     string
+	GeneratedAt         string
+	ScopeLabel          string
+	TotalRevenue        float64
+	TotalExpenses       float64
+	NetProfit           float64
+	ProfitMargin        float64
+	PreviousRevenue     float64
+	PreviousExpenses    float64
+	PreviousNetProfit   float64
+	RevenueDelta        float64
+	ExpenseDelta        float64
+	NetProfitDelta      float64
+	LargestRevenueLine  string
+	LargestExpenseLine  string
+	LargestLossPressure string
+	RevenueLines        []BusinessBreakdownLine
+	ExpenseLines        []BusinessBreakdownLine
+	SourceLines         []BusinessBreakdownLine
+	LossPressureLines   []BusinessBreakdownLine
+	Recommendations     []BusinessBreakdownRecommendation
+	ExecutiveSummary    string
+}
+
 type StudentMonthlyPayment struct {
 	ID                   int64
 	AdmissionID          int64
@@ -2228,6 +2280,7 @@ type TemplateData struct {
 	Report                           *OperationalReport
 	ReportCenter                     *ReportCenter
 	BusinessInsights                 *BusinessInsights
+	BusinessBreakdown                *BusinessBreakdown
 	ReceiptAdmission                 *Admission
 	ReceiptEnrollment                *StudentEnrollment
 	ReceiptBookingPayment            *BookingPaymentCollection

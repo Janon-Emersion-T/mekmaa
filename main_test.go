@@ -9928,6 +9928,41 @@ func TestUpdateBookingHandlerPreservesInventoryWithoutOptionInput(t *testing.T) 
 	}
 }
 
+func TestBookingCalendarViewPermissionAllowsScheduleUpdate(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	viewer, err := app.createManagedUser("Booking Viewer", "booking-viewer@example.com", "password-123", []string{"customer"}, true)
+	if err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+	if err := app.createRole("booking-viewer", []string{"space_bookings.view"}); err != nil {
+		t.Fatalf("create booking viewer role: %v", err)
+	}
+	if err := app.replaceUserRoles(viewer.ID, []string{"booking-viewer"}); err != nil {
+		t.Fatalf("assign booking viewer role: %v", err)
+	}
+	viewer, err = app.findUserByID(viewer.ID)
+	if err != nil {
+		t.Fatalf("reload viewer: %v", err)
+	}
+
+	called := false
+	protected := app.requirePermission(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	}), "space_bookings.view")
+	req := httptest.NewRequest(http.MethodPost, "/admin/bookings/update", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, viewer))
+	protected.ServeHTTP(httptest.NewRecorder(), req)
+	if !called {
+		t.Fatal("booking calendar viewer should be allowed to reach the update handler")
+	}
+}
+
 func TestBookingDetailEditAllowsLegacyInventory(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	scheduleID := createConfirmedFutureBooking(t, app, 6, "18:00")

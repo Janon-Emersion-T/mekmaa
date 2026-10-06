@@ -31,6 +31,7 @@
           </div>
         </div>
         <div data-insight-actions class="flex flex-col gap-2 sm:flex-row xl:flex-col">
+          <a href="{{scopedURL "/admin/business-insights/breakdown" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-bold text-cloud transition hover:bg-white/15">Breakdown</a>
           <a href="{{scopedURL "/admin/business-insights?format=pdf" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-bold text-cloud transition hover:bg-white/15">Print / PDF</a>
           {{if hasPermission .User "reports.export"}}
           <a href="{{scopedURL "/admin/business-insights/export" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-bold text-cloud transition hover:bg-white/15">Export CSV</a>

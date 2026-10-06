@@ -7,7 +7,9 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -96,6 +98,47 @@ func (a *App) businessInsightsExportHandler(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+func (a *App) businessBreakdownHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
+	if errors.Is(err, ErrForbiddenDivision) {
+		a.writeDivisionForbidden(w, r, user)
+		return
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	scopeDivisionIDs := []int64(nil)
+	if selectedDivision != nil {
+		scopeDivisionIDs = []int64{selectedDivision.ID}
+	} else if !canViewAllDivisions(user) {
+		scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
+	}
+
+	breakdown, err := a.buildBusinessBreakdown(user, selectedDivision, scopeDivisionIDs, strings.TrimSpace(r.URL.Query().Get("from")), strings.TrimSpace(r.URL.Query().Get("to")))
+	if err != nil {
+		log.Printf("business breakdown: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Business Breakdown"
+	data.Description = "Income, expense, margin, and loss-pressure breakdown for the selected period."
+	data.SelectedDivision = selectedDivision
+	if selectedDivision != nil {
+		data.SelectedDivisionScope = selectedDivision.Slug
+	}
+	data.BusinessBreakdown = breakdown
+	a.render(w, "business-breakdown", data, http.StatusOK)
+}
+
 func (a *App) buildBusinessInsights(user *User, selectedDivision *Division, divisionIDs []int64, anchor time.Time) (*BusinessInsights, error) {
 	currentPeriod := reportMonthPeriod(anchor)
 	previousPeriod := reportMonthPeriod(anchor.AddDate(0, -1, 0))
@@ -152,6 +195,110 @@ func (a *App) buildBusinessInsights(user *User, selectedDivision *Division, divi
 	insights.ExecutiveSummary = buildBusinessExecutiveSummary(current, previous)
 	insights.ForecastNarrative = "Forecasts use recent monthly run-rate, latest direction, open receivables, booking pipeline, and unpaid payroll commitments. Treat them as a planning signal for staffing, cash control, collections, and capacity decisions."
 	return insights, nil
+}
+
+func (a *App) buildBusinessBreakdown(user *User, selectedDivision *Division, divisionIDs []int64, fromRaw, toRaw string) (*BusinessBreakdown, error) {
+	fromDate, toDate, previousFrom, previousTo, from, to, prevFrom, prevTo, err := financeProfitAndLossPeriod(fromRaw, toRaw, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	filter := FinanceFilter{}
+	if len(divisionIDs) > 0 {
+		filter.DivisionIDs = append([]int64(nil), divisionIDs...)
+	}
+	transactions, err := a.listFinanceTransactionsFiltered(filter)
+	if err != nil {
+		return nil, err
+	}
+
+	breakdown := &BusinessBreakdown{
+		From:            from,
+		To:              to,
+		PreviousFrom:    prevFrom,
+		PreviousTo:      prevTo,
+		PeriodLabel:     fmt.Sprintf("%s to %s", fromDate.Format("02 Jan 2006"), toDate.Format("02 Jan 2006")),
+		ComparisonLabel: fmt.Sprintf("%s to %s", previousFrom.Format("02 Jan 2006"), previousTo.Format("02 Jan 2006")),
+		GeneratedAt:     time.Now().In(time.Local).Format("02 Jan 2006 15:04"),
+		ScopeLabel:      businessInsightScopeLabel(user, selectedDivision),
+	}
+	revenueGroups := map[string]*businessBreakdownAccumulator{}
+	expenseGroups := map[string]*businessBreakdownAccumulator{}
+	sourceGroups := map[string]*businessBreakdownAccumulator{}
+
+	for _, transaction := range transactions {
+		if !financeOperatingTransaction(transaction) {
+			continue
+		}
+		inCurrent := financeTransactionWithinLocalDates(transaction.RecordedAt, fromDate, toDate)
+		inPrevious := financeTransactionWithinLocalDates(transaction.RecordedAt, previousFrom, previousTo)
+		if !inCurrent && !inPrevious {
+			continue
+		}
+
+		amount := absMoney(transaction.Amount)
+		categoryKey := strings.TrimSpace(transaction.Category)
+		if categoryKey == "" {
+			categoryKey = "uncategorised"
+		}
+		sourceKey := businessBreakdownSourceKey(transaction)
+		sourceLabel := businessBreakdownSourceLabel(transaction)
+		if transaction.Amount >= 0 {
+			acc := businessBreakdownGetAccumulator(revenueGroups, categoryKey, financeCategoryLabel(categoryKey), "/admin/finance/ledger?transaction_type=income&category="+categoryKey)
+			sourceAcc := businessBreakdownGetAccumulator(sourceGroups, sourceKey, sourceLabel, "/admin/finance/ledger?transaction_type=income")
+			if inCurrent {
+				acc.Amount += amount
+				acc.Count++
+				sourceAcc.Amount += amount
+				sourceAcc.Count++
+				breakdown.TotalRevenue += amount
+			}
+			if inPrevious {
+				acc.PreviousAmount += amount
+				sourceAcc.PreviousAmount += amount
+				breakdown.PreviousRevenue += amount
+			}
+		} else {
+			acc := businessBreakdownGetAccumulator(expenseGroups, categoryKey, financeCategoryLabel(categoryKey), "/admin/finance/ledger?transaction_type=expense&category="+categoryKey)
+			if inCurrent {
+				acc.Amount += amount
+				acc.Count++
+				breakdown.TotalExpenses += amount
+			}
+			if inPrevious {
+				acc.PreviousAmount += amount
+				breakdown.PreviousExpenses += amount
+			}
+		}
+	}
+
+	breakdown.TotalRevenue = normalizeMoney(breakdown.TotalRevenue)
+	breakdown.TotalExpenses = normalizeMoney(breakdown.TotalExpenses)
+	breakdown.NetProfit = normalizeMoney(breakdown.TotalRevenue - breakdown.TotalExpenses)
+	breakdown.PreviousRevenue = normalizeMoney(breakdown.PreviousRevenue)
+	breakdown.PreviousExpenses = normalizeMoney(breakdown.PreviousExpenses)
+	breakdown.PreviousNetProfit = normalizeMoney(breakdown.PreviousRevenue - breakdown.PreviousExpenses)
+	breakdown.RevenueDelta = normalizeMoney(breakdown.TotalRevenue - breakdown.PreviousRevenue)
+	breakdown.ExpenseDelta = normalizeMoney(breakdown.TotalExpenses - breakdown.PreviousExpenses)
+	breakdown.NetProfitDelta = normalizeMoney(breakdown.NetProfit - breakdown.PreviousNetProfit)
+	if breakdown.TotalRevenue > 0 {
+		breakdown.ProfitMargin = normalizeMoney((breakdown.NetProfit / breakdown.TotalRevenue) * 100)
+	}
+	breakdown.RevenueLines = businessBreakdownLines(revenueGroups, breakdown.TotalRevenue, true)
+	breakdown.ExpenseLines = businessBreakdownLines(expenseGroups, breakdown.TotalExpenses, false)
+	breakdown.SourceLines = businessBreakdownLines(sourceGroups, breakdown.TotalRevenue, true)
+	breakdown.LossPressureLines = businessLossPressureLines(breakdown.ExpenseLines, breakdown.TotalRevenue)
+	if len(breakdown.RevenueLines) > 0 {
+		breakdown.LargestRevenueLine = breakdown.RevenueLines[0].Label
+	}
+	if len(breakdown.ExpenseLines) > 0 {
+		breakdown.LargestExpenseLine = breakdown.ExpenseLines[0].Label
+	}
+	if len(breakdown.LossPressureLines) > 0 {
+		breakdown.LargestLossPressure = breakdown.LossPressureLines[0].Label
+	}
+	breakdown.Recommendations = buildBusinessBreakdownRecommendations(breakdown)
+	breakdown.ExecutiveSummary = buildBusinessBreakdownSummary(breakdown)
+	return breakdown, nil
 }
 
 func reportMonthPeriod(anchor time.Time) ReportPeriod {
@@ -419,6 +566,206 @@ func buildBusinessInsightActions(report *OperationalReport) []BusinessInsightAct
 		{Title: "Lift programme retention", Body: "Use attendance softness and payment coverage to identify students who need staff follow-up.", Label: "Attendance view", Href: "/admin/reports?domain=attendance&period=month", Tone: "people"},
 		{Title: "Plan next month capacity", Body: fmt.Sprintf("Use %.1f%% utilization and %d confirmed bookings to tune staffing, court availability, and campaign focus.", report.Summary.UtilizationRate, report.Summary.ConfirmedBookings), Label: "Booking calendar", Href: "/admin/bookings", Tone: "capacity"},
 	}
+}
+
+type businessBreakdownAccumulator struct {
+	Code           string
+	Label          string
+	Href           string
+	Amount         float64
+	PreviousAmount float64
+	Count          int
+}
+
+func businessBreakdownGetAccumulator(groups map[string]*businessBreakdownAccumulator, code, label, href string) *businessBreakdownAccumulator {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		code = "uncategorised"
+	}
+	if existing, ok := groups[code]; ok {
+		return existing
+	}
+	acc := &businessBreakdownAccumulator{Code: code, Label: label, Href: href}
+	groups[code] = acc
+	return acc
+}
+
+func businessBreakdownSourceKey(transaction FinanceTransaction) string {
+	if strings.TrimSpace(transaction.SourceType) != "" {
+		return strings.TrimSpace(transaction.SourceType)
+	}
+	if strings.TrimSpace(transaction.ReferenceType) != "" {
+		return strings.TrimSpace(transaction.ReferenceType)
+	}
+	return strings.TrimSpace(transaction.Category)
+}
+
+func businessBreakdownSourceLabel(transaction FinanceTransaction) string {
+	switch businessBreakdownSourceKey(transaction) {
+	case "admission":
+		return "Admissions"
+	case "student_enrollment", "student_monthly_payment":
+		return "Student fees"
+	case "booking_payment_collection", "space_schedule":
+		return "Bookings"
+	case "mcp_payment":
+		return "MCP payments"
+	case "tournament", "tournament_entry", "tournament_payment":
+		return "Tournaments"
+	case "manual":
+		return "Manual income"
+	default:
+		return financeCategoryLabel(transaction.Category)
+	}
+}
+
+func businessBreakdownLines(groups map[string]*businessBreakdownAccumulator, total float64, goodWhenUp bool) []BusinessBreakdownLine {
+	lines := make([]BusinessBreakdownLine, 0, len(groups))
+	maxAmount := 0.0
+	for _, group := range groups {
+		maxAmount = math.Max(maxAmount, group.Amount)
+	}
+	for _, group := range groups {
+		amount := normalizeMoney(group.Amount)
+		previous := normalizeMoney(group.PreviousAmount)
+		delta := normalizeMoney(amount - previous)
+		share := 0.0
+		if total > 0 {
+			share = normalizeMoney((amount / total) * 100)
+		}
+		average := 0.0
+		if group.Count > 0 {
+			average = normalizeMoney(amount / float64(group.Count))
+		}
+		lines = append(lines, BusinessBreakdownLine{
+			Code:           group.Code,
+			Label:          group.Label,
+			Amount:         amount,
+			PreviousAmount: previous,
+			Delta:          delta,
+			SharePercent:   share,
+			Width:          reportBarWidth(amount, maxAmount),
+			Count:          group.Count,
+			Average:        average,
+			Note:           businessBreakdownLineNote(amount, previous, goodWhenUp),
+			Tone:           businessBreakdownDeltaTone(delta, goodWhenUp),
+			Href:           group.Href,
+		})
+	}
+	sort.Slice(lines, func(i, j int) bool {
+		if lines[i].Amount == lines[j].Amount {
+			return lines[i].Label < lines[j].Label
+		}
+		return lines[i].Amount > lines[j].Amount
+	})
+	return lines
+}
+
+func businessLossPressureLines(expenseLines []BusinessBreakdownLine, revenue float64) []BusinessBreakdownLine {
+	lines := make([]BusinessBreakdownLine, 0, len(expenseLines))
+	for _, line := range expenseLines {
+		pressure := 0.0
+		if revenue > 0 {
+			pressure = normalizeMoney((line.Amount / revenue) * 100)
+		}
+		note := "No posted revenue in this period."
+		tone := "negative"
+		if revenue > 0 {
+			note = fmt.Sprintf("Consumes %.1f%% of period revenue.", pressure)
+			if pressure < 15 {
+				tone = "positive"
+			} else if pressure < 35 {
+				tone = "neutral"
+			}
+		}
+		line.SharePercent = pressure
+		line.Width = reportBarWidth(pressure, 100)
+		line.Note = note
+		line.Tone = tone
+		lines = append(lines, line)
+	}
+	sort.Slice(lines, func(i, j int) bool {
+		if lines[i].SharePercent == lines[j].SharePercent {
+			return lines[i].Label < lines[j].Label
+		}
+		return lines[i].SharePercent > lines[j].SharePercent
+	})
+	if len(lines) > 5 {
+		lines = lines[:5]
+	}
+	return lines
+}
+
+func businessBreakdownLineNote(amount, previous float64, goodWhenUp bool) string {
+	if moneyEquals(previous, 0) {
+		if moneyEquals(amount, 0) {
+			return "No movement in either period."
+		}
+		return "New movement versus the comparison period."
+	}
+	change := percentChange(amount, previous)
+	if goodWhenUp {
+		return fmt.Sprintf("%.1f%% versus comparison period.", change)
+	}
+	return fmt.Sprintf("%.1f%% expense movement versus comparison period.", change)
+}
+
+func businessBreakdownDeltaTone(delta float64, goodWhenUp bool) string {
+	if moneyEquals(delta, 0) {
+		return "neutral"
+	}
+	if goodWhenUp {
+		if delta > 0 {
+			return "positive"
+		}
+		return "negative"
+	}
+	if delta > 0 {
+		return "negative"
+	}
+	return "positive"
+}
+
+func buildBusinessBreakdownRecommendations(breakdown *BusinessBreakdown) []BusinessBreakdownRecommendation {
+	recommendations := make([]BusinessBreakdownRecommendation, 0, 4)
+	if breakdown.NetProfit < 0 {
+		recommendations = append(recommendations, BusinessBreakdownRecommendation{Title: "Stop the loss first", Body: "This period is running below break-even. Start with the largest expense line and any revenue source that fell versus comparison.", Href: "/admin/finance/ledger", Tone: "negative"})
+	}
+	if len(breakdown.LossPressureLines) > 0 {
+		top := breakdown.LossPressureLines[0]
+		recommendations = append(recommendations, BusinessBreakdownRecommendation{Title: "Review " + top.Label, Body: fmt.Sprintf("%s is the biggest cost pressure at %.1f%% of revenue.", top.Label, top.SharePercent), Href: top.Href, Tone: top.Tone})
+	}
+	if len(breakdown.RevenueLines) > 0 {
+		top := breakdown.RevenueLines[0]
+		recommendations = append(recommendations, BusinessBreakdownRecommendation{Title: "Protect " + top.Label, Body: fmt.Sprintf("%s contributes %.1f%% of period revenue. Keep collection, follow-up, and capacity aligned around this line.", top.Label, top.SharePercent), Href: top.Href, Tone: "positive"})
+	}
+	recommendations = append(recommendations, BusinessBreakdownRecommendation{Title: "Audit uncategorised movement", Body: "Open the ledger and make sure every material transaction has the right category before management decisions are made.", Href: "/admin/finance/ledger", Tone: "neutral"})
+	return recommendations
+}
+
+func buildBusinessBreakdownSummary(breakdown *BusinessBreakdown) string {
+	result := "profit"
+	if breakdown.NetProfit < 0 {
+		result = "loss"
+	}
+	return fmt.Sprintf("For %s, %s generated %s revenue, spent %s, and closed at a %s of %s with a %.1f%% margin. The largest income line is %s and the largest expense pressure is %s.",
+		breakdown.PeriodLabel,
+		breakdown.ScopeLabel,
+		money(breakdown.TotalRevenue),
+		money(breakdown.TotalExpenses),
+		result,
+		money(absMoney(breakdown.NetProfit)),
+		breakdown.ProfitMargin,
+		emptyFallback(breakdown.LargestRevenueLine, "not available"),
+		emptyFallback(breakdown.LargestExpenseLine, "not available"),
+	)
+}
+
+func emptyFallback(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
 }
 
 func buildBusinessExecutiveSummary(current, previous *OperationalReport) string {
