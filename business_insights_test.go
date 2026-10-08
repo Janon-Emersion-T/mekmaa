@@ -231,8 +231,14 @@ func TestBusinessBreakdownBuilderHandlerAndTemplate(t *testing.T) {
 	if len(breakdown.RevenueLines) == 0 || breakdown.RevenueLines[0].Label != "Admission payment" {
 		t.Fatalf("unexpected revenue lines: %#v", breakdown.RevenueLines)
 	}
+	if len(breakdown.RevenueLines[0].PaymentMonths) != 1 || breakdown.RevenueLines[0].PaymentMonths[0].Label != "August 2026" {
+		t.Fatalf("unexpected revenue month split: %#v", breakdown.RevenueLines[0].PaymentMonths)
+	}
 	if len(breakdown.ExpenseLines) == 0 || breakdown.ExpenseLines[0].Label != "Staff salary" {
 		t.Fatalf("unexpected expense lines: %#v", breakdown.ExpenseLines)
+	}
+	if len(breakdown.ExpenseLines[0].PaymentMonths) != 1 || breakdown.ExpenseLines[0].PaymentMonths[0].Label != "August 2026" {
+		t.Fatalf("unexpected expense month split: %#v", breakdown.ExpenseLines[0].PaymentMonths)
 	}
 	if len(breakdown.SourceLines) == 0 || breakdown.SourceLines[0].Label != "Admissions" {
 		t.Fatalf("unexpected source lines: %#v", breakdown.SourceLines)
@@ -254,7 +260,7 @@ func TestBusinessBreakdownBuilderHandlerAndTemplate(t *testing.T) {
 		t.Fatalf("business breakdown status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Business Breakdown", "Where money is earned", "Staff salary", "Admissions"} {
+	for _, want := range []string{"Business Breakdown", "Where money is earned", "Staff salary", "Admissions", "August 2026: LKR 6000.00", "August 2026: LKR 2500.00"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("business breakdown body missing %q in %s", want, body)
 		}

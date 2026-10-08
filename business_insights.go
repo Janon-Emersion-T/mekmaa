@@ -308,11 +308,9 @@ func (a *App) buildBusinessBreakdown(user *User, selectedDivision *Division, div
 				acc.Count++
 				sourceAcc.Amount += amount
 				sourceAcc.Count++
-				if transaction.SourceType == "student_monthly_payment" {
-					paymentMonth := studentPaymentMonths[transaction.SourceID]
-					businessBreakdownAddPaymentMonth(acc, paymentMonth, amount)
-					businessBreakdownAddPaymentMonth(sourceAcc, paymentMonth, amount)
-				}
+				breakdownMonth := businessBreakdownTransactionMonth(transaction, studentPaymentMonths)
+				businessBreakdownAddPaymentMonth(acc, breakdownMonth, amount)
+				businessBreakdownAddPaymentMonth(sourceAcc, breakdownMonth, amount)
 				breakdown.TotalRevenue += amount
 			}
 			if inPrevious {
@@ -325,6 +323,7 @@ func (a *App) buildBusinessBreakdown(user *User, selectedDivision *Division, div
 			if inCurrent {
 				acc.Amount += amount
 				acc.Count++
+				businessBreakdownAddPaymentMonth(acc, businessBreakdownTransactionMonth(transaction, studentPaymentMonths), amount)
 				breakdown.TotalExpenses += amount
 			}
 			if inPrevious {
@@ -549,6 +548,18 @@ func businessBreakdownStudentPaymentSourceIDs(transactions []FinanceTransaction)
 		ids = append(ids, transaction.SourceID)
 	}
 	return ids
+}
+
+func businessBreakdownTransactionMonth(transaction FinanceTransaction, studentPaymentMonths map[int64]string) string {
+	if transaction.SourceType == "student_monthly_payment" {
+		if paymentMonth := strings.TrimSpace(studentPaymentMonths[transaction.SourceID]); paymentMonth != "" {
+			return paymentMonth
+		}
+	}
+	if transaction.RecordedAt.IsZero() {
+		return ""
+	}
+	return transaction.RecordedAt.In(time.Local).Format("2006-01")
 }
 
 func reportMonthPeriod(anchor time.Time) ReportPeriod {
