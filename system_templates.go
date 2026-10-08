@@ -422,6 +422,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"reports":                         "templates/dashboard/reports.html",
 		"business-insights":               "templates/dashboard/business-insights.html",
 		"business-breakdown":              "templates/dashboard/business-breakdown.html",
+		"business-breakdown-detail":       "templates/dashboard/business-breakdown-detail.html",
 		"forbidden":                       "templates/dashboard/forbidden.html",
 		"customer-mcp":                    "templates/customer/mcp.html",
 		"customer-mcp-new":                "templates/customer/mcp-new.html",

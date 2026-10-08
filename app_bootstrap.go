@@ -1266,6 +1266,29 @@ type BusinessBreakdownRecommendation struct {
 	Tone  string
 }
 
+type BusinessBreakdownDetailRow struct {
+	Transaction      FinanceTransaction
+	Amount           float64
+	PaymentForMonth  string
+	PaymentForLabel  string
+	CollectedAtLabel string
+}
+
+type BusinessBreakdownDetail struct {
+	Type            string
+	Key             string
+	Label           string
+	From            string
+	To              string
+	PeriodLabel     string
+	ScopeLabel      string
+	TotalAmount     float64
+	EntryCount      int
+	AverageAmount   float64
+	PaymentMonthMix []BusinessBreakdownLine
+	Rows            []BusinessBreakdownDetailRow
+}
+
 type BusinessBreakdown struct {
 	From                string
 	To                  string
@@ -2281,6 +2304,7 @@ type TemplateData struct {
 	ReportCenter                     *ReportCenter
 	BusinessInsights                 *BusinessInsights
 	BusinessBreakdown                *BusinessBreakdown
+	BusinessBreakdownDetail          *BusinessBreakdownDetail
 	ReceiptAdmission                 *Admission
 	ReceiptEnrollment                *StudentEnrollment
 	ReceiptBookingPayment            *BookingPaymentCollection

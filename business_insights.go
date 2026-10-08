@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -139,6 +140,59 @@ func (a *App) businessBreakdownHandler(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "business-breakdown", data, http.StatusOK)
 }
 
+func (a *App) businessBreakdownDetailHandler(w http.ResponseWriter, r *http.Request) {
+	user, _ := a.currentUser(r.Context())
+	allowedDivisionIDs, err := a.scopedDivisionIDsForUser(user, true)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
+	if errors.Is(err, ErrForbiddenDivision) {
+		a.writeDivisionForbidden(w, r, user)
+		return
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	scopeDivisionIDs := []int64(nil)
+	if selectedDivision != nil {
+		scopeDivisionIDs = []int64{selectedDivision.ID}
+	} else if !canViewAllDivisions(user) {
+		scopeDivisionIDs = append([]int64(nil), allowedDivisionIDs...)
+	}
+
+	detail, err := a.buildBusinessBreakdownDetail(
+		user,
+		selectedDivision,
+		scopeDivisionIDs,
+		strings.TrimSpace(r.URL.Query().Get("from")),
+		strings.TrimSpace(r.URL.Query().Get("to")),
+		strings.TrimSpace(r.URL.Query().Get("type")),
+		strings.TrimSpace(r.URL.Query().Get("key")),
+	)
+	if err != nil {
+		if errors.Is(err, errBusinessBreakdownDetailNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		log.Printf("business breakdown detail: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := a.newTemplateData(w, r, user)
+	data.Title = detail.Label + " Breakdown"
+	data.Description = "Complete transaction detail for a business breakdown line."
+	data.SelectedDivision = selectedDivision
+	if selectedDivision != nil {
+		data.SelectedDivisionScope = selectedDivision.Slug
+	}
+	data.BusinessBreakdownDetail = detail
+	a.render(w, "business-breakdown-detail", data, http.StatusOK)
+}
+
 func (a *App) buildBusinessInsights(user *User, selectedDivision *Division, divisionIDs []int64, anchor time.Time) (*BusinessInsights, error) {
 	currentPeriod := reportMonthPeriod(anchor)
 	previousPeriod := reportMonthPeriod(anchor.AddDate(0, -1, 0))
@@ -243,8 +297,8 @@ func (a *App) buildBusinessBreakdown(user *User, selectedDivision *Division, div
 		sourceKey := businessBreakdownSourceKey(transaction)
 		sourceLabel := businessBreakdownSourceLabel(transaction)
 		if transaction.Amount >= 0 {
-			acc := businessBreakdownGetAccumulator(revenueGroups, categoryKey, financeCategoryLabel(categoryKey), "/admin/finance/ledger?transaction_type=income&category="+categoryKey)
-			sourceAcc := businessBreakdownGetAccumulator(sourceGroups, sourceKey, sourceLabel, "/admin/finance/ledger?transaction_type=income")
+			acc := businessBreakdownGetAccumulator(revenueGroups, categoryKey, financeCategoryLabel(categoryKey), businessBreakdownDetailHref("income", categoryKey, from, to))
+			sourceAcc := businessBreakdownGetAccumulator(sourceGroups, sourceKey, sourceLabel, businessBreakdownDetailHref("source", sourceKey, from, to))
 			if inCurrent {
 				acc.Amount += amount
 				acc.Count++
@@ -258,7 +312,7 @@ func (a *App) buildBusinessBreakdown(user *User, selectedDivision *Division, div
 				breakdown.PreviousRevenue += amount
 			}
 		} else {
-			acc := businessBreakdownGetAccumulator(expenseGroups, categoryKey, financeCategoryLabel(categoryKey), "/admin/finance/ledger?transaction_type=expense&category="+categoryKey)
+			acc := businessBreakdownGetAccumulator(expenseGroups, categoryKey, financeCategoryLabel(categoryKey), businessBreakdownDetailHref("expense", categoryKey, from, to))
 			if inCurrent {
 				acc.Amount += amount
 				acc.Count++
@@ -299,6 +353,182 @@ func (a *App) buildBusinessBreakdown(user *User, selectedDivision *Division, div
 	breakdown.Recommendations = buildBusinessBreakdownRecommendations(breakdown)
 	breakdown.ExecutiveSummary = buildBusinessBreakdownSummary(breakdown)
 	return breakdown, nil
+}
+
+var errBusinessBreakdownDetailNotFound = errors.New("business breakdown detail not found")
+
+func (a *App) buildBusinessBreakdownDetail(user *User, selectedDivision *Division, divisionIDs []int64, fromRaw, toRaw, detailType, key string) (*BusinessBreakdownDetail, error) {
+	fromDate, toDate, _, _, from, to, _, _, err := financeProfitAndLossPeriod(fromRaw, toRaw, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	detailType = strings.ToLower(strings.TrimSpace(detailType))
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, errBusinessBreakdownDetailNotFound
+	}
+	switch detailType {
+	case "income", "expense", "source":
+	default:
+		return nil, errBusinessBreakdownDetailNotFound
+	}
+
+	filter := FinanceFilter{}
+	if len(divisionIDs) > 0 {
+		filter.DivisionIDs = append([]int64(nil), divisionIDs...)
+	}
+	transactions, err := a.listFinanceTransactionsFiltered(filter)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]BusinessBreakdownDetailRow, 0)
+	sourceIDs := make([]int64, 0)
+	for _, transaction := range transactions {
+		if !financeOperatingTransaction(transaction) || !financeTransactionWithinLocalDates(transaction.RecordedAt, fromDate, toDate) {
+			continue
+		}
+		if !businessBreakdownDetailMatches(transaction, detailType, key) {
+			continue
+		}
+		amount := absMoney(transaction.Amount)
+		rows = append(rows, BusinessBreakdownDetailRow{
+			Transaction:      transaction,
+			Amount:           amount,
+			CollectedAtLabel: transaction.RecordedAt.In(time.Local).Format("02 Jan 2006 15:04"),
+			PaymentForMonth:  "",
+			PaymentForLabel:  "",
+		})
+		if transaction.SourceType == "student_monthly_payment" && transaction.SourceID > 0 {
+			sourceIDs = append(sourceIDs, transaction.SourceID)
+		}
+	}
+
+	paymentMonths, err := a.businessStudentPaymentMonths(sourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	monthGroups := map[string]*businessBreakdownAccumulator{}
+	total := 0.0
+	for i := range rows {
+		total += rows[i].Amount
+		if rows[i].Transaction.SourceType != "student_monthly_payment" {
+			continue
+		}
+		paymentMonth := paymentMonths[rows[i].Transaction.SourceID]
+		if paymentMonth == "" {
+			continue
+		}
+		rows[i].PaymentForMonth = paymentMonth
+		rows[i].PaymentForLabel = paymentMonthLabel(paymentMonth)
+		acc := businessBreakdownGetAccumulator(monthGroups, paymentMonth, paymentMonthLabel(paymentMonth), "")
+		acc.Amount += rows[i].Amount
+		acc.Count++
+	}
+
+	total = normalizeMoney(total)
+	average := 0.0
+	if len(rows) > 0 {
+		average = normalizeMoney(total / float64(len(rows)))
+	}
+	detail := &BusinessBreakdownDetail{
+		Type:            detailType,
+		Key:             key,
+		Label:           businessBreakdownDetailLabel(detailType, key, rows),
+		From:            from,
+		To:              to,
+		PeriodLabel:     fmt.Sprintf("%s to %s", fromDate.Format("02 Jan 2006"), toDate.Format("02 Jan 2006")),
+		ScopeLabel:      businessInsightScopeLabel(user, selectedDivision),
+		TotalAmount:     total,
+		EntryCount:      len(rows),
+		AverageAmount:   average,
+		PaymentMonthMix: businessBreakdownLines(monthGroups, total, true),
+		Rows:            rows,
+	}
+	return detail, nil
+}
+
+func businessBreakdownDetailMatches(transaction FinanceTransaction, detailType, key string) bool {
+	categoryKey := strings.TrimSpace(transaction.Category)
+	if categoryKey == "" {
+		categoryKey = "uncategorised"
+	}
+	switch detailType {
+	case "income":
+		return transaction.Amount >= 0 && categoryKey == key
+	case "expense":
+		return transaction.Amount < 0 && categoryKey == key
+	case "source":
+		return transaction.Amount >= 0 && businessBreakdownSourceKey(transaction) == key
+	default:
+		return false
+	}
+}
+
+func businessBreakdownDetailLabel(detailType, key string, rows []BusinessBreakdownDetailRow) string {
+	switch detailType {
+	case "source":
+		for _, row := range rows {
+			if businessBreakdownSourceKey(row.Transaction) == key {
+				return businessBreakdownSourceLabel(row.Transaction)
+			}
+		}
+		return financeSourceTypeLabel(key)
+	case "income", "expense":
+		return financeCategoryLabel(key)
+	default:
+		return key
+	}
+}
+
+func businessBreakdownDetailHref(detailType, key, from, to string) string {
+	query := url.Values{}
+	query.Set("type", strings.TrimSpace(detailType))
+	query.Set("key", strings.TrimSpace(key))
+	if strings.TrimSpace(from) != "" {
+		query.Set("from", strings.TrimSpace(from))
+	}
+	if strings.TrimSpace(to) != "" {
+		query.Set("to", strings.TrimSpace(to))
+	}
+	return "/admin/business-insights/breakdown/detail?" + query.Encode()
+}
+
+func (a *App) businessStudentPaymentMonths(ids []int64) (map[int64]string, error) {
+	result := make(map[int64]string)
+	seen := make(map[int64]struct{}, len(ids))
+	normalized := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	if len(normalized) == 0 {
+		return result, nil
+	}
+	args := make([]any, 0, len(normalized))
+	for _, id := range normalized {
+		args = append(args, id)
+	}
+	rows, err := a.queryDB(`SELECT id, payment_month FROM student_monthly_payments WHERE `+financeInt64InClause("id", len(normalized)), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var month string
+		if err := rows.Scan(&id, &month); err != nil {
+			return nil, err
+		}
+		result[id] = strings.TrimSpace(month)
+	}
+	return result, rows.Err()
 }
 
 func reportMonthPeriod(anchor time.Time) ReportPeriod {

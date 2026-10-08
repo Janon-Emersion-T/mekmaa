@@ -260,3 +260,95 @@ func TestBusinessBreakdownBuilderHandlerAndTemplate(t *testing.T) {
 		}
 	}
 }
+
+func TestBusinessBreakdownDetailShowsStudentPaymentMonth(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Monthly Breakdown Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   0,
+		MonthlyFee:     4000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "BREAK-MONTH-001",
+		FullName:              "Collected Later Student",
+		AdmissionDate:         "2026-07-01",
+		DateOfBirth:           "2012-01-01",
+		Gender:                "male",
+		PracticeType:          "group_practice",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771234500",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	enrollmentID, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-07-01",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+	julyDate, _ := parsePaymentMonth("2026-07")
+	collectedAt := time.Date(2026, time.September, 5, 10, 30, 0, 0, time.Local)
+	if _, err := app.collectStudentMonthlyPaymentAmountAt(enrollmentID, "2026-07", julyDate, "cash", 4000, collectedAt, 0); err != nil {
+		t.Fatalf("collect July payment in September: %v", err)
+	}
+
+	user := &User{ID: 502, Name: "Superadmin", Email: "admin@example.com", Roles: []string{"superadmin"}, Permissions: allPermissions}
+	breakdown, err := app.buildBusinessBreakdown(user, nil, nil, "2026-09-01", "2026-09-30")
+	if err != nil {
+		t.Fatalf("build business breakdown: %v", err)
+	}
+	if len(breakdown.RevenueLines) == 0 || breakdown.RevenueLines[0].Href == "" || strings.Contains(breakdown.RevenueLines[0].Href, "/admin/finance/ledger") {
+		t.Fatalf("monthly payment breakdown should link to detail page, got %#v", breakdown.RevenueLines)
+	}
+	detail, err := app.buildBusinessBreakdownDetail(user, nil, nil, "2026-09-01", "2026-09-30", "income", "student_monthly_payment")
+	if err != nil {
+		t.Fatalf("build business breakdown detail: %v", err)
+	}
+	if detail.EntryCount != 1 || len(detail.Rows) != 1 {
+		t.Fatalf("unexpected detail rows: %#v", detail)
+	}
+	if detail.Rows[0].PaymentForMonth != "2026-07" || detail.Rows[0].PaymentForLabel != "July 2026" {
+		t.Fatalf("payment month detail = %#v, want July 2026", detail.Rows[0])
+	}
+	if len(detail.PaymentMonthMix) != 1 || detail.PaymentMonthMix[0].Label != "July 2026" {
+		t.Fatalf("payment month mix = %#v, want July 2026", detail.PaymentMonthMix)
+	}
+
+	data := TemplateData{
+		User:                    user,
+		BusinessBreakdownDetail: detail,
+	}
+	if err := templates["business-breakdown-detail"].ExecuteTemplate(io.Discard, "base", data); err != nil {
+		t.Fatalf("render business breakdown detail template: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/business-insights/breakdown/detail?from=2026-09-01&to=2026-09-30&type=income&key=student_monthly_payment", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.businessBreakdownDetailHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("business breakdown detail status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"Student monthly payment", "July 2026", "Collected Later Student", "Which months these collections paid for"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("business breakdown detail body missing %q in %s", want, body)
+		}
+	}
+}

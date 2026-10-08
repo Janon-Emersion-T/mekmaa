@@ -1,0 +1,116 @@
+{{define "business-breakdown-detail"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+{{$detail := .BusinessBreakdownDetail}}
+{{if $detail}}
+<section class="space-y-6">
+  <header class="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/90 shadow-sm sm:rounded-[2rem]">
+    <div class="bg-[linear-gradient(135deg,#0b1215_0%,#24323a_58%,#102018_100%)] p-5 text-cloud sm:p-8">
+      <div class="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+        <div class="max-w-4xl">
+          <p class="text-xs font-bold uppercase tracking-[0.28em] text-aqua">Breakdown detail</p>
+          <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{{$detail.Label}}</h1>
+          <p class="mt-3 max-w-3xl text-sm leading-7 text-cloud/68">Complete transaction detail for this business breakdown line, separated by collection date and source billing month where student monthly payments are involved.</p>
+          <div class="mt-5 flex flex-wrap gap-2 text-xs font-semibold text-cloud/70">
+            <span class="rounded-full border border-white/12 bg-white/8 px-3 py-1.5">{{$detail.ScopeLabel}}</span>
+            <span class="rounded-full border border-white/12 bg-white/8 px-3 py-1.5">{{$detail.PeriodLabel}}</span>
+            <span class="rounded-full border border-white/12 bg-white/8 px-3 py-1.5">{{$detail.EntryCount}} entries</span>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2 sm:flex-row xl:flex-col">
+          <a href="{{scopedURL (printf "/admin/business-insights/breakdown?from=%s&to=%s" $detail.From $detail.To) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-bold text-cloud transition hover:bg-white/15">Back to breakdown</a>
+          <a href="{{scopedURL "/admin/business-insights" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-11 items-center justify-center rounded-2xl bg-aqua px-4 text-sm font-bold text-obsidian transition hover:bg-white">Forecast view</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="grid gap-4 md:grid-cols-3">
+    <article class="rounded-[1.35rem] border border-emerald-200/70 bg-emerald-50/80 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700/70">Total</p>
+      <p class="mt-3 text-2xl font-semibold text-emerald-950">{{money $detail.TotalAmount}}</p>
+      <p class="mt-2 text-xs text-emerald-800/65">Posted during selected collection period</p>
+    </article>
+    <article class="rounded-[1.35rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate/45">Entries</p>
+      <p class="mt-3 text-2xl font-semibold text-obsidian">{{$detail.EntryCount}}</p>
+      <p class="mt-2 text-xs text-slate/55">Transactions included in this line</p>
+    </article>
+    <article class="rounded-[1.35rem] border border-sky-200/70 bg-sky-50/80 p-5 shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-[0.16em] text-sky-700/70">Average</p>
+      <p class="mt-3 text-2xl font-semibold text-sky-950">{{money $detail.AverageAmount}}</p>
+      <p class="mt-2 text-xs text-sky-800/65">Average amount per entry</p>
+    </article>
+  </section>
+
+  {{if $detail.PaymentMonthMix}}
+  <section class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:rounded-[2rem] sm:p-6">
+    <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Student payment months</p>
+    <h2 class="mt-2 text-xl font-semibold text-obsidian">Which months these collections paid for</h2>
+    <div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {{range $detail.PaymentMonthMix}}
+      <div class="rounded-[1.15rem] border border-slate/10 bg-cloud/45 p-4">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
+            <p class="mt-1 text-xs text-slate/50">{{.Count}} collection{{if ne .Count 1}}s{{end}} · {{printf "%.1f" .SharePercent}}% of this line</p>
+          </div>
+          <p class="text-sm font-bold text-obsidian">{{money .Amount}}</p>
+        </div>
+        <div class="mt-3 h-2 overflow-hidden rounded-full bg-white"><div class="h-full rounded-full bg-obsidian" style="width: {{.Width}}"></div></div>
+      </div>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+
+  <section class="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/90 shadow-sm sm:rounded-[2rem]">
+    <div class="border-b border-slate/10 p-5 sm:p-6">
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate/45">Complete detail</p>
+      <h2 class="mt-2 text-xl font-semibold text-obsidian">Transactions in this breakdown</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate/10 text-left text-sm">
+        <thead class="bg-cloud/60 text-xs uppercase tracking-[0.14em] text-slate/45">
+          <tr>
+            <th class="px-5 py-3 font-semibold">Collected on</th>
+            <th class="px-5 py-3 font-semibold">Payment for</th>
+            <th class="px-5 py-3 font-semibold">Receipt</th>
+            <th class="px-5 py-3 font-semibold">Person / source</th>
+            <th class="px-5 py-3 font-semibold">Description</th>
+            <th class="px-5 py-3 text-right font-semibold">Amount</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range $detail.Rows}}
+          <tr class="align-top">
+            <td class="px-5 py-4 whitespace-nowrap text-slate/65">{{.CollectedAtLabel}}</td>
+            <td class="px-5 py-4 whitespace-nowrap">
+              {{if .PaymentForLabel}}
+              <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900">{{.PaymentForLabel}}</span>
+              {{else}}
+              <span class="text-xs text-slate/40">Not a monthly student payment</span>
+              {{end}}
+            </td>
+            <td class="px-5 py-4 whitespace-nowrap">
+              <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .Transaction.ID) $.SelectedDivision $.SelectedDivisionScope}}" class="font-mono text-xs font-semibold text-slate underline decoration-slate/30 underline-offset-4">{{.Transaction.ReceiptNumber}}</a>
+            </td>
+            <td class="px-5 py-4">
+              <p class="font-semibold text-obsidian">{{if .Transaction.StudentName}}{{.Transaction.StudentName}}{{else}}{{.Transaction.PersonName}}{{end}}</p>
+              <p class="mt-1 text-xs text-slate/50">{{if .Transaction.TrainingProgramName}}{{.Transaction.TrainingProgramName}}{{else}}{{financeSourceTypeLabel .Transaction.SourceType}}{{end}}</p>
+            </td>
+            <td class="max-w-md px-5 py-4 text-slate/60">{{.Transaction.Description}}</td>
+            <td class="px-5 py-4 text-right font-semibold text-obsidian">{{money .Amount}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="6" class="px-5 py-10 text-center text-sm text-slate/55">No transactions match this breakdown line for the selected period.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>
+{{else}}
+<section class="rounded-[1.5rem] border border-white/80 bg-white/90 p-6 text-sm text-slate/60 shadow-sm">Business breakdown detail is not available.</section>
+{{end}}
+{{end}}
