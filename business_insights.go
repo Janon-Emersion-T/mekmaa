@@ -264,6 +264,10 @@ func (a *App) buildBusinessBreakdown(user *User, selectedDivision *Division, div
 	if err != nil {
 		return nil, err
 	}
+	studentPaymentMonths, err := a.businessStudentPaymentMonths(businessBreakdownStudentPaymentSourceIDs(transactions))
+	if err != nil {
+		return nil, err
+	}
 
 	breakdown := &BusinessBreakdown{
 		From:            from,
@@ -304,6 +308,11 @@ func (a *App) buildBusinessBreakdown(user *User, selectedDivision *Division, div
 				acc.Count++
 				sourceAcc.Amount += amount
 				sourceAcc.Count++
+				if transaction.SourceType == "student_monthly_payment" {
+					paymentMonth := studentPaymentMonths[transaction.SourceID]
+					businessBreakdownAddPaymentMonth(acc, paymentMonth, amount)
+					businessBreakdownAddPaymentMonth(sourceAcc, paymentMonth, amount)
+				}
 				breakdown.TotalRevenue += amount
 			}
 			if inPrevious {
@@ -529,6 +538,17 @@ func (a *App) businessStudentPaymentMonths(ids []int64) (map[int64]string, error
 		result[id] = strings.TrimSpace(month)
 	}
 	return result, rows.Err()
+}
+
+func businessBreakdownStudentPaymentSourceIDs(transactions []FinanceTransaction) []int64 {
+	ids := make([]int64, 0)
+	for _, transaction := range transactions {
+		if transaction.SourceType != "student_monthly_payment" || transaction.SourceID <= 0 {
+			continue
+		}
+		ids = append(ids, transaction.SourceID)
+	}
+	return ids
 }
 
 func reportMonthPeriod(anchor time.Time) ReportPeriod {
@@ -805,6 +825,7 @@ type businessBreakdownAccumulator struct {
 	Amount         float64
 	PreviousAmount float64
 	Count          int
+	PaymentMonths  map[string]*businessBreakdownAccumulator
 }
 
 func businessBreakdownGetAccumulator(groups map[string]*businessBreakdownAccumulator, code, label, href string) *businessBreakdownAccumulator {
@@ -818,6 +839,22 @@ func businessBreakdownGetAccumulator(groups map[string]*businessBreakdownAccumul
 	acc := &businessBreakdownAccumulator{Code: code, Label: label, Href: href}
 	groups[code] = acc
 	return acc
+}
+
+func businessBreakdownAddPaymentMonth(group *businessBreakdownAccumulator, paymentMonth string, amount float64) {
+	if group == nil {
+		return
+	}
+	paymentMonth = strings.TrimSpace(paymentMonth)
+	if paymentMonth == "" {
+		return
+	}
+	if group.PaymentMonths == nil {
+		group.PaymentMonths = map[string]*businessBreakdownAccumulator{}
+	}
+	acc := businessBreakdownGetAccumulator(group.PaymentMonths, paymentMonth, paymentMonthLabel(paymentMonth), "")
+	acc.Amount += amount
+	acc.Count++
 }
 
 func businessBreakdownSourceKey(transaction FinanceTransaction) string {
@@ -880,6 +917,7 @@ func businessBreakdownLines(groups map[string]*businessBreakdownAccumulator, tot
 			Note:           businessBreakdownLineNote(amount, previous, goodWhenUp),
 			Tone:           businessBreakdownDeltaTone(delta, goodWhenUp),
 			Href:           group.Href,
+			PaymentMonths:  businessBreakdownLines(group.PaymentMonths, amount, true),
 		})
 	}
 	sort.Slice(lines, func(i, j int) bool {

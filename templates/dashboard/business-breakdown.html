@@ -82,6 +82,13 @@
             <div>
               <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
               <p class="mt-1 text-xs text-slate/50">{{.Count}} entries · avg {{money .Average}} · {{printf "%.1f" .SharePercent}}% of revenue</p>
+              {{if .PaymentMonths}}
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                {{range .PaymentMonths}}
+                <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold text-emerald-900">{{.Label}}: {{money .Amount}}</span>
+                {{end}}
+              </div>
+              {{end}}
             </div>
             <p class="text-right text-lg font-semibold text-emerald-900">{{money .Amount}}</p>
           </div>
@@ -130,6 +137,13 @@
             <div>
               <p class="text-sm font-semibold text-obsidian">{{.Label}}</p>
               <p class="mt-1 text-xs text-slate/50">{{printf "%.1f" .SharePercent}}% of total earnings</p>
+              {{if .PaymentMonths}}
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                {{range .PaymentMonths}}
+                <span class="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[0.68rem] font-semibold text-emerald-900">{{.Label}}: {{money .Amount}}</span>
+                {{end}}
+              </div>
+              {{end}}
             </div>
             <p class="text-sm font-bold text-obsidian">{{money .Amount}}</p>
           </div>

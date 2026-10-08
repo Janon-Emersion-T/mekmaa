@@ -307,6 +307,10 @@ func TestBusinessBreakdownDetailShowsStudentPaymentMonth(t *testing.T) {
 	if _, err := app.collectStudentMonthlyPaymentAmountAt(enrollmentID, "2026-07", julyDate, "cash", 4000, collectedAt, 0); err != nil {
 		t.Fatalf("collect July payment in September: %v", err)
 	}
+	augustDate, _ := parsePaymentMonth("2026-08")
+	if _, err := app.collectStudentMonthlyPaymentAmountAt(enrollmentID, "2026-08", augustDate, "cash", 4000, collectedAt.Add(24*time.Hour), 0); err != nil {
+		t.Fatalf("collect August payment in September: %v", err)
+	}
 
 	user := &User{ID: 502, Name: "Superadmin", Email: "admin@example.com", Roles: []string{"superadmin"}, Permissions: allPermissions}
 	breakdown, err := app.buildBusinessBreakdown(user, nil, nil, "2026-09-01", "2026-09-30")
@@ -316,18 +320,21 @@ func TestBusinessBreakdownDetailShowsStudentPaymentMonth(t *testing.T) {
 	if len(breakdown.RevenueLines) == 0 || breakdown.RevenueLines[0].Href == "" || strings.Contains(breakdown.RevenueLines[0].Href, "/admin/finance/ledger") {
 		t.Fatalf("monthly payment breakdown should link to detail page, got %#v", breakdown.RevenueLines)
 	}
+	if len(breakdown.RevenueLines[0].PaymentMonths) != 2 || breakdown.RevenueLines[0].PaymentMonths[0].Label != "August 2026" || breakdown.RevenueLines[0].PaymentMonths[1].Label != "July 2026" {
+		t.Fatalf("monthly payment summary = %#v, want August and July", breakdown.RevenueLines[0].PaymentMonths)
+	}
 	detail, err := app.buildBusinessBreakdownDetail(user, nil, nil, "2026-09-01", "2026-09-30", "income", "student_monthly_payment")
 	if err != nil {
 		t.Fatalf("build business breakdown detail: %v", err)
 	}
-	if detail.EntryCount != 1 || len(detail.Rows) != 1 {
+	if detail.EntryCount != 2 || len(detail.Rows) != 2 {
 		t.Fatalf("unexpected detail rows: %#v", detail)
 	}
-	if detail.Rows[0].PaymentForMonth != "2026-07" || detail.Rows[0].PaymentForLabel != "July 2026" {
-		t.Fatalf("payment month detail = %#v, want July 2026", detail.Rows[0])
+	if detail.Rows[0].PaymentForMonth != "2026-08" || detail.Rows[0].PaymentForLabel != "August 2026" {
+		t.Fatalf("latest payment month detail = %#v, want August 2026", detail.Rows[0])
 	}
-	if len(detail.PaymentMonthMix) != 1 || detail.PaymentMonthMix[0].Label != "July 2026" {
-		t.Fatalf("payment month mix = %#v, want July 2026", detail.PaymentMonthMix)
+	if len(detail.PaymentMonthMix) != 2 || detail.PaymentMonthMix[0].Label != "August 2026" || detail.PaymentMonthMix[1].Label != "July 2026" {
+		t.Fatalf("payment month mix = %#v, want August and July", detail.PaymentMonthMix)
 	}
 
 	data := TemplateData{
@@ -346,9 +353,23 @@ func TestBusinessBreakdownDetailShowsStudentPaymentMonth(t *testing.T) {
 		t.Fatalf("business breakdown detail status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Student monthly payment", "July 2026", "Collected Later Student", "Which months these collections paid for"} {
+	for _, want := range []string{"Student monthly payment", "August 2026", "July 2026", "Collected Later Student", "Which months these collections paid for"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("business breakdown detail body missing %q in %s", want, body)
+		}
+	}
+
+	breakdownReq := httptest.NewRequest(http.MethodGet, "/admin/business-insights/breakdown?from=2026-09-01&to=2026-09-30", nil)
+	breakdownReq = breakdownReq.WithContext(context.WithValue(breakdownReq.Context(), userContextKey, user))
+	breakdownRec := httptest.NewRecorder()
+	app.businessBreakdownHandler(breakdownRec, breakdownReq)
+	if breakdownRec.Code != http.StatusOK {
+		t.Fatalf("business breakdown status = %d body=%s", breakdownRec.Code, breakdownRec.Body.String())
+	}
+	breakdownBody := breakdownRec.Body.String()
+	for _, want := range []string{"August 2026: LKR 4000.00", "July 2026: LKR 4000.00"} {
+		if !strings.Contains(breakdownBody, want) {
+			t.Fatalf("business breakdown body missing payment month summary %q in %s", want, breakdownBody)
 		}
 	}
 }

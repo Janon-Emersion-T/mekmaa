@@ -1257,6 +1257,7 @@ type BusinessBreakdownLine struct {
 	Note           string
 	Tone           string
 	Href           string
+	PaymentMonths  []BusinessBreakdownLine
 }
 
 type BusinessBreakdownRecommendation struct {
