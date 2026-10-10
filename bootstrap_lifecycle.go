@@ -630,6 +630,32 @@ func runMigrations(db *sql.DB) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		enrollmentExcessResolutionSQLiteSchema,
+		`CREATE TABLE IF NOT EXISTS enrollment_financial_closures (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			enrollment_id INTEGER NOT NULL UNIQUE
+				REFERENCES student_enrollments(id),
+			effective_date TEXT NOT NULL,
+			final_monthly_fee REAL NOT NULL
+				CHECK (final_monthly_fee >= 0),
+			collected_amount REAL NOT NULL DEFAULT 0,
+			discount_amount REAL NOT NULL DEFAULT 0,
+			excess_amount REAL NOT NULL DEFAULT 0
+				CHECK (excess_amount >= 0),
+			excess_action TEXT NOT NULL DEFAULT ''
+				CHECK (excess_action IN ('', 'retain', 'refund', 'transfer')),
+			excess_reason TEXT NOT NULL DEFAULT '',
+			target_enrollment_id INTEGER
+				REFERENCES student_enrollments(id),
+			recorded_by_user_id INTEGER,
+			resolution_transaction_id INTEGER
+				REFERENCES finance_transactions(id),
+			resolution_payment_id INTEGER
+				REFERENCES student_monthly_payments(id),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_enrollment_financial_closures_date
+			ON enrollment_financial_closures(effective_date)`,
 		`CREATE TABLE IF NOT EXISTS student_monthly_payments (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			admission_id INTEGER NOT NULL,
