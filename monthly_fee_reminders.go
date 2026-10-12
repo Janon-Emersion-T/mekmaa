@@ -71,12 +71,12 @@ func (a *App) listMonthlyFeeReminders(
 	var earliestDate string
 
 	err = a.queryRowDB(`
-		SELECT COALESCE(MIN(enrollment_date), '')
+		SELECT COALESCE(MIN(CAST(enrollment_date AS TEXT)), '')
 		FROM student_enrollments
 		WHERE COALESCE(active, 1) = 1
 		  AND COALESCE(free_monthly_fee, 0) = 0
-		  AND enrollment_date <> ''
-		  AND enrollment_date <= ?
+		  AND CAST(enrollment_date AS TEXT) <> ''
+		  AND CAST(enrollment_date AS TEXT) <= ?
 	`, localNow.Format("2006-01-02")).Scan(&earliestDate)
 
 	if err != nil {
@@ -201,9 +201,29 @@ func (a *App) listMonthlyFeeReminders(
 func buildMonthlyFeeReminderSMS(
 	reminder MonthlyFeeReminder,
 ) string {
-	return fmt.Sprintf(
-		"Dear Parent, outstanding monthly fees for %s at Mekmaa: Rs. %.2f. Please settle the payment. Thank you. - Mekmaa",
-		reminder.StudentName,
+	name := strings.TrimSpace(reminder.StudentName)
+	if name == "" {
+		name = "Student"
+	}
+
+	prefix := "Mekmaa: "
+	suffix := fmt.Sprintf(
+		" has outstanding fees of Rs. %.2f. Please settle. Thank you.",
 		reminder.OutstandingAmount,
 	)
+
+	maxNameLength := maxSMSMessageLength -
+		len([]rune(prefix)) -
+		len([]rune(suffix))
+
+	if maxNameLength < 0 {
+		return ""
+	}
+
+	runes := []rune(name)
+	if len(runes) > maxNameLength {
+		name = string(runes[:maxNameLength])
+	}
+
+	return prefix + name + suffix
 }

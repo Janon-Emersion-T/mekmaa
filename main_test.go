@@ -5323,6 +5323,94 @@ func TestListStudentPaymentRowsProratesEnrollmentLeave(t *testing.T) {
 	t.Fatalf("expected payment row for enrollment %d", enrollmentID)
 }
 
+func TestListStudentPaymentRowsUsesMonthlyLeaveFeePolicy(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	paymentMonthStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.Local)
+	paymentMonth := paymentMonthStart.Format("2006-01")
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Leave Policy Programme",
+		Activity:       "cricket",
+		TrainingFormat: "group",
+		AdmissionFee:   1500,
+		MonthlyFee:     4000,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+
+	tests := []struct {
+		policy string
+		want   float64
+	}{
+		{studentLeaveFeePolicyFull, 4000},
+		{studentLeaveFeePolicyHalf, 2000},
+		{studentLeaveFeePolicyNone, 0},
+	}
+	enrollmentByPolicy := make(map[string]int64)
+	for i, tc := range tests {
+		admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+			StudentID:             fmt.Sprintf("STD-LEAVE-POL-%03d", i+1),
+			FullName:              fmt.Sprintf("Leave Policy Student %d", i+1),
+			AdmissionDate:         paymentMonthStart.AddDate(0, -1, 0).Format("2006-01-02"),
+			DateOfBirth:           "2012-01-01",
+			Gender:                "male",
+			PracticeType:          "group_practice",
+			Address:               "Jaffna",
+			GuardianName:          "Guardian",
+			GuardianRelationship:  "Parent",
+			GuardianContactNumber: "0771000000",
+		}, false, "cash", 0)
+		if err != nil {
+			t.Fatalf("create admission: %v", err)
+		}
+		if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+			AdmissionID:       admissionID,
+			TrainingProgramID: programID,
+		}, false, "cash", 0); err != nil {
+			t.Fatalf("create enrollment: %v", err)
+		}
+		enrollments, err := app.listStudentEnrollments()
+		if err != nil {
+			t.Fatalf("list enrollments: %v", err)
+		}
+		for _, enrollment := range enrollments {
+			if enrollment.AdmissionID == admissionID && enrollment.TrainingProgramID == programID {
+				enrollmentByPolicy[tc.policy] = enrollment.ID
+				break
+			}
+		}
+		enrollmentID := enrollmentByPolicy[tc.policy]
+		if enrollmentID == 0 {
+			t.Fatalf("expected enrollment for %s", tc.policy)
+		}
+		enrollmentStart := paymentMonthStart.AddDate(0, -1, 0)
+		if _, err := app.db.Exec(`UPDATE student_enrollments SET created_at = ?, updated_at = ? WHERE id = ?`, enrollmentStart.UTC(), enrollmentStart.UTC(), enrollmentID); err != nil {
+			t.Fatalf("backdate enrollment: %v", err)
+		}
+		leaveStart := paymentMonthStart.AddDate(0, 0, 9).Format("2006-01-02")
+		leaveEnd := paymentMonthStart.AddDate(0, 0, 18).Format("2006-01-02")
+		if err := app.createStudentEnrollmentLeave(enrollmentID, leaveStart, leaveEnd, "Approved leave", tc.policy); err != nil {
+			t.Fatalf("create leave: %v", err)
+		}
+	}
+
+	rows, err := app.listStudentPaymentRows(paymentMonth)
+	if err != nil {
+		t.Fatalf("list student payment rows: %v", err)
+	}
+	feesByEnrollment := make(map[int64]float64)
+	for _, row := range rows {
+		feesByEnrollment[row.Enrollment.ID] = row.MonthlyFee
+	}
+	for _, tc := range tests {
+		enrollmentID := enrollmentByPolicy[tc.policy]
+		if got := feesByEnrollment[enrollmentID]; got != tc.want {
+			t.Fatalf("%s monthly fee = %.2f, want %.2f", tc.policy, got, tc.want)
+		}
+	}
+}
+
 func TestListStudentPaymentRowsDiscountsSecondHalfEnrollmentMonth(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	programID, err := app.createTrainingProgram(TrainingProgram{

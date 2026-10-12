@@ -248,6 +248,41 @@ func overlappingLeaveDaysForMonth(leaves []StudentEnrollmentLeave, monthStart ti
 	return days, nil
 }
 
+const (
+	studentLeaveFeePolicyLegacyProrated = "legacy_prorated"
+	studentLeaveFeePolicyFull           = "full_fee"
+	studentLeaveFeePolicyHalf           = "half_fee"
+	studentLeaveFeePolicyNone           = "no_fee"
+)
+
+func normalizeStudentLeaveFeePolicy(policy string) string {
+	switch strings.TrimSpace(policy) {
+	case studentLeaveFeePolicyFull:
+		return studentLeaveFeePolicyFull
+	case studentLeaveFeePolicyHalf:
+		return studentLeaveFeePolicyHalf
+	case studentLeaveFeePolicyNone:
+		return studentLeaveFeePolicyNone
+	case studentLeaveFeePolicyLegacyProrated, "":
+		return studentLeaveFeePolicyLegacyProrated
+	default:
+		return ""
+	}
+}
+
+func studentLeaveFeePolicyLabel(policy string) string {
+	switch normalizeStudentLeaveFeePolicy(policy) {
+	case studentLeaveFeePolicyFull:
+		return "Full Fee"
+	case studentLeaveFeePolicyHalf:
+		return "Half Fee"
+	case studentLeaveFeePolicyNone:
+		return "No Fee"
+	default:
+		return "Legacy prorated"
+	}
+}
+
 func proratedMonthlyFee(baseAmount float64, leaveDays int, monthDays int) (float64, float64) {
 	if baseAmount <= 0 || leaveDays <= 0 || monthDays <= 0 {
 		return baseAmount, 0
@@ -261,6 +296,54 @@ func proratedMonthlyFee(baseAmount float64, leaveDays int, monthDays int) (float
 		dueAmount = 0
 	}
 	return dueAmount, leaveAmount
+}
+
+func leavePolicyMonthlyFee(baseAmount float64, leaves []StudentEnrollmentLeave, monthStart time.Time, monthDays int) (float64, float64, int, error) {
+	if baseAmount <= 0 || len(leaves) == 0 {
+		return baseAmount, 0, 0, nil
+	}
+
+	leaveDays, err := overlappingLeaveDaysForMonth(leaves, monthStart)
+	if err != nil {
+		return baseAmount, 0, 0, err
+	}
+	if leaveDays <= 0 {
+		return baseAmount, 0, 0, nil
+	}
+
+	policy := studentLeaveFeePolicyLegacyProrated
+	for _, leave := range leaves {
+		startDate, err := time.Parse("2006-01-02", strings.TrimSpace(leave.StartDate))
+		if err != nil {
+			return baseAmount, 0, 0, err
+		}
+		endDate, err := time.Parse("2006-01-02", strings.TrimSpace(leave.EndDate))
+		if err != nil {
+			return baseAmount, 0, 0, err
+		}
+		monthEnd := monthStart.AddDate(0, 1, -1)
+		if endDate.Before(monthStart) || startDate.After(monthEnd) {
+			continue
+		}
+		policy = normalizeStudentLeaveFeePolicy(leave.FeePolicy)
+		if policy == "" {
+			return baseAmount, 0, 0, errors.New("invalid leave fee policy")
+		}
+		break
+	}
+
+	switch policy {
+	case studentLeaveFeePolicyFull:
+		return baseAmount, 0, leaveDays, nil
+	case studentLeaveFeePolicyHalf:
+		dueAmount := normalizeMoney(baseAmount * 0.5)
+		return dueAmount, normalizeMoney(baseAmount - dueAmount), leaveDays, nil
+	case studentLeaveFeePolicyNone:
+		return 0, normalizeMoney(baseAmount), leaveDays, nil
+	default:
+		dueAmount, leaveAmount := proratedMonthlyFee(baseAmount, leaveDays, monthDays)
+		return dueAmount, leaveAmount, leaveDays, nil
+	}
 }
 
 func paymentMonthCollectible(paymentMonth string, now time.Time) bool {
@@ -588,7 +671,12 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 		if paymentRows[i].Enrollment.ID > 0 {
 			paymentRows[i].Leaves = leaveMap[paymentRows[i].Enrollment.ID]
 			if !paymentRows[i].Enrollment.FreeMonthlyFee && paymentRows[i].OriginalMonthlyFee > 0 {
-				leaveDays, err := overlappingLeaveDaysForMonth(paymentRows[i].Leaves, monthDate)
+				monthlyFee, leaveAmount, leaveDays, err := leavePolicyMonthlyFee(
+					paymentRows[i].MonthlyFee,
+					paymentRows[i].Leaves,
+					monthDate,
+					paymentRows[i].MonthDays,
+				)
 				if err != nil {
 					return nil, err
 				}
@@ -597,7 +685,8 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 				if paymentRows[i].BillableDays < 0 {
 					paymentRows[i].BillableDays = 0
 				}
-				paymentRows[i].MonthlyFee, paymentRows[i].LeaveAmount = proratedMonthlyFee(paymentRows[i].MonthlyFee, leaveDays, paymentRows[i].MonthDays)
+				paymentRows[i].MonthlyFee = monthlyFee
+				paymentRows[i].LeaveAmount = leaveAmount
 			}
 		}
 		key := studentMonthlyPaymentKey(paymentRows[i].Admission.ID, paymentRows[i].Enrollment.ID)
@@ -618,10 +707,17 @@ func (a *App) listStudentPaymentRowsByDivisionIDs(paymentMonth string, divisionI
 	return paymentRows, nil
 }
 
-func (a *App) createStudentEnrollmentLeave(enrollmentID int64, startDate string, endDate string, reason string) error {
+func (a *App) createStudentEnrollmentLeave(enrollmentID int64, startDate string, endDate string, reason string, feePolicy ...string) error {
 	startDate = strings.TrimSpace(startDate)
 	endDate = strings.TrimSpace(endDate)
 	reason = strings.TrimSpace(reason)
+	policy := studentLeaveFeePolicyLegacyProrated
+	if len(feePolicy) > 0 {
+		policy = normalizeStudentLeaveFeePolicy(feePolicy[0])
+	}
+	if policy == "" {
+		return errors.New("select a valid leave fee policy")
+	}
 	if enrollmentID <= 0 {
 		return errors.New("select a valid enrollment")
 	}
@@ -668,9 +764,9 @@ func (a *App) createStudentEnrollmentLeave(enrollmentID int64, startDate string,
 	now := time.Now().UTC()
 	if _, err := tx.Exec(rebindDatabaseQuery(a.runtimeConfig.DBDriver, `
 		INSERT INTO student_enrollment_leaves (
-			enrollment_id, start_date, end_date, reason, active, created_at, updated_at
-		) VALUES (?, ?, ?, ?, 1, ?, ?)
-	`), enrollmentID, startDate, endDate, reason, now, now); err != nil {
+			enrollment_id, start_date, end_date, reason, fee_policy, active, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+	`), enrollmentID, startDate, endDate, reason, policy, now, now); err != nil {
 		return err
 	}
 

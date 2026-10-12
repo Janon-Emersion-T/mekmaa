@@ -642,6 +642,7 @@ CREATE TABLE student_enrollment_leaves (
 			start_date TEXT NOT NULL,
 			end_date TEXT NOT NULL,
 			reason TEXT NOT NULL DEFAULT '',
+			fee_policy TEXT NOT NULL DEFAULT 'legacy_prorated',
 			active INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL,

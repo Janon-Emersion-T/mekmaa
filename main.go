@@ -94,6 +94,9 @@ func main() {
 		len(unpricedOptions),
 	)
 
+	// Monthly fee SMS reminders are disabled unless MONTHLY_FEE_SMS_ENABLED=true.
+	app.startMonthlyFeeSMSReminderScheduler()
+
 	mux := http.NewServeMux()
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))

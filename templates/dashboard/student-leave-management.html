@@ -108,7 +108,7 @@
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.16em] text-sky-800/70">New leave period</p>
             <h3 class="mt-2 text-xl font-semibold text-obsidian">{{.SelectedEnrollment.TrainingProgramName}}</h3>
-            <p class="mt-2 text-sm text-slate/62">Add the exact leave dates. Monthly fees will be reduced only for the days that overlap a billing month.</p>
+            <p class="mt-2 text-sm text-slate/62">Add the leave dates and the monthly fee policy that should apply to every billing month touched by the leave.</p>
           </div>
         </div>
 
@@ -128,8 +128,16 @@
             <span class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">Reason</span>
             <input type="text" name="reason" placeholder="Optional reason for the leave" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
           </label>
+          <label class="space-y-2 sm:col-span-2">
+            <span class="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">Fee policy</span>
+            <select name="fee_policy" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+              <option value="full_fee">Full Fee - 100%</option>
+              <option value="half_fee">Half Fee - 50%</option>
+              <option value="no_fee">No Fee - 0%</option>
+            </select>
+          </label>
           <div class="sm:col-span-2 flex items-center justify-between gap-3">
-            <p class="text-xs text-slate/55">Overlapping leave periods are blocked automatically.</p>
+            <p class="text-xs text-slate/55">Overlapping leave periods are blocked automatically. Fee policy is monthly, not day-prorated.</p>
             <button type="submit" class="h-12 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Save leave</button>
           </div>
         </form>
@@ -150,6 +158,7 @@
               <div>
                 <p class="font-semibold text-obsidian">{{.StartDate}} to {{.EndDate}}</p>
                 <p class="mt-1 text-sm text-slate/62">{{if .Reason}}{{.Reason}}{{else}}No reason provided{{end}}</p>
+                <p class="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-sky-800/70">{{studentLeaveFeePolicyLabel .FeePolicy}}</p>
               </div>
               <form action="/admin/student-leaves/delete" method="post" onsubmit="return confirm('Delete this leave period?')">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />

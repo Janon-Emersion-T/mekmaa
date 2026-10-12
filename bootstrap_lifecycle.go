@@ -117,6 +117,7 @@ func runMigrations(db *sql.DB) error {
 			start_date TEXT NOT NULL,
 			end_date TEXT NOT NULL,
 			reason TEXT NOT NULL DEFAULT '',
+			fee_policy TEXT NOT NULL DEFAULT 'legacy_prorated',
 			active INTEGER NOT NULL DEFAULT 1,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
@@ -1200,6 +1201,11 @@ ON court_closures(activity, active, closure_date)`,
 			stmt:   `ALTER TABLE student_enrollments ADD COLUMN discounted_monthly_fee REAL NOT NULL DEFAULT 0`,
 		},
 		{
+			table:  "student_enrollment_leaves",
+			column: "fee_policy",
+			stmt:   `ALTER TABLE student_enrollment_leaves ADD COLUMN fee_policy TEXT NOT NULL DEFAULT 'legacy_prorated'`,
+		},
+		{
 			table:  "student_groups",
 			column: "training_program_id",
 			stmt:   `ALTER TABLE student_groups ADD COLUMN training_program_id INTEGER`,
@@ -1458,12 +1464,20 @@ ON court_closures(activity, active, closure_date)`,
 		start_date TEXT NOT NULL,
 		end_date TEXT NOT NULL,
 		reason TEXT NOT NULL DEFAULT '',
+		fee_policy TEXT NOT NULL DEFAULT 'legacy_prorated',
 		active INTEGER NOT NULL DEFAULT 1,
 		created_at DATETIME NOT NULL,
 		updated_at DATETIME NOT NULL,
 		FOREIGN KEY (enrollment_id) REFERENCES student_enrollments(id) ON DELETE CASCADE
 	)`); err != nil {
 		return fmt.Errorf("create student enrollment leaves table: %w", err)
+	}
+	if exists, err := tableHasColumn(db, "student_enrollment_leaves", "fee_policy"); err != nil {
+		return err
+	} else if !exists {
+		if _, err := db.Exec(`ALTER TABLE student_enrollment_leaves ADD COLUMN fee_policy TEXT NOT NULL DEFAULT 'legacy_prorated'`); err != nil {
+			return fmt.Errorf("add student enrollment leave fee policy: %w", err)
+		}
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_student_enrollment_leaves_enrollment_dates ON student_enrollment_leaves(enrollment_id, active, start_date, end_date)`); err != nil {
 		return fmt.Errorf("create student enrollment leaves index: %w", err)

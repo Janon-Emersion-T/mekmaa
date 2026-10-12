@@ -274,6 +274,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"admissionsPageURL":                         admissionsPageURL,
 		"paymentMonthLabel":                         paymentMonthLabel,
 		"studentPaymentRowStatus":                   studentPaymentRowStatus,
+		"studentLeaveFeePolicyLabel":                studentLeaveFeePolicyLabel,
 		"formatDateTime":                            formatDateTime,
 		"relativeTime":                              relativeTime,
 		"todayDate": func() string {

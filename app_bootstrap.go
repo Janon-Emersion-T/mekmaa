@@ -1362,6 +1362,7 @@ type StudentEnrollmentLeave struct {
 	StartDate    string
 	EndDate      string
 	Reason       string
+	FeePolicy    string
 	Active       bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
