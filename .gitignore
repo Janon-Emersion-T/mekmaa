@@ -29,3 +29,5 @@ mekmaa.old-*
 .DS_Store
 *.swp
 *.swo
+.development-backups/
+monthly_fee_sms_preview_temp_test.go
