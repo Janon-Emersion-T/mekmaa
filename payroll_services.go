@@ -328,6 +328,17 @@ func payrollPaymentReferenceCode(payment PayrollPayment) string {
 	return fmt.Sprintf("PAY-%06d", payment.ID)
 }
 
+func (a *App) payrollPaymentStaffUserID(paymentID int64) (int64, error) {
+	if paymentID <= 0 {
+		return 0, errors.New("invalid salary payment")
+	}
+	var userID int64
+	if err := a.queryRowDB(`SELECT user_id FROM payroll_payments WHERE id = ?`, paymentID).Scan(&userID); err != nil {
+		return 0, err
+	}
+	return userID, nil
+}
+
 func (a *App) createPayrollRun(
 	periodStart,
 	periodEnd,
@@ -1760,6 +1771,7 @@ func (a *App) payPayrollPayment(
 	financeAccountID int64,
 	paymentReference string,
 	actorUserID int64,
+	paymentDate ...string,
 ) error {
 	if paymentID <= 0 {
 		return errors.New("invalid salary payment")
@@ -1876,6 +1888,24 @@ func (a *App) payPayrollPayment(
 		)
 
 	now := time.Now().UTC()
+	recordedAt := now
+	if len(paymentDate) > 0 && strings.TrimSpace(paymentDate[0]) != "" {
+		parsedDate, err := time.ParseInLocation(
+			"2006-01-02",
+			strings.TrimSpace(paymentDate[0]),
+			sriLankaLocation,
+		)
+		if err != nil {
+			return errors.New("select a valid payment date")
+		}
+		recordedAt = time.Date(
+			parsedDate.Year(),
+			parsedDate.Month(),
+			parsedDate.Day(),
+			12, 0, 0, 0,
+			sriLankaLocation,
+		).UTC()
+	}
 
 	description := fmt.Sprintf(
 		"Salary payment - %s",
@@ -1906,8 +1936,8 @@ func (a *App) payPayrollPayment(
 
 			RecordedByUserID: actorUserID,
 			ApprovedByUserID: actorUserID,
-			RecordedAt:       now,
-			ApprovedAt:       now,
+			RecordedAt:       recordedAt,
+			ApprovedAt:       recordedAt,
 		},
 	)
 	if err != nil {
@@ -1949,7 +1979,7 @@ func (a *App) payPayrollPayment(
 		PayrollPaymentStatusPaid,
 		paymentMethod,
 		strings.TrimSpace(paymentReference),
-		now,
+		recordedAt,
 		nullIfZero(actorUserID),
 		transactionID,
 		now,
