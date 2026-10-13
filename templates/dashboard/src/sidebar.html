@@ -287,7 +287,7 @@
     </div>
     {{end}}
 
-    {{if or (hasPermission .User "events.view") (hasPermission .User "reports.view")}}
+    {{if or (hasPermission .User "events.view") (hasPermission .User "reports.view") (hasPermission .User "finance.view")}}
     <div>
       <p class="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-slate/40">Insights & Content</p>
       <div class="space-y-1">
@@ -305,6 +305,11 @@
         </a>
         <a href="/admin/reports" class="{{if isCurrentPath .CurrentPath "/admin/reports"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
           <span>Reports</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Insights</span>
+        </a>
+        {{end}}
+        {{if hasPermission .User "finance.view"}}
+        <a href="{{scopedURL "/admin/receipts" .SelectedDivision .SelectedDivisionScope}}" class="{{if isCurrentPath .CurrentPath "/admin/receipts"}}bg-obsidian text-cloud shadow-sm{{else}}text-slate/70 hover:bg-cloud hover:text-obsidian{{end}} flex items-center justify-between rounded-2xl px-3 py-2.5 font-medium transition">
+          <span>Receipts</span><span class="text-[0.62rem] font-bold uppercase tracking-wider opacity-45">Audit</span>
         </a>
         {{end}}
       </div>

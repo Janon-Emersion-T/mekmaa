@@ -5572,6 +5572,7 @@ func (a *App) createStudentEnrollmentLeaveHandler(w http.ResponseWriter, r *http
 		r.FormValue("start_date"),
 		r.FormValue("end_date"),
 		r.FormValue("reason"),
+		r.FormValue("fee_policy"),
 	); err != nil {
 		a.setFlash(w, "Leave could not be saved: "+err.Error())
 		http.Redirect(w, r, target+"#leave-manager", http.StatusSeeOther)

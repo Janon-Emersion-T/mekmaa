@@ -1083,7 +1083,7 @@ func (a *App) collectStudentMonthlyPaymentAmountAtWithAdjustment(enrollmentID in
 
 func listStudentEnrollmentLeavesTx(tx *sql.Tx, driver DatabaseDriver, enrollmentID int64) ([]StudentEnrollmentLeave, error) {
 	rows, err := tx.Query(rebindDatabaseQuery(driver, `
-		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(active, 1), created_at, updated_at
+		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(fee_policy, 'legacy_prorated'), COALESCE(active, 1), created_at, updated_at
 		FROM student_enrollment_leaves
 		WHERE enrollment_id = ?
 		  AND COALESCE(active, 1) = 1
@@ -1104,6 +1104,7 @@ func listStudentEnrollmentLeavesTx(tx *sql.Tx, driver DatabaseDriver, enrollment
 			&leave.StartDate,
 			&leave.EndDate,
 			&leave.Reason,
+			&leave.FeePolicy,
 			&active,
 			&leave.CreatedAt,
 			&leave.UpdatedAt,

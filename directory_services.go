@@ -1252,7 +1252,7 @@ func (a *App) listTrainingProgramsByDivisionIDs(divisionIDs []int64, includeInac
 
 func (a *App) listStudentEnrollmentLeaves(enrollmentID int64) ([]StudentEnrollmentLeave, error) {
 	rows, err := a.queryDB(`
-		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(active, 1), created_at, updated_at
+		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(fee_policy, 'legacy_prorated'), COALESCE(active, 1), created_at, updated_at
 		FROM student_enrollment_leaves
 		WHERE enrollment_id = ?
 		ORDER BY start_date DESC, end_date DESC, id DESC
@@ -1272,6 +1272,7 @@ func (a *App) listStudentEnrollmentLeaves(enrollmentID int64) ([]StudentEnrollme
 			&leave.StartDate,
 			&leave.EndDate,
 			&leave.Reason,
+			&leave.FeePolicy,
 			&active,
 			&leave.CreatedAt,
 			&leave.UpdatedAt,
@@ -1304,7 +1305,7 @@ func (a *App) listStudentEnrollmentLeavesByEnrollmentIDs(enrollmentIDs []int64) 
 	}
 
 	rows, err := a.queryDB(fmt.Sprintf(`
-		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(active, 1), created_at, updated_at
+		SELECT id, enrollment_id, start_date, end_date, COALESCE(reason, ''), COALESCE(fee_policy, 'legacy_prorated'), COALESCE(active, 1), created_at, updated_at
 		FROM student_enrollment_leaves
 		WHERE enrollment_id IN (%s)
 		  AND COALESCE(active, 1) = 1
@@ -1324,6 +1325,7 @@ func (a *App) listStudentEnrollmentLeavesByEnrollmentIDs(enrollmentIDs []int64) 
 			&leave.StartDate,
 			&leave.EndDate,
 			&leave.Reason,
+			&leave.FeePolicy,
 			&active,
 			&leave.CreatedAt,
 			&leave.UpdatedAt,

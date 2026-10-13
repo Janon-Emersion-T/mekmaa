@@ -143,6 +143,97 @@ func TestStaffSalaryWorkspaceTemplate(t *testing.T) {
 	}
 }
 
+func TestStaffSalaryWorkspaceSelectedURLDisplaysWorkflowActions(t *testing.T) {
+	app := newAuthorizationTestApp(t)
+	var err error
+	app.templates, err = buildTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	approver, err := app.createManagedUser("Salary Approver", "salary-approver@example.com", "password-123", []string{"superadmin"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approver.Permissions = allPermissions
+	staff, err := app.createManagedUser("Action Staff", "salary-action-staff@example.com", "password-123", []string{"coach"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	divisionID, err := divisionIDByCode(app.db, divisionCodeSports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileID := createPayrollTestSalaryProfile(t, app, StaffSalaryProfile{
+		UserID: staff.ID, DivisionID: divisionID, CompensationType: SalaryTypeMonthly, Rate: 1200, EffectiveFrom: "2026-01-01", Active: true,
+	}, approver.ID)
+	accountID, err := app.createFinanceAccount(divisionID, "", "Salary Action Bank", financeAccountTypeBank, "", approver.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, err := app.generateStaffPayroll("2026-10-01", "2026-10-31", "October salary", staff.ID, approver.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payment := payrollPaymentForProfile(t, app, runID, profileID)
+
+	renderSelected := func() string {
+		req := httptest.NewRequest(http.MethodGet, strings.Split(salaryWorkspaceURL(runID, staff.ID), "#")[0], nil)
+		req = req.WithContext(context.WithValue(req.Context(), userContextKey, approver))
+		rec := httptest.NewRecorder()
+		app.payrollManagementHandler(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("salary workspace status = %d: %s", rec.Code, rec.Body.String())
+		}
+		return rec.Body.String()
+	}
+
+	html := renderSelected()
+	if !strings.Contains(html, "Approve salary") || !strings.Contains(html, `action="/admin/payroll/payment/approve"`) {
+		t.Fatalf("calculated salary missing approval action: %s", html)
+	}
+	if strings.Contains(html, `action="/admin/payroll/pay"`) {
+		t.Fatal("calculated salary displayed payment form before approval")
+	}
+
+	staff.Permissions = allPermissions
+	form := url.Values{
+		"csrf_token":         {"token"},
+		"run_id":             {strconv.FormatInt(runID, 10)},
+		"payment_id":         {strconv.FormatInt(payment.ID, 10)},
+		"return_to":          {"salary-workspace"},
+		"workspace_staff_id": {strconv.FormatInt(staff.ID, 10)},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/payroll/payment/approve", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "token"})
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, staff))
+	rec := httptest.NewRecorder()
+	app.approvePayrollPaymentHandler(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("self approval response = %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := payrollPaymentForProfile(t, app, runID, profileID); got.Status != PayrollPaymentStatusCalculated {
+		t.Fatalf("self approval changed status to %q", got.Status)
+	}
+
+	if err := app.approvePayrollPayment(payment.ID, approver.ID); err != nil {
+		t.Fatal(err)
+	}
+	html = renderSelected()
+	if !strings.Contains(html, "Record payment") || !strings.Contains(html, `action="/admin/payroll/pay"`) {
+		t.Fatalf("approved salary missing payment action: %s", html)
+	}
+
+	if err := app.payPayrollPayment(payment.ID, accountID, "SAL-ACTION-001", approver.ID); err != nil {
+		t.Fatal(err)
+	}
+	html = renderSelected()
+	if !strings.Contains(html, "Print salary slip") || !strings.Contains(html, "/admin/finance/receipt?transaction_id=") {
+		t.Fatalf("paid salary missing slip or finance link: %s", html)
+	}
+}
+
 func TestSalaryStaffDropdownLoadsDatabaseStaff(t *testing.T) {
 	app := newAuthorizationTestApp(t)
 	var err error

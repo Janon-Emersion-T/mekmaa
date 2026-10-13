@@ -58,6 +58,73 @@
       <div class="space-y-5 p-5">
         {{$payment := .}}
 
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Salary workflow</div>
+              <div class="mt-1 text-lg font-semibold text-slate-950">
+                {{if eq .Status "calculated"}}Needs review{{else if eq .Status "approved"}}Approved · ready to pay{{else if eq .Status "paid"}}Paid{{else if eq .Status "void"}}Voided{{else}}Draft{{end}}
+              </div>
+              <p class="mt-1 text-sm text-slate-600">
+                {{if eq .Status "calculated"}}Approve this salary before recording payment.{{else if eq .Status "approved"}}Approval is complete. Record payment only after the salary has actually been paid.{{else if eq .Status "paid"}}This salary is linked to finance transaction #{{.FinanceTransactionID}}.{{else if eq .Status "void"}}This salary payment has been voided and is locked for audit history.{{else}}Complete salary inputs before approval.{{end}}
+              </p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              {{if and (payrollPaymentAllowsIndividualApproval $.PayrollRun .) (hasPermission $.User "payroll.update")}}
+              <form method="post" action="/admin/payroll/payment/approve" onsubmit="return confirm('Approve salary for {{.UserName}}? Payment will still need to be recorded separately.');">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                {{if $.SalaryWorkspace}}<input type="hidden" name="return_to" value="salary-workspace"><input type="hidden" name="workspace_staff_id" value="{{$.SelectedSalaryStaffID}}">{{end}}
+                <input type="hidden" name="run_id" value="{{$.PayrollRun.ID}}">
+                <input type="hidden" name="payment_id" value="{{.ID}}">
+                <button type="submit" class="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">Approve salary</button>
+              </form>
+              {{else if and (eq .Status "calculated") (not (hasPermission $.User "payroll.update"))}}
+              <span class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900">Approval permission required</span>
+              {{end}}
+
+              {{if eq .Status "paid"}}
+              <a href="/admin/payroll/slip?id={{.ID}}" target="_blank" class="rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800">Print salary slip</a>
+              <a href="/admin/payroll/report?id={{.ID}}" target="_blank" class="rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800">Payroll summary</a>
+              {{if gt .FinanceTransactionID 0}}<a href="/admin/finance/receipt?transaction_id={{.FinanceTransactionID}}" class="rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800">Finance transaction</a>{{end}}
+              {{end}}
+            </div>
+          </div>
+
+          {{if and (payrollPaymentAllowsPayment .) (hasPermission $.User "payroll.update")}}
+          <div class="mt-4 border-t border-slate-200 pt-4">
+            {{if $eligibleFinanceAccounts}}
+            <form method="post" action="/admin/payroll/pay" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onsubmit="return confirm('Record payment of {{money .NetAmount}} for {{.UserName}}? This will post a finance expense.');">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              {{if $.SalaryWorkspace}}<input type="hidden" name="return_to" value="salary-workspace"><input type="hidden" name="workspace_staff_id" value="{{$.SelectedSalaryStaffID}}">{{end}}
+              <input type="hidden" name="run_id" value="{{$.PayrollRun.ID}}">
+              <input type="hidden" name="payment_id" value="{{.ID}}">
+
+              <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500">Payment date
+                <input type="date" name="payment_date" value="{{todayDate}}" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+              </label>
+              <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500">Pay from
+                <select name="finance_account_id" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+                  <option value="">Select account</option>
+                  {{range $eligibleFinanceAccounts}}<option value="{{.ID}}">{{.DivisionName}} - {{.Name}} ({{.AccountType}})</option>{{end}}
+                </select>
+              </label>
+              <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500">Transaction reference
+                <input type="text" name="payment_reference" placeholder="Bank reference / note" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+              </label>
+              <div class="flex items-end">
+                <button type="submit" class="w-full rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">Record payment · {{money .NetAmount}}</button>
+              </div>
+            </form>
+            {{else}}
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Create an active Cash or Bank finance account for {{.DivisionName}} before recording this salary payment.
+            </div>
+            {{end}}
+          </div>
+          {{end}}
+        </div>
+
         {{if and (payrollPaymentAllowsManualQuantity .) (hasPermission $.User "payroll.update")}}
         <form
           method="post"

@@ -850,6 +850,18 @@ func (a *App) approvePayrollPaymentHandler(
 	if user != nil {
 		actorUserID = user.ID
 	}
+	staffUserID, staffErr := a.payrollPaymentStaffUserID(paymentID)
+	if staffErr != nil {
+		log.Printf("find payroll payment staff %d: %v", paymentID, staffErr)
+		a.setFlash(w, "Salary payment was not found.")
+		http.Redirect(w, r, payrollActionReturnURL(r, runID), http.StatusSeeOther)
+		return
+	}
+	if actorUserID > 0 && actorUserID == staffUserID {
+		a.setFlash(w, "A salary cannot be approved by the same staff member who receives it.")
+		http.Redirect(w, r, payrollActionReturnURL(r, runID), http.StatusSeeOther)
+		return
+	}
 	if err := a.approvePayrollPayment(paymentID, actorUserID); err != nil {
 		log.Printf("approve payroll payment %d: %v", paymentID, err)
 		a.setFlash(w, err.Error())
@@ -980,6 +992,7 @@ func (a *App) payPayrollPaymentHandler(
 		accountID,
 		r.FormValue("payment_reference"),
 		actorUserID,
+		r.FormValue("payment_date"),
 	); err != nil {
 		log.Printf(
 			"pay payroll payment %d: %v",

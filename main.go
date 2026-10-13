@@ -94,6 +94,9 @@ func main() {
 		len(unpricedOptions),
 	)
 
+	// Monthly fee SMS reminders are disabled unless MONTHLY_FEE_SMS_ENABLED=true.
+	app.startMonthlyFeeSMSReminderScheduler()
+
 	mux := http.NewServeMux()
 	mux.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("static/images"))))
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
@@ -489,6 +492,7 @@ func main() {
 	mux.Handle("/admin/business-insights/breakdown", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.businessBreakdownHandler), "reports.view")))
 	mux.Handle("/admin/business-insights", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.businessInsightsHandler), "reports.view")))
 	mux.Handle("/admin/business-insights/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.businessInsightsExportHandler), "reports.export")))
+	mux.Handle("/admin/receipts", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.receiptsManagementHandler), "finance.view")))
 	mux.Handle("/admin/reports", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsHandler), "reports.view")))
 	mux.Handle("/admin/reports/export", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reportsExportHandler), "reports.export")))
 	mux.Handle("/admin/referrals", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.referralCommissionsHandler), "referrals.view"))))
