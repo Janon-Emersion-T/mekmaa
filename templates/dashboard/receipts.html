@@ -1,0 +1,177 @@
+{{define "receipts"}}{{template "base" .}}{{end}}
+
+{{define "content"}}
+<section class="space-y-6 pb-10">
+  <div class="rounded-[2rem] bg-obsidian px-6 py-7 text-cloud shadow-[0_24px_80px_rgba(11,18,21,0.18)] sm:px-8">
+    <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.22em] text-aqua">Insights & Content</p>
+        <h1 class="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Receipts</h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-cloud/68">Search every posted receipt, open printable vouchers, and void eligible finance receipts with audit-safe controls.</p>
+      </div>
+      <a href="/admin/finance/ledger" class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-bold text-cloud transition hover:bg-white/15">Open ledger</a>
+    </div>
+  </div>
+
+  {{if .Flash}}<div role="status" class="rounded-2xl border border-aqua/30 bg-aqua/10 px-5 py-4 text-sm font-semibold text-obsidian">{{.Flash}}</div>{{end}}
+
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {{range .Stats}}
+    <article class="rounded-[1.5rem] border border-white/80 bg-white/90 p-5 shadow-sm">
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">{{.Label}}</p>
+      <p class="mt-3 text-2xl font-semibold text-obsidian">{{.Value}}</p>
+    </article>
+    {{end}}
+  </div>
+
+  <div class="rounded-[2rem] border border-white/80 bg-white/90 p-4 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <h2 class="text-xl font-semibold text-obsidian">Receipt register</h2>
+        <p class="mt-1 text-sm text-slate/60">{{len .FinanceTransactions}} shown of {{.FinanceTransactionsTotal}} matching receipts.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        {{if .FinanceLedgerHasPreviousPage}}<a href="{{.FinanceLedgerPreviousPageURL}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Previous</a>{{end}}
+        {{if .FinanceLedgerHasNextPage}}<a href="{{.FinanceLedgerNextPageURL}}" class="inline-flex h-10 items-center justify-center rounded-xl border border-slate/10 bg-white px-4 text-xs font-semibold text-slate transition hover:bg-cloud">Next</a>{{end}}
+      </div>
+    </div>
+
+    <form action="/admin/receipts" method="get" class="mt-5 grid gap-3 rounded-[1.5rem] border border-slate/10 bg-cloud/55 p-4 lg:grid-cols-[minmax(0,1.4fr)_repeat(6,minmax(0,1fr))]">
+      {{if .SelectedDivision}}
+      <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />
+      {{else if eq .SelectedDivisionScope "all"}}
+      <input type="hidden" name="division" value="all" />
+      {{end}}
+      <label>
+        <span class="sr-only">Search receipts</span>
+        <input type="search" name="search" value="{{.FinanceFilter.Search}}" placeholder="Receipt, person, note, student or booking" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      </label>
+      <input type="date" name="from" value="{{.FinanceFilter.From}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      <input type="date" name="to" value="{{.FinanceFilter.To}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
+      <select name="direction" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+        <option value="" {{if eq .FinanceFilter.Direction ""}}selected{{end}}>All directions</option>
+        <option value="income" {{if eq .FinanceFilter.Direction "income"}}selected{{end}}>Income receipts</option>
+        <option value="expense" {{if eq .FinanceFilter.Direction "expense"}}selected{{end}}>Expense vouchers</option>
+      </select>
+      <select name="source_type" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+        <option value="" {{if eq .FinanceFilter.SourceType ""}}selected{{end}}>All sources</option>
+        <option value="manual" {{if eq .FinanceFilter.SourceType "manual"}}selected{{end}}>Manual finance</option>
+        <option value="student_monthly_payment" {{if eq .FinanceFilter.SourceType "student_monthly_payment"}}selected{{end}}>Student payments</option>
+        <option value="booking_payment_collection" {{if eq .FinanceFilter.SourceType "booking_payment_collection"}}selected{{end}}>Booking payments</option>
+        <option value="mcp_payment_collection" {{if eq .FinanceFilter.SourceType "mcp_payment_collection"}}selected{{end}}>MCP payments</option>
+        <option value="payroll_payment" {{if eq .FinanceFilter.SourceType "payroll_payment"}}selected{{end}}>Payroll</option>
+        <option value="admission" {{if eq .FinanceFilter.SourceType "admission"}}selected{{end}}>Admissions</option>
+        <option value="student_enrollment" {{if eq .FinanceFilter.SourceType "student_enrollment"}}selected{{end}}>Enrollments</option>
+      </select>
+      <select name="status" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
+        <option value="" {{if eq .FinanceFilter.Status ""}}selected{{end}}>Any status</option>
+        <option value="active" {{if eq .FinanceFilter.Status "active"}}selected{{end}}>Active</option>
+        <option value="voided" {{if eq .FinanceFilter.Status "voided"}}selected{{end}}>Voided</option>
+      </select>
+      <div class="flex gap-2">
+        <button class="h-12 flex-1 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Filter</button>
+        <a href="{{scopedURL "/admin/receipts" .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-12 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua hover:text-obsidian">Reset</a>
+      </div>
+    </form>
+
+    <div class="mt-6 hidden overflow-x-auto xl:block">
+      <table class="min-w-full text-left text-sm">
+        <thead class="border-b border-slate/10 bg-cloud/70 text-slate/70">
+          <tr>
+            <th class="px-4 py-4 font-medium">Receipt</th>
+            <th class="px-4 py-4 font-medium">Date</th>
+            <th class="px-4 py-4 font-medium">Party</th>
+            <th class="px-4 py-4 font-medium">Source</th>
+            <th class="px-4 py-4 font-medium">Account</th>
+            <th class="px-4 py-4 font-medium text-right">Amount</th>
+            <th class="px-4 py-4 font-medium">Status</th>
+            <th class="px-4 py-4 font-medium text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .FinanceTransactions}}
+          <tr class="align-top">
+            <td class="px-4 py-4">
+              <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .ID) $.SelectedDivision $.SelectedDivisionScope}}" class="font-mono text-xs font-bold text-obsidian underline decoration-aqua/50 underline-offset-4">{{if .ReferenceNumber}}{{.ReferenceNumber}}{{else}}{{.ReceiptNumber}}{{end}}</a>
+              <p class="mt-1 max-w-xs text-xs leading-5 text-slate/55">{{.Description}}</p>
+            </td>
+            <td class="px-4 py-4 text-slate/70">{{formatDateTime .RecordedAt}}</td>
+            <td class="px-4 py-4">
+              <p class="font-semibold text-obsidian">{{.PersonName}}</p>
+              {{if .StudentName}}<p class="mt-1 text-xs text-slate/55">{{.StudentID}} · {{.StudentName}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4 text-slate/70">
+              <p>{{financeSourceTypeLabel .SourceType}}</p>
+              <p class="mt-1 text-xs text-slate/45">{{financeCategoryLabel .Category}}</p>
+            </td>
+            <td class="px-4 py-4 text-slate/70">
+              <p>{{financeAccountDisplayName .FinanceAccountName .DivisionName}}</p>
+              <p class="mt-1 text-xs text-slate/45">{{financeAccountTypeLabel .FinanceAccountType}}</p>
+            </td>
+            <td class="px-4 py-4 text-right font-semibold {{if lt .Amount 0.0}}text-rose-800{{else}}text-emerald-800{{end}}">{{if lt .Amount 0.0}}{{money (negate .Amount)}}{{else}}{{money .Amount}}{{end}}</td>
+            <td class="px-4 py-4">
+              <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{if .Voided}}bg-rose-100 text-rose-800{{else}}bg-emerald-100 text-emerald-800{{end}}">{{financeTransactionStatusLabel .}}</span>
+              {{if .VoidedAt.IsZero}}{{else}}<p class="mt-2 max-w-xs text-[0.7rem] leading-5 text-rose-700">Voided {{formatDateTime .VoidedAt}}{{if .VoidReason}} · {{.VoidReason}}{{end}}</p>{{end}}
+            </td>
+            <td class="px-4 py-4">
+              <div class="flex justify-end gap-2">
+                <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-9 items-center rounded-lg border border-slate/10 bg-white px-3 text-xs font-semibold text-slate hover:bg-cloud">Open</a>
+              </div>
+              {{if and (hasPermission $.User "finance_transactions.delete") (not .Voided) (or .GeneralVoidAllowed .OrphanedSource)}}
+              <form method="post" action="/admin/finance/transactions/void" class="mt-2 grid gap-2" onsubmit="return confirm('Void receipt {{.ReceiptNumber}}? This cannot be undone.');">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="transaction_id" value="{{.ID}}">
+                <input type="hidden" name="return_to" value="/admin/receipts">
+                <input type="text" name="void_reason" required placeholder="Void reason" class="h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs outline-none focus:border-rose-400">
+                <button class="h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700">Void receipt</button>
+              </form>
+              {{else if and (hasPermission $.User "finance_transactions.delete") (not .Voided)}}
+              <p class="mt-2 max-w-xs text-[0.7rem] leading-5 text-amber-800">{{financeVoidWorkflowMessage .}}</p>
+              {{end}}
+            </td>
+          </tr>
+          {{else}}
+          <tr><td colspan="8" class="px-6 py-12 text-center text-sm text-slate/55">No receipts match the selected filters.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 grid gap-3 xl:hidden">
+      {{range .FinanceTransactions}}
+      <article class="rounded-[1.25rem] border {{if .Voided}}border-rose-200 bg-rose-50/45{{else}}border-slate/10 bg-cloud/35{{end}} p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .ID) $.SelectedDivision $.SelectedDivisionScope}}" class="font-mono text-xs font-bold text-obsidian underline decoration-aqua/50 underline-offset-4">{{if .ReferenceNumber}}{{.ReferenceNumber}}{{else}}{{.ReceiptNumber}}{{end}}</a>
+            <p class="mt-1 text-sm font-semibold text-obsidian">{{.PersonName}}</p>
+            <p class="mt-1 text-xs text-slate/55">{{financeSourceTypeLabel .SourceType}} · {{financeAccountDisplayName .FinanceAccountName .DivisionName}}</p>
+          </div>
+          <span class="rounded-full px-2.5 py-1 text-[0.68rem] font-semibold {{if .Voided}}bg-rose-100 text-rose-800{{else}}bg-emerald-100 text-emerald-800{{end}}">{{financeTransactionStatusLabel .}}</span>
+        </div>
+        <p class="mt-3 text-sm leading-6 text-slate/65">{{.Description}}</p>
+        <div class="mt-3 flex items-center justify-between gap-3">
+          <span class="text-xs text-slate/50">{{formatDateTime .RecordedAt}}</span>
+          <span class="font-semibold {{if lt .Amount 0.0}}text-rose-800{{else}}text-emerald-800{{end}}">{{if lt .Amount 0.0}}{{money (negate .Amount)}}{{else}}{{money .Amount}}{{end}}</span>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <a href="{{scopedURL (printf "/admin/finance/receipt?transaction_id=%d" .ID) $.SelectedDivision $.SelectedDivisionScope}}" class="inline-flex h-9 items-center rounded-lg border border-slate/10 bg-white px-3 text-xs font-semibold text-slate">Open receipt</a>
+        </div>
+        {{if and (hasPermission $.User "finance_transactions.delete") (not .Voided) (or .GeneralVoidAllowed .OrphanedSource)}}
+        <form method="post" action="/admin/finance/transactions/void" class="mt-3 grid gap-2" onsubmit="return confirm('Void receipt {{.ReceiptNumber}}? This cannot be undone.');">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <input type="hidden" name="transaction_id" value="{{.ID}}">
+          <input type="hidden" name="return_to" value="/admin/receipts">
+          <input type="text" name="void_reason" required placeholder="Void reason" class="h-10 rounded-lg border border-rose-200 bg-white px-3 text-xs outline-none focus:border-rose-400">
+          <button class="h-10 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700">Void receipt</button>
+        </form>
+        {{else if and (hasPermission $.User "finance_transactions.delete") (not .Voided)}}
+        <p class="mt-3 text-[0.72rem] leading-5 text-amber-800">{{financeVoidWorkflowMessage .}}</p>
+        {{end}}
+      </article>
+      {{else}}
+      <div class="rounded-[1.25rem] border border-dashed border-slate/15 bg-cloud/35 px-4 py-8 text-sm text-slate/55">No receipts match the selected filters.</div>
+      {{end}}
+    </div>
+  </div>
+</section>
+{{end}}

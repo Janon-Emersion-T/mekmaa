@@ -3616,6 +3616,7 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "invalid form submission", http.StatusBadRequest)
 		return
 	}
+	returnTo := financeVoidReturnURL(r)
 	transactionID := parseInt64Query(r.FormValue("transaction_id"))
 	reason := strings.TrimSpace(r.FormValue("void_reason"))
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -3649,7 +3650,7 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 			defer tx.Rollback()
 			if err := voidFinanceTransactionTx(tx, transaction.ID, reason, currentUser.ID); err != nil {
 				a.setFlash(w, "Finance transaction could not be voided: "+err.Error())
-				http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+				http.Redirect(w, r, returnTo, http.StatusSeeOther)
 				return
 			}
 			if err := tx.Commit(); err != nil {
@@ -3657,11 +3658,11 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			a.setFlash(w, "Orphaned finance transaction was voided from the ledger because its source record no longer exists.")
-			http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+			http.Redirect(w, r, returnTo, http.StatusSeeOther)
 			return
 		}
 		a.setFlash(w, financeVoidWorkflowMessage(transaction))
-		http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+		http.Redirect(w, r, returnTo, http.StatusSeeOther)
 		return
 	}
 	tx, err := a.db.Begin()
@@ -3672,7 +3673,7 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 	defer tx.Rollback()
 	if err := voidFinanceTransactionTx(tx, transaction.ID, reason, currentUser.ID); err != nil {
 		a.setFlash(w, "Finance transaction could not be voided: "+err.Error())
-		http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+		http.Redirect(w, r, returnTo, http.StatusSeeOther)
 		return
 	}
 	if transaction.TransactionType == financeTxnTypeOpeningBalance {
@@ -3686,7 +3687,15 @@ func (a *App) voidFinanceTransactionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	a.setFlash(w, "Finance transaction was voided.")
-	http.Redirect(w, r, "/admin/finance/ledger", http.StatusSeeOther)
+	http.Redirect(w, r, returnTo, http.StatusSeeOther)
+}
+
+func financeVoidReturnURL(r *http.Request) string {
+	returnTo := strings.TrimSpace(r.FormValue("return_to"))
+	if returnTo == "/admin/receipts" || strings.HasPrefix(returnTo, "/admin/receipts?") {
+		return returnTo
+	}
+	return "/admin/finance/ledger"
 }
 
 func (a *App) voidFinanceTransferHandler(w http.ResponseWriter, r *http.Request) {
