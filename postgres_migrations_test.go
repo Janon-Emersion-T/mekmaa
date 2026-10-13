@@ -13,6 +13,59 @@ import (
 
 const postgresMigrationHelperEnv = "GO_WANT_POSTGRES_MIGRATION_HELPER"
 
+func TestPostgresHistoricalMigrationChecksumsRemainStable(t *testing.T) {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		t.Fatalf("load PostgreSQL migrations: %v", err)
+	}
+
+	expected := map[int64]string{
+		1:  "c1b2ea5369ed956943e8f01e470fdeab9c5032570ef3061d2ab7263f5383b817",
+		2:  "c4fb4401db2b5552f592d118e5ce9d8bd47ee54bf6271fd12899d28e0b9bd1bf",
+		3:  "f54f86c803efb65a52a54dc5be0678f7eb1347d9bdd753a57155812ff917cd7f",
+		4:  "322f7057a5c75680e6c46ef69f58fb5461ba6b27ae70198a98398db3a7175eff",
+		5:  "4d4d42ee0f0dc8c7037c4bc37993b397da0a1e1cb197ef3eb38c3d5101704bdc",
+		6:  "a3e0bcf28bd372987adf55787efe69f92c60e2b9f5573688fc413bb7c0c87a7a",
+		7:  "eeff337219640e2db77bb41bab7e98b8c81d52d7bf08b50b070ebe93bc54bea1",
+		8:  "3941a1007cdeb57563aee31ea21f38d2e076e16037fcf12fca04a0ce7ea54b32",
+		9:  "b764fcd5cfe0f6093ca016986d0252c3f5c8bdcf3cc9197deec9ec05f57c5265",
+		10: "dcea40e33c85caf1075aa011c44561aa68a1b4c93e96ce1e5a3128bfd0e0587c",
+		11: "400248458e8f040d4e081ed48b137af895a8968da317f70de190a88f4472d352",
+		12: "abf2b22659ef89d7c660749f0ba3d27d10de1dee676eee4bedc334b1b41f29d7",
+		13: "ce5a4152208c1394a9e00435825397dd216061317c3df8b778aaab480044f997",
+		14: "4356cdc16c55b9cf7058d00e151fb78dc11128fd908dced6087f049be4a04d34",
+		15: "25818b97aeed4beb924f1f1ff17fff1a56f1615cf510643afcad4c3e7f68310e",
+		16: "d4430ef2fa5c36f4d3a83ab1b4bb8aea1dfb8cd266074456acd4f240c0c73a93",
+		17: "3238fc732e4f0c3832ae8efc970af3ad8e1dd9f7204a3216cf5198eb10f45b6b",
+		18: "d60c66822ea9e4bdd065bda620e5072287fa92b01306ca8750209e8d651776e3",
+		19: "b6af8cf1273b4b3a939b9d3f77ea8850081d742d09e962be95bfb007cd42cbc3",
+		20: "784528841d61fb3a444464eeb8485a95c92e601c284f4d4de326910d494e1759",
+		21: "47925db13ca0f6bde078aadeeecf2e7fc4a0c132386354a56c798e3fe30f3225",
+		22: "691897b18a35290719654088f4dd5e65c15cb475907496a07e9c922f075cdd9a",
+		23: "db1eb04a7f4114050e134045548095b97fe4250f2b4432b1875010ce19cc8f4a",
+	}
+
+	byVersion := make(map[int64]postgresMigration, len(migrations))
+	for _, migration := range migrations {
+		byVersion[migration.Version] = migration
+	}
+
+	for version, wantChecksum := range expected {
+		migration, ok := byVersion[version]
+		if !ok {
+			t.Fatalf("expected PostgreSQL migration %06d to exist", version)
+		}
+		if migration.Checksum != wantChecksum {
+			t.Fatalf(
+				"migration %s checksum = %s, want %s",
+				migration.Filename,
+				migration.Checksum,
+				wantChecksum,
+			)
+		}
+	}
+}
+
 func TestPostgresMigrationDiscoveryIncludesMCP(t *testing.T) {
 	migrations, err := loadPostgresMigrations()
 	if err != nil {
@@ -349,6 +402,10 @@ func TestPostgresMCPMigrationUpgradeFrom000005(t *testing.T) {
 	runPostgresMigrationHelper(t, "upgrade_from_000005")
 }
 
+func TestPostgresMigrationUpgradeFrom000023(t *testing.T) {
+	runPostgresMigrationHelper(t, "upgrade_from_000023")
+}
+
 func runPostgresMigrationHelper(t *testing.T, action string) {
 	t.Helper()
 
@@ -414,32 +471,24 @@ func runPostgresMigrationHelperAction(action string) error {
 		}
 
 	case "upgrade_from_000005":
-		migrations, err := loadPostgresMigrations()
-		if err != nil {
+		if err := applyPostgresMigrationsThroughVersion(ctx, db, 5); err != nil {
 			return err
-		}
-
-		if err := ensurePostgresMigrationTable(ctx, db); err != nil {
-			return err
-		}
-
-		for _, migration := range migrations {
-			if migration.Version > 5 {
-				continue
-			}
-
-			if err := applyPostgresMigration(
-				ctx,
-				db,
-				migration,
-			); err != nil {
-				return err
-			}
 		}
 
 		// This now represents a real database already migrated through 000005.
 		// Running the normal production migration engine must apply 000006+
 		// exactly as production startup would.
+		if err := runPostgresMigrations(db); err != nil {
+			return err
+		}
+
+	case "upgrade_from_000023":
+		if err := applyPostgresMigrationsThroughVersion(ctx, db, 23); err != nil {
+			return err
+		}
+
+		// This models a production database at the last successful deployment:
+		// historical migrations are already recorded, and only 000024+ should run.
 		if err := runPostgresMigrations(db); err != nil {
 			return err
 		}
@@ -470,27 +519,34 @@ func runPostgresMigrationHelperAction(action string) error {
 		"student_enrollment_status_history",
 		"student_group_membership_history",
 		"student_group_staff_assignment_history",
+		"enrollment_financial_closures",
+		"enrollment_excess_resolutions",
+		"monthly_fee_sms_reminders",
 	} {
 		if err := postgresRelationMustExist(db, relation); err != nil {
 			return err
 		}
 	}
 
-	for _, version := range []int{6, 7, 9, 14, 15, 16, 17} {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		return err
+	}
+	for _, migration := range migrations {
 		var appliedCount int
 
 		if err := db.QueryRow(`
 			SELECT COUNT(*)
 			FROM schema_migrations
 			WHERE version = $1
-		`, version).Scan(&appliedCount); err != nil {
+		`, migration.Version).Scan(&appliedCount); err != nil {
 			return err
 		}
 
 		if appliedCount != 1 {
 			return fmt.Errorf(
 				"expected migration %06d to be recorded once, got %d",
-				version,
+				migration.Version,
 				appliedCount,
 			)
 		}
@@ -504,6 +560,10 @@ func runPostgresMigrationHelperAction(action string) error {
 		15: "payroll_session_foundation",
 		16: "payroll_payment_calculation_details",
 		17: "payroll_work_history",
+		24: "enrollment_financial_closures",
+		25: "enrollment_excess_resolutions",
+		26: "monthly_fee_sms_reminders",
+		27: "student_leave_fee_policy",
 	}
 	for version, wantName := range expectedNames {
 		var migrationName string
@@ -565,6 +625,10 @@ func runPostgresMigrationHelperAction(action string) error {
 		{"student_enrollment_status_history", "effective_to"},
 		{"student_group_membership_history", "effective_to"},
 		{"student_group_staff_assignment_history", "assignment_role"},
+		{"student_enrollment_leaves", "fee_policy"},
+		{"enrollment_financial_closures", "excess_action"},
+		{"enrollment_excess_resolutions", "resolution_payment_id"},
+		{"monthly_fee_sms_reminders", "status"},
 	} {
 		if err := postgresColumnMustExist(db, column.table, column.column); err != nil {
 			return err
@@ -574,6 +638,9 @@ func runPostgresMigrationHelperAction(action string) error {
 	if err := postgresConstraintMustExist(db, "payroll_payments_finance_transaction_id_fkey"); err != nil {
 		return err
 	}
+	if err := postgresConstraintMustExist(db, "student_enrollment_leaves_fee_policy_check"); err != nil {
+		return err
+	}
 
 	for _, indexName := range []string{
 		"idx_student_group_session_occurrences_normal_unique",
@@ -581,6 +648,9 @@ func runPostgresMigrationHelperAction(action string) error {
 		"idx_enrollment_status_history_open",
 		"idx_group_membership_history_open",
 		"idx_group_staff_history_open",
+		"idx_enrollment_financial_closures_date",
+		"idx_enrollment_excess_resolutions_enrollment",
+		"idx_monthly_fee_sms_reminders_status",
 	} {
 		if err := postgresRelationMustExist(db, indexName); err != nil {
 			return err
@@ -589,6 +659,37 @@ func runPostgresMigrationHelperAction(action string) error {
 
 	if err := postgresColumnMustBeNullable(db, "payroll_payments", "finance_transaction_id"); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func applyPostgresMigrationsThroughVersion(
+	ctx context.Context,
+	db *sql.DB,
+	maxVersion int64,
+) error {
+	migrations, err := loadPostgresMigrations()
+	if err != nil {
+		return err
+	}
+
+	if err := ensurePostgresMigrationTable(ctx, db); err != nil {
+		return err
+	}
+
+	for _, migration := range migrations {
+		if migration.Version > maxVersion {
+			continue
+		}
+
+		if err := applyPostgresMigration(
+			ctx,
+			db,
+			migration,
+		); err != nil {
+			return err
+		}
 	}
 
 	return nil

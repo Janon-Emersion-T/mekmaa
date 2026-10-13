@@ -174,8 +174,10 @@ WHERE version = $1
 	case err == nil:
 		if existingChecksum != migration.Checksum {
 			return fmt.Errorf(
-				"PostgreSQL migration %s checksum mismatch",
+				"PostgreSQL migration %s checksum mismatch: database=%s embedded=%s",
 				migration.Filename,
+				existingChecksum,
+				migration.Checksum,
 			)
 		}
 
