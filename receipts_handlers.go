@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -21,7 +22,7 @@ func (a *App) receiptsManagementHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	selectedDivision, err := a.resolveAuthorizedDivisionFromRequest(r, canViewAllDivisions(user))
-	if err == ErrForbiddenDivision {
+	if errors.Is(err, ErrForbiddenDivision) {
 		a.writeDivisionForbidden(w, r, user)
 		return
 	}

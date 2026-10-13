@@ -4272,6 +4272,81 @@ func TestFinanceRoutesRequirePermissionAndCSRFAuth(t *testing.T) {
 	}
 }
 
+func TestReceiptsManagementPageListsReceiptsAndVoidControls(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	user := &User{
+		ID:          7,
+		Name:        "Finance Admin",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"finance.view", "finance_transactions.delete"},
+		Verified:    true,
+	}
+	transactionID, err := app.createManualFinanceTransactionForAccount(
+		"manual_income",
+		"Walk-in Parent",
+		"Receipt register sale",
+		"",
+		financeAccountIDByName(t, app, financeAccountCashInHand),
+		1250,
+		time.Date(2026, time.August, 12, 9, 30, 0, 0, time.Local),
+		user.ID,
+	)
+	if err != nil {
+		t.Fatalf("create manual finance entry: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/receipts?division=all&search=register", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, user))
+	rec := httptest.NewRecorder()
+	app.receiptsManagementHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("receipts page status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Insights & Content",
+		"Receipts",
+		"Receipt register sale",
+		"transaction_id=" + strconv.FormatInt(transactionID, 10),
+		"/admin/finance/transactions/void",
+		"name=\"return_to\" value=\"/admin/receipts\"",
+		"Void receipt",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected receipts page to contain %q in %s", want, body)
+		}
+	}
+}
+
+func TestFinanceVoidReturnURLAllowsReceiptsPage(t *testing.T) {
+	form := url.Values{"return_to": {"/admin/receipts?division=all&status=active"}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/finance/transactions/void", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := req.ParseForm(); err != nil {
+		t.Fatalf("parse form: %v", err)
+	}
+	if got, want := financeVoidReturnURL(req), "/admin/receipts?division=all&status=active"; got != want {
+		t.Fatalf("financeVoidReturnURL = %q, want %q", got, want)
+	}
+
+	form.Set("return_to", "https://evil.example/admin/receipts")
+	req = httptest.NewRequest(http.MethodPost, "/admin/finance/transactions/void", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := req.ParseForm(); err != nil {
+		t.Fatalf("parse form: %v", err)
+	}
+	if got, want := financeVoidReturnURL(req), "/admin/finance/ledger"; got != want {
+		t.Fatalf("unsafe financeVoidReturnURL = %q, want %q", got, want)
+	}
+}
+
 func TestGeneralFinanceVoidRejectsSourceLinkedTransactions(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	user := &User{ID: 7, Name: "Finance", Roles: []string{"superadmin"}, Permissions: []string{"finance.manage"}}
