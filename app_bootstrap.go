@@ -2299,6 +2299,7 @@ type TemplateData struct {
 	StatementMoneyIn                 float64
 	StatementMoneyOut                float64
 	StatementNetMovement             float64
+	BookingReceivablesView           string
 	BookingFinancials                []BookingFinancial
 	BookingCustomerBalances          []BookingCustomerBalance
 	BookingPaymentCollections        []BookingPaymentCollection

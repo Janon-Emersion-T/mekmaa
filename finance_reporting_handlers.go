@@ -576,6 +576,20 @@ func (a *App) buildFinanceSectionData(w http.ResponseWriter, r *http.Request, us
 		}
 		data.BookingFinancials = bookingFinancials
 		if page == "receivables-bookings" {
+			view := strings.TrimSpace(r.URL.Query().Get("view"))
+			if view != "archived" {
+				view = "active"
+			}
+			data.BookingReceivablesView = view
+
+			register, registerErr := a.listBookingReceivablesRegister(
+				scopeDivisionIDs,
+				view == "archived",
+			)
+			if registerErr != nil {
+				return data, registerErr
+			}
+			data.BookingFinancials = register
 			data.BookingPaymentCollections, _ = a.listRecentBookingPaymentCollectionsByDivisionIDs(scopeDivisionIDs, 6)
 		} else if page == "customers" {
 			data.BookingPaymentCollections, _ = a.listBookingPaymentCollectionsForScheduleIDs(scheduleIDsFromFinancials(bookingFinancials))

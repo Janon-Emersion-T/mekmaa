@@ -6470,6 +6470,27 @@ func (a *App) collectBookingPaymentAtWithAdjustment(scheduleID int64, paymentMet
 	}
 	defer tx.Rollback()
 
+	// Serialize archive and payment operations on the booking row.
+	// The archive service also locks this row before changing state.
+	var lockedScheduleID int64
+	if err := a.queryRowTxDB(tx, `
+		SELECT id FROM space_schedules WHERE id = ? FOR UPDATE
+	`, scheduleID).Scan(&lockedScheduleID); err != nil {
+		return 0, err
+	}
+
+	var archivedCount int
+	if err := a.queryRowTxDB(tx, `
+		SELECT COUNT(*)
+		FROM booking_receivables_archives
+		WHERE schedule_id = ?
+	`, scheduleID).Scan(&archivedCount); err != nil {
+		return 0, err
+	}
+	if archivedCount > 0 {
+		return 0, errors.New("archived bookings cannot receive new payments; restore the booking first")
+	}
+
 	var financial BookingFinancial
 	var paid int
 	if err := a.queryRowTxDB(tx, `
@@ -7114,19 +7135,71 @@ func (a *App) deleteStudentGroup(groupID int64) error {
 }
 
 func (a *App) deleteSpaceSchedule(scheduleID int64) error {
-	var activeCollections int
-	if err := a.queryRowDB(`
-		SELECT COUNT(*)
-		FROM booking_payment_collections
-		WHERE schedule_id = ?
-		  AND voided = 0
-	`, scheduleID).Scan(&activeCollections); err != nil {
+	if scheduleID <= 0 {
+		return errors.New("invalid booking")
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
 		return err
 	}
-	if activeCollections > 0 {
-		return errors.New("this booking already has collected payments and cannot be deleted")
+	defer tx.Rollback()
+
+	var entryType string
+	if err := a.queryRowTxDB(tx, `
+		SELECT entry_type
+		FROM space_schedules
+		WHERE id = ?
+		FOR UPDATE
+	`, scheduleID).Scan(&entryType); err != nil {
+		return err
 	}
-	result, err := a.execDB(`DELETE FROM space_schedules WHERE id = ?`, scheduleID)
+	if entryType != "booking" {
+		return errors.New("only customer bookings can be deleted here")
+	}
+
+	protectedTables := []string{
+		"booking_payment_collections",
+		"booking_referrals",
+		"one_to_one_bookings",
+		"booking_financials",
+		"booking_request_changes",
+		"booking_communications",
+		"booking_cancellation_requests",
+		"booking_access_tokens",
+		"booking_receivables_archives",
+		"booking_receivables_archive_events",
+	}
+	for _, table := range protectedTables {
+		var count int
+		if err := a.queryRowTxDB(tx,
+			"SELECT COUNT(*) FROM "+table+" WHERE schedule_id = ?",
+			scheduleID,
+		).Scan(&count); err != nil {
+			return err
+		}
+		if count != 0 {
+			return errors.New(
+				"booking has protected history; archive it instead of deleting",
+			)
+		}
+	}
+
+	var financeCount int
+	if err := a.queryRowTxDB(tx, `
+		SELECT COUNT(*)
+		FROM finance_transactions
+		WHERE category = 'booking_payment'
+		  AND reference_id = ?
+	`, scheduleID).Scan(&financeCount); err != nil {
+		return err
+	}
+	if financeCount != 0 {
+		return errors.New("booking has financial history; archive it instead")
+	}
+
+	result, err := a.execTxDB(tx,
+		"DELETE FROM space_schedules WHERE id = ?", scheduleID)
 	if err != nil {
 		return err
 	}
@@ -7134,10 +7207,10 @@ func (a *App) deleteSpaceSchedule(scheduleID int64) error {
 	if err != nil {
 		return err
 	}
-	if affected == 0 {
+	if affected != 1 {
 		return sql.ErrNoRows
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (a *App) deletePricingRule(pricingID int64) error {

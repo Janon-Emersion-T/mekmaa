@@ -506,6 +506,29 @@ func (a *App) transitionManagedBookingStatus(
 	}
 	defer tx.Rollback()
 
+	// Lock the booking before checking its archive state.
+	// Archive and Restore acquire the same row lock.
+	var lockedScheduleID int64
+	if err := a.queryRowTxDB(tx, `
+		SELECT id FROM space_schedules WHERE id = ? FOR UPDATE
+	`, scheduleID).Scan(&lockedScheduleID); err != nil {
+		return nil, 0, err
+	}
+
+	var archivedCount int
+	if err := a.queryRowTxDB(tx, `
+		SELECT COUNT(*)
+		FROM booking_receivables_archives
+		WHERE schedule_id = ?
+	`, scheduleID).Scan(&archivedCount); err != nil {
+		return nil, 0, err
+	}
+	if archivedCount > 0 {
+		return nil, 0, errors.New(
+			"archived bookings cannot be changed; restore the booking first",
+		)
+	}
+
 	schedule, err := findSpaceScheduleByIDQuery(
 		tx,
 		a.runtimeConfig.DBDriver,
