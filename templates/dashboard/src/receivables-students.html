@@ -58,7 +58,7 @@
   <div class="rounded-[2rem] border border-white/80 bg-white/85 p-4 shadow-sm sm:p-6">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
-        <h2 class="text-xl font-semibold text-obsidian">{{.PaymentMonthLabel}} register</h2>
+        <h2 class="text-xl font-semibold text-obsidian">Student payment register</h2>
         <p class="mt-1 text-sm text-slate/60">Amounts come directly from each student's assigned training programmes and are saved as a payment snapshot when collected.</p>
         {{if .PaymentCollectionNotice}}
         <p class="mt-2 text-sm font-semibold text-amber-800">{{.PaymentCollectionNotice}}</p>
@@ -70,7 +70,7 @@
       </div>
     </div>
 
-    <form action="/admin/student-payments" method="get" class="mt-6 grid gap-3 rounded-[1.5rem] border border-slate/10 bg-cloud/55 p-4 lg:grid-cols-[minmax(0,1.5fr)_repeat(7,minmax(0,1fr))]">
+    <form action="/admin/student-payments" method="get" class="mt-6 grid gap-3 rounded-[1.5rem] border border-slate/10 bg-cloud/55 p-4 lg:grid-cols-[minmax(0,1.5fr)_repeat(6,minmax(0,1fr))]">
       {{if .SelectedDivision}}
       <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />
       {{else if eq .SelectedDivisionScope "all"}}
@@ -80,10 +80,6 @@
         <span class="sr-only">Search students</span>
         <svg class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate/40" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4" stroke-linecap="round"/></svg>
         <input type="search" name="search" value="{{.PaymentSearch}}" placeholder="Search name, ID, programme or division" class="h-12 w-full rounded-2xl border border-slate/10 bg-white pl-11 pr-4 text-sm outline-none focus:border-aqua" />
-      </label>
-      <label>
-        <span class="sr-only">Billing month</span>
-        <input type="month" name="month" value="{{.PaymentMonth}}" max="{{.TodayDate}}" required class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
       </label>
       <select name="status" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua">
         <option value="" {{if eq .PaymentStatusFilter ""}}selected{{end}}>All statuses</option>
@@ -110,7 +106,7 @@
       <input type="month" name="to_month" value="{{.PaymentActivityTo}}" max="{{.TodayDate}}" class="h-12 rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" />
       <div class="flex gap-2">
         <button class="h-12 flex-1 rounded-2xl bg-obsidian px-5 text-sm font-semibold text-cloud transition hover:bg-slate">Apply</button>
-        <a href="{{scopedURL (printf "/admin/student-payments?month=%s&from_month=%s&to_month=%s" .PaymentMonth .PaymentMonth .PaymentMonth) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-12 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua hover:text-obsidian">Reset</a>
+        <a href="{{scopedURL (printf "/admin/student-payments?from_month=%s&to_month=%s" .PaymentMonth .PaymentMonth) .SelectedDivision .SelectedDivisionScope}}" class="inline-flex h-12 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:border-aqua hover:text-obsidian">Reset</a>
       </div>
     </form>
 

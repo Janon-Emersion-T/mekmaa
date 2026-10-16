@@ -1454,7 +1454,7 @@ func (a *App) referralCommissionsHandler(w http.ResponseWriter, r *http.Request)
 
 func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	user, _ := a.currentUser(r.Context())
-	paymentMonth := strings.TrimSpace(r.URL.Query().Get("month"))
+	paymentMonth := latestCollectiblePaymentMonth(time.Now())
 	paymentSearch := strings.TrimSpace(r.URL.Query().Get("search"))
 	paymentStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
 	paymentProgram := strings.TrimSpace(r.URL.Query().Get("program"))
