@@ -1154,6 +1154,10 @@ func (a *App) collectMCPPaymentAt(planID int64, paymentMethod string, amount flo
 }
 
 func (a *App) voidMCPPayment(collectionID int64, reason string, voidedByUserID int64) error {
+	return a.voidMCPPaymentExpected(collectionID, 0, reason, voidedByUserID)
+}
+
+func (a *App) voidMCPPaymentExpected(collectionID int64, expectedTransactionID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return errors.New("void reason is required")
@@ -1178,6 +1182,9 @@ func (a *App) voidMCPPayment(collectionID int64, reason string, voidedByUserID i
 	}
 	if voided {
 		return errors.New("MCP payment has already been voided")
+	}
+	if expectedTransactionID > 0 && financeTransactionID != expectedTransactionID {
+		return errors.New("MCP payment receipt ownership changed")
 	}
 	now := time.Now().UTC()
 	if _, err := a.execTxDB(tx, `

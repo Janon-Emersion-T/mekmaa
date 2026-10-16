@@ -1255,6 +1255,12 @@ func (a *App) createTournamentExpense(
 }
 
 func (a *App) voidTournamentFinanceRecord(recordType string, recordID int64, reason string, voidedByUserID int64) (int64, error) {
+	return a.voidTournamentFinanceRecordExpected(
+		recordType, recordID, 0, reason, voidedByUserID,
+	)
+}
+
+func (a *App) voidTournamentFinanceRecordExpected(recordType string, recordID int64, expectedTransactionID int64, reason string, voidedByUserID int64) (int64, error) {
 	var table string
 	switch recordType {
 	case "sponsorship":
@@ -1283,6 +1289,9 @@ func (a *App) voidTournamentFinanceRecord(recordType string, recordID int64, rea
 	}
 	if financeTransactionID <= 0 {
 		return 0, errors.New("tournament finance record has no linked transaction")
+	}
+	if expectedTransactionID > 0 && financeTransactionID != expectedTransactionID {
+		return 0, errors.New("tournament receipt ownership changed")
 	}
 	if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, voidedByUserID); err != nil {
 		return 0, err

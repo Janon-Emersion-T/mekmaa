@@ -2069,6 +2069,14 @@ func (a *App) voidPayrollPayment(
 	reason string,
 	actorUserID int64,
 ) error {
+	return a.voidPayrollPaymentExpected(paymentID, 0, reason, actorUserID)
+}
+
+func (a *App) voidPayrollPaymentExpected(
+	paymentID int64,
+	expectedTransactionID int64, reason string,
+	actorUserID int64,
+) error {
 	if paymentID <= 0 {
 		return errors.New("invalid salary payment")
 	}
@@ -2108,6 +2116,9 @@ func (a *App) voidPayrollPayment(
 	}
 	if financeTransactionID <= 0 {
 		return errors.New("paid salary payment is missing its finance transaction")
+	}
+	if expectedTransactionID > 0 && financeTransactionID != expectedTransactionID {
+		return errors.New("payroll payment receipt ownership changed")
 	}
 
 	if err := voidFinanceTransactionTx(tx, financeTransactionID, reason, actorUserID); err != nil {

@@ -2153,8 +2153,17 @@ func resolveEnrollmentAdmissionPaymentByAdmissionTx(tx *sql.Tx, driver DatabaseD
 }
 
 func voidStudentEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment *StudentEnrollment, reason string, voidedByUserID int64) error {
+	return voidStudentEnrollmentAdmissionPaymentExpectedTx(
+		tx, enrollment, 0, reason, voidedByUserID,
+	)
+}
+
+func voidStudentEnrollmentAdmissionPaymentExpectedTx(tx *sql.Tx, enrollment *StudentEnrollment, expectedTransactionID int64, reason string, voidedByUserID int64) error {
 	if enrollment == nil {
 		return errors.New("enrollment payment was not found")
+	}
+	if expectedTransactionID > 0 && enrollment.FinanceTransactionID != expectedTransactionID {
+		return errors.New("enrollment payment receipt ownership changed")
 	}
 	if !enrollment.AdmissionPaymentPaid {
 		var priorVoidCount int
@@ -2195,6 +2204,12 @@ func voidStudentEnrollmentAdmissionPaymentTx(tx *sql.Tx, enrollment *StudentEnro
 }
 
 func (a *App) voidEnrollmentAdmissionPayment(enrollmentID int64, reason string, voidedByUserID int64) error {
+	return a.voidEnrollmentAdmissionPaymentExpected(
+		enrollmentID, 0, reason, voidedByUserID,
+	)
+}
+
+func (a *App) voidEnrollmentAdmissionPaymentExpected(enrollmentID int64, expectedTransactionID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return errors.New("void reason is required")
@@ -2212,13 +2227,17 @@ func (a *App) voidEnrollmentAdmissionPayment(enrollmentID int64, reason string, 
 		}
 		return err
 	}
-	if err := voidStudentEnrollmentAdmissionPaymentTx(tx, enrollment, reason, voidedByUserID); err != nil {
+	if err := voidStudentEnrollmentAdmissionPaymentExpectedTx(tx, enrollment, expectedTransactionID, reason, voidedByUserID); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
 func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUserID int64) error {
+	return a.voidAdmissionPaymentExpected(admissionID, 0, reason, voidedByUserID)
+}
+
+func (a *App) voidAdmissionPaymentExpected(admissionID int64, expectedTransactionID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return errors.New("void reason is required")
@@ -2231,6 +2250,9 @@ func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUse
 
 	enrollment, err := resolveEnrollmentAdmissionPaymentByAdmissionTx(tx, a.runtimeConfig.DBDriver, admissionID)
 	if err == nil {
+		if expectedTransactionID > 0 {
+			return errors.New("admission receipt is owned by an enrollment; use the enrollment receipt workflow")
+		}
 		if err := voidStudentEnrollmentAdmissionPaymentTx(tx, enrollment, reason, voidedByUserID); err != nil {
 			return err
 		}
@@ -2259,6 +2281,9 @@ func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUse
 		}
 		return errors.New("admission payment has not been collected")
 	}
+	if expectedTransactionID > 0 && financeTransactionID != expectedTransactionID {
+		return errors.New("admission payment receipt ownership changed")
+	}
 	now := time.Now().UTC()
 	if _, err := tx.Exec(`
 		UPDATE admissions
@@ -2283,6 +2308,10 @@ func (a *App) voidAdmissionPayment(admissionID int64, reason string, voidedByUse
 }
 
 func (a *App) voidStudentMonthlyPayment(paymentID int64, reason string, voidedByUserID int64) error {
+	return a.voidStudentMonthlyPaymentExpected(paymentID, 0, reason, voidedByUserID)
+}
+
+func (a *App) voidStudentMonthlyPaymentExpected(paymentID int64, expectedTransactionID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
 	if paymentID <= 0 {
 		return errors.New("student payment was not found")
@@ -2314,6 +2343,9 @@ func (a *App) voidStudentMonthlyPayment(paymentID int64, reason string, voidedBy
 	if financeTransactionID <= 0 {
 		return errors.New("student payment has no linked finance transaction")
 	}
+	if expectedTransactionID > 0 && financeTransactionID != expectedTransactionID {
+		return errors.New("student payment receipt ownership changed")
+	}
 	now := time.Now().UTC()
 	result, err := tx.Exec(`
 		UPDATE student_monthly_payments
@@ -2337,6 +2369,10 @@ func (a *App) voidStudentMonthlyPayment(paymentID int64, reason string, voidedBy
 }
 
 func (a *App) voidReferralCommissionPayment(referralID int64, reason string, voidedByUserID int64) error {
+	return a.voidReferralCommissionPaymentExpected(referralID, 0, reason, voidedByUserID)
+}
+
+func (a *App) voidReferralCommissionPaymentExpected(referralID int64, expectedTransactionID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return errors.New("void reason is required")
@@ -2365,6 +2401,9 @@ func (a *App) voidReferralCommissionPayment(referralID int64, reason string, voi
 			return errors.New("referral payment has already been voided")
 		}
 		return errors.New("referral commission has not been paid")
+	}
+	if expectedTransactionID > 0 && financeTransactionID != expectedTransactionID {
+		return errors.New("referral payment receipt ownership changed")
 	}
 	now := time.Now().UTC()
 	if _, err := tx.Exec(`
@@ -2694,6 +2733,10 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 }
 
 func (a *App) voidFinanceTransferGroup(groupID string, reason string, voidedByUserID int64) error {
+	return a.voidFinanceTransferGroupExpected(groupID, 0, reason, voidedByUserID)
+}
+
+func (a *App) voidFinanceTransferGroupExpected(groupID string, expectedTransactionID int64, reason string, voidedByUserID int64) error {
 	groupID = strings.TrimSpace(groupID)
 	if groupID == "" {
 		return errors.New("transfer group is required")
@@ -2732,6 +2775,18 @@ func (a *App) voidFinanceTransferGroup(groupID string, reason string, voidedByUs
 	}
 	if len(ids) != 2 {
 		return errors.New("transfer pair could not be resolved")
+	}
+	if expectedTransactionID > 0 {
+		found := false
+		for _, id := range ids {
+			if id == expectedTransactionID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New("transfer receipt ownership changed")
+		}
 	}
 	if !(types[0] == financeTxnTypeTransferOut && types[1] == financeTxnTypeTransferIn || types[0] == financeTxnTypeTransferIn && types[1] == financeTxnTypeTransferOut) {
 		return errors.New("transfer pair is invalid")

@@ -56,6 +56,23 @@ func (a *App) receiptsManagementHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	for i := range transactions {
+		receipt := &transactions[i]
+
+		if receipt.Voided ||
+			receipt.GeneralVoidAllowed ||
+			receipt.OrphanedSource {
+			continue
+		}
+
+		if !userCanAccessDivision(user, receipt.DivisionID) {
+			continue
+		}
+
+		receipt.ReceiptSourceVoidAllowed =
+			receiptSourceVoidAuthorized(user, receipt)
+	}
+
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Receipts"
 	data.Description = "Search, print and safely void finance receipts."

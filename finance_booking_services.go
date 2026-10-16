@@ -6634,6 +6634,10 @@ func (a *App) collectBookingPaymentAtWithAdjustment(scheduleID int64, paymentMet
 }
 
 func (a *App) voidBookingPayment(collectionID int64, reason string, voidedByUserID int64) error {
+	return a.voidBookingPaymentExpected(collectionID, 0, reason, voidedByUserID)
+}
+
+func (a *App) voidBookingPaymentExpected(collectionID int64, expectedTransactionID int64, reason string, voidedByUserID int64) error {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return errors.New("void reason is required")
@@ -6659,6 +6663,9 @@ func (a *App) voidBookingPayment(collectionID int64, reason string, voidedByUser
 	}
 	if voided == 1 {
 		return errors.New("booking payment has already been voided")
+	}
+	if expectedTransactionID > 0 && financeTransactionID != expectedTransactionID {
+		return errors.New("booking payment receipt ownership changed")
 	}
 	voidedByRef := nullableExistingUserIDTx(tx, voidedByUserID)
 	if _, err := a.execTxDB(tx, `
