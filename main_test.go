@@ -6251,7 +6251,7 @@ func TestStudentPaymentsHandlerExportsCSV(t *testing.T) {
 	for _, marker := range []string{
 		"Section,Field,Value",
 		"Mekmaa Student Payments Report",
-		"Register Month,August 2026",
+		"Register Month," + paymentMonthLabel(latestCollectiblePaymentMonth(time.Now())),
 		"Activity Range,July 2026,August 2026",
 		"Export Student",
 		"Voided",
@@ -6406,7 +6406,7 @@ func TestStudentPaymentsHandlerShowsVoidedHistoryAndVoidAction(t *testing.T) {
 		t.Fatalf("collect replacement student payment: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/student-payments?month=2026-08", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/student-payments?from_month=2026-08&to_month=2026-08", nil)
 	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
 		ID:          1,
 		Name:        "Finance User",
@@ -6423,9 +6423,10 @@ func TestStudentPaymentsHandlerShowsVoidedHistoryAndVoidAction(t *testing.T) {
 	body := rec.Body.String()
 	for _, marker := range []string{
 		"Void UI Student",
-		"Payment history",
+		"Collection activity",
 		"Duplicate collection",
-		"Void payment",
+		"Voided entries",
+		"Active collections",
 	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("student payments page is missing %q in body=%s", marker, body)
