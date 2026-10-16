@@ -298,6 +298,96 @@
           </div>
           {{end}}
         </div>
+        {{$monthEnrollmentID := .Enrollment.ID}}
+        {{with index $.StudentPaymentMonthOptions $monthEnrollmentID}}
+        <details class="mt-4 rounded-2xl border border-slate/10 bg-white p-4">
+          <summary class="cursor-pointer text-sm font-semibold text-obsidian">
+            Select another payment month / View monthly status
+          </summary>
+
+          <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {{range .}}
+            <div class="rounded-xl border border-slate/10 p-3 text-xs">
+              <span class="font-semibold">{{.Label}}</span>
+              <span class="ml-2 uppercase">{{.Status}}</span>
+              {{if .Selectable}}
+              <span class="block text-amber-800">Due {{money .Outstanding}}</span>
+              {{end}}
+            </div>
+            {{end}}
+          </div>
+
+          <form action="/admin/student-payments/collect"
+                method="post"
+                class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                onsubmit="return confirm('Collect payment for the selected month?')">
+
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="enrollment_id" value="{{$monthEnrollmentID}}">
+            <input type="hidden" name="search" value="{{$.PaymentSearch}}">
+            <input type="hidden" name="status" value="{{$.PaymentStatusFilter}}">
+            <input type="hidden" name="program" value="{{$.PaymentProgramFilter}}">
+            <input type="hidden" name="method" value="{{$.PaymentMethodFilter}}">
+
+            {{if $.SelectedDivision}}
+            <input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}">
+            {{else if eq $.SelectedDivisionScope "all"}}
+            <input type="hidden" name="division" value="all">
+            {{end}}
+
+            <label class="text-xs font-semibold">
+              Payment month
+              <select name="payment_month"
+                      required
+                      class="mt-1 h-11 w-full rounded-xl border px-3 text-sm"
+                      onchange="const option=this.selectedOptions[0];const amount=this.form.querySelector('[name=amount]');amount.value=option.dataset.due||'';amount.max=option.dataset.due||'';">
+                <option value="">Select unpaid or partial month</option>
+                {{range .}}
+                {{if .Selectable}}
+                <option value="{{.Month}}" data-due="{{printf "%.2f" .Outstanding}}">
+                  {{.Label}} - {{.Status}} - Due {{money .Outstanding}}
+                </option>
+                {{end}}
+                {{end}}
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold">
+              Amount
+              <input name="amount" type="number" min="0.01" step="0.01"
+                     required placeholder="Select month first"
+                     class="mt-1 h-11 w-full rounded-xl border px-3 text-sm">
+            </label>
+
+            <label class="text-xs font-semibold">
+              Payment method
+              <select name="payment_method"
+                      class="mt-1 h-11 w-full rounded-xl border px-3 text-sm">
+                <option value="cash">Cash</option>
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="qr_pay">QR pay</option>
+              </select>
+            </label>
+
+            <label class="text-xs font-semibold">
+              Collection date
+              <input name="payment_collected_at"
+                     type="date"
+                     min="{{historicalStartDate}}"
+                     max="{{todayDate}}"
+                     value="{{todayDate}}"
+                     required
+                     class="mt-1 h-11 w-full rounded-xl border px-3 text-sm">
+            </label>
+
+            <button type="submit"
+                    class="h-11 rounded-xl bg-obsidian px-5 text-sm font-semibold text-cloud">
+              Collect selected month
+            </button>
+          </form>
+        </details>
+        {{end}}
+
         {{if gt (len .Payments) 0}}
         <details class="mt-4 rounded-[1.25rem] border border-slate/10 bg-white/75 p-4">
           <summary class="cursor-pointer text-sm font-semibold text-obsidian">Payment history</summary>

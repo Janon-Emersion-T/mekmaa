@@ -1369,6 +1369,14 @@ type StudentEnrollmentLeave struct {
 	UpdatedAt    time.Time
 }
 
+type StudentPaymentMonthOption struct {
+	Month       string
+	Label       string
+	Status      string
+	Outstanding float64
+	Selectable  bool
+}
+
 type StudentPaymentRow struct {
 	Admission                 Admission
 	Enrollment                StudentEnrollment
@@ -2314,6 +2322,7 @@ type TemplateData struct {
 	ReceiptBookingSchedule           *SpaceSchedule
 	ReceiptBookingFinancial          *BookingFinancial
 	StudentPaymentRows               []StudentPaymentRow
+	StudentPaymentMonthOptions       map[int64][]StudentPaymentMonthOption
 	EnrollmentLeaves                 []StudentEnrollmentLeave
 	StudentLeaveSearch               string
 	PaymentMonth                     string

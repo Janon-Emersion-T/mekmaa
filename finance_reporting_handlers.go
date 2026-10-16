@@ -1520,7 +1520,67 @@ func (a *App) studentPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Student Payments"
 	data.Description = "Collect and track individual monthly student payments."
+
+	// Calculate historical balances using the existing billing service.
+	monthOptions := make(map[int64][]StudentPaymentMonthOption)
+
+	if format != "pdf" && len(filteredRows) > 0 {
+		visible := make(map[int64]bool)
+
+		for _, row := range filteredRows {
+			visible[row.Enrollment.ID] = true
+		}
+
+		now := time.Now()
+		months := []string{paymentMonth}
+
+		for offset := 0; offset < 36; offset++ {
+			month := now.AddDate(0, -offset, 0).Format("2006-01")
+
+			if month != paymentMonth {
+				months = append(months, month)
+			}
+		}
+
+		for _, month := range months {
+			monthRows := rows
+
+			if month != paymentMonth {
+				monthRows, err = a.listStudentPaymentRowsByDivisionIDs(month, rowDivisionIDs)
+
+				if err != nil {
+					log.Printf("student payment month options %s: %v", month, err)
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+			}
+
+			for _, monthRow := range monthRows {
+				id := monthRow.Enrollment.ID
+
+				if !visible[id] {
+					continue
+				}
+
+				status := studentPaymentRowStatus(monthRow)
+
+				monthOptions[id] = append(
+					monthOptions[id],
+					StudentPaymentMonthOption{
+						Month:       month,
+						Label:       paymentMonthLabel(month),
+						Status:      status,
+						Outstanding: monthRow.OutstandingAmount,
+						Selectable: monthRow.OutstandingAmount > 0 &&
+							(status == "pending" || status == "partial"),
+					},
+				)
+			}
+		}
+	}
+
 	data.StudentPaymentRows = filteredRows
+	data.StudentPaymentMonthOptions = monthOptions
 	data.PaymentMonth = paymentMonth
 	data.PaymentMonthLabel = paymentMonthLabel(paymentMonth)
 	data.PaymentCollectionOpen = paymentMonthCollectible(paymentMonth, time.Now())
