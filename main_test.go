@@ -4325,6 +4325,75 @@ func TestReceiptsManagementPageListsReceiptsAndVoidControls(t *testing.T) {
 	}
 }
 
+func TestUnpaidStudentPaymentsHandlerListsOnlyOutstandingStudentFees(t *testing.T) {
+	app := newBookingWorkflowTestApp(t)
+	templates, err := buildTemplates()
+	if err != nil {
+		t.Fatalf("build templates: %v", err)
+	}
+	app.templates = templates
+
+	programID, err := app.createTrainingProgram(TrainingProgram{
+		Name:           "Pending Fees Programme",
+		Activity:       "chess",
+		TrainingFormat: "group",
+		MonthlyFee:     4200,
+		Active:         true,
+	})
+	if err != nil {
+		t.Fatalf("create training programme: %v", err)
+	}
+	admissionID, _, err := app.createAdmissionWithOptionalPayment(Admission{
+		StudentID:             "STD-PENDING-001",
+		FullName:              "Pending Payment Student",
+		AdmissionDate:         "2026-01-10",
+		DateOfBirth:           "2012-01-10",
+		Gender:                "female",
+		PracticeType:          "group_practice",
+		Address:               "Jaffna",
+		GuardianName:          "Guardian",
+		GuardianRelationship:  "Parent",
+		GuardianContactNumber: "0771234567",
+	}, false, "cash", 0)
+	if err != nil {
+		t.Fatalf("create admission: %v", err)
+	}
+	if _, _, err := app.createStudentEnrollmentWithOptionalPayment(StudentEnrollment{
+		AdmissionID:       admissionID,
+		TrainingProgramID: programID,
+		EnrollmentDate:    "2026-01-10",
+	}, false, "cash", 0); err != nil {
+		t.Fatalf("create enrollment: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/unpaid?search=Pending", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
+		ID:          1,
+		Name:        "Finance User",
+		Roles:       []string{"superadmin"},
+		Permissions: []string{"student_payments.view"},
+	}))
+	rec := httptest.NewRecorder()
+
+	app.unpaidStudentPaymentsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unpaid student payments status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, marker := range []string{
+		"Pending payments",
+		"Pending Payment Student",
+		"STD-PENDING-001",
+		"Pending Fees Programme",
+		"Collect payment",
+	} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("unpaid student payments page missing %q", marker)
+		}
+	}
+}
+
 func TestFinanceVoidReturnURLAllowsReceiptsPage(t *testing.T) {
 	form := url.Values{"return_to": {"/admin/receipts?division=all&status=active"}}
 	req := httptest.NewRequest(http.MethodPost, "/admin/finance/transactions/void", strings.NewReader(form.Encode()))
