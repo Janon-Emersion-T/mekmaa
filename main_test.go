@@ -6158,6 +6158,14 @@ func TestStudentPaymentsHandlerRendersPage(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, marker := range []string{
+		`>Billing month</span>`,
+		`>Collection month</p>`,
+	} {
+		if strings.Contains(body, marker) {
+			t.Fatalf("student payments page unexpectedly contains collection-month filter marker %q", marker)
+		}
+	}
+	for _, marker := range []string{
 		"Student payments",
 		"Page Student",
 		`name="from_month"`,
