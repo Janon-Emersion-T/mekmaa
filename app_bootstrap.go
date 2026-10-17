@@ -1395,6 +1395,12 @@ type StudentPaymentRow struct {
 	Payments                  []StudentMonthlyPayment
 }
 
+type UnpaidStudentPaymentRow struct {
+	StudentPaymentRow
+	PaymentMonth      string
+	PaymentMonthLabel string
+}
+
 type StudentMonthlyPaymentActivityRow struct {
 	Payment             StudentMonthlyPayment
 	StudentID           string
@@ -2323,6 +2329,7 @@ type TemplateData struct {
 	ReceiptBookingSchedule           *SpaceSchedule
 	ReceiptBookingFinancial          *BookingFinancial
 	StudentPaymentRows               []StudentPaymentRow
+	UnpaidStudentPaymentRows         []UnpaidStudentPaymentRow
 	StudentPaymentMonthOptions       map[int64][]StudentPaymentMonthOption
 	EnrollmentLeaves                 []StudentEnrollmentLeave
 	StudentLeaveSearch               string

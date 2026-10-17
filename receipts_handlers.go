@@ -38,29 +38,54 @@ func (a *App) unpaidStudentPaymentsHandler(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	paymentMonth := latestCollectiblePaymentMonth(time.Now())
-	rows, err := a.listStudentPaymentRowsByDivisionIDs(paymentMonth, divisionIDs)
-	if err != nil {
-		log.Printf("unpaid student payments load failed: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
 	search := strings.TrimSpace(r.URL.Query().Get("search"))
 	program := strings.TrimSpace(r.URL.Query().Get("program"))
-	programOptions := studentPaymentProgramOptions(rows)
-	rows = pendingStudentPaymentRows(filterStudentPaymentRows(rows, search, "", program, ""))
+	latestMonth := latestCollectiblePaymentMonth(time.Now())
+	fromMonth, toMonth := normalizeStudentPaymentMonthRange(
+		strings.TrimSpace(r.URL.Query().Get("from_month")),
+		strings.TrimSpace(r.URL.Query().Get("to_month")),
+		latestMonth,
+		time.Now().Format("2006-01"),
+	)
+	fromDate, _ := parsePaymentMonth(fromMonth)
+	toDate, _ := parsePaymentMonth(toMonth)
+	if earliest := toDate.AddDate(0, -35, 0); fromDate.Before(earliest) {
+		fromDate = earliest
+		fromMonth = earliest.Format("2006-01")
+	}
+
+	allRows := make([]StudentPaymentRow, 0)
+	unpaidRows := make([]UnpaidStudentPaymentRow, 0)
+	for month := fromDate; !month.After(toDate); month = month.AddDate(0, 1, 0) {
+		paymentMonth := month.Format("2006-01")
+		rows, err := a.listStudentPaymentRowsByDivisionIDs(paymentMonth, divisionIDs)
+		if err != nil {
+			log.Printf("unpaid student payments load failed for %s: %v", paymentMonth, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		allRows = append(allRows, rows...)
+		rows = pendingStudentPaymentRows(filterStudentPaymentRows(rows, search, "", program, ""))
+		for _, row := range rows {
+			unpaidRows = append(unpaidRows, UnpaidStudentPaymentRow{
+				StudentPaymentRow: row,
+				PaymentMonth:      paymentMonth,
+				PaymentMonthLabel: paymentMonthLabel(paymentMonth),
+			})
+		}
+	}
 
 	data := a.newTemplateData(w, r, user)
 	data.Title = "Pending Student Payments"
 	data.Description = "Review outstanding monthly payments for students."
-	data.StudentPaymentRows = rows
-	data.PaymentMonth = paymentMonth
-	data.PaymentMonthLabel = paymentMonthLabel(paymentMonth)
+	data.UnpaidStudentPaymentRows = unpaidRows
+	data.PaymentActivityFrom = fromMonth
+	data.PaymentActivityTo = toMonth
 	data.PaymentSearch = search
 	data.PaymentProgramFilter = program
-	data.PaymentProgramOptions = programOptions
-	for _, row := range rows {
+	data.PaymentProgramOptions = studentPaymentProgramOptions(allRows)
+	for _, unpaidRow := range unpaidRows {
+		row := unpaidRow.StudentPaymentRow
 		data.PaymentTotalDue = normalizeMoney(data.PaymentTotalDue + row.MonthlyFee)
 		data.PaymentCollected = normalizeMoney(data.PaymentCollected + row.CollectedAmount)
 		data.PaymentOutstanding = normalizeMoney(data.PaymentOutstanding + row.OutstandingAmount)

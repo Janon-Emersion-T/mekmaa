@@ -4366,7 +4366,7 @@ func TestUnpaidStudentPaymentsHandlerListsOnlyOutstandingStudentFees(t *testing.
 		t.Fatalf("create enrollment: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/unpaid?search=Pending", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/unpaid?search=Pending&from_month=2026-08&to_month=2026-09", nil)
 	req = req.WithContext(context.WithValue(req.Context(), userContextKey, &User{
 		ID:          1,
 		Name:        "Finance User",
@@ -4386,6 +4386,10 @@ func TestUnpaidStudentPaymentsHandlerListsOnlyOutstandingStudentFees(t *testing.
 		"Pending Payment Student",
 		"STD-PENDING-001",
 		"Pending Fees Programme",
+		`name="from_month" value="2026-08"`,
+		`name="to_month" value="2026-09"`,
+		"August 2026",
+		"September 2026",
 		"Collect payment",
 	} {
 		if !strings.Contains(body, marker) {
