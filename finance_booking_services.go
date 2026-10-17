@@ -6473,9 +6473,11 @@ func (a *App) collectBookingPaymentAtWithAdjustment(scheduleID int64, paymentMet
 	// Serialize archive and payment operations on the booking row.
 	// The archive service also locks this row before changing state.
 	var lockedScheduleID int64
-	if err := a.queryRowTxDB(tx, `
-		SELECT id FROM space_schedules WHERE id = ? FOR UPDATE
-	`, scheduleID).Scan(&lockedScheduleID); err != nil {
+	lockQuery := `SELECT id FROM space_schedules WHERE id = ?`
+	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		lockQuery += ` FOR UPDATE`
+	}
+	if err := a.queryRowTxDB(tx, lockQuery, scheduleID).Scan(&lockedScheduleID); err != nil {
 		return 0, err
 	}
 
@@ -7146,12 +7148,15 @@ func (a *App) deleteSpaceSchedule(scheduleID int64) error {
 	defer tx.Rollback()
 
 	var entryType string
-	if err := a.queryRowTxDB(tx, `
+	lockQuery := `
 		SELECT entry_type
 		FROM space_schedules
 		WHERE id = ?
-		FOR UPDATE
-	`, scheduleID).Scan(&entryType); err != nil {
+	`
+	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		lockQuery += ` FOR UPDATE`
+	}
+	if err := a.queryRowTxDB(tx, lockQuery, scheduleID).Scan(&entryType); err != nil {
 		return err
 	}
 	if entryType != "booking" {

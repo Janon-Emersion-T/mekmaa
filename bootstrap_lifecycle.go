@@ -825,6 +825,24 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
 			FOREIGN KEY (finance_transaction_id) REFERENCES finance_transactions(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS booking_receivables_archives (
+			schedule_id INTEGER PRIMARY KEY,
+			archived_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			archived_by_user_id INTEGER,
+			archive_reason TEXT NOT NULL DEFAULT '',
+			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE CASCADE,
+			FOREIGN KEY (archived_by_user_id) REFERENCES users(id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS booking_receivables_archive_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			schedule_id INTEGER NOT NULL,
+			action TEXT NOT NULL CHECK (action IN ('archive', 'restore')),
+			actor_user_id INTEGER NOT NULL,
+			reason TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (schedule_id) REFERENCES space_schedules(id) ON DELETE RESTRICT,
+			FOREIGN KEY (actor_user_id) REFERENCES users(id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS booking_payment_collections (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			schedule_id INTEGER NOT NULL,
@@ -1000,6 +1018,8 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_group_id ON student_group_members(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_members_admission_id ON student_group_members(admission_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_student_group_sessions_group_id ON student_group_sessions(group_id, active, day_of_week, start_time)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_receivables_archives_archived_at ON booking_receivables_archives(archived_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_booking_receivables_archive_events_schedule ON booking_receivables_archive_events(schedule_id, created_at DESC, id DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_coach_profiles_active ON coach_profiles(active)`,
 		`CREATE INDEX IF NOT EXISTS idx_coach_profiles_parent ON coach_profiles(parent_coach_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_attendance_user_date ON coach_attendance_records(user_id, attendance_date)`,

@@ -19,10 +19,11 @@ func (a *App) archiveBookingReceivable(scheduleID, actorUserID int64, reason str
 	defer tx.Rollback()
 
 	var id int64
-	if err := a.queryRowTxDB(tx,
-		`SELECT id FROM space_schedules WHERE id = ? FOR UPDATE`,
-		scheduleID,
-	).Scan(&id); err != nil {
+	lockQuery := `SELECT id FROM space_schedules WHERE id = ?`
+	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		lockQuery += ` FOR UPDATE`
+	}
+	if err := a.queryRowTxDB(tx, lockQuery, scheduleID).Scan(&id); err != nil {
 		return err
 	}
 
@@ -67,10 +68,11 @@ func (a *App) restoreBookingReceivable(scheduleID, actorUserID int64) error {
 	defer tx.Rollback()
 
 	var id int64
-	if err := a.queryRowTxDB(tx,
-		`SELECT id FROM space_schedules WHERE id = ? FOR UPDATE`,
-		scheduleID,
-	).Scan(&id); err != nil {
+	lockQuery := `SELECT id FROM space_schedules WHERE id = ?`
+	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		lockQuery += ` FOR UPDATE`
+	}
+	if err := a.queryRowTxDB(tx, lockQuery, scheduleID).Scan(&id); err != nil {
 		return err
 	}
 

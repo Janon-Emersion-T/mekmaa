@@ -509,9 +509,11 @@ func (a *App) transitionManagedBookingStatus(
 	// Lock the booking before checking its archive state.
 	// Archive and Restore acquire the same row lock.
 	var lockedScheduleID int64
-	if err := a.queryRowTxDB(tx, `
-		SELECT id FROM space_schedules WHERE id = ? FOR UPDATE
-	`, scheduleID).Scan(&lockedScheduleID); err != nil {
+	lockQuery := `SELECT id FROM space_schedules WHERE id = ?`
+	if a.runtimeConfig.DBDriver == databaseDriverPostgres {
+		lockQuery += ` FOR UPDATE`
+	}
+	if err := a.queryRowTxDB(tx, lockQuery, scheduleID).Scan(&lockedScheduleID); err != nil {
 		return nil, 0, err
 	}
 
