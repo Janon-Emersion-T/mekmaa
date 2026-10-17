@@ -6369,6 +6369,17 @@ func (a *App) saveAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
+	enrollments, err := a.listStudentEnrollmentsByDivisionIDs(divisionIDs)
+	if err != nil {
+		log.Printf("list student enrollments for attendance save: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	groupsWithRosters := attendanceGroupsWithEnrollmentRosters(
+		[]StudentGroup{*group},
+		enrollments,
+	)
+	group = &groupsWithRosters[0]
 	session, err := a.findStudentGroupSessionByID(sessionID)
 	if err != nil || session.GroupID != groupID {
 		a.setFlash(w, "Session not found.")

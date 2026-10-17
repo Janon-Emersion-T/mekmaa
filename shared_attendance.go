@@ -93,6 +93,12 @@ func (a *App) sharedAttendanceHandler(w http.ResponseWriter, r *http.Request) {
 		sharedAttendanceError(w, err)
 		return
 	}
+	enrollments, err := a.listStudentEnrollmentsByDivisionIDs(nil)
+	if err != nil {
+		sharedAttendanceError(w, err)
+		return
+	}
+	groups = attendanceGroupsWithEnrollmentRosters(groups, enrollments)
 	courseAvailable := false
 	for _, program := range programs {
 		if program.ID == data.SharedAttendanceCourseID {
@@ -184,6 +190,16 @@ func (a *App) saveSharedAttendance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Select a group belonging to this course.", http.StatusBadRequest)
 		return
 	}
+	enrollments, err := a.listStudentEnrollmentsByDivisionIDs(nil)
+	if err != nil {
+		sharedAttendanceError(w, err)
+		return
+	}
+	groupsWithRosters := attendanceGroupsWithEnrollmentRosters(
+		[]StudentGroup{*group},
+		enrollments,
+	)
+	group = &groupsWithRosters[0]
 	programs, err := a.listTrainingProgramsByDivisionIDs(nil, false, false)
 	if err != nil {
 		sharedAttendanceError(w, err)

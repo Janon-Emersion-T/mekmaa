@@ -47,6 +47,53 @@ func attendanceGroupIDs(groups []StudentGroup) []int64 {
 	return normalizeScopedDivisionIDs(groupIDs)
 }
 
+// attendanceGroupsWithEnrollmentRosters keeps groups and sessions as the
+// attendance sheet/schedule context, but sources each roster from active
+// programme enrollments. Group membership is an administrative assignment and
+// must not decide whether an enrolled student can be marked present.
+func attendanceGroupsWithEnrollmentRosters(
+	groups []StudentGroup,
+	enrollments []StudentEnrollment,
+) []StudentGroup {
+	studentsByProgramme := make(map[int64][]Admission)
+	seenByProgramme := make(map[int64]map[int64]struct{})
+
+	for _, enrollment := range enrollments {
+		if !enrollment.Active || enrollment.TrainingProgramID <= 0 || enrollment.AdmissionID <= 0 {
+			continue
+		}
+
+		seen := seenByProgramme[enrollment.TrainingProgramID]
+		if seen == nil {
+			seen = make(map[int64]struct{})
+			seenByProgramme[enrollment.TrainingProgramID] = seen
+		}
+		if _, exists := seen[enrollment.AdmissionID]; exists {
+			continue
+		}
+
+		student := enrollment.Student
+		if student.ID <= 0 {
+			student.ID = enrollment.AdmissionID
+		}
+		seen[enrollment.AdmissionID] = struct{}{}
+		studentsByProgramme[enrollment.TrainingProgramID] = append(
+			studentsByProgramme[enrollment.TrainingProgramID],
+			student,
+		)
+	}
+
+	for i := range groups {
+		groups[i].Students = append(
+			[]Admission(nil),
+			studentsByProgramme[groups[i].TrainingProgramID]...,
+		)
+		groups[i].StudentCount = len(groups[i].Students)
+	}
+
+	return groups
+}
+
 func admissionVisibleInAttendanceGroups(
 	groups []StudentGroup,
 	admissionID int64,
@@ -278,6 +325,14 @@ func (a *App) attendanceGroupsForUser(
 		)
 		return nil, false
 	}
+
+	enrollments, err := a.listStudentEnrollmentsByDivisionIDs(divisionIDs)
+	if err != nil {
+		log.Printf("list student enrollments for attendance scope: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return nil, false
+	}
+	groups = attendanceGroupsWithEnrollmentRosters(groups, enrollments)
 
 	return groups, true
 }
