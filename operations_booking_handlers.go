@@ -6159,8 +6159,15 @@ func (a *App) updateStudentGroupHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := a.validateStudentGroupMemberEnrollments(
+	previousMemberIDs := make([]int64, 0, len(existingGroup.Students))
+	for _, student := range existingGroup.Students {
+		previousMemberIDs = append(previousMemberIDs, student.ID)
+	}
+
+	if err := a.validateStudentGroupUpdatedMembers(
 		group.TrainingProgramID,
+		existingGroup.TrainingProgramID,
+		previousMemberIDs,
 		admissionIDs,
 	); err != nil {
 		a.setFlash(

@@ -86,6 +86,39 @@ func (a *App) validateStudentGroupMemberEnrollments(
 	return nil
 }
 
+// validateStudentGroupUpdatedMembers permits existing group members to
+// remain selected while requiring newly added members to be actively enrolled.
+// When the programme changes, all submitted members require validation.
+func (a *App) validateStudentGroupUpdatedMembers(
+	programmeID int64,
+	previousProgrammeID int64,
+	previousMemberIDs []int64,
+	submittedIDs []int64,
+) error {
+	if programmeID <= 0 {
+		return errors.New("select a valid programme")
+	}
+
+	existing := make(map[int64]struct{}, len(previousMemberIDs))
+	if programmeID == previousProgrammeID {
+		for _, studentID := range previousMemberIDs {
+			existing[studentID] = struct{}{}
+		}
+	}
+
+	newIDs := make([]int64, 0, len(submittedIDs))
+	for _, id := range uniquePositiveInt64Values(submittedIDs) {
+		if _, ok := existing[id]; !ok {
+			newIDs = append(newIDs, id)
+		}
+	}
+
+	return a.validateStudentGroupMemberEnrollments(
+		programmeID,
+		newIDs,
+	)
+}
+
 func studentGroupMutationScopeAllowed(
 	user *User,
 	groupDivisionID int64,
