@@ -162,6 +162,7 @@ func main() {
 	mux.Handle("/admin/enrollments/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createEnrollmentHandler), "enrollments.create")))
 	mux.Handle("/admin/enrollments/transfer", app.sessionMiddleware(app.requirePermission(app.requirePermission(http.HandlerFunc(app.transferEnrollmentHandler), "enrollments.create"), "enrollments.update")))
 	mux.Handle("/admin/enrollments/update", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.updateEnrollmentHandler), "enrollments.update")))
+	mux.Handle("/admin/enrollments/reenroll", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.reenrollEnrollmentHandler), "enrollments.update")))
 	mux.Handle("/admin/enrollments/unenroll", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.unenrollEnrollmentHandler), "enrollments.update")))
 	mux.Handle("/admin/enrollments/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteEnrollmentHandler), "enrollments.delete")))
 	mux.Handle("/admin/enrollments/collect-admission", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectEnrollmentAdmissionPaymentHandler), "enrollments.update")))
