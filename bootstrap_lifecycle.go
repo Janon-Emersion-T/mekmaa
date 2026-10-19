@@ -352,6 +352,26 @@ func runMigrations(db *sql.DB) error {
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (recorded_by_user_id) REFERENCES users(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS course_attendance_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            enrollment_id INTEGER NOT NULL,
+            attendance_date TEXT NOT NULL,
+            status TEXT NOT NULL
+                CHECK (status IN ('present', 'absent', 'late', 'excused')),
+            note TEXT NOT NULL DEFAULT '',
+            recorded_by_user_id INTEGER,
+            recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (enrollment_id, attendance_date),
+            FOREIGN KEY (enrollment_id)
+                REFERENCES student_enrollments(id) ON DELETE RESTRICT,
+            FOREIGN KEY (recorded_by_user_id)
+                REFERENCES users(id)
+        )`,
+		`CREATE INDEX IF NOT EXISTS idx_course_attendance_date
+            ON course_attendance_records(attendance_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_course_attendance_enrollment
+            ON course_attendance_records(enrollment_id)`,
 		`CREATE TABLE IF NOT EXISTS attendance_records (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			group_id INTEGER NOT NULL,

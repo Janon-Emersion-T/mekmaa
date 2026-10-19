@@ -91,7 +91,7 @@ func createConfirmedBookingForTests(t *testing.T, app *App, schedule SpaceSchedu
 
 func newBookingWorkflowTestApp(t *testing.T) *App {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+strings.ReplaceAll(fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), "/", "-")+"?mode=memory&cache=shared")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
