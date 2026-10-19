@@ -57,7 +57,7 @@ small{color:#65767c}
 <p>Course-based student attendance</p>
 </header>
 <section class="panel">
-<form method="get" action="/admin/attendance/course" class="filters">
+<form method="get" action="/admin/attendance" class="filters">
 <input type="hidden" name="division" value="{{.Division}}">
 <label>Course
 <select name="program_id" required>
@@ -322,7 +322,7 @@ func (a *App) courseAttendanceSaveHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	target := "/admin/attendance/course?program_id=" +
+	target := "/admin/attendance?program_id=" +
 		strconv.FormatInt(programID, 10) + "&date=" + date
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }

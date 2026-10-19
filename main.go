@@ -259,7 +259,7 @@ func main() {
 	mux.Handle("/admin/student-groups/occurrences/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveStudentGroupSessionOccurrenceHandler), "student_groups.update")))
 	mux.Handle("/admin/attendance/course", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.courseAttendancePageHandler), "attendance.view")))
 	mux.Handle("/admin/attendance/course/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.courseAttendanceSaveHandler), "attendance.update")))
-	mux.Handle("/admin/attendance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.attendanceManagementHandler), "attendance.view")))
+	mux.Handle("/admin/attendance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.courseAttendancePageHandler), "attendance.view")))
 	mux.Handle("/admin/attendance/search", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.attendanceSearchHandler), "attendance.view")))
 	mux.Handle("/admin/attendance/report", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.studentAttendanceReportHandler), "attendance.view")))
 	mux.Handle("/admin/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveAttendanceHandler), "attendance.update")))
