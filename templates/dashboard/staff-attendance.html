@@ -87,6 +87,79 @@
     </form>
   </section>
 
+
+  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-sm">
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-8">
+      <h2 class="text-xl font-semibold text-obsidian">
+        Saved attendance
+      </h2>
+      <p class="mt-1 text-sm text-slate/60">
+        Recorded staff working times for {{.AttendanceDate}}.
+        Select another date above to view its records.
+      </p>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[700px] text-left text-sm">
+        <thead class="bg-cloud/70 text-xs uppercase tracking-wider text-slate/60">
+          <tr>
+            <th class="px-5 py-4">Date</th>
+            <th class="px-5 py-4">Staff member</th>
+            <th class="px-5 py-4">From</th>
+            <th class="px-5 py-4">To</th>
+            <th class="px-5 py-4">Worked hours</th>
+            <th class="px-5 py-4">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .StaffAttendanceRecords}}
+            {{$record := .}}
+            {{range $.StaffAttendanceUsers}}
+              {{if eq .ID $record.UserID}}
+              <tr>
+                <td class="px-5 py-4">{{$record.AttendanceDate}}</td>
+                <td class="px-5 py-4 font-semibold">{{.Name}}</td>
+                <td class="px-5 py-4">
+                  {{range $record.Sessions}}
+                    <div>{{.StartTime}}</div>
+                  {{else}}
+                    <span class="text-slate/40">—</span>
+                  {{end}}
+                </td>
+                <td class="px-5 py-4">
+                  {{range $record.Sessions}}
+                    <div>{{.EndTime}}</div>
+                  {{else}}
+                    <span class="text-slate/40">—</span>
+                  {{end}}
+                </td>
+                <td class="px-5 py-4">
+                  {{if $record.Sessions}}
+                    {{printf "%.2f" $record.SessionHours}} h
+                  {{else}}
+                    <span class="text-slate/40">Not recorded</span>
+                  {{end}}
+                </td>
+                <td class="px-5 py-4">
+                  <span class="rounded-full bg-cloud px-3 py-1 font-medium">
+                    {{$record.Status}}
+                  </span>
+                </td>
+              </tr>
+              {{end}}
+            {{end}}
+          {{else}}
+          <tr>
+            <td colspan="6" class="px-5 py-12 text-center text-slate/55">
+              No staff attendance recorded for this date.
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <div class="flex justify-end">
     <a href="{{scopedURL "/admin/staff/attendance/report" .SelectedDivision .SelectedDivisionScope}}"
        class="text-sm font-semibold text-aqua-700 underline">

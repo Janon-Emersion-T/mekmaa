@@ -49,6 +49,43 @@ type StaffAttendanceHistoryRow struct {
 	UpdatedAt        time.Time
 }
 
+type StaffAttendanceWorkLogRow struct {
+	UserName       string
+	AttendanceDate string
+	Status         string
+	Sessions       []StaffAttendanceSession
+	WorkedHours    float64
+	Note           string
+}
+
+func buildStaffAttendanceWorkLog(
+	users []User,
+	records []CoachAttendanceRecord,
+	selectedUserID int64,
+) []StaffAttendanceWorkLogRow {
+	names := make(map[int64]string, len(users))
+	for _, user := range users {
+		names[user.ID] = user.Name
+	}
+
+	result := make([]StaffAttendanceWorkLogRow, 0, len(records))
+	for _, record := range records {
+		name, allowed := names[record.UserID]
+		if !allowed || (selectedUserID > 0 && record.UserID != selectedUserID) {
+			continue
+		}
+		result = append(result, StaffAttendanceWorkLogRow{
+			UserName:       name,
+			AttendanceDate: record.AttendanceDate,
+			Status:         record.Status,
+			Sessions:       record.Sessions,
+			WorkedHours:    record.SessionHours(),
+			Note:           record.Note,
+		})
+	}
+	return result
+}
+
 func normalizeStaffAttendanceMonth(
 	value string,
 ) (string, error) {
@@ -796,6 +833,9 @@ func (a *App) staffAttendanceReportHandler(
 
 	data.StaffAttendanceHistory =
 		history
+
+	data.StaffAttendanceWorkLog =
+		buildStaffAttendanceWorkLog(staff, records, selectedUserID)
 
 	if strings.EqualFold(
 		strings.TrimSpace(

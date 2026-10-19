@@ -2196,6 +2196,7 @@ type TemplateData struct {
 	StaffAttendanceReportRows    []StaffAttendanceReportRow
 	StaffAttendanceReportSummary StaffAttendanceReportSummary
 	StaffAttendanceHistory       []StaffAttendanceHistoryRow
+	StaffAttendanceWorkLog       []StaffAttendanceWorkLogRow
 	StaffAttendanceMonth         string
 	SelectedStaffAttendanceUser  *User
 	AttendanceRecords            []AttendanceRecord

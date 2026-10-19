@@ -370,6 +370,61 @@
   </section>
 
 
+
+  <!-- DETAILED MONTHLY WORK LOG -->
+  <section class="overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-sm">
+    <div class="border-b border-slate/10 px-5 py-5 sm:px-7">
+      <h2 class="text-xl font-semibold text-obsidian">Daily work log</h2>
+      <p class="mt-1 text-sm text-slate/60">
+        Saved working times for the selected month. Older records without
+        time entries are shown without estimated hours.
+      </p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[850px] text-left text-sm">
+        <thead class="bg-cloud/70 text-xs uppercase tracking-wider text-slate/60">
+          <tr>
+            <th class="px-4 py-4">Date</th>
+            <th class="px-4 py-4">Staff</th>
+            <th class="px-4 py-4">From</th>
+            <th class="px-4 py-4">To</th>
+            <th class="px-4 py-4">Hours</th>
+            <th class="px-4 py-4">Status</th>
+            <th class="px-4 py-4">Remarks</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate/10">
+          {{range .StaffAttendanceWorkLog}}
+          <tr>
+            <td class="px-4 py-4">{{.AttendanceDate}}</td>
+            <td class="px-4 py-4 font-semibold">{{.UserName}}</td>
+            <td class="px-4 py-4">
+              {{range .Sessions}}<div>{{.StartTime}}</div>
+              {{else}}<span class="text-slate/40">—</span>{{end}}
+            </td>
+            <td class="px-4 py-4">
+              {{range .Sessions}}<div>{{.EndTime}}</div>
+              {{else}}<span class="text-slate/40">—</span>{{end}}
+            </td>
+            <td class="px-4 py-4">
+              {{if .Sessions}}{{printf "%.2f" .WorkedHours}} h
+              {{else}}<span class="text-slate/40">Not recorded</span>{{end}}
+            </td>
+            <td class="px-4 py-4">{{.Status}}</td>
+            <td class="px-4 py-4">{{if .Note}}{{.Note}}{{else}}—{{end}}</td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="7" class="px-5 py-12 text-center text-slate/55">
+              No attendance records for the selected month.
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- INDIVIDUAL HISTORY -->
   {{if .SelectedStaffAttendanceUser}}
 
