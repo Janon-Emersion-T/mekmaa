@@ -613,7 +613,7 @@ func attendanceStudentSuggestions(groups []StudentGroup) []AttendanceStudentSugg
 	return students
 }
 
-func (a *App) attendanceSearchHandler(
+func (a *App) legacyAttendanceSearchHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {

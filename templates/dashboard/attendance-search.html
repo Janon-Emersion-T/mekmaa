@@ -26,7 +26,7 @@
           </h1>
 
           <p class="mt-3 max-w-xl text-sm leading-7 text-cloud/75 sm:text-base">
-            Enter the student's Mekmaa Student ID or name to review and filter their saved attendance history across the {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in this workspace.
+            Enter the student's Mekmaa Student ID or name to review and filter their saved attendance history across courses available in this workspace.
           </p>
         </div>
 
@@ -76,16 +76,10 @@
             <label class="text-sm text-cloud/75">To date
               <input type="date" name="to" value="{{.AttendanceSearchFilter.To}}" class="mt-1 h-12 w-full rounded-2xl bg-white px-4 text-sm text-obsidian">
             </label>
-            <label class="text-sm text-cloud/75">Class / programme
+            <label class="text-sm text-cloud/75">Course
               <select name="programme_id" class="mt-1 h-12 w-full rounded-2xl bg-white px-4 text-sm text-obsidian">
-                <option value="">All classes / programmes</option>
+                <option value="">All courses</option>
                 {{range .TrainingPrograms}}<option value="{{.ID}}" {{if eq $.AttendanceSearchFilter.ProgrammeID .ID}}selected{{end}}>{{.Name}}</option>{{end}}
-              </select>
-            </label>
-            <label class="text-sm text-cloud/75">Group
-              <select name="group_id" class="mt-1 h-12 w-full rounded-2xl bg-white px-4 text-sm text-obsidian">
-                <option value="">All groups</option>
-                {{range .StudentGroups}}<option value="{{.ID}}" {{if eq $.AttendanceSearchFilter.GroupID .ID}}selected{{end}}>{{.Name}} — {{.TrainingProgramName}}</option>{{end}}
               </select>
             </label>
             <label class="text-sm text-cloud/75">Attendance status
@@ -117,7 +111,7 @@
         </h2>
 
         <p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-amber-900/70">
-          Check the Student ID or name and confirm that the student belongs to a {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}} available in your current workspace.
+          Check the Student ID or name and confirm that the student has a course enrollment available in your current workspace.
         </p>
       </div>
     </div>
@@ -143,7 +137,7 @@
         <div class="divide-y divide-slate/10">
           {{range .AttendanceSearchMatches}}
           <a
-            href="{{scopedURL (printf "/admin/attendance/search?student_id=%s&from=%s&to=%s&group_id=%d&status=%s&programme_id=%d" (urlquery .StudentID) $.AttendanceSearchFilter.From $.AttendanceSearchFilter.To $.AttendanceSearchFilter.GroupID $.AttendanceSearchFilter.Status $.AttendanceSearchFilter.ProgrammeID) $.SelectedDivision $.SelectedDivisionScope}}"
+            href="{{scopedURL (printf "/admin/attendance/search?student_id=%s&from=%s&to=%s&status=%s&programme_id=%d" (urlquery .StudentID) $.AttendanceSearchFilter.From $.AttendanceSearchFilter.To $.AttendanceSearchFilter.Status $.AttendanceSearchFilter.ProgrammeID) $.SelectedDivision $.SelectedDivisionScope}}"
             class="flex flex-col gap-2 px-5 py-4 transition hover:bg-white/70 sm:px-6"
           >
             <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -176,7 +170,7 @@
           {{if .HideChrome}}
           <button type="button" onclick="window.print()" class="rounded-xl bg-obsidian px-4 py-3 text-sm font-semibold text-white">Print / Save as PDF</button>
           {{else}}
-          <a target="_blank" rel="noopener" href="{{scopedURL (printf "/admin/attendance/search?student_id=%s&from=%s&to=%s&group_id=%d&status=%s&programme_id=%d&format=pdf" (urlquery .SelectedAttendanceStudent.StudentID) .AttendanceSearchFilter.From .AttendanceSearchFilter.To .AttendanceSearchFilter.GroupID .AttendanceSearchFilter.Status .AttendanceSearchFilter.ProgrammeID) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-obsidian px-4 py-3 text-sm font-semibold text-white">Print / PDF</a>
+          <a target="_blank" rel="noopener" href="{{scopedURL (printf "/admin/attendance/search?student_id=%s&from=%s&to=%s&status=%s&programme_id=%d&format=pdf" (urlquery .SelectedAttendanceStudent.StudentID) .AttendanceSearchFilter.From .AttendanceSearchFilter.To .AttendanceSearchFilter.Status .AttendanceSearchFilter.ProgrammeID) .SelectedDivision .SelectedDivisionScope}}" class="rounded-xl bg-obsidian px-4 py-3 text-sm font-semibold text-white">Print / PDF</a>
           {{end}}
         </div>
       </div>
@@ -184,7 +178,6 @@
         Period: {{if .AttendanceSearchFilter.From}}{{formatCalendarDate .AttendanceSearchFilter.From}}{{else}}Beginning{{end}} – {{if .AttendanceSearchFilter.To}}{{formatCalendarDate .AttendanceSearchFilter.To}}{{else}}Today{{end}}
         · Status: {{if .AttendanceSearchFilter.Status}}{{.AttendanceSearchFilter.Status}}{{else}}All{{end}}
         · Course: {{if .AttendanceSearchFilter.ProgrammeID}}{{range .TrainingPrograms}}{{if eq .ID $.AttendanceSearchFilter.ProgrammeID}}{{.Name}}{{end}}{{end}}{{else}}All{{end}}
-        · Group: {{if .AttendanceSearchFilter.GroupID}}{{range .StudentGroups}}{{if eq .ID $.AttendanceSearchFilter.GroupID}}{{.Name}}{{end}}{{end}}{{else}}All{{end}}
         · Division: {{if .SelectedDivision}}{{.SelectedDivision.Name}}{{else}}{{.SelectedDivisionScope}}{{end}}
       </p>
       <div class="rounded-[1.75rem] border border-slate/10 bg-cloud/70 p-5 sm:p-6">
@@ -220,7 +213,7 @@
 
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <div class="rounded-2xl border border-slate/10 bg-white px-4 py-4 shadow-sm">
-          <p class="text-xs uppercase tracking-[0.16em] text-slate/50">Sessions</p>
+          <p class="text-xs uppercase tracking-[0.16em] text-slate/50">Records</p>
           <p class="mt-2 text-2xl font-semibold text-obsidian">
             {{.StudentAttendanceSummary.TotalEntries}}
           </p>
@@ -294,18 +287,12 @@
 
             <div>
               <p class="text-sm font-semibold text-obsidian">
-                {{if .GroupName}}{{.GroupName}}{{else}}{{workspaceGroupSingularLabel $.User $.SelectedDivision $.SelectedDivisionScope}} unavailable{{end}}
+                {{if .TrainingProgramName}}{{.TrainingProgramName}}{{else}}Course unavailable{{end}}
               </p>
 
               <p class="mt-1 text-xs text-slate/55">
-                {{if .TrainingProgramName}}{{.TrainingProgramName}}{{else}}Programme unavailable{{end}}
-              </p>
 
-              {{if .SessionTitle}}
-              <p class="mt-1 text-xs text-slate/50">
-                {{.SessionTitle}}
               </p>
-              {{end}}
             </div>
 
             <div>
@@ -339,7 +326,7 @@
           </p>
 
           <p class="mt-2 text-sm text-slate/55">
-            Try a wider date range, another group, or all attendance statuses.
+            Try a wider date range, another course, or all attendance statuses.
           </p>
         </div>
         {{end}}

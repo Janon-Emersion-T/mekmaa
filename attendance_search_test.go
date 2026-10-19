@@ -57,13 +57,13 @@ func TestAttendanceSearchTemplatePreservesFilters(t *testing.T) {
 	}
 	body := renderTemplateToString(t, templates, "attendance-search", TemplateData{
 		AttendanceSearchStudentID: "Alex",
-		AttendanceSearchFilter:    AttendanceSearchFilter{ProgrammeID: 10, GroupID: 1, From: "2026-08-01", To: "2026-08-31", Status: "absent"},
+		AttendanceSearchFilter:    AttendanceSearchFilter{ProgrammeID: 10, From: "2026-08-01", To: "2026-08-31", Status: "absent"},
 		AttendanceSearchMatches:   []Admission{{StudentID: "MKM-001", FullName: "Alex"}},
 		TrainingPrograms:          []TrainingProgram{{ID: 10, Name: "Maths"}},
 		StudentGroups:             []StudentGroup{{ID: 1, Name: "Monday", TrainingProgramID: 10}},
 		SelectedDivisionScope:     "all",
 	})
-	for _, want := range []string{`name="programme_id"`, `value="10" selected`, `value="1" selected`, `value="absent" selected`, `programme_id=10`, `group_id=1`, `from=2026-08-01`, `to=2026-08-31`, `status=absent`, `division=all`, `student_id=MKM-001`} {
+	for _, want := range []string{`name="programme_id"`, `value="10" selected`, `value="absent" selected`, `programme_id=10`, `from=2026-08-01`, `to=2026-08-31`, `status=absent`, `division=all`, `student_id=MKM-001`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %s", want)
 		}
@@ -89,7 +89,7 @@ func TestAttendanceSearchPrintAndSuggestions(t *testing.T) {
 	data := TemplateData{
 		SelectedAttendanceStudent:   &Admission{ID: 1, StudentID: "MKM-001", FullName: "Alex"},
 		AttendanceSearchSuggestions: []AttendanceStudentSuggestion{{StudentID: "MKM-001", FullName: "Alex"}},
-		AttendanceSearchFilter:      AttendanceSearchFilter{From: "2026-08-01", To: "2026-08-31", Status: "present", ProgrammeID: 10, GroupID: 20},
+		AttendanceSearchFilter:      AttendanceSearchFilter{From: "2026-08-01", To: "2026-08-31", Status: "present", ProgrammeID: 10},
 		TrainingPrograms:            []TrainingProgram{{ID: 10, Name: "Maths"}},
 		StudentGroups:               []StudentGroup{{ID: 20, Name: "Monday"}},
 		SelectedDivisionScope:       "all",
@@ -97,14 +97,14 @@ func TestAttendanceSearchPrintAndSuggestions(t *testing.T) {
 		StudentAttendanceSummary:    StudentAttendanceSummary{TotalEntries: 1, PresentCount: 1, AttendanceRate: 100},
 	}
 	body := renderTemplateToString(t, templates, "attendance-search", data)
-	for _, want := range []string{`list="attendance-student-suggestions"`, `label="Alex · MKM-001"`, `format=pdf`, `student_id=MKM-001`, `from=2026-08-01`, `to=2026-08-31`, `status=present`, `programme_id=10`, `group_id=20`, `division=all`} {
+	for _, want := range []string{`list="attendance-student-suggestions"`, `label="Alex · MKM-001"`, `format=pdf`, `student_id=MKM-001`, `from=2026-08-01`, `to=2026-08-31`, `status=present`, `programme_id=10`, `division=all`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %s", want)
 		}
 	}
 	data.HideChrome = true
 	body = renderTemplateToString(t, templates, "attendance-search", data)
-	for _, want := range []string{"Student attendance report", "Alex", "MKM-001", "Maths", "Monday", "100.0", `onclick="window.print()"`} {
+	for _, want := range []string{"Student attendance report", "Alex", "MKM-001", "Maths", "100.0", `onclick="window.print()"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("print view missing %s", want)
 		}
