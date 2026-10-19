@@ -1,6 +1,7 @@
 {{define "attendance-management"}}{{template "base" .}}{{end}}
 {{define "content"}}
 {{if .CourseAttendance}}
+{{if .CourseAttendance}}
 <style>
 #course-attendance-root main{max-width:1150px;margin:32px auto;padding:0 18px}
 #course-attendance-root header,#course-attendance-root .panel{background:white;border-radius:18px;padding:24px;margin-bottom:20px;box-shadow:0 3px 18px #0000000b}
@@ -150,5 +151,6 @@
 })();
 
 </script>
+{{end}}
 {{end}}
 {{end}}
