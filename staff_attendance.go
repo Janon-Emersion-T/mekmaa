@@ -452,7 +452,40 @@ func (a *App) staffAttendanceManagementHandler(
 		return
 	}
 
+	registerFrom, registerTo, err := staffAttendanceRegisterBounds(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	registerUserID, err := selectedStaffAttendanceRegisterUser(r, staff)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	register, err := a.listStaffAttendanceRegister(
+		staff,
+		registerFrom,
+		registerTo,
+		registerUserID,
+	)
+	if err != nil {
+		log.Printf("list staff attendance register: %v", err)
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
 	data := a.newTemplateData(w, r, user)
+
+	data.StaffAttendanceRegister = register
+	data.StaffAttendanceRegisterFrom = registerFrom
+	data.StaffAttendanceRegisterTo = registerTo
+	data.StaffAttendanceRegisterUserID = registerUserID
 
 	data.Title = "Staff Attendance"
 	data.Description =
