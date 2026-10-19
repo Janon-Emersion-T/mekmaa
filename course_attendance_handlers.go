@@ -41,15 +41,20 @@ th,td{padding:12px;text-align:left;border-bottom:1px solid #e6ebed}
 th{background:#f5f8f8}
 small{color:#65767c}
 .error{color:#a32121}
+.attendance-search{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:18px 0}
+.attendance-search label{width:100%}
+.attendance-search input{flex:1;min-width:220px}
+.secondary{background:#e7f0ed;color:#075e50}
+[hidden]{display:none!important}
 @media(max-width:700px){.table-wrap{overflow-x:auto}}
 </style>
 </head>
 <body>
 <main>
 <header>
-<a href="/admin/attendance">← Existing attendance</a>
+
 <h1>Course Attendance</h1>
-<p>Mark attendance for students enrolled in a course, including students without a group.</p>
+<p>Course-based student attendance</p>
 </header>
 <section class="panel">
 <form method="get" action="/admin/attendance/course" class="filters">
@@ -71,17 +76,28 @@ small{color:#65767c}
 <h2>Attendance for {{.Date}}</h2>
 <p>{{len .Students}} enrolled students eligible on this date.</p>
 {{if .Students}}
+<div class="attendance-search">
+<label for="student-search">Search students by name or Student ID</label>
+<input id="student-search" type="search"
+       placeholder="Start typing a name or Student ID..."
+       autocomplete="off" aria-controls="course-attendance-table">
+<small id="student-search-count" role="status" aria-live="polite"></small>
+<button type="button" id="clear-student-search" class="secondary">Clear search</button>
+</div>
+<p id="student-search-empty" hidden>No matching students found.</p>
+{{end}}
+{{if .Students}}
 <form method="post" action="/admin/attendance/course/save">
 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 <input type="hidden" name="division" value="{{.Division}}">
 <input type="hidden" name="program_id" value="{{.ProgramID}}">
 <input type="hidden" name="attendance_date" value="{{.Date}}">
 <div class="table-wrap">
-<table>
+<table id="course-attendance-table">
 <thead><tr><th>Student ID</th><th>Name</th><th>Status</th><th>Note</th></tr></thead>
 <tbody>
 {{range .Students}}
-<tr>
+<tr class="attendance-student-row">
 <td>{{.StudentID}}</td>
 <td>{{.Name}}</td>
 <td>
@@ -106,6 +122,57 @@ small{color:#65767c}
 </section>
 {{end}}
 </main>
+<script>
+(function () {
+  "use strict";
+  const search = document.getElementById("student-search");
+  const table = document.getElementById("course-attendance-table");
+  if (!search || !table) return;
+
+  const rows = Array.from(
+    table.querySelectorAll("tbody tr.attendance-student-row")
+  );
+  const counter = document.getElementById("student-search-count");
+  const empty = document.getElementById("student-search-empty");
+  const clear = document.getElementById("clear-student-search");
+
+  const normalize = value =>
+    String(value || "").normalize("NFKC").toLocaleLowerCase().trim();
+
+  const students = rows.map(row => ({
+    row,
+    searchable: normalize(
+      Array.from(row.querySelectorAll("td"))
+        .slice(0, 2)
+        .map(cell => cell.textContent)
+        .join(" ")
+    )
+  }));
+
+  function filterStudents() {
+    const query = normalize(search.value);
+    let visible = 0;
+
+    students.forEach(student => {
+      const matches = !query || student.searchable.includes(query);
+      student.row.hidden = !matches;
+      if (matches) visible++;
+    });
+
+    counter.textContent = visible + " of " + students.length + " students shown";
+    empty.hidden = visible !== 0;
+  }
+
+  search.addEventListener("input", filterStudents);
+  clear.addEventListener("click", function () {
+    search.value = "";
+    filterStudents();
+    search.focus();
+  });
+
+  filterStudents();
+})();
+</script>
 </body>
 </html>`
 
