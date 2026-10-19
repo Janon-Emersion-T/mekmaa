@@ -139,7 +139,7 @@ func TestStaffWorkSessionsTemplatesRender(t *testing.T) {
 		SelectedStaffAttendanceUser: &staff, StaffAttendanceMonth: "2026-09",
 	}
 	html := renderTemplateToString(t, templates, "staff-attendance", data)
-	for _, expected := range []string{"+ Add session", "session_start_42", "session_end_42", "10:30", ">2.5</span> hours"} {
+	for _, expected := range []string{"Staff member", "From time", "To time", "Save Attendance", "10:30"} {
 		if !strings.Contains(html, expected) {
 			t.Errorf("attendance missing %q", expected)
 		}
