@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html/template"
 	"log"
 	"net/http"
 	"strconv"
@@ -267,15 +266,11 @@ func (a *App) courseAttendancePageHandler(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	tmpl, err := template.New("course-attendance").Parse(courseAttendancePageHTML)
-	if err != nil {
-		http.Error(w, "template error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.Execute(w, page); err != nil {
-		log.Printf("course attendance template: %v", err)
-	}
+	data := a.newTemplateData(w, r, user)
+	data.Title = "Course Attendance"
+	data.Description = "Manage attendance by course."
+	data.CourseAttendance = &page
+	a.render(w, "attendance-management", data, http.StatusOK)
 }
 
 func (a *App) courseAttendanceSaveHandler(w http.ResponseWriter, r *http.Request) {

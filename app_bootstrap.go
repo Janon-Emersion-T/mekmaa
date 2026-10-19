@@ -2120,6 +2120,7 @@ type QueryField struct {
 }
 
 type TemplateData struct {
+	CourseAttendance             *CourseAttendancePage
 	Title                        string
 	Description                  string
 	CurrentPath                  string

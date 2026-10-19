@@ -1,1085 +1,154 @@
 {{define "attendance-management"}}{{template "base" .}}{{end}}
-
 {{define "content"}}
-<section class="space-y-6" data-attendance-root>
-  <div class="overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/90 shadow-sm sm:rounded-[2rem]">
-    <div class="bg-[linear-gradient(135deg,rgba(11,18,21,0.97)_0%,rgba(35,50,56,0.94)_52%,rgba(98,242,193,0.32)_100%)] px-5 py-6 text-cloud sm:px-8 sm:py-8">
-      <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <div class="max-w-2xl">
-          <p class="text-xs font-semibold uppercase tracking-[0.26em] text-aqua/80">Attendance Console</p>
-          <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Run the whole sheet from one place.</h1>
-          <p class="mt-3 max-w-xl text-sm leading-7 text-cloud/78 sm:text-base">Open any {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}, bulk mark the roster, then fine-tune exceptions with notes before saving.</p>
+{{if .CourseAttendance}}
+<style>
+#course-attendance-root main{max-width:1150px;margin:32px auto;padding:0 18px}
+#course-attendance-root header,#course-attendance-root .panel{background:white;border-radius:18px;padding:24px;margin-bottom:20px;box-shadow:0 3px 18px #0000000b}
+#course-attendance-root h1{margin:0 0 10px}
+#course-attendance-root a{color:#087e69}
+#course-attendance-root .filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+#course-attendance-root label{display:flex;flex-direction:column;gap:6px;font-weight:600}
+#course-attendance-root select,#course-attendance-root input,#course-attendance-root button{padding:11px;border:1px solid #ccd8dc;border-radius:9px;font:inherit}
+#course-attendance-root button{background:#087e69;color:white;border:0;cursor:pointer}
+#course-attendance-root table{width:100%;border-collapse:collapse}
+#course-attendance-root th,#course-attendance-root td{padding:12px;text-align:left;border-bottom:1px solid #e6ebed}
+#course-attendance-root th{background:#f5f8f8}
+#course-attendance-root small{color:#65767c}
+#course-attendance-root .error{color:#a32121}
+#course-attendance-root .attendance-search{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:18px 0}
+#course-attendance-root .attendance-search label{width:100%}
+#course-attendance-root .attendance-search input{flex:1;min-width:220px}
+#course-attendance-root .secondary{background:#e7f0ed;color:#075e50}
+#course-attendance-root [hidden]{display:none!important}
+#course-attendance-root .table-wrap{overflow-x:auto}
+@media(max-width:700px){#course-attendance-root .table-wrap{overflow-x:auto}}
+</style>
+<div id="course-attendance-root" class="space-y-6">
 
-          <div class="mt-4">
-<a href="/admin/attendance/course" class="inline-flex rounded-xl bg-aqua px-5 py-3 text-sm font-semibold text-obsidian">
-Course-based Attendance →
-</a>
-</div>
-<div class="mt-5 flex flex-wrap gap-2">
-            <a href="/attendance" target="_blank" rel="noopener" class="inline-flex h-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-cloud">Open shared attendance</a>
-            <button type="button" onclick="navigator.clipboard.writeText(new URL('/attendance', window.location.origin).href).then(() => { this.textContent = 'Link copied'; }).catch(() => { window.prompt('Copy attendance link', new URL('/attendance', window.location.origin).href); });" class="inline-flex h-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-cloud">Copy attendance link</button>
-            <a
-              href="{{scopedURL "/admin/attendance/report" .SelectedDivision .SelectedDivisionScope}}"
-              class="inline-flex h-10 items-center justify-center rounded-xl bg-aqua px-4 text-sm font-semibold text-obsidian transition hover:bg-mint"
-            >
-              Monthly Report
-            </a>
+<header>
 
-            <a
-              href="{{scopedURL "/admin/attendance/search" .SelectedDivision .SelectedDivisionScope}}"
-              class="inline-flex h-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-cloud transition hover:bg-white/15"
-            >
-              Search Attendance
-            </a>
-          </div>
-        </div>
-        <form action="/admin/attendance" method="get" class="grid gap-3 rounded-[1.75rem] border border-white/12 bg-white/10 p-4 backdrop-blur sm:grid-cols-[minmax(15rem,1fr)_minmax(15rem,1fr)_12rem_auto] sm:p-5" data-attendance-filter-form>
-          {{if .SelectedDivision}}
-          <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}">
-          {{else if eq .SelectedDivisionScope "all"}}
-          <input type="hidden" name="division" value="all">
-          {{end}}
-          <select name="group_id" class="h-12 rounded-2xl border border-white/12 bg-white/92 px-4 text-sm text-obsidian outline-none focus:border-aqua" data-group-select>
-            <option value="">Select {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}}</option>
-            {{range .StudentGroups}}
-            <option value="{{.ID}}" {{if and $.SelectedGroup (eq $.SelectedGroup.ID .ID)}}selected{{end}}>{{.Name}} · {{.Code}}</option>
-            {{end}}
-          </select>
-          <select name="session_id" class="h-12 rounded-2xl border border-white/12 bg-white/92 px-4 text-sm text-obsidian outline-none focus:border-aqua disabled:bg-white/70 disabled:text-slate/50" data-session-select>
-            <option value="">Select session</option>
-            {{range .StudentGroups}}
-            {{$group := .}}
-            {{range .Sessions}}
-            <option value="{{.ID}}" data-group-id="{{$group.ID}}" {{if eq $.SelectedGroupSessionID .ID}}selected{{end}}>{{.Title}} · {{.DayOfWeek}} · {{.StartTime}}-{{.EndTime}}</option>
-            {{end}}
-            {{end}}
-          </select>
-          <input type="date" name="date" value="{{.AttendanceDate}}" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" class="h-12 rounded-2xl border border-white/12 bg-white/92 px-4 text-sm text-obsidian outline-none focus:border-aqua" />
-          <button type="submit" class="rounded-2xl bg-aqua px-5 py-3 text-sm font-semibold text-obsidian transition hover:bg-mint">Load sheet</button>
-        </form>
-      </div>
-    </div>
-
-    {{if .AttendanceSheets}}
-    <div class="border-b border-slate/10 p-5 sm:p-8">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">
-            Saved sheets
-          </p>
-
-          <h2 class="mt-2 text-xl font-semibold text-obsidian">
-            Attendance sheets with recorded data
-          </h2>
-
-          <p class="mt-1 text-sm text-slate/55">
-            Reopen an existing attendance sheet without rebuilding the {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}, session and date selection.
-          </p>
-        </div>
-
-        <span class="rounded-full border border-slate/10 bg-cloud px-3 py-1.5 text-xs font-semibold text-slate/60">
-          Latest {{len .AttendanceSheets}}
-        </span>
-      </div>
-
-      <div class="mt-5 grid gap-3 xl:grid-cols-2">
-        {{range .AttendanceSheets}}
-        <a
-          href="/admin/attendance?group_id={{.GroupID}}&session_id={{.SessionID}}&date={{.AttendanceDate}}{{if $.SelectedDivision}}&division={{$.SelectedDivision.Slug}}{{else if eq $.SelectedDivisionScope "all"}}&division=all{{end}}"
-          class="group rounded-2xl border border-slate/10 bg-cloud/55 p-4 transition hover:border-aqua/50 hover:bg-white hover:shadow-sm"
-        >
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <p class="font-semibold text-obsidian">
-                  {{.GroupName}}
-                </p>
-
-                {{if .GroupCode}}
-                <span class="rounded-lg bg-white px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/50">
-                  {{.GroupCode}}
-                </span>
-                {{end}}
-              </div>
-
-              <p class="mt-2 text-sm text-slate/60">
-                {{formatCalendarDate .AttendanceDate}}
-                {{if .SessionTitle}} · {{.SessionTitle}}{{end}}
-              </p>
-
-              <p class="mt-1 text-xs text-slate/45">
-                {{if .TrainingProgramName}}{{.TrainingProgramName}}{{end}}
-                {{if .DivisionName}} · {{.DivisionName}}{{end}}
-              </p>
-            </div>
-
-            <div class="shrink-0 text-left sm:text-right">
-              <p class="text-sm font-semibold text-obsidian">
-                {{.EntryCount}} entries
-              </p>
-
-              <p class="mt-1 text-xs text-slate/50">
-                {{.PresentCount}} P ·
-                {{.AbsentCount}} A ·
-                {{.LateCount}} L ·
-                {{.ExcusedCount}} E
-              </p>
-            </div>
-          </div>
-
-          <div class="mt-4 text-xs font-semibold text-slate/55 transition group-hover:text-obsidian">
-            Open attendance sheet →
-          </div>
-        </a>
-        {{end}}
-      </div>
-    </div>
-    {{end}}
-
-    {{if .SelectedAttendanceStudent}}
-    <div class="space-y-6 p-5 sm:p-8">
-      <div class="flex flex-col gap-4 rounded-[1.75rem] border border-slate/10 bg-white p-5 shadow-sm sm:p-6 lg:flex-row lg:items-start lg:justify-between">
-        <div class="flex min-w-0 items-start gap-4">
-          {{if .SelectedAttendanceStudent.PhotoPath}}
-          <img
-            src="{{.SelectedAttendanceStudent.PhotoPath}}"
-            alt="{{.SelectedAttendanceStudent.FullName}}"
-            class="h-16 w-16 shrink-0 rounded-2xl border border-slate/10 object-cover"
-          >
-          {{else}}
-          <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-slate/10 bg-cloud text-xl font-semibold text-slate/60">
-            {{if .SelectedAttendanceStudent.FullName}}{{slice .SelectedAttendanceStudent.FullName 0 1}}{{else}}S{{end}}
-          </div>
-          {{end}}
-
-          <div class="min-w-0">
-            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">
-              Student attendance
-            </p>
-
-            <h2 class="mt-2 text-2xl font-semibold tracking-tight text-obsidian">
-              {{.SelectedAttendanceStudent.FullName}}
-            </h2>
-
-            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate/62">
-              <span>{{.SelectedAttendanceStudent.StudentID}}</span>
-              {{if .SelectedAttendanceStudent.School}}
-              <span>{{.SelectedAttendanceStudent.School}}</span>
-              {{end}}
-            </div>
-          </div>
-        </div>
-
-        <a
-          href="/admin/attendance{{if .SelectedDivision}}?division={{.SelectedDivision.Slug}}{{else if eq .SelectedDivisionScope "all"}}?division=all{{end}}"
-          class="inline-flex items-center justify-center rounded-2xl border border-slate/10 bg-cloud px-4 py-3 text-sm font-semibold text-slate transition hover:bg-white"
-        >
-          Back to attendance
-        </a>
-      </div>
-
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <div class="rounded-2xl border border-slate/10 bg-white px-4 py-4 shadow-sm">
-          <p class="text-xs uppercase tracking-[0.16em] text-slate/50">Sessions</p>
-          <p class="mt-2 text-2xl font-semibold text-obsidian">
-            {{.StudentAttendanceSummary.TotalEntries}}
-          </p>
-        </div>
-
-        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.16em] text-emerald-800/70">Present</p>
-          <p class="mt-2 text-2xl font-semibold text-emerald-900">
-            {{.StudentAttendanceSummary.PresentCount}}
-          </p>
-        </div>
-
-        <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.16em] text-rose-800/70">Absent</p>
-          <p class="mt-2 text-2xl font-semibold text-rose-900">
-            {{.StudentAttendanceSummary.AbsentCount}}
-          </p>
-        </div>
-
-        <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.16em] text-amber-800/70">Late</p>
-          <p class="mt-2 text-2xl font-semibold text-amber-900">
-            {{.StudentAttendanceSummary.LateCount}}
-          </p>
-        </div>
-
-        <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.16em] text-sky-800/70">Excused</p>
-          <p class="mt-2 text-2xl font-semibold text-sky-900">
-            {{.StudentAttendanceSummary.ExcusedCount}}
-          </p>
-        </div>
-
-        <div class="rounded-2xl border border-aqua/30 bg-aqua/10 px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.16em] text-slate/55">Attendance rate</p>
-          <p class="mt-2 text-2xl font-semibold text-obsidian">
-            {{printf "%.1f" .StudentAttendanceSummary.AttendanceRate}}%
-          </p>
-          <p class="mt-1 text-[11px] text-slate/50">Excused excluded</p>
-        </div>
-      </div>
-
-      <div class="overflow-hidden rounded-[1.75rem] border border-slate/10 bg-white shadow-sm">
-        <div class="border-b border-slate/10 px-5 py-5 sm:px-6">
-          <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">
-            Attendance history
-          </p>
-          <h3 class="mt-2 text-xl font-semibold text-obsidian">
-            Complete saved attendance record
-          </h3>
-          <p class="mt-1 text-sm text-slate/60">
-            History across every {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}} currently available in your workspace scope.
-          </p>
-        </div>
-
-        {{if .StudentAttendanceHistory}}
-        <div class="divide-y divide-slate/10">
-          {{range .StudentAttendanceHistory}}
-          <div class="grid gap-4 px-5 py-5 sm:px-6 lg:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_9rem] lg:items-center">
-            <div>
-              <p class="text-sm font-semibold text-obsidian">
-                {{formatCalendarDate .AttendanceDate}}
-              </p>
-              {{if .DivisionName}}
-              <p class="mt-1 text-xs text-slate/50">{{.DivisionName}}</p>
-              {{end}}
-            </div>
-
-            <div>
-              <p class="text-sm font-semibold text-obsidian">
-                {{if .GroupName}}{{.GroupName}}{{else}}{{workspaceGroupSingularLabel $.User $.SelectedDivision $.SelectedDivisionScope}} unavailable{{end}}
-              </p>
-
-              <p class="mt-1 text-xs text-slate/55">
-                {{if .TrainingProgramName}}{{.TrainingProgramName}}{{else}}Programme unavailable{{end}}
-              </p>
-
-              {{if .SessionTitle}}
-              <p class="mt-1 text-xs text-slate/55">
-                {{.SessionTitle}}
-              </p>
-              {{end}}
-            </div>
-
-            <div>
-              {{if .Note}}
-              <p class="text-sm leading-6 text-slate/65">{{.Note}}</p>
-              {{else}}
-              <p class="text-sm text-slate/40">No note recorded</p>
-              {{end}}
-            </div>
-
-            <div class="lg:text-right">
-              {{if eq .Status "present"}}
-              <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-900">
-                Present
-              </span>
-              {{else if eq .Status "absent"}}
-              <span class="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-rose-900">
-                Absent
-              </span>
-              {{else if eq .Status "late"}}
-              <span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-900">
-                Late
-              </span>
-              {{else if eq .Status "excused"}}
-              <span class="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-sky-900">
-                Excused
-              </span>
-              {{else}}
-              <span class="inline-flex rounded-full border border-slate/10 bg-cloud px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate/70">
-                {{.Status}}
-              </span>
-              {{end}}
-            </div>
-          </div>
-          {{end}}
-        </div>
-        {{else}}
-        <div class="px-5 py-14 text-center sm:px-6">
-          <p class="text-base font-semibold text-obsidian">
-            No attendance has been recorded yet.
-          </p>
-          <p class="mt-2 text-sm text-slate/55">
-            Saved attendance entries for this student will appear here.
-          </p>
-        </div>
-        {{end}}
-      </div>
-    </div>
-    {{end}}
-
-    {{if .SelectedGroup}}
-    <div class="space-y-6 p-5 sm:p-8">
-      <div class="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-        <div class="rounded-[1.75rem] border border-slate/8 bg-cloud/75 p-5">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">Active {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}</p>
-              <h2 class="mt-2 text-2xl font-semibold text-obsidian">{{.SelectedGroup.Name}}</h2>
-              <p class="mt-2 text-sm text-slate/66">{{.SelectedGroup.Code}} · {{formatCalendarDate .AttendanceDate}}</p>
-              {{if .SelectedGroup.TrainingProgramName}}
-              <p class="mt-2 text-sm font-medium text-slate/72">Programme: {{.SelectedGroup.TrainingProgramName}}</p>
-              {{end}}
-              {{range .GroupSessions}}{{if eq $.SelectedGroupSessionID .ID}}
-              <p class="mt-2 text-sm font-medium capitalize text-slate/72">Session: {{.Title}} · {{.DayOfWeek}} · {{.StartTime}} to {{.EndTime}}</p>
-              {{end}}{{end}}
-              {{if .SelectedGroup.Description}}
-              <p class="mt-3 max-w-2xl text-sm leading-7 text-slate/68">{{.SelectedGroup.Description}}</p>
-              {{end}}
-            </div>
-            <div class="grid gap-3 sm:grid-cols-3">
-              <div class="rounded-2xl border border-white/80 bg-white/88 px-4 py-4 shadow-sm">
-                <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Students</p>
-                <p class="mt-2 text-2xl font-semibold text-obsidian">{{.SelectedGroup.StudentCount}}</p>
-              </div>
-              <div class="rounded-2xl border border-white/80 bg-white/88 px-4 py-4 shadow-sm">
-                <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Saved entries</p>
-                <p class="mt-2 text-2xl font-semibold text-obsidian" data-count="saved">{{len .AttendanceRecords}}</p>
-              </div>
-              <div class="rounded-2xl border border-white/80 bg-white/88 px-4 py-4 shadow-sm">
-                <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Date cap</p>
-                <p class="mt-2 text-sm font-semibold text-obsidian">Up to {{formatCalendarDate .TodayDate}}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="rounded-[1.75rem] border border-slate/8 bg-white p-5 shadow-sm">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">Quick actions</p>
-              <h3 class="mt-2 text-lg font-semibold text-obsidian">Mark the roster in one pass</h3>
-            </div>
-            <span class="rounded-full border border-slate/10 bg-cloud px-3 py-1 text-xs font-medium text-slate/62">Bulk fill</span>
-          </div>
-          <div class="mt-5 grid gap-3 sm:grid-cols-2">
-            <button type="button" data-bulk-status="present" class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left transition hover:bg-emerald-100">
-              <span class="block text-sm font-semibold text-emerald-900">Mark all present</span>
-              <span class="mt-1 block text-xs text-emerald-800/75">Standard full-attendance day</span>
-            </button>
-            <button type="button" data-bulk-status="absent" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-left transition hover:bg-rose-100">
-              <span class="block text-sm font-semibold text-rose-900">Mark all absent</span>
-              <span class="mt-1 block text-xs text-rose-800/75">Useful before adding the exceptions</span>
-            </button>
-            <button type="button" data-bulk-status="late" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition hover:bg-amber-100">
-              <span class="block text-sm font-semibold text-amber-900">Mark all late</span>
-              <span class="mt-1 block text-xs text-amber-800/75">Start from a delayed session</span>
-            </button>
-            <button type="button" data-bulk-status="excused" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-left transition hover:bg-sky-100">
-              <span class="block text-sm font-semibold text-sky-900">Mark all excused</span>
-              <span class="mt-1 block text-xs text-sky-800/75">Use for approved leave days</span>
-            </button>
-          </div>
-          <button type="button" data-clear-notes class="mt-3 w-full rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-3 text-sm font-medium text-slate transition hover:bg-cloud">Clear all notes</button>
-        </div>
-      </div>
-
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-emerald-800/70">Present</p>
-          <p class="mt-2 text-2xl font-semibold text-emerald-900" data-count="present">{{attendanceCount .AttendanceRecords "present"}}</p>
-        </div>
-        <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-rose-800/70">Absent</p>
-          <p class="mt-2 text-2xl font-semibold text-rose-900" data-count="absent">{{attendanceCount .AttendanceRecords "absent"}}</p>
-        </div>
-        <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-amber-800/70">Late</p>
-          <p class="mt-2 text-2xl font-semibold text-amber-900" data-count="late">{{attendanceCount .AttendanceRecords "late"}}</p>
-        </div>
-        <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-sky-800/70">Excused</p>
-          <p class="mt-2 text-2xl font-semibold text-sky-900" data-count="excused">{{attendanceCount .AttendanceRecords "excused"}}</p>
-        </div>
-        <div class="rounded-2xl border border-slate/10 bg-white px-4 py-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-slate/50">Ready to save</p>
-          <p class="mt-2 text-2xl font-semibold text-obsidian"><span data-count="review">{{.SelectedGroup.StudentCount}}</span>/<span>{{.SelectedGroup.StudentCount}}</span></p>
-        </div>
-      </div>
-
-      {{if .AttendanceLimitWarnings}}
-      <div class="rounded-[1.75rem] border border-amber-200 bg-amber-50 p-5 shadow-sm">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-800/70">Admin notice</p>
-            <h3 class="mt-2 text-lg font-semibold text-amber-950">Monthly session limit exceeded</h3>
-            <p class="mt-2 text-sm leading-6 text-amber-900/80">These students have already attended more than 8 sessions this month across all {{workspaceGroupLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.</p>
-          </div>
-          <span class="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-900">{{len .AttendanceLimitWarnings}} alerts</span>
-        </div>
-        <div class="mt-4 grid gap-3 lg:grid-cols-2">
-          {{range .AttendanceLimitWarnings}}
-          <div class="rounded-2xl border border-amber-200 bg-white px-4 py-3">
-            <p class="font-semibold text-obsidian">{{.FullName}}</p>
-            <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate/55">{{.StudentID}}</p>
-            <p class="mt-2 text-sm text-slate/65">{{if .TrainingProgramName}}{{.TrainingProgramName}}{{else}}Programme not linked{{end}}</p>
-            <p class="mt-2 text-sm font-semibold text-amber-900">{{.SessionCount}} sessions this month · limit {{.Limit}}</p>
-          </div>
-          {{end}}
-        </div>
-      </div>
-      {{end}}
-      <div class="rounded-[1.75rem] border border-slate/10 bg-white p-5 shadow-sm sm:p-6">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">
-              Historical summary
-            </p>
-
-            <h3 class="mt-2 text-xl font-semibold text-obsidian">
-              {{workspaceGroupSingularLabel .User .SelectedDivision .SelectedDivisionScope}} attendance performance
-            </h3>
-
-            <p class="mt-1 text-sm text-slate/60">
-              Totals from every saved attendance sheet for this {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.
-            </p>
-          </div>
-
-          <div class="rounded-full border border-slate/10 bg-cloud px-4 py-2 text-sm font-semibold text-slate/70">
-            {{.AttendanceSummary.SessionCount}} sessions
-          </div>
-        </div>
-
-        <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <div class="rounded-2xl border border-slate/10 bg-cloud/70 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.16em] text-slate/50">
-              Total entries
-            </p>
-
-            <p class="mt-2 text-2xl font-semibold text-obsidian">
-              {{.AttendanceSummary.TotalEntries}}
-            </p>
-          </div>
-
-          <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.16em] text-emerald-800/70">
-              Present
-            </p>
-
-            <p class="mt-2 text-2xl font-semibold text-emerald-900">
-              {{.AttendanceSummary.PresentCount}}
-            </p>
-          </div>
-
-          <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.16em] text-rose-800/70">
-              Absent
-            </p>
-
-            <p class="mt-2 text-2xl font-semibold text-rose-900">
-              {{.AttendanceSummary.AbsentCount}}
-            </p>
-          </div>
-
-          <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.16em] text-amber-800/70">
-              Late
-            </p>
-
-            <p class="mt-2 text-2xl font-semibold text-amber-900">
-              {{.AttendanceSummary.LateCount}}
-            </p>
-          </div>
-
-          <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.16em] text-sky-800/70">
-              Excused
-            </p>
-
-            <p class="mt-2 text-2xl font-semibold text-sky-900">
-              {{.AttendanceSummary.ExcusedCount}}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {{if .RecentDates}}
-      <div class="rounded-3xl border border-slate/10 bg-cloud/70 p-4 sm:p-5">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate/60">Recent attendance dates</h3>
-            <p class="mt-1 text-xs text-slate/55">Jump back into an older sheet for this {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.</p>
-          </div>
-          <p class="text-xs text-slate/50">Today: {{formatCalendarDate .TodayDate}}</p>
-        </div>
-        <div class="mt-4 flex flex-wrap gap-2">
-          {{range .RecentDates}}
-          <a href="{{scopedURL (printf "/admin/attendance?group_id=%d&session_id=%d&date=%s" $.SelectedGroup.ID $.SelectedGroupSessionID .) $.SelectedDivision $.SelectedDivisionScope}}" class="{{if eq $.AttendanceDate .}}bg-obsidian text-cloud{{else}}bg-white text-slate hover:bg-mint/60{{end}} rounded-full border border-slate/10 px-4 py-2 text-sm font-medium transition">{{formatCalendarDate .}}</a>
-          {{end}}
-        </div>
-      </div>
-      {{end}}
-
-      <form action="/admin/attendance/save" method="post" class="space-y-4" data-attendance-form>
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-        <input type="hidden" name="group_id" value="{{.SelectedGroup.ID}}" />
-        <input type="hidden" name="session_id" value="{{.SelectedGroupSessionID}}" />
-        <input type="hidden" name="attendance_date" value="{{.AttendanceDate}}" />
-        {{if .SelectedDivision}}
-        <input type="hidden" name="division" value="{{.SelectedDivision.Slug}}" />
-        {{else if eq .SelectedDivisionScope "all"}}
-        <input type="hidden" name="division" value="all" />
-        {{end}}
-
-        <div class="rounded-[1.75rem] border border-slate/10 bg-white p-5 shadow-sm">
-          <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">QR attendance</p>
-              <h3 class="mt-2 text-lg font-semibold text-obsidian">Scan the student ID QR</h3>
-              <p class="mt-2 text-sm text-slate/62">The scanner can type the QR payload or student ID into this field and mark the selected attendance status automatically.</p>
-            </div>
-            <div class="w-full max-w-xl">
-              <label for="qr-scan-status" class="mb-2 block text-sm font-medium text-obsidian">Scan status</label>
-              <select id="qr-scan-status" class="mb-3 h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm text-obsidian outline-none focus:border-aqua">
-                <option value="present">Mark scanned student as Present</option>
-                <option value="late">Mark scanned student as Late</option>
-                <option value="excused">Mark scanned student as Excused</option>
-                <option value="absent">Mark scanned student as Absent</option>
-              </select>
-              <div class="mb-3 flex flex-wrap gap-2">
-                <button type="button" id="qr-camera-start" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate/10 bg-white px-4 text-sm font-semibold text-slate transition hover:bg-cloud">Use camera scanner</button>
-                <button type="button" id="qr-camera-stop" class="hidden inline-flex h-11 items-center justify-center rounded-2xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50">Stop camera</button>
-              </div>
-              <div id="qr-camera-panel" class="hidden overflow-hidden rounded-2xl border border-slate/10 bg-obsidian">
-                <video id="qr-camera-video" class="aspect-video w-full bg-black object-cover" autoplay muted playsinline></video>
-              </div>
-              <label for="qr-scan-input" class="sr-only">Scan student QR</label>
-              <input id="qr-scan-input" type="text" autocomplete="off" spellcheck="false" placeholder="Scan or type student ID / QR payload" class="h-12 w-full rounded-2xl border border-slate/10 bg-cloud px-4 text-sm text-obsidian outline-none focus:border-aqua" />
-              <p class="mt-2 text-xs text-slate/55" data-qr-feedback>Waiting for scan.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="overflow-hidden rounded-[1.75rem] border border-slate/10 bg-white shadow-sm">
-          <div class="border-b border-slate/8 px-5 py-4 sm:px-6">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate/50">Student roster</p>
-                <h3 class="mt-2 text-xl font-semibold text-obsidian">Individual adjustments</h3>
-              </div>
-              <p class="text-sm text-slate/62">Each row updates its color based on the selected status.</p>
-            </div>
-          </div>
-
-          <div class="grid gap-4 p-4 sm:p-6">
-            {{range .SelectedGroup.Students}}
-            {{$record := attendanceRecordFor $.AttendanceRecords .ID}}
-            <div class="rounded-3xl border border-slate/10 bg-cloud/65 p-4 transition sm:p-5" data-student-card data-status="{{attendanceStatus $record}}" data-student-id="{{.StudentID}}" data-qr-value="{{.QRCodeValue}}">
-              <div class="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_15rem_minmax(0,1fr)] lg:items-center">
-                <div>
-                  <div class="flex flex-wrap items-center gap-3">
-                    <p class="text-base font-semibold text-obsidian">{{.FullName}}</p>
-                    <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]" data-status-pill>Absent</span>
-                  </div>
-                  <p class="mt-2 text-xs uppercase tracking-[0.18em] text-slate/55">{{.StudentID}}</p>
-                  <p class="mt-2 text-sm text-slate/62">{{.School}}</p>
-
-                  <a
-                    href="/admin/attendance?action=student&student_id={{.ID}}{{if $.SelectedDivision}}&division={{$.SelectedDivision.Slug}}{{else if eq $.SelectedDivisionScope "all"}}&division=all{{end}}"
-                    class="mt-3 inline-flex items-center rounded-xl border border-slate/10 bg-white px-3 py-2 text-xs font-semibold text-slate transition hover:border-aqua/40 hover:text-obsidian"
-                  >
-                    View attendance
-                  </a>
-                </div>
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-obsidian" for="status_{{.ID}}">Status</label>
-                  <select id="status_{{.ID}}" name="status_{{.ID}}" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" data-attendance-status>
-                    <option value="present" {{if eq (attendanceStatus $record) "present"}}selected{{end}}>Present</option>
-                    <option value="absent" {{if eq (attendanceStatus $record) "absent"}}selected{{end}}>Absent</option>
-                    <option value="late" {{if eq (attendanceStatus $record) "late"}}selected{{end}}>Late</option>
-                    <option value="excused" {{if eq (attendanceStatus $record) "excused"}}selected{{end}}>Excused</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-obsidian" for="note_{{.ID}}">Note</label>
-                  <input id="note_{{.ID}}" type="text" name="note_{{.ID}}" value="{{$record.Note}}" placeholder="Optional note" class="h-12 w-full rounded-2xl border border-slate/10 bg-white px-4 text-sm outline-none focus:border-aqua" data-attendance-note />
-                </div>
-              </div>
-            </div>
-            {{else}}
-            <div class="rounded-2xl border border-dashed border-slate/15 bg-white/80 px-4 py-6 text-sm text-slate/58">No students in this {{workspaceGroupSingularLowerLabel .User .SelectedDivision .SelectedDivisionScope}}.</div>
-            {{end}}
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p class="text-sm text-slate/62">
-  Review totals above before saving. Attendance cannot be recorded for dates after {{formatCalendarDate .TodayDate}}.
-</p>
-          <button type="submit" class="rounded-2xl bg-obsidian px-6 py-3 text-sm font-medium text-cloud transition hover:bg-slate">Save attendance</button>
-        </div>
-      </form>
-    </div>
-    {{else}}
-    <div class="px-5 py-10 sm:px-8 sm:py-12">
-      <div class="rounded-[1.5rem] border border-dashed border-slate/15 bg-cloud/55 px-5 py-10 text-center shadow-sm sm:rounded-[2rem]">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate/50">No sheet loaded</p>
-        <h2 class="mt-3 text-2xl font-semibold text-obsidian">Select a group and date to open attendance.</h2>
-        <p class="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate/62">Choose the student group from the top panel, load the roster, then use bulk actions to mark the session quickly.</p>
-      </div>
-    </div>
-    {{end}}
-  </div>
+<h1>Course Attendance</h1>
+<p>Course-based student attendance</p>
+</header>
+<section class="panel">
+<form method="get" action="/admin/attendance" class="filters">
+<input type="hidden" name="division" value="{{.CourseAttendance.Division}}">
+<label>Course
+<select name="program_id" required>
+<option value="">Select course</option>
+{{range .CourseAttendance.Programs}}
+<option value="{{.ID}}" {{if eq .ID $.CourseAttendance.ProgramID}}selected{{end}}>{{.Name}} — {{.DivisionName}}</option>
+{{end}}
+</select></label>
+<label>Date<input type="date" name="date" value="{{.CourseAttendance.Date}}" max="{{.CourseAttendance.Today}}" required></label>
+<button type="submit">Load students</button>
+</form>
 </section>
+{{if .CourseAttendance.Error}}<section class="panel error">{{.CourseAttendance.Error}}</section>{{end}}
+{{if .CourseAttendance.ProgramID}}
+<section class="panel">
+<h2>Attendance for {{.CourseAttendance.Date}}</h2>
+<p>{{len .CourseAttendance.Students}} enrolled students eligible on this date.</p>
+{{if .CourseAttendance.Students}}
+<div class="attendance-search">
+<label for="student-search">Search students by name or Student ID</label>
+<input id="student-search" type="search"
+       placeholder="Start typing a name or Student ID..."
+       autocomplete="off" aria-controls="course-attendance-table">
+<small id="student-search-count" role="status" aria-live="polite"></small>
+<button type="button" id="clear-student-search" class="secondary">Clear search</button>
+</div>
+<p id="student-search-empty" hidden>No matching students found.</p>
+{{end}}
+{{if .CourseAttendance.Students}}
+<form method="post" action="/admin/attendance/course/save">
+<input type="hidden" name="csrf_token" value="{{.CourseAttendance.CSRFToken}}">
+<input type="hidden" name="division" value="{{.CourseAttendance.Division}}">
+<input type="hidden" name="program_id" value="{{.CourseAttendance.ProgramID}}">
+<input type="hidden" name="attendance_date" value="{{.CourseAttendance.Date}}">
+<div class="table-wrap">
+<table id="course-attendance-table">
+<thead><tr><th>Student ID</th><th>Name</th><th>Status</th><th>Note</th></tr></thead>
+<tbody>
+{{range .CourseAttendance.Students}}
+<tr class="attendance-student-row">
+<td>{{.StudentID}}</td>
+<td>{{.Name}}</td>
+<td>
+<select name="status_{{.EnrollmentID}}">
+<option value="">Not marked</option>
+<option value="present" {{if eq .Status "present"}}selected{{end}}>Present</option>
+<option value="absent" {{if eq .Status "absent"}}selected{{end}}>Absent</option>
+<option value="late" {{if eq .Status "late"}}selected{{end}}>Late</option>
+<option value="excused" {{if eq .Status "excused"}}selected{{end}}>Excused</option>
+</select>
+</td>
+<td><input name="note_{{.EnrollmentID}}" value="{{.Note}}" maxlength="2000"></td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<p><small>Only students with a selected status are saved. Previously saved records remain unless updated.</small></p>
+<button type="submit">Save attendance</button>
+</form>
+{{end}}
+</section>
+{{end}}
 
-<script src="/static/vendor/zxing-browser.min.js"></script>
+</div>
 <script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const root = document.querySelector("[data-attendance-root]");
-    if (!root) {
-      return;
-    }
 
-    const statusSelects = Array.from(root.querySelectorAll("[data-attendance-status]"));
-    const noteInputs = Array.from(root.querySelectorAll("[data-attendance-note]"));
-    const countNodes = {
-      present: root.querySelector('[data-count="present"]'),
-      absent: root.querySelector('[data-count="absent"]'),
-      late: root.querySelector('[data-count="late"]'),
-      excused: root.querySelector('[data-count="excused"]'),
-      review: root.querySelector('[data-count="review"]')
-    };
-    const qrInput = root.querySelector("#qr-scan-input");
-    const qrScanStatus = root.querySelector("#qr-scan-status");
-    const qrFeedback = root.querySelector("[data-qr-feedback]");
-    const qrCameraStart = root.querySelector("#qr-camera-start");
-    const qrCameraStop = root.querySelector("#qr-camera-stop");
-    const qrCameraPanel = root.querySelector("#qr-camera-panel");
-    const qrCameraVideo = root.querySelector("#qr-camera-video");
-    const filterForm = root.querySelector("[data-attendance-filter-form]");
-    const groupSelect = root.querySelector("[data-group-select]");
-    const sessionSelect = root.querySelector("[data-session-select]");
-    let qrCameraStream = null;
-    let qrDetector = null;
-    let qrZxingReader = null;
-    let qrLastScanValue = "";
-    let qrLastScanAt = 0;
-    let qrFrameRequest = 0;
-    let qrScanning = false;
-    let qrScannerMode = "";
-    const qrScanCooldownMs = 1500;
-    const statusMeta = {
-      present: {
-        label: "Present",
-        card: ["border-emerald-200", "bg-emerald-50/90"],
-        pill: ["bg-emerald-100", "text-emerald-900"]
-      },
-      absent: {
-        label: "Absent",
-        card: ["border-rose-200", "bg-rose-50/90"],
-        pill: ["bg-rose-100", "text-rose-900"]
-      },
-      late: {
-        label: "Late",
-        card: ["border-amber-200", "bg-amber-50/90"],
-        pill: ["bg-amber-100", "text-amber-900"]
-      },
-      excused: {
-        label: "Excused",
-        card: ["border-sky-200", "bg-sky-50/90"],
-        pill: ["bg-sky-100", "text-sky-900"]
-      }
-    };
-    const allCardClasses = [
-      "border-emerald-200",
-      "bg-emerald-50/90",
-      "border-rose-200",
-      "bg-rose-50/90",
-      "border-amber-200",
-      "bg-amber-50/90",
-      "border-sky-200",
-      "bg-sky-50/90"
-    ];
-    const allPillClasses = [
-      "bg-emerald-100",
-      "text-emerald-900",
-      "bg-rose-100",
-      "text-rose-900",
-      "bg-amber-100",
-      "text-amber-900",
-      "bg-sky-100",
-      "text-sky-900"
-    ];
+(function () {
+  "use strict";
+  const search = document.getElementById("student-search");
+  const table = document.getElementById("course-attendance-table");
+  if (!search || !table) return;
 
-    function applyCardState(select) {
-      const card = select.closest("[data-student-card]");
-      if (!card) {
-        return;
-      }
-      const pill = card.querySelector("[data-status-pill]");
-      const meta = statusMeta[select.value] || statusMeta.absent;
+  const rows = Array.from(
+    table.querySelectorAll("tbody tr.attendance-student-row")
+  );
+  const counter = document.getElementById("student-search-count");
+  const empty = document.getElementById("student-search-empty");
+  const clear = document.getElementById("clear-student-search");
 
-      card.classList.remove.apply(card.classList, allCardClasses);
-      card.classList.add.apply(card.classList, meta.card);
-      if (pill) {
-        pill.classList.remove.apply(pill.classList, allPillClasses);
-        pill.classList.add.apply(pill.classList, meta.pill);
-        pill.textContent = meta.label;
-      }
-      card.dataset.status = select.value;
-    }
+  const normalize = value =>
+    String(value || "").normalize("NFKC").toLocaleLowerCase().trim();
 
-    function refreshCounts() {
-      const counts = {
-        present: 0,
-        absent: 0,
-        late: 0,
-        excused: 0
-      };
+  const students = rows.map(row => ({
+    row,
+    searchable: normalize(
+      Array.from(row.querySelectorAll("td"))
+        .slice(0, 2)
+        .map(cell => cell.textContent)
+        .join(" ")
+    )
+  }));
 
-      statusSelects.forEach(function (select) {
-        if (counts[select.value] !== undefined) {
-          counts[select.value] += 1;
-        }
-      });
+  function filterStudents() {
+    const query = normalize(search.value);
+    let visible = 0;
 
-      Object.keys(counts).forEach(function (key) {
-        if (countNodes[key]) {
-          countNodes[key].textContent = String(counts[key]);
-        }
-      });
-      if (countNodes.review) {
-        countNodes.review.textContent = String(statusSelects.length);
-      }
-    }
-
-    function refreshAll() {
-      statusSelects.forEach(applyCardState);
-      refreshCounts();
-    }
-
-    function syncSessionOptions() {
-      if (!groupSelect || !sessionSelect) {
-        return;
-      }
-
-      const selectedGroupID = (groupSelect.value || "").trim();
-      const sessionOptions = Array.from(sessionSelect.querySelectorAll("option[data-group-id]"));
-      let visibleSessions = 0;
-      let selectedStillVisible = false;
-
-      sessionOptions.forEach(function (option) {
-        const matches = selectedGroupID !== "" && option.getAttribute("data-group-id") === selectedGroupID;
-        option.hidden = !matches;
-        option.disabled = !matches;
-        if (matches) {
-          visibleSessions += 1;
-          if (option.selected) {
-            selectedStillVisible = true;
-          }
-        }
-      });
-
-      sessionSelect.disabled = selectedGroupID === "" || visibleSessions === 0;
-
-      if (!selectedStillVisible) {
-        sessionSelect.value = "";
-      }
-
-      if (sessionSelect.value === "" && visibleSessions === 1) {
-        const firstVisible = sessionOptions.find(function (option) {
-          return !option.hidden;
-        });
-        if (firstVisible) {
-          firstVisible.selected = true;
-        }
-      }
-    }
-
-    function setQrFeedback(message, isError) {
-      if (!qrFeedback) {
-        return;
-      }
-      qrFeedback.textContent = message;
-      qrFeedback.classList.remove("text-slate/55", "text-emerald-700", "text-rose-700");
-      qrFeedback.classList.add(isError ? "text-rose-700" : "text-emerald-700");
-    }
-
-    function markScannedStudent(normalized) {
-      const card = findCardForScan(normalized);
-      if (!card) {
-        setQrFeedback('No student matched "' + normalized + '".', true);
-        if (qrInput) {
-          qrInput.select();
-        }
-        return false;
-      }
-      const select = card.querySelector("[data-attendance-status]");
-      if (!select) {
-        setQrFeedback("Matched student could not be updated.", true);
-        return false;
-      }
-      const nextStatus = qrScanStatus ? qrScanStatus.value : "present";
-      select.value = nextStatus;
-      applyCardState(select);
-      refreshCounts();
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-      const selectedLabel = statusMeta[nextStatus] ? statusMeta[nextStatus].label : "Present";
-      setQrFeedback((card.getAttribute("data-student-id") || normalized) + " marked " + selectedLabel.toLowerCase() + ".", false);
-      if (qrInput) {
-        qrInput.value = "";
-        qrInput.focus();
-      }
-      return true;
-    }
-
-    function shouldProcessDecodedValue(normalized) {
-      const now = Date.now();
-      if (normalized === qrLastScanValue && now - qrLastScanAt < qrScanCooldownMs) {
-        return false;
-      }
-      qrLastScanValue = normalized;
-      qrLastScanAt = now;
-      return true;
-    }
-
-    function handleDecodedQrValue(rawValue) {
-      const normalized = normalizeScanValue(rawValue);
-      if (!normalized || !shouldProcessDecodedValue(normalized)) {
-        return false;
-      }
-      return markScannedStudent(normalized);
-    }
-
-    function describeCameraError(error) {
-      if (!error || !error.name) {
-        return "Camera access was blocked or unavailable.";
-      }
-      if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
-        return "Camera permission was denied. Allow camera access and try again.";
-      }
-      if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError" || error.name === "OverconstrainedError") {
-        return "No compatible camera is available on this device.";
-      }
-      if (error.name === "NotReadableError" || error.name === "TrackStartError" || error.name === "AbortError") {
-        return "The camera is unavailable or already in use by another app.";
-      }
-      if (error.name === "SecurityError") {
-        return "Camera access is blocked by the browser security settings.";
-      }
-      return "Camera access was blocked or unavailable.";
-    }
-
-    function stopQrCamera() {
-      qrScanning = false;
-      qrScannerMode = "";
-      if (qrFrameRequest) {
-        window.cancelAnimationFrame(qrFrameRequest);
-        qrFrameRequest = 0;
-      }
-      if (qrZxingReader && typeof qrZxingReader.reset === "function") {
-        qrZxingReader.reset();
-      }
-      qrZxingReader = null;
-      if (qrCameraStream) {
-        qrCameraStream.getTracks().forEach(function (track) {
-          track.stop();
-        });
-        qrCameraStream = null;
-      }
-      if (qrCameraVideo) {
-        qrCameraVideo.srcObject = null;
-      }
-      if (qrCameraPanel) {
-        qrCameraPanel.classList.add("hidden");
-      }
-      if (qrCameraStart) {
-        qrCameraStart.classList.remove("hidden");
-      }
-      if (qrCameraStop) {
-        qrCameraStop.classList.add("hidden");
-      }
-    }
-
-    function scanQrCameraFrame() {
-      if (!qrScanning || qrScannerMode !== "barcode-detector" || !qrDetector || !qrCameraVideo) {
-        return;
-      }
-      qrDetector.detect(qrCameraVideo).then(function (barcodes) {
-        if (!qrScanning) {
-          return;
-        }
-        if (Array.isArray(barcodes) && barcodes.length > 0) {
-          handleDecodedQrValue((barcodes[0].rawValue || "").trim());
-        }
-        qrFrameRequest = window.requestAnimationFrame(scanQrCameraFrame);
-      }).catch(function () {
-        if (!qrScanning) {
-          return;
-        }
-        qrFrameRequest = window.requestAnimationFrame(scanQrCameraFrame);
-      });
-    }
-
-    function startZxingQrScanner() {
-      if (!window.ZXingBrowser || !window.ZXingBrowser.BrowserQRCodeReader) {
-        setQrFeedback("Camera QR scanning is not available in this browser. Use a scanner that types into the field instead.", true);
-        stopQrCamera();
-        return;
-      }
-
-      qrScannerMode = "zxing";
-      qrZxingReader = new window.ZXingBrowser.BrowserQRCodeReader();
-      qrZxingReader.decodeFromVideoElementContinuously(qrCameraVideo, function (result, error) {
-        if (!qrScanning || qrScannerMode !== "zxing") {
-          return;
-        }
-        if (result && typeof result.getText === "function") {
-          handleDecodedQrValue(result.getText());
-        } else if (result && typeof result.text === "string") {
-          handleDecodedQrValue(result.text);
-        }
-      });
-    }
-
-    function startQrCamera() {
-      if (!qrCameraVideo || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setQrFeedback("Camera scanning is not supported in this browser.", true);
-        return;
-      }
-      stopQrCamera();
-      qrLastScanValue = "";
-      qrLastScanAt = 0;
-      qrDetector = null;
-      if ("BarcodeDetector" in window) {
-        try {
-          qrDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
-        } catch (error) {
-          qrDetector = null;
-        }
-      }
-
-      navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" }
-        },
-        audio: false
-      }).then(function (stream) {
-        qrCameraStream = stream;
-        qrScanning = true;
-        qrCameraVideo.srcObject = stream;
-        if (qrCameraPanel) {
-          qrCameraPanel.classList.remove("hidden");
-        }
-        if (qrCameraStart) {
-          qrCameraStart.classList.add("hidden");
-        }
-        if (qrCameraStop) {
-          qrCameraStop.classList.remove("hidden");
-        }
-        setQrFeedback("Camera scanner active. Hold the QR code in view.", false);
-        qrCameraVideo.play().then(function () {
-          if (qrDetector) {
-            qrScannerMode = "barcode-detector";
-            qrFrameRequest = window.requestAnimationFrame(scanQrCameraFrame);
-            return;
-          }
-          startZxingQrScanner();
-        }).catch(function () {
-          setQrFeedback("Unable to start camera preview.", true);
-          stopQrCamera();
-        });
-      }).catch(function (error) {
-        setQrFeedback(describeCameraError(error), true);
-        stopQrCamera();
-      });
-    }
-
-    function normalizeScanValue(value) {
-      const raw = (value || "").trim();
-      if (!raw) {
-        return "";
-      }
-      const lower = raw.toLowerCase();
-      const marker = "mekmaa.com/student-id/";
-      const index = lower.indexOf(marker);
-      if (index >= 0) {
-        return raw.slice(index + marker.length).replace(/^\/+/, "").trim();
-      }
-      return raw.replace(/^\/+|\/+$/g, "");
-    }
-
-    function findCardForScan(scanValue) {
-      const normalized = normalizeScanValue(scanValue).toLowerCase();
-      if (!normalized) {
-        return null;
-      }
-      return root.querySelector('[data-student-card][data-student-id="' + normalized.replace(/"/g, '\\"') + '"]') ||
-        Array.from(root.querySelectorAll("[data-student-card]")).find(function (card) {
-          const studentID = (card.getAttribute("data-student-id") || "").trim().toLowerCase();
-          const qrValue = normalizeScanValue(card.getAttribute("data-qr-value") || "").toLowerCase();
-          return studentID === normalized || qrValue === normalized;
-        }) ||
-        null;
-    }
-
-    statusSelects.forEach(function (select) {
-      select.addEventListener("change", function () {
-        applyCardState(select);
-        refreshCounts();
-      });
+    students.forEach(student => {
+      const matches = !query || student.searchable.includes(query);
+      student.row.hidden = !matches;
+      if (matches) visible++;
     });
 
-    root.querySelectorAll("[data-bulk-status]").forEach(function (button) {
-      button.addEventListener("click", function () {
-        const nextStatus = button.getAttribute("data-bulk-status");
-        statusSelects.forEach(function (select) {
-          select.value = nextStatus;
-          applyCardState(select);
-        });
-        refreshCounts();
-      });
-    });
+    counter.textContent = visible + " of " + students.length + " students shown";
+    empty.hidden = visible !== 0;
+  }
 
-    const clearNotesButton = root.querySelector("[data-clear-notes]");
-    if (clearNotesButton) {
-      clearNotesButton.addEventListener("click", function () {
-        noteInputs.forEach(function (input) {
-          input.value = "";
-        });
-      });
-    }
-
-    if (qrInput) {
-      window.setTimeout(function () {
-        qrInput.focus();
-      }, 50);
-      qrInput.addEventListener("keydown", function (event) {
-        if (event.key !== "Enter") {
-          return;
-        }
-        event.preventDefault();
-        const scanValue = qrInput.value;
-        const normalized = normalizeScanValue(scanValue);
-        if (!normalized) {
-          setQrFeedback("Scan a valid student QR or student ID.", true);
-          return;
-        }
-        markScannedStudent(normalized);
-      });
-    }
-
-    if (qrCameraStart) {
-      qrCameraStart.addEventListener("click", startQrCamera);
-    }
-    if (qrCameraStop) {
-      qrCameraStop.addEventListener("click", stopQrCamera);
-    }
-    window.addEventListener("beforeunload", stopQrCamera);
-
-    if (groupSelect) {
-      groupSelect.addEventListener("change", syncSessionOptions);
-    }
-
-    syncSessionOptions();
-    if (statusSelects.length > 0) {
-      refreshAll();
-    }
+  search.addEventListener("input", filterStudents);
+  clear.addEventListener("click", function () {
+    search.value = "";
+    filterStudents();
+    search.focus();
   });
+
+  filterStudents();
+})();
+
 </script>
+{{end}}
 {{end}}
