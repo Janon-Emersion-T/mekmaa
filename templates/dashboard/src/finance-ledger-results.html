@@ -63,7 +63,7 @@
         </td>
         <td class="px-5 py-4 text-slate/70">{{financeCategoryLabel .Category}}</td>
         <td class="px-5 py-4 text-slate/70">{{.PersonName}}</td>
-        <td class="px-5 py-4 text-slate/70">{{paymentMethodLabel .PaymentMethod}}</td>
+        <td class="px-5 py-4 text-slate/70">{{financeLedgerMethodLabel .}}</td>
         <td class="px-5 py-4 font-semibold text-emerald-800">{{if gt .MoneyIn 0.0}}{{money .MoneyIn}}{{else}}—{{end}}</td>
         <td class="px-5 py-4 font-semibold text-rose-800">{{if gt .MoneyOut 0.0}}{{money .MoneyOut}}{{else}}—{{end}}</td>
         {{if $.SelectedFinanceAccount}}<td class="px-5 py-4 font-semibold text-obsidian">{{money .RunningBalance}}</td>{{end}}
@@ -142,7 +142,7 @@
     <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
       <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Money in</p><p class="mt-1 font-semibold text-emerald-800">{{if gt .MoneyIn 0.0}}{{money .MoneyIn}}{{else}}—{{end}}</p></div>
       <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Money out</p><p class="mt-1 font-semibold text-rose-800">{{if gt .MoneyOut 0.0}}{{money .MoneyOut}}{{else}}—{{end}}</p></div>
-      <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Method</p><p class="mt-1 font-semibold text-obsidian">{{paymentMethodLabel .PaymentMethod}}</p></div>
+      <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Method</p><p class="mt-1 font-semibold text-obsidian">{{financeLedgerMethodLabel .}}</p></div>
       <div><p class="text-xs uppercase tracking-[0.14em] text-slate/45">Recorded by</p><p class="mt-1 font-semibold text-obsidian">{{if .RecordedByUserName}}{{.RecordedByUserName}}{{else}}System{{end}}</p></div>
     </div>
     <div class="mt-3 flex items-center justify-between text-xs text-slate/50">

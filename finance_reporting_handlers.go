@@ -1309,7 +1309,7 @@ func (a *App) financeExportHandler(w http.ResponseWriter, r *http.Request) {
 		_ = writer.Write([]string{
 			csvSafeCell(transaction.ReceiptNumber), formatDateTime(transaction.RecordedAt), direction,
 			financeCategoryLabel(transaction.Category), csvSafeCell(transaction.PersonName), csvSafeCell(transaction.Description),
-			csvSafeCell(transaction.PaymentMethod), strconv.FormatFloat(transaction.Amount, 'f', 2, 64),
+			csvSafeCell(financeLedgerMethodLabel(transaction)), strconv.FormatFloat(transaction.Amount, 'f', 2, 64),
 		})
 	}
 }

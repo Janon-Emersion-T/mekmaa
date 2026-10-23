@@ -1890,7 +1890,7 @@ func TestBookingFinanceReceiptTemplateRendersBookingPaymentDetails(t *testing.T)
 			ReceiptNumber: "MKM-BKG-2026-000701",
 			Category:      "booking_payment",
 			Amount:        3500,
-			PaymentMethod: "cash",
+			PaymentMethod: "bank_transfer",
 			RecordedAt:    now,
 		},
 		ReceiptBookingPayment: &BookingPaymentCollection{
@@ -1899,7 +1899,7 @@ func TestBookingFinanceReceiptTemplateRendersBookingPaymentDetails(t *testing.T)
 			FinanceTransactionID: 701,
 			ReceiptNumber:        "MKM-BKG-2026-000701",
 			Amount:               3500,
-			PaymentMethod:        "cash",
+			PaymentMethod:        "bank_transfer",
 			PaymentNote:          "Collected at venue",
 			CollectedAt:          now,
 			Voided:               true,
@@ -1927,7 +1927,7 @@ func TestBookingFinanceReceiptTemplateRendersBookingPaymentDetails(t *testing.T)
 		},
 		BookingStatusView: &BookingStatusView{ContactPhone: "+94772207297", ContactEmail: "bookings@mekmaa.example"},
 	})
-	for _, marker := range []string{"MKM-BKG-2026-000701", "Booking Cash Receipt", bookingReference(300), "LKR 3500.00", "LKR 1500.00", "Voided receipt", "Share on WhatsApp", `id="receipt-whatsapp-share"`} {
+	for _, marker := range []string{"MKM-BKG-2026-000701", "Booking Payment Receipt", "Bank transfer", bookingReference(300), "LKR 3500.00", "LKR 1500.00", "Voided receipt", "Share on WhatsApp", `id="receipt-whatsapp-share"`} {
 		if !strings.Contains(html, marker) {
 			t.Fatalf("booking receipt is missing %q", marker)
 		}

@@ -286,6 +286,7 @@ func buildTemplates() (map[string]*template.Template, error) {
 		"formatCalendarDate":          formatCalendarDate,
 		"formatClockTime":             formatClockTime,
 		"paymentMethodLabel":          paymentMethodLabel,
+		"financeLedgerMethodLabel":    financeLedgerMethodLabel,
 		"mcpTierLabel":                mcpTierLabel,
 		"mcpPlanContinueMonthDefault": mcpPlanContinueMonthDefault,
 		"mcpContinueAction":           mcpContinueAction,

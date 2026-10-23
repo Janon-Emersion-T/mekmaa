@@ -2,18 +2,21 @@
 <div class="grid gap-6">
   <section class="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6">
     <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate/50">Transfers</p>
-    <h2 class="mt-2 text-xl font-semibold text-obsidian">Move cash to bank</h2>
-    <form method="post" action="/admin/finance/transfers/create" class="mt-5 grid gap-3">
+    <h2 class="mt-2 text-xl font-semibold text-obsidian">Move money between accounts</h2>
+    <p class="mt-2 text-sm text-slate/55">Record cash deposits, bank withdrawals, or transfers between bank accounts in the same division.</p>
+    <form method="post" action="/admin/finance/transfers/create" id="finance-transfer-form" class="mt-5 grid gap-3">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <div class="grid gap-3 sm:grid-cols-2">
         <label class="text-xs font-medium text-slate/60">From account
-          <select name="from_account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-            {{range .FinanceAccounts}}{{if eq .AccountType "cash"}}<option value="{{.ID}}">{{financeAccountDisplayName .Name .DivisionName}}</option>{{end}}{{end}}
+          <select name="from_account_id" id="finance-transfer-from" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+            <option value="">Select source account</option>
+            {{range .FinanceAccounts}}{{if .IsActive}}<option value="{{.ID}}" data-division-id="{{.DivisionID}}">{{financeAccountDisplayName .Name .DivisionName}} · {{financeAccountTypeLabel .AccountType}}</option>{{end}}{{end}}
           </select>
         </label>
         <label class="text-xs font-medium text-slate/60">To account
-          <select name="to_account_id" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
-            {{range .FinanceAccounts}}{{if eq .AccountType "bank"}}<option value="{{.ID}}">{{financeAccountDisplayName .Name .DivisionName}}</option>{{end}}{{end}}
+          <select name="to_account_id" id="finance-transfer-to" required class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+            <option value="">Select destination account</option>
+            {{range .FinanceAccounts}}{{if .IsActive}}<option value="{{.ID}}" data-division-id="{{.DivisionID}}">{{financeAccountDisplayName .Name .DivisionName}} · {{financeAccountTypeLabel .AccountType}}</option>{{end}}{{end}}
           </select>
         </label>
       </div>
@@ -25,11 +28,11 @@
           <input name="transfer_date" type="date" value="{{.TodayDate}}" min="{{.HistoricalStartDate}}" max="{{.TodayDate}}" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
         </label>
       </div>
-      <label class="text-xs font-medium text-slate/60">Deposit reference
+      <label class="text-xs font-medium text-slate/60">Transfer reference
         <input name="reference_number" maxlength="80" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
       </label>
       <label class="text-xs font-medium text-slate/60">Description
-        <input name="description" maxlength="300" value="Cash deposited into bank" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
+        <input name="description" maxlength="300" value="Internal account transfer" class="mt-1 h-11 w-full rounded-xl border border-slate/10 bg-cloud px-3 text-sm outline-none focus:border-aqua">
       </label>
       <label class="text-xs font-medium text-slate/60">Notes
         <textarea name="notes" rows="2" maxlength="400" class="mt-1 w-full rounded-xl border border-slate/10 bg-cloud px-3 py-3 text-sm outline-none focus:border-aqua"></textarea>
@@ -73,6 +76,39 @@
     </div>
   </section>
 </div>
+<script>
+(() => {
+  const form = document.getElementById("finance-transfer-form");
+  const from = document.getElementById("finance-transfer-from");
+  const to = document.getElementById("finance-transfer-to");
+  if (!form || !from || !to) return;
+
+  const refreshDestinations = () => {
+    const selected = from.selectedOptions[0];
+    const divisionID = selected ? selected.dataset.divisionId : "";
+    [...to.options].forEach(option => {
+      if (!option.value) return;
+      option.hidden = !divisionID || option.dataset.divisionId !== divisionID || option.value === from.value;
+      option.disabled = option.hidden;
+    });
+    if (to.selectedOptions[0] && to.selectedOptions[0].disabled) to.value = "";
+  };
+
+  from.addEventListener("change", refreshDestinations);
+  form.addEventListener("submit", event => {
+    if (!from.value || !to.value || from.value === to.value ||
+        from.selectedOptions[0].dataset.divisionId !== to.selectedOptions[0].dataset.divisionId) {
+      event.preventDefault();
+      to.setCustomValidity("Choose a different destination account in the same division.");
+      to.reportValidity();
+    } else {
+      to.setCustomValidity("");
+    }
+  });
+  to.addEventListener("change", () => to.setCustomValidity(""));
+  refreshDestinations();
+})();
+</script>
 {{end}}
 
 {{define "finance-reconciliations-section"}}

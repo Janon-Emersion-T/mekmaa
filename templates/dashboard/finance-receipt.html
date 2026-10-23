@@ -16,7 +16,7 @@
     {{if and (eq .SelectedFinance.Category "booking_payment") .ReceiptBookingPayment .ReceiptBookingSchedule .ReceiptBookingFinancial}}
     <div class="text-center">
       {{if .ReceiptBookingPayment.Voided}}<p class="mb-1 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-[0.72rem] font-extrabold uppercase tracking-[0.2em] text-red-700">Voided receipt</p>{{end}}
-      <h1 class="text-[1.05rem] font-extrabold uppercase tracking-[0.12em] text-obsidian">Booking Cash Receipt</h1>
+      <h1 class="text-[1.05rem] font-extrabold uppercase tracking-[0.12em] text-obsidian">Booking Payment Receipt</h1>
       <p class="mt-0.5 text-[0.72rem] font-medium leading-5 text-slate/65">
         No. 64, Temple Road<br />
         Jaffna 40000, Sri Lanka<br />
@@ -37,7 +37,7 @@
       </div>
       <div class="flex items-start justify-between gap-4">
         <dt class="shrink-0 font-medium text-slate/60">Payment method</dt>
-        <dd class="text-right font-bold uppercase text-obsidian">Cash</dd>
+        <dd class="text-right font-bold uppercase text-obsidian">{{financeLedgerMethodLabel .SelectedFinance}}</dd>
       </div>
       <div class="flex items-start justify-between gap-4">
         <dt class="shrink-0 font-medium text-slate/60">Booking reference</dt>
@@ -109,7 +109,7 @@
 
     <div class="pt-4 text-center">
       <p class="text-sm font-bold text-obsidian">Thank you</p>
-      <p class="mt-0.5 text-[0.68rem] font-medium leading-5 text-slate/55">Computer-generated cash receipt</p>
+      <p class="mt-0.5 text-[0.68rem] font-medium leading-5 text-slate/55">Computer-generated payment receipt</p>
       <p class="mt-2 text-[0.68rem] font-medium leading-5 text-slate/55">For assistance contact Mekmaa at {{.BookingStatusView.ContactPhone}}{{if .BookingStatusView.ContactEmail}} or {{.BookingStatusView.ContactEmail}}{{end}}.</p>
       <p class="mt-2 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate/45">Mekmaa</p>
     </div>
@@ -142,7 +142,7 @@
       </div>
       <div class="flex items-start justify-between gap-4">
         <dt class="shrink-0 font-medium text-slate/60">Payment method</dt>
-        <dd class="text-right font-bold uppercase text-obsidian">{{.SelectedFinance.PaymentMethod}}</dd>
+        <dd class="text-right font-bold uppercase text-obsidian">{{financeLedgerMethodLabel .SelectedFinance}}</dd>
       </div>
     </dl>
 
@@ -220,7 +220,7 @@
     <a href="/admin/finance" class="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate/10 bg-white px-5 text-center text-sm font-semibold text-slate transition hover:bg-cloud">Open finance</a>
   </div>
 
-  <script type="text/plain" id="receipt-whatsapp-text">{{if and (eq .SelectedFinance.Category "booking_payment") .ReceiptBookingPayment .ReceiptBookingSchedule .ReceiptBookingFinancial}}# Booking Cash Receipt
+  <script type="text/plain" id="receipt-whatsapp-text">{{if and (eq .SelectedFinance.Category "booking_payment") .ReceiptBookingPayment .ReceiptBookingSchedule .ReceiptBookingFinancial}}# Booking Payment Receipt
 
 No. 64, Temple Road
 Jaffna 40000, Sri Lanka
@@ -232,7 +232,7 @@ Printed
 {{formatDateTime .SelectedFinance.RecordedAt}}
 
 Payment method
-Cash
+{{financeLedgerMethodLabel .SelectedFinance}}
 
 Booking reference
 {{bookingReference .ReceiptBookingSchedule.ID}}
@@ -279,7 +279,7 @@ This payment collection was voided on {{formatDateTime .ReceiptBookingPayment.Vo
 {{end}}
 
 Thank you
-Computer-generated cash receipt
+Computer-generated payment receipt
 Mekmaa{{else}}# {{if lt .SelectedFinance.Amount 0.0}}Expense Voucher{{else}}Payment Receipt{{end}}
 
 No. 64, Temple Road
@@ -295,7 +295,7 @@ Category
 {{financeCategoryLabel .SelectedFinance.Category}}
 
 Payment method
-{{.SelectedFinance.PaymentMethod}}
+{{financeLedgerMethodLabel .SelectedFinance}}
 
 {{if lt .SelectedFinance.Amount 0.0}}Paid to{{else}}Received from{{end}}
 {{.SelectedFinance.PersonName}}

@@ -546,6 +546,13 @@ func paymentMethodLabel(value string) string {
 	}
 }
 
+func financeLedgerMethodLabel(transaction FinanceTransaction) string {
+	if transaction.SourceType == "finance_transfer" || transaction.TransferGroupID != "" {
+		return "Internal transfer"
+	}
+	return paymentMethodLabel(transaction.PaymentMethod)
+}
+
 func formatDateTime(value time.Time) string {
 	if value.IsZero() {
 		return "—"
