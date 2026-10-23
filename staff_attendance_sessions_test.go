@@ -134,12 +134,21 @@ func TestStaffWorkSessionsTemplatesRender(t *testing.T) {
 	data := TemplateData{
 		CSRFToken: "test", AttendanceDate: "2026-09-01", TodayDate: "2026-09-07",
 		StaffAttendanceUsers: []User{staff}, StaffAttendanceRecords: records,
+		StaffAttendanceRegister: []StaffAttendanceRegisterRow{{
+			UserName: staff.Name, UserEmail: staff.Email, UserID: staff.ID,
+			AttendanceDate: "2026-09-01", Status: "present",
+			Sessions: []StaffAttendanceSession{{"09:00", "10:30"}}, WorkedHours: 1.5,
+		}},
 		StaffAttendanceReportRows:   buildStaffAttendanceReportRows([]User{staff}, records),
 		StaffAttendanceHistory:      staffAttendanceHistoryForUser(records, staff.ID),
 		SelectedStaffAttendanceUser: &staff, StaffAttendanceMonth: "2026-09",
 	}
 	html := renderTemplateToString(t, templates, "staff-attendance", data)
-	for _, expected := range []string{"Staff member", "From time", "To time", "Save Attendance", "10:30"} {
+	for _, expected := range []string{
+		"Staff member", "From time", "To time", "Save Attendance", "10:30",
+		`id="staff-attendance-edit-dialog"`, "Save changes", "Work sessions",
+		`action="/admin/staff/attendance/delete"`,
+	} {
 		if !strings.Contains(html, expected) {
 			t.Errorf("attendance missing %q", expected)
 		}
