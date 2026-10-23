@@ -194,6 +194,7 @@ func main() {
 	mux.Handle("/admin/staff/advances/repayment", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.collectStaffAdvanceRepaymentHandler), "payroll.update")))
 	mux.Handle("/admin/staff/attendance", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffAttendanceManagementHandler), "coaches.view")))
 	mux.Handle("/admin/staff/attendance/save", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.saveStaffAttendanceHandler), "coaches.update")))
+	mux.Handle("/admin/staff/attendance/delete", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.deleteStaffAttendanceHandler), "coaches.update")))
 	mux.Handle("/admin/staff/attendance/report", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.staffAttendanceReportHandler), "coaches.view")))
 	mux.Handle("/admin/coaches", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.coachManagementHandler), "coaches.view")))
 	mux.Handle("/admin/coaches/create", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.createCoachHandler), "coaches.create")))

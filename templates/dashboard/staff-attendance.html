@@ -25,7 +25,7 @@
 
   <div class="grid items-start gap-6 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
 
-    <section class="rounded-[1.75rem] border border-white/80 bg-white p-5 shadow-sm sm:p-7">
+    <section id="attendance-entry" class="rounded-[1.75rem] border border-white/80 bg-white p-5 shadow-sm sm:p-7">
       <div class="mb-6">
         <h2 class="text-xl font-bold text-obsidian">Record attendance</h2>
         <p class="mt-1 text-sm text-slate/60">
@@ -174,6 +174,7 @@
               <th class="px-4 py-4">Hours</th>
               <th class="px-4 py-4">Status</th>
               <th class="px-4 py-4">Remarks</th>
+              <th class="px-4 py-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate/10">
@@ -206,10 +207,31 @@
                 <td class="max-w-[220px] px-4 py-4 text-slate/65">
                   {{if .Note}}{{.Note}}{{else}}—{{end}}
                 </td>
+                <td class="px-4 py-4">
+                  <div class="flex justify-end gap-2">
+                    <button type="button" data-edit-attendance data-user-id="{{.UserID}}" data-date="{{.AttendanceDate}}"
+                            class="h-9 rounded-lg border border-slate/15 bg-white px-3 text-xs font-bold text-obsidian hover:bg-cloud">
+                      Edit
+                    </button>
+                    <form method="post" action="/admin/staff/attendance/delete"
+                          onsubmit="return confirm('Delete this attendance record? This cannot be undone.');">
+                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                      <input type="hidden" name="user_id" value="{{.UserID}}">
+                      <input type="hidden" name="attendance_date" value="{{.AttendanceDate}}">
+                      <input type="hidden" name="records_from" value="{{$.StaffAttendanceRegisterFrom}}">
+                      <input type="hidden" name="records_to" value="{{$.StaffAttendanceRegisterTo}}">
+                      {{if $.StaffAttendanceRegisterUserID}}<input type="hidden" name="records_user_id" value="{{$.StaffAttendanceRegisterUserID}}">{{end}}
+                      {{if $.SelectedDivision}}<input type="hidden" name="division" value="{{$.SelectedDivision.Slug}}">{{else if eq $.SelectedDivisionScope "all"}}<input type="hidden" name="division" value="all">{{end}}
+                      <button type="submit" class="h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-bold text-rose-700 hover:bg-rose-50">
+                        Delete
+                      </button>
+                    </form>
+                  </div>
+                </td>
               </tr>
             {{else}}
               <tr>
-                <td colspan="7" class="px-5 py-14 text-center">
+                <td colspan="8" class="px-5 py-14 text-center">
                   <p class="font-semibold text-obsidian">
                     No attendance records found
                   </p>
@@ -305,6 +327,16 @@
 
   staff.addEventListener("change", refresh);
 
+  document.querySelectorAll("[data-edit-attendance]").forEach(button => {
+    button.addEventListener("click", () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("date", button.dataset.date);
+      url.searchParams.set("edit_user_id", button.dataset.userId);
+      url.hash = "attendance-entry";
+      window.location.assign(url.toString());
+    });
+  });
+
   date.addEventListener("change", () => {
     const url = new URL(window.location.href);
     url.searchParams.set("date", date.value);
@@ -334,6 +366,12 @@
     addField("session_start_" + staff.value, from.value);
     addField("session_end_" + staff.value, to.value);
   });
+
+  const editUserID = new URL(window.location.href).searchParams.get("edit_user_id");
+  if (editUserID && staff.querySelector('option[value="' + CSS.escape(editUserID) + '"]')) {
+    staff.value = editUserID;
+    refresh();
+  }
 })();
 </script>
 {{end}}

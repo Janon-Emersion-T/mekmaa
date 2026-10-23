@@ -684,6 +684,93 @@ func (a *App) saveStaffAttendanceHandler(
 	)
 }
 
+func (a *App) deleteStaffAttendanceHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := a.verifyCSRF(r); err != nil {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form submission", http.StatusBadRequest)
+		return
+	}
+
+	currentUser, _ := a.currentUser(r.Context())
+	divisionScope := strings.TrimSpace(r.FormValue("division"))
+	scopeRequest := r.Clone(r.Context())
+	urlCopy := *r.URL
+	query := urlCopy.Query()
+	if divisionScope != "" {
+		query.Set("division", divisionScope)
+	}
+	urlCopy.RawQuery = query.Encode()
+	scopeRequest.URL = &urlCopy
+	divisionIDs, ok := a.studentGroupDivisionScope(w, scopeRequest, currentUser)
+	if !ok {
+		return
+	}
+	staff, err := a.listAssignableGroupStaffByDivisionIDs(divisionIDs)
+	if err != nil {
+		log.Printf("list operational staff for attendance delete: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	userID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("user_id")), 10, 64)
+	if err != nil || userID <= 0 || !staffAttendanceUserAllowed(staff, userID) {
+		http.Error(w, "staff member is not available in this workspace", http.StatusForbidden)
+		return
+	}
+	attendanceDate, err := normalizeStaffAttendanceDate(r.FormValue("attendance_date"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	tx, err := a.db.Begin()
+	if err == nil {
+		_, err = a.execTxDB(tx, "DELETE FROM staff_attendance_sessions WHERE user_id = ? AND attendance_date = ?", userID, attendanceDate)
+	}
+	var result sql.Result
+	if err == nil {
+		result, err = a.execTxDB(tx, "DELETE FROM coach_attendance_records WHERE user_id = ? AND attendance_date = ?", userID, attendanceDate)
+	}
+	if err == nil {
+		err = tx.Commit()
+	} else if tx != nil {
+		_ = tx.Rollback()
+	}
+	if err != nil {
+		log.Printf("delete staff attendance: %v", err)
+		a.setFlash(w, "Staff attendance could not be deleted.")
+	} else {
+		if affected, _ := result.RowsAffected(); affected == 0 {
+			a.setFlash(w, "Staff attendance record was already removed.")
+		} else {
+			a.setFlash(w, "Staff attendance deleted successfully.")
+		}
+	}
+
+	target := staffAttendanceRedirect(attendanceDate, divisionScope)
+	for _, key := range []string{"records_from", "records_to", "records_user_id"} {
+		if value := strings.TrimSpace(r.FormValue(key)); value != "" {
+			target = withQueryValue(target, key, value)
+		}
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func staffAttendanceUserAllowed(users []User, userID int64) bool {
+	for _, user := range users {
+		if user.ID == userID && user.Active {
+			return true
+		}
+	}
+	return false
+}
+
 // Compile-time reminder: the generic attendance layer deliberately
 // retains the legacy CoachAttendanceRecord model/table for history.
 var _ = sql.ErrNoRows
