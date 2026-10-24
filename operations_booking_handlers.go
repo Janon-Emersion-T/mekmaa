@@ -2601,7 +2601,7 @@ func (a *App) adminBookingOptionsHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "invalid slot date", http.StatusBadRequest)
 		return
 	}
-	if _, err := time.Parse("15:04", slotHour); err != nil {
+	if _, err := time.Parse("15:04", slotHour); err != nil || !validBookingHour(slotHour) {
 		http.Error(w, "invalid slot hour", http.StatusBadRequest)
 		return
 	}
@@ -6541,7 +6541,7 @@ func (a *App) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		a.setFlash(w, "Schedule created.")
 	}
-	http.Redirect(w, r, "/admin/bookings?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
+	http.Redirect(w, r, bookingManagementRedirectURL(schedule.SlotDate, r.FormValue("division")), http.StatusSeeOther)
 }
 
 func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
@@ -6601,7 +6601,16 @@ func (a *App) updateBookingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.setFlash(w, "Schedule updated.")
-	http.Redirect(w, r, "/admin/bookings?date="+url.QueryEscape(schedule.SlotDate), http.StatusSeeOther)
+	http.Redirect(w, r, bookingManagementRedirectURL(schedule.SlotDate, r.FormValue("division")), http.StatusSeeOther)
+}
+
+func bookingManagementRedirectURL(slotDate, division string) string {
+	values := url.Values{"date": {strings.TrimSpace(slotDate)}}
+	division = strings.TrimSpace(division)
+	if division != "" {
+		values.Set("division", division)
+	}
+	return "/admin/bookings?" + values.Encode()
 }
 
 func (a *App) deleteBookingHandler(w http.ResponseWriter, r *http.Request) {

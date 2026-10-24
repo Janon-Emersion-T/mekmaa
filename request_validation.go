@@ -1365,6 +1365,12 @@ func validateSpaceScheduleInput(schedule SpaceSchedule) error {
 	if _, err := time.Parse("15:04", schedule.SlotHour); err != nil {
 		return errors.New("valid slot hour is required")
 	}
+	if !validBookingHour(schedule.SlotHour) {
+		return errors.New("slot time must be within the available booking hours")
+	}
+	if schedule.RequesterEmail != "" && !emailPattern.MatchString(schedule.RequesterEmail) {
+		return errors.New("a valid customer email is required")
+	}
 	if schedule.EntryType == "training" {
 		schedule.Activity = "training"
 	}

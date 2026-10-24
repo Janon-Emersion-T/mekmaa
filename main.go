@@ -443,7 +443,7 @@ func main() {
 	mux.Handle("/admin/bookings/payments/receipt", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requireAnyPermission(http.HandlerFunc(app.financeReceiptHandler), "admissions.view", "finance_transactions.view", "space_bookings.view", "booking_requests.view"))))
 	mux.Handle("/admin/admissions/payments/void", app.sessionMiddleware(app.requirePermission(http.HandlerFunc(app.voidAdmissionPaymentHandler), "finance_transactions.delete")))
 	mux.Handle("/admin/bookings/create", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.createBookingHandler), "space_bookings.create"))))
-	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.view"))))
+	mux.Handle("/admin/bookings/update", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.updateBookingHandler), "space_bookings.update"))))
 	mux.Handle("/admin/bookings/delete", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.deleteBookingHandler), "space_bookings.delete"))))
 	mux.Handle("/admin/booking-requests", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.bookingRequestsHandler), "booking_requests.view"))))
 	mux.Handle("/admin/booking-requests/hold", app.sessionMiddleware(app.requireSportsOperationalAccess(app.requirePermission(http.HandlerFunc(app.holdBookingRequestHandler), "booking_requests.update"))))

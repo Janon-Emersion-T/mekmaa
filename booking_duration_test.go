@@ -18,6 +18,25 @@ func TestBookingDurationHalfHourIncrements(t *testing.T) {
 	}
 }
 
+func TestValidateSpaceScheduleRejectsOutOfHoursAndInvalidCustomerEmail(t *testing.T) {
+	valid := SpaceSchedule{
+		SlotDate: "2026-10-24", SlotHour: "18:00", EntryType: "booking",
+		Activity: "full_indoor_cricket", Quantity: 1, Title: "Booking",
+	}
+
+	outOfHours := valid
+	outOfHours.SlotHour = "23:00"
+	if err := validateSpaceScheduleInput(outOfHours); err == nil {
+		t.Fatal("accepted a booking outside configured hours")
+	}
+
+	invalidEmail := valid
+	invalidEmail.RequesterEmail = "not-an-email"
+	if err := validateSpaceScheduleInput(invalidEmail); err == nil {
+		t.Fatal("accepted an invalid customer email")
+	}
+}
+
 func TestCreateSpaceSchedulesHalfHourPricingAndAvailability(t *testing.T) {
 	app := newBookingWorkflowTestApp(t)
 	date := time.Now().AddDate(0, 0, 3).Format("2006-01-02")

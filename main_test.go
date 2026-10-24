@@ -10188,7 +10188,14 @@ func TestUpdateBookingHandlerPreservesInventoryWithoutOptionInput(t *testing.T) 
 	}
 }
 
-func TestBookingCalendarViewPermissionAllowsScheduleUpdate(t *testing.T) {
+func TestBookingManagementRedirectPreservesDivisionScope(t *testing.T) {
+	got := bookingManagementRedirectURL("2026-10-24", "all")
+	if got != "/admin/bookings?date=2026-10-24&division=all" {
+		t.Fatalf("redirect = %q", got)
+	}
+}
+
+func TestBookingCalendarViewPermissionDoesNotAllowScheduleUpdate(t *testing.T) {
 	app := newAuthorizationTestApp(t)
 	templates, err := buildTemplates()
 	if err != nil {
@@ -10214,12 +10221,12 @@ func TestBookingCalendarViewPermissionAllowsScheduleUpdate(t *testing.T) {
 	called := false
 	protected := app.requirePermission(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		called = true
-	}), "space_bookings.view")
+	}), "space_bookings.update")
 	req := httptest.NewRequest(http.MethodPost, "/admin/bookings/update", nil)
 	req = req.WithContext(context.WithValue(req.Context(), userContextKey, viewer))
 	protected.ServeHTTP(httptest.NewRecorder(), req)
-	if !called {
-		t.Fatal("booking calendar viewer should be allowed to reach the update handler")
+	if called {
+		t.Fatal("booking calendar viewer reached the update handler without update permission")
 	}
 }
 
