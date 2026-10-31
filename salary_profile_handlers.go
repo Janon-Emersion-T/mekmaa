@@ -9,6 +9,24 @@ import (
 	"strings"
 )
 
+func salaryProfilesVisibleToStaff(
+	profiles []StaffSalaryProfile,
+	staff []User,
+) []StaffSalaryProfile {
+	allowed := make(map[int64]bool, len(staff))
+	for _, member := range staff {
+		allowed[member.ID] = true
+	}
+
+	filtered := make([]StaffSalaryProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		if allowed[profile.UserID] {
+			filtered = append(filtered, profile)
+		}
+	}
+	return filtered
+}
+
 func (a *App) salaryProfileManagementHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -74,7 +92,7 @@ func (a *App) salaryProfileManagementHandler(
 	data.Description =
 		"Configure staff compensation rates and payroll calculation rules."
 
-	data.SalaryProfiles = profiles
+	data.SalaryProfiles = salaryProfilesVisibleToStaff(profiles, staff)
 	data.Users = staff
 	data.Divisions = divisions
 	data.TrainingPrograms = programmes
@@ -215,6 +233,26 @@ func (a *App) createSalaryProfileHandler(
 		return
 	}
 
+	visibleStaff, err := a.listPayrollEligibleUsersVisibleTo(user)
+	if err != nil {
+		log.Printf("load visible salary staff: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	allowed := false
+	for _, member := range visibleStaff {
+		if member.ID == profile.UserID {
+			allowed = true
+			break
+		}
+	}
+
+	if !allowed {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
 	if !payrollEligibleUser(*selectedUser) {
 		a.setFlash(
 			w,
@@ -349,6 +387,25 @@ func (a *App) toggleSalaryProfileHandler(
 			"internal server error",
 			http.StatusInternalServerError,
 		)
+		return
+	}
+
+	visibleStaff, err := a.listPayrollEligibleUsersVisibleTo(user)
+	if err != nil {
+		log.Printf("load visible salary staff: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	allowed := false
+	for _, member := range visibleStaff {
+		if member.ID == profile.UserID {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 

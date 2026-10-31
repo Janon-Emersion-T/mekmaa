@@ -32,6 +32,30 @@
     </div>
     {{end}}
 
+
+    <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Salary profile overview">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total components</p>
+            <p class="mt-2 text-3xl font-semibold text-slate-950" id="salary-total">{{len .SalaryProfiles}}</p>
+            <p class="mt-1 text-xs text-slate-500">Compensation profiles in your permitted scope</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Active profiles</p>
+            <p class="mt-2 text-3xl font-semibold text-emerald-700" id="salary-active">0</p>
+            <p class="mt-1 text-xs text-slate-500">Enabled compensation components</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Staff covered</p>
+            <p class="mt-2 text-3xl font-semibold text-slate-950" id="salary-staff">0</p>
+            <p class="mt-1 text-xs text-slate-500">Distinct staff with salary profiles</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Salary methods</p>
+            <p class="mt-2 text-3xl font-semibold text-slate-950" id="salary-methods">0</p>
+            <p class="mt-1 text-xs text-slate-500">Different compensation types configured</p>
+        </div>
+    </section>
+
     <div class="grid gap-6 {{if hasPermission .User "payroll.create"}}xl:grid-cols-[420px_minmax(0,1fr)]{{end}}">
  {{if hasPermission .User "payroll.create"}}
 
@@ -297,6 +321,37 @@
                 </div>
             </div>
 
+
+            <div class="grid gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                <label class="block">
+                    <span class="mb-1 block text-xs font-semibold text-slate-600">Search staff or programme</span>
+                    <input id="salary-search" type="search" placeholder="Search salary profiles..."
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-600">
+                </label>
+                <label class="block">
+                    <span class="mb-1 block text-xs font-semibold text-slate-600">Salary method</span>
+                    <select id="salary-type-filter"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+                        <option value="">All methods</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="daily">Daily</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="per_student">Per student</option>
+                        <option value="per_session">Per session</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="mb-1 block text-xs font-semibold text-slate-600">Status</span>
+                    <select id="salary-status-filter"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+                        <option value="">All statuses</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </label>
+            </div>
+            <p id="salary-filter-count" class="px-5 pt-3 text-xs text-slate-500" aria-live="polite"></p>
             {{if .SalaryProfiles}}
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-slate-200 text-sm">
@@ -330,7 +385,10 @@
 
                     <tbody class="divide-y divide-slate-100 bg-white">
                         {{range .SalaryProfiles}}
-                        <tr class="align-top">
+                        <tr class="align-top" data-salary-row
+                            data-staff="{{.UserID}}"
+                            data-type="{{.CompensationType}}"
+                            data-status="{{if .Active}}active{{else}}inactive{{end}}">
                             <td class="px-5 py-4">
                                 <div class="font-medium text-slate-900">
                                     {{.UserName}}
@@ -461,6 +519,61 @@
     </div>
 </div>
 
+
+<script>
+(() => {
+    const rows = Array.from(document.querySelectorAll("[data-salary-row]"));
+    const search = document.getElementById("salary-search");
+    const type = document.getElementById("salary-type-filter");
+    const status = document.getElementById("salary-status-filter");
+    const count = document.getElementById("salary-filter-count");
+
+    const staff = new Set();
+    const methods = new Set();
+    let active = 0;
+
+    for (const row of rows) {
+        staff.add(row.dataset.staff);
+        methods.add(row.dataset.type);
+        if (row.dataset.status === "active") active++;
+    }
+
+    const setText = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = String(value);
+    };
+
+    setText("salary-active", active);
+    setText("salary-staff", staff.size);
+    setText("salary-methods", methods.size);
+
+    const update = () => {
+        const query = (search?.value || "").trim().toLocaleLowerCase();
+        const method = type?.value || "";
+        const state = status?.value || "";
+        let visible = 0;
+
+        for (const row of rows) {
+            const matches =
+                (!query || row.textContent.toLocaleLowerCase().includes(query)) &&
+                (!method || row.dataset.type === method) &&
+                (!state || row.dataset.status === state);
+            row.hidden = !matches;
+            row.style.display = matches ? "" : "none";
+            if (matches) visible++;
+        }
+
+        if (count) {
+            count.textContent = `${visible} of ${rows.length} salary profiles shown`;
+        }
+    };
+
+    search?.addEventListener("input", update);
+    type?.addEventListener("change", update);
+    status?.addEventListener("change", update);
+    update();
+})();
+</script>
 <script>
     (() => {
         const form = document.getElementById("salary-profile-form");
