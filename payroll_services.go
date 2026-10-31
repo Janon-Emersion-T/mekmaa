@@ -1110,7 +1110,7 @@ func (a *App) countPayrollActiveEnrollments(
 		JOIN training_programs tp
 			ON tp.id = se.training_program_id
 		WHERE COALESCE(se.active, 1) = 1
-		  AND se.enrollment_date <= ?
+		  AND se.enrollment_date <= CAST(? AS DATE)
 		  AND EXISTS (
 			  SELECT 1
 			  FROM student_group_members sgm
@@ -1138,8 +1138,8 @@ func (a *App) countPayrollActiveEnrollments(
 			  FROM student_enrollment_leaves sel
 			  WHERE sel.enrollment_id = se.id
 			    AND COALESCE(sel.active, 1) = 1
-			    AND sel.start_date <= ?
-			    AND sel.end_date >= ?
+			    AND sel.start_date <= CAST(? AS DATE)
+			    AND sel.end_date >= CAST(? AS DATE)
 		  )
 	`
 
@@ -1229,8 +1229,8 @@ func (a *App) countPayrollAttendingStudents(
 		JOIN student_group_staff sgs
 			ON sgs.group_id = sg.id
 		WHERE sgs.user_id = ?
-		  AND ar.attendance_date >= ?
-		  AND ar.attendance_date <= ?
+		  AND ar.attendance_date >= CAST(? AS DATE)
+		  AND ar.attendance_date <= CAST(? AS DATE)
 		  AND LOWER(ar.status) IN ('present', 'late')
 	`
 
@@ -1280,8 +1280,8 @@ func (a *App) countPayrollWorkedSessions(
 		WHERE ssos.user_id = ?
 		  AND ssos.work_status = 'worked'
 		  AND sso.status = 'completed'
-		  AND sso.occurrence_date >= ?
-		  AND sso.occurrence_date <= ?
+		  AND sso.occurrence_date >= CAST(? AS DATE)
+		  AND sso.occurrence_date <= CAST(? AS DATE)
 	`
 
 	args := []any{
