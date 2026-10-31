@@ -11,6 +11,9 @@ import (
 )
 
 type StaffAttendanceReportRow struct {
+	VisitDays            int
+	FirstVisit           string
+	LastVisit            string
 	SessionCount         int
 	WorkedHours          float64
 	User                 User
@@ -25,6 +28,9 @@ type StaffAttendanceReportRow struct {
 }
 
 type StaffAttendanceReportSummary struct {
+	TotalVisitDays       int
+	CoachesAttended      int
+	AverageVisits        float64
 	StaffCount           int
 	PresentCount         int
 	AbsentCount          int
@@ -296,6 +302,8 @@ func buildStaffAttendanceReportRows(
 		)
 	}
 
+	seenVisits := make(map[int64]map[string]bool)
+
 	for _, record := range records {
 		index, ok :=
 			indexByUserID[record.UserID]
@@ -305,6 +313,24 @@ func buildStaffAttendanceReportRows(
 		}
 
 		row := &rows[index]
+
+		status := normalizeStaffAttendanceStatus(record.Status)
+		if status == "present" || status == "late" {
+			if seenVisits[record.UserID] == nil {
+				seenVisits[record.UserID] = make(map[string]bool)
+			}
+			if !seenVisits[record.UserID][record.AttendanceDate] {
+				seenVisits[record.UserID][record.AttendanceDate] = true
+				row.VisitDays++
+				if row.FirstVisit == "" || record.AttendanceDate < row.FirstVisit {
+					row.FirstVisit = record.AttendanceDate
+				}
+				if record.AttendanceDate > row.LastVisit {
+					row.LastVisit = record.AttendanceDate
+				}
+			}
+		}
+
 		row.SessionCount += len(record.Sessions)
 		row.WorkedHours += record.SessionHours()
 
@@ -357,6 +383,10 @@ func summarizeStaffAttendanceReport(
 		len(rows)
 
 	for _, row := range rows {
+		summary.TotalVisitDays += row.VisitDays
+		if row.VisitDays > 0 {
+			summary.CoachesAttended++
+		}
 		summary.PresentCount +=
 			row.PresentCount
 
@@ -388,6 +418,11 @@ func summarizeStaffAttendanceReport(
 					summary.CountedDays,
 				) *
 				100
+	}
+
+	if summary.CoachesAttended > 0 {
+		summary.AverageVisits =
+			float64(summary.TotalVisitDays) / float64(summary.CoachesAttended)
 	}
 
 	return summary
@@ -552,55 +587,30 @@ func writeStaffAttendanceReportCSV(
 		[]string{
 			"Staff",
 			"Email",
-			"Present",
-			"Absent",
-			"Late",
-			"Excused",
-			"Total Records",
-			"Counted Days",
-			"Attended Days",
-			"Attendance Percentage",
+			"Days Visited",
+			"First Visit",
+			"Last Visit",
 			"Work Sessions",
 			"Recorded Hours",
+			"Historical Absent Records",
+			"Historical Excused Records",
 		},
 	); err != nil {
 		return err
 	}
 
 	for _, row := range rows {
-		if err := writer.Write(
-			[]string{
-				row.User.Name,
-				row.User.Email,
-				strconv.Itoa(
-					row.PresentCount,
-				),
-				strconv.Itoa(
-					row.AbsentCount,
-				),
-				strconv.Itoa(
-					row.LateCount,
-				),
-				strconv.Itoa(
-					row.ExcusedCount,
-				),
-				strconv.Itoa(
-					row.TotalRecords,
-				),
-				strconv.Itoa(
-					row.CountedDays,
-				),
-				strconv.Itoa(
-					row.AttendedDays,
-				),
-				fmt.Sprintf(
-					"%.2f",
-					row.AttendancePercentage,
-				),
-				strconv.Itoa(row.SessionCount),
-				fmt.Sprintf("%.2f", row.WorkedHours),
-			},
-		); err != nil {
+		if err := writer.Write([]string{
+			row.User.Name,
+			row.User.Email,
+			strconv.Itoa(row.VisitDays),
+			row.FirstVisit,
+			row.LastVisit,
+			strconv.Itoa(row.SessionCount),
+			fmt.Sprintf("%.2f", row.WorkedHours),
+			strconv.Itoa(row.AbsentCount),
+			strconv.Itoa(row.ExcusedCount),
+		}); err != nil {
 			return err
 		}
 	}
@@ -761,6 +771,17 @@ func (a *App) staffAttendanceReportHandler(
 		}
 	}
 
+	if selectedUserID > 0 {
+		filtered := make([]StaffAttendanceReportRow, 0, 1)
+		for _, row := range reportRows {
+			if row.User.ID == selectedUserID {
+				filtered = append(filtered, row)
+				break
+			}
+		}
+		reportRows = filtered
+	}
+
 	if strings.EqualFold(
 		strings.TrimSpace(
 			r.URL.Query().Get(
@@ -812,7 +833,7 @@ func (a *App) staffAttendanceReportHandler(
 		"Staff Attendance Report"
 
 	data.Description =
-		"Review monthly attendance performance and individual staff history."
+		"Review monthly coach visits, recorded work sessions and individual visit history."
 
 	data.StaffAttendanceUsers =
 		staff

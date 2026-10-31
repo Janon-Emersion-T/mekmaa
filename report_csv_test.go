@@ -78,7 +78,7 @@ func TestWriteStaffAttendanceReportCSVIncludesReportHeadings(t *testing.T) {
 		"Section,Field,Value",
 		"Mekmaa Staff Attendance Report",
 		"filter,Staff Member,Report Coach",
-		"Staff,Email,Present,Absent,Late,Excused",
+		"Staff,Email,Days Visited,First Visit,Last Visit,Work Sessions,Recorded Hours,Historical Absent Records,Historical Excused Records",
 	} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("staff attendance csv missing %q in %s", needle, body)
