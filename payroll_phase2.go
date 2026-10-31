@@ -800,7 +800,7 @@ func (a *App) listPayrollAssignedGroupMembershipCandidates(
 			ON se.admission_id = sgmh.admission_id
 		   AND se.training_program_id = sg.training_program_id
 		   AND COALESCE(se.active, 1) = 1
-		   AND se.enrollment_date <= ?
+		   AND CAST(se.enrollment_date AS TEXT) <= ?
 		JOIN training_programs tp
 			ON tp.id = sg.training_program_id
 		WHERE sgsh.user_id = ?
@@ -866,7 +866,7 @@ func (a *App) listPayrollAttendanceStudentCandidates(
 			ON se.admission_id = ar.admission_id
 		   AND se.training_program_id = sg.training_program_id
 		   AND COALESCE(se.active, 1) = 1
-		   AND se.enrollment_date <= ?
+		   AND CAST(se.enrollment_date AS TEXT) <= ?
 		JOIN training_programs tp
 			ON tp.id = sg.training_program_id
 		JOIN student_group_staff_assignment_history sgsh
