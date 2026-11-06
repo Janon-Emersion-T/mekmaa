@@ -2675,8 +2675,8 @@ func (a *App) createFinanceTransfer(fromAccountID, toAccountID int64, amount flo
 	if referenceNumber == "" {
 		referenceNumber = financeTransferReference(now)
 	}
-	outReceipt := referenceNumber + "-OUT"
-	inReceipt := referenceNumber + "-IN"
+	outReceipt := "MKM-" + groupID + "-OUT"
+	inReceipt := "MKM-" + groupID + "-IN"
 	if _, err := insertFinanceTransactionTx(tx, financeTransactionCreate{
 		ReceiptNumber:    outReceipt,
 		ReferenceNumber:  referenceNumber,
